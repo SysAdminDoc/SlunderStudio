@@ -1,0 +1,11 @@
+{
+  "pop": "[Verse 1]\n[Pre-Chorus]\n[Chorus]\n[Verse 2]\n[Pre-Chorus]\n[Chorus]\n[Bridge]\n[Chorus]\n[Outro]",
+  "verse_chorus": "[Verse 1]\n[Chorus]\n[Verse 2]\n[Chorus]\n[Bridge]\n[Chorus]",
+  "verse_hook": "[Intro]\n[Verse 1]\n[Hook]\n[Verse 2]\n[Hook]\n[Verse 3]\n[Hook]\n[Outro]",
+  "hip_hop": "[Intro]\n[Verse 1]\n[Chorus]\n[Verse 2]\n[Chorus]\n[Verse 3]\n[Chorus]\n[Outro]",
+  "ballad": "[Verse 1]\n[Verse 2]\n[Chorus]\n[Verse 3]\n[Chorus]\n[Bridge]\n[Chorus]\n[Outro]",
+  "edm": "[Intro]\n[Verse 1]\n[Chorus]\n[Drop]\n[Verse 2]\n[Chorus]\n[Drop]\n[Breakdown]\n[Drop]\n[Outro]",
+  "aab": "[Verse 1]\n[Verse 2]\n[Chorus]\n[Verse 3]\n[Verse 4]\n[Chorus]",
+  "minimal": "[Verse 1]\n[Chorus]\n[Verse 2]\n[Chorus]",
+  "extended": "[Intro]\n[Verse 1]\n[Pre-Chorus]\n[Chorus]\n[Post-Chorus]\n[Verse 2]\n[Pre-Chorus]\n[Chorus]\n[Post-Chorus]\n[Bridge]\n[Chorus]\n[Chorus]\n[Outro]"
+}

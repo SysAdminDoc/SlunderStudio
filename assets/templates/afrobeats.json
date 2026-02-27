@@ -1,0 +1,25 @@
+{
+  "id": "afrobeats",
+  "name": "Afrobeats",
+  "description": "Rhythmic, danceable with African influence",
+  "category": "world",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABCB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Rhythmic, celebratory. Pidgin English phrases welcome. Dance-oriented.",
+  "emotional_register": "Joyful, celebratory, romantic. Sunshine and dance.",
+  "example_themes": [
+    "dancing",
+    "beautiful woman",
+    "celebration",
+    "afro rhythm",
+    "vibe"
+  ],
+  "style_tags": [
+    "afrobeats",
+    "afro pop",
+    "dancehall",
+    "percussion"
+  ],
+  "system_prompt_extra": ""
+}

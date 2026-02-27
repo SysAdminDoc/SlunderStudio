@@ -1,0 +1,25 @@
+{
+  "id": "folk",
+  "name": "Folk",
+  "description": "Storytelling with acoustic warmth and imagery",
+  "category": "folk",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABCB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Narrative, pastoral. Nature imagery, journeys, seasons. Traditional but fresh.",
+  "emotional_register": "Warm, wistful, contemplative. Stories told by the fire.",
+  "example_themes": [
+    "the road",
+    "rivers",
+    "old love",
+    "changing seasons",
+    "homecoming"
+  ],
+  "style_tags": [
+    "folk",
+    "acoustic",
+    "guitar",
+    "banjo"
+  ],
+  "system_prompt_extra": ""
+}

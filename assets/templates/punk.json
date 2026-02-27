@@ -1,0 +1,25 @@
+{
+  "id": "punk",
+  "name": "Punk",
+  "description": "Fast, aggressive, anti-establishment",
+  "category": "rock",
+  "structure": "minimal",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "high",
+  "vocabulary_style": "Direct, aggressive, political. Short sharp lines. Anti-authority. Sarcasm.",
+  "emotional_register": "Angry, defiant, sarcastic. Raw and unfiltered.",
+  "example_themes": [
+    "the system",
+    "boredom",
+    "riot",
+    "sell-outs",
+    "suburban hell"
+  ],
+  "style_tags": [
+    "punk",
+    "fast",
+    "distorted",
+    "aggressive"
+  ],
+  "system_prompt_extra": "Keep it short, fast, angry. No filler. Every line should hit hard."
+}

@@ -1,0 +1,25 @@
+{
+  "id": "lofi",
+  "name": "Lo-Fi / Chill",
+  "description": "Laid-back, atmospheric with minimal lyrics",
+  "category": "electronic",
+  "structure": "minimal",
+  "rhyme_scheme": "free",
+  "syllable_density": "low",
+  "vocabulary_style": "Sparse, atmospheric. Stream of consciousness. Gentle, murmured quality.",
+  "emotional_register": "Calm, reflective, slightly melancholic. Rainy window vibes.",
+  "example_themes": [
+    "rainy days",
+    "coffee",
+    "memories",
+    "quiet rooms",
+    "drifting off"
+  ],
+  "style_tags": [
+    "lo-fi",
+    "chill",
+    "jazz hop",
+    "mellow"
+  ],
+  "system_prompt_extra": "Very sparse lyrics. Short phrases, lots of space. Impressionistic rather than narrative."
+}

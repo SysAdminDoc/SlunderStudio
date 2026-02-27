@@ -1,0 +1,25 @@
+{
+  "id": "gospel",
+  "name": "Gospel",
+  "description": "Uplifting spiritual with call-and-response",
+  "category": "gospel",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABCB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Spiritual, uplifting. Biblical imagery, testimony, praise. Call-and-response.",
+  "emotional_register": "Joyful, grateful, transcendent. From struggle to glory.",
+  "example_themes": [
+    "grace",
+    "salvation",
+    "praise",
+    "overcoming",
+    "faith"
+  ],
+  "style_tags": [
+    "gospel",
+    "choir",
+    "piano",
+    "uplifting"
+  ],
+  "system_prompt_extra": ""
+}

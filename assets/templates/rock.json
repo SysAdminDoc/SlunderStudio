@@ -1,0 +1,25 @@
+{
+  "id": "rock",
+  "name": "Rock",
+  "description": "Raw energy, guitar-driven anthems",
+  "category": "rock",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABAB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Visceral, physical imagery. Strong verbs. Occasional metaphor.",
+  "emotional_register": "Intense, passionate. From quiet verses to explosive choruses.",
+  "example_themes": [
+    "rebellion",
+    "freedom",
+    "the road",
+    "heartbreak",
+    "fighting back"
+  ],
+  "style_tags": [
+    "rock",
+    "electric guitar",
+    "drums",
+    "powerful"
+  ],
+  "system_prompt_extra": ""
+}

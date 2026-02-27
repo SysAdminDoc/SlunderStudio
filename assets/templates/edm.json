@@ -1,0 +1,25 @@
+{
+  "id": "edm",
+  "name": "EDM / Electronic",
+  "description": "Repetitive hooks for drops and builds",
+  "category": "electronic",
+  "structure": "edm",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "low",
+  "vocabulary_style": "Short, punchy phrases. Repetitive hooks. Focus on rhythm over narrative.",
+  "emotional_register": "Euphoric, hypnotic, high-energy. Build-and-release dynamics.",
+  "example_themes": [
+    "the night",
+    "feeling alive",
+    "lights",
+    "losing yourself",
+    "together"
+  ],
+  "style_tags": [
+    "edm",
+    "electronic",
+    "synth",
+    "dance"
+  ],
+  "system_prompt_extra": "Keep chorus extremely short and repetitive \u2014 designed for electronic drops. Verses are sparse."
+}
