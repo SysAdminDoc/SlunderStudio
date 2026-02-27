@@ -1,7 +1,12 @@
 """
 Slunder Studio v0.0.2 — Lyrics Engine
-llama-cpp-python wrapper for local LLM inference with streaming token output,
-model loading via Model Manager, and generation pipeline.
+Dual-backend LLM wrapper: llama-cpp-python (primary) or transformers (fallback).
+Supports streaming token output, model loading via Model Manager, and generation pipeline.
+
+Backend selection:
+  - llama-cpp-python: Fast, low VRAM, loads GGUF files. Needs C++ compiler to install.
+  - transformers: Pure Python, no compiler needed. Uses standard HuggingFace models.
+    Fallback when llama-cpp-python can't install (e.g. Python 3.14, no Visual Studio).
 """
 import os
 import threading
@@ -13,9 +18,8 @@ from core.settings import Settings
 from core.model_manager import ModelManager, cleanup_gpu
 
 
-# ── Model File Resolution ──────────────────────────────────────────────────────
+# -- Model File Resolution -----------------------------------------------------
 
-# Map model IDs to expected GGUF filenames (most common quantization)
 GGUF_FILENAMES = {
     "llama-3.1-8b-q4": [
         "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
@@ -31,25 +35,31 @@ GGUF_FILENAMES = {
     ],
 }
 
+# Ungated HuggingFace models for transformers fallback backend
+# Matched by capability/size to the GGUF models they replace
+_TRANSFORMERS_MODELS = {
+    "llama-3.1-8b-q4": "Qwen/Qwen2.5-7B-Instruct",
+    "llama-3.2-3b-q4": "Qwen/Qwen2.5-3B-Instruct",
+    "qwen-2.5-14b-q4": "Qwen/Qwen2.5-14B-Instruct",
+}
+_TRANSFORMERS_DEFAULT = "Qwen/Qwen2.5-3B-Instruct"
+
 
 def _find_gguf_file(model_id: str) -> Optional[str]:
     """Find the GGUF file path for a model. Searches cache directory."""
     mgr = ModelManager()
     cache_dir = mgr.get_cache_dir(model_id)
 
-    # Check known filenames
     candidates = GGUF_FILENAMES.get(model_id, [])
     for name in candidates:
         path = cache_dir / name
         if path.exists():
             return str(path)
 
-    # Search for any .gguf file in cache
     if cache_dir.exists():
         for f in cache_dir.rglob("*.gguf"):
             return str(f)
 
-    # Check HuggingFace default cache
     info = mgr.get_model_info(model_id)
     if info:
         hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
@@ -61,16 +71,28 @@ def _find_gguf_file(model_id: str) -> Optional[str]:
     return None
 
 
-# ── LLM Wrapper ────────────────────────────────────────────────────────────────
+def _llama_cpp_available() -> bool:
+    """Check if llama-cpp-python is importable without attempting install."""
+    try:
+        import llama_cpp
+        return True
+    except ImportError:
+        return False
+
+
+# -- LLM Wrapper (dual-backend) ------------------------------------------------
 
 class LyricsLLM:
     """
-    Wrapper around llama-cpp-python for lyrics generation.
-    Supports streaming, cancellation, and parameter control.
+    Dual-backend LLM for lyrics generation.
+    Tries llama-cpp-python first (GGUF, fast, low VRAM).
+    Falls back to transformers (pure Python, no compiler needed).
     """
 
     def __init__(self):
         self._model = None
+        self._tokenizer = None
+        self._backend: Optional[str] = None  # "llama_cpp" or "transformers"
         self._model_id: Optional[str] = None
         self._model_path: Optional[str] = None
 
@@ -82,13 +104,43 @@ class LyricsLLM:
     def model_id(self) -> Optional[str]:
         return self._model_id
 
+    @property
+    def backend(self) -> Optional[str]:
+        return self._backend
+
     def load(self, model_id: str = None, model_path: str = None, n_ctx: int = 4096):
         """
-        Load a GGUF model for inference.
-        Provide either model_id (looked up from registry) or model_path (direct path).
+        Load a model for inference. Tries llama-cpp-python first,
+        falls back to transformers if unavailable.
         """
-        from core.deps import ensure
-        ensure("llama_cpp")
+        self.unload()
+
+        # Phase 1: Try llama-cpp-python (best performance)
+        if _llama_cpp_available():
+            try:
+                self._load_llama_cpp(model_id, model_path, n_ctx)
+                return
+            except Exception as e:
+                print(f"[Lyrics] llama-cpp-python load failed: {e}")
+
+        # Phase 2: Try to install llama-cpp-python
+        if not _llama_cpp_available():
+            try:
+                from core.deps import ensure
+                ensure("llama_cpp")
+                self._load_llama_cpp(model_id, model_path, n_ctx)
+                return
+            except ImportError:
+                print("[Lyrics] llama-cpp-python unavailable, using transformers backend")
+            except Exception as e:
+                print(f"[Lyrics] llama-cpp-python load failed: {e}")
+
+        # Phase 3: Transformers fallback
+        self._load_transformers(model_id)
+
+    def _load_llama_cpp(self, model_id: str = None, model_path: str = None,
+                         n_ctx: int = 4096):
+        """Load via llama-cpp-python (GGUF files)."""
         from llama_cpp import Llama
 
         if model_id and not model_path:
@@ -102,29 +154,64 @@ class LyricsLLM:
         if not model_path or not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
 
-        # Unload previous model
-        self.unload()
-
         self._model = Llama(
             model_path=model_path,
             n_ctx=n_ctx,
-            n_gpu_layers=-1,  # Full GPU offload
+            n_gpu_layers=-1,
             verbose=False,
             n_threads=os.cpu_count() or 4,
         )
+        self._backend = "llama_cpp"
         self._model_id = model_id or Path(model_path).stem
         self._model_path = model_path
+
+    def _load_transformers(self, model_id: str = None):
+        """Load via transformers (standard HuggingFace models, no compiler needed)."""
+        from core.deps import ensure
+        ensure("transformers", "torch")
+
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        # Map GGUF model IDs to equivalent HuggingFace models
+        hf_model = _TRANSFORMERS_MODELS.get(model_id, _TRANSFORMERS_DEFAULT)
+        print(f"[Lyrics] Loading transformers model: {hf_model}")
+
+        # Detect best dtype
+        if torch.cuda.is_available():
+            device = "cuda"
+            dtype = torch.float16
+        else:
+            device = "cpu"
+            dtype = torch.float32
+
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            hf_model, trust_remote_code=True,
+        )
+        self._model = AutoModelForCausalLM.from_pretrained(
+            hf_model,
+            torch_dtype=dtype,
+            device_map=device,
+            trust_remote_code=True,
+        )
+
+        self._backend = "transformers"
+        self._model_id = model_id or hf_model.split("/")[-1]
+        self._model_path = hf_model
 
     def unload(self):
         """Unload the model and free memory."""
         if self._model is not None:
             del self._model
             self._model = None
-            self._model_id = None
-            cleanup_gpu()
+        if self._tokenizer is not None:
+            del self._tokenizer
+            self._tokenizer = None
+        self._backend = None
+        self._model_id = None
+        cleanup_gpu()
 
     def cleanup(self):
-        """Alias for unload, used by ModelManager."""
         self.unload()
 
     def generate(
@@ -141,31 +228,31 @@ class LyricsLLM:
         token_cb: Optional[Callable[[str], None]] = None,
         **kwargs,
     ) -> str:
-        """
-        Generate lyrics from prompts. Returns complete text.
-
-        Args:
-            system_prompt: System instructions for the LLM
-            user_prompt: User's creative request
-            temperature: Randomness (0.1-2.0)
-            top_p: Nucleus sampling threshold
-            top_k: Top-K sampling
-            repeat_penalty: Penalize repetition
-            max_tokens: Maximum output tokens
-            cancel_event: Threading event to check for cancellation
-            progress_cb: Callback for progress percentage (0-100)
-            token_cb: Callback for each generated token (for streaming UI)
-        """
+        """Generate lyrics from prompts. Routes to active backend."""
         if not self.is_loaded:
             raise RuntimeError("No model loaded. Call load() first.")
 
-        # Build messages in chat format
+        if self._backend == "llama_cpp":
+            return self._generate_llama_cpp(
+                system_prompt, user_prompt, temperature, top_p, top_k,
+                repeat_penalty, max_tokens, cancel_event, progress_cb, token_cb,
+            )
+        else:
+            return self._generate_transformers(
+                system_prompt, user_prompt, temperature, top_p, top_k,
+                repeat_penalty, max_tokens, cancel_event, progress_cb, token_cb,
+            )
+
+    def _generate_llama_cpp(
+        self, system_prompt, user_prompt, temperature, top_p, top_k,
+        repeat_penalty, max_tokens, cancel_event, progress_cb, token_cb,
+    ) -> str:
+        """Generate via llama-cpp-python streaming chat completion."""
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
 
-        # Stream generation
         output_tokens = []
         token_count = 0
 
@@ -180,7 +267,6 @@ class LyricsLLM:
         )
 
         for chunk in stream:
-            # Check cancellation
             if cancel_event and cancel_event.is_set():
                 break
 
@@ -190,13 +276,10 @@ class LyricsLLM:
                 output_tokens.append(content)
                 token_count += 1
 
-                # Stream to UI
                 if token_cb:
                     token_cb(content)
 
-                # Progress estimate (rough — we don't know total tokens ahead of time)
                 if progress_cb:
-                    # Estimate based on typical lyrics length (~200-400 tokens)
                     estimated_total = max(200, max_tokens // 4)
                     pct = min(95, int(token_count / estimated_total * 100))
                     progress_cb(pct)
@@ -205,6 +288,97 @@ class LyricsLLM:
             progress_cb(100)
 
         return "".join(output_tokens)
+
+    def _generate_transformers(
+        self, system_prompt, user_prompt, temperature, top_p, top_k,
+        repeat_penalty, max_tokens, cancel_event, progress_cb, token_cb,
+    ) -> str:
+        """Generate via transformers with streaming."""
+        import torch
+        from threading import Thread
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        # Apply chat template
+        if hasattr(self._tokenizer, "apply_chat_template"):
+            text = self._tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+            )
+        else:
+            text = f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant: "
+
+        inputs = self._tokenizer(text, return_tensors="pt")
+        input_ids = inputs["input_ids"].to(self._model.device)
+        input_len = input_ids.shape[1]
+
+        gen_kwargs = {
+            "max_new_tokens": max_tokens,
+            "temperature": max(temperature, 0.01),
+            "top_p": top_p,
+            "top_k": top_k,
+            "repetition_penalty": repeat_penalty,
+            "do_sample": True,
+            "pad_token_id": self._tokenizer.eos_token_id,
+        }
+
+        # Try streaming via TextIteratorStreamer
+        try:
+            from transformers import TextIteratorStreamer
+            streamer = TextIteratorStreamer(
+                self._tokenizer, skip_prompt=True, skip_special_tokens=True,
+            )
+            gen_kwargs["streamer"] = streamer
+
+            thread = Thread(
+                target=lambda: self._model.generate(input_ids, **gen_kwargs),
+                daemon=True,
+            )
+            thread.start()
+
+            output_tokens = []
+            token_count = 0
+            for text_chunk in streamer:
+                if cancel_event and cancel_event.is_set():
+                    break
+                if text_chunk:
+                    output_tokens.append(text_chunk)
+                    token_count += 1
+                    if token_cb:
+                        token_cb(text_chunk)
+                    if progress_cb:
+                        estimated_total = max(200, max_tokens // 4)
+                        pct = min(95, int(token_count / estimated_total * 100))
+                        progress_cb(pct)
+
+            thread.join(timeout=5)
+
+            if progress_cb:
+                progress_cb(100)
+            return "".join(output_tokens)
+
+        except ImportError:
+            # TextIteratorStreamer not available, fall back to non-streaming
+            pass
+
+        # Non-streaming fallback
+        if progress_cb:
+            progress_cb(10)
+
+        with torch.no_grad():
+            output = self._model.generate(input_ids, **gen_kwargs)
+
+        new_tokens = output[0][input_len:]
+        result = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
+
+        if token_cb:
+            token_cb(result)
+        if progress_cb:
+            progress_cb(100)
+
+        return result
 
     def generate_with_retry(
         self,
@@ -225,8 +399,7 @@ class LyricsLLM:
         raise last_error
 
 
-# ── High-Level Generation Functions ────────────────────────────────────────────
-# These are designed to be called from InferenceWorker threads.
+# -- High-Level Generation Functions -------------------------------------------
 
 def generate_lyrics(
     prompt: str,
@@ -242,16 +415,7 @@ def generate_lyrics(
     token_cb: Callable = None,
     **kwargs,
 ) -> dict:
-    """
-    High-level lyrics generation function for use with InferenceWorker.
-
-    Returns dict with:
-        - lyrics: str (generated text)
-        - genre: str
-        - mood: str
-        - model_id: str
-        - generation_params: dict
-    """
+    """High-level lyrics generation function for use with InferenceWorker."""
     from engines.lyrics_templates import build_generation_prompt
 
     settings = Settings()
@@ -269,7 +433,6 @@ def generate_lyrics(
     if log_cb:
         log_cb(f"Loading model: {model_id}")
 
-    # Load model via ModelManager
     mgr = ModelManager()
     llm = LyricsLLM()
 
@@ -283,9 +446,9 @@ def generate_lyrics(
         return {"lyrics": "", "cancelled": True}
 
     if step_cb:
-        step_cb("Generating lyrics...")
+        backend_name = llm.backend or "unknown"
+        step_cb(f"Generating lyrics ({backend_name})...")
 
-    # Build prompts
     system_prompt, user_prompt = build_generation_prompt(
         user_prompt=prompt,
         genre_id=genre_id,
@@ -295,9 +458,8 @@ def generate_lyrics(
     )
 
     if log_cb:
-        log_cb(f"Genre: {genre_id}, Mood: {mood}, Temp: {temperature}")
+        log_cb(f"Genre: {genre_id}, Mood: {mood}, Backend: {llm.backend}")
 
-    # Generate
     lyrics = llm.generate(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
@@ -317,6 +479,7 @@ def generate_lyrics(
         "mood": mood,
         "language": language,
         "model_id": model_id,
+        "backend": llm.backend,
         "generation_params": {
             "temperature": temperature,
             "top_p": top_p,
@@ -337,9 +500,7 @@ def generate_lyrics_quick(
     token_cb: Callable = None,
     **kwargs,
 ) -> dict:
-    """
-    Quick mode generation — auto-detect genre and structure from a simple description.
-    """
+    """Quick mode generation -- auto-detect genre and structure from description."""
     from engines.lyrics_templates import build_quick_prompt
 
     settings = Settings()
@@ -385,6 +546,7 @@ def generate_lyrics_quick(
         "mood": "",
         "language": "en",
         "model_id": model_id,
+        "backend": llm.backend,
         "generation_params": {
             "temperature": temperature,
             "top_p": top_p,
@@ -406,10 +568,7 @@ def regenerate_section(
     token_cb: Callable = None,
     **kwargs,
 ) -> dict:
-    """
-    Regenerate a specific section of existing lyrics.
-    The LLM receives the full lyrics context and rewrites only the target section.
-    """
+    """Regenerate a specific section of existing lyrics."""
     from engines.lyrics_templates import GENRE_TEMPLATES, BASE_SYSTEM_PROMPT
 
     settings = Settings()
@@ -464,13 +623,10 @@ Rewrite ONLY the [{section_tag}] section. Output just the new lines for that sec
     }
 
 
-# ── Model Loader for ModelManager Registry ─────────────────────────────────────
+# -- Model Loader for ModelManager Registry ------------------------------------
 
 def load_model(cache_dir: str = None, model_id: str = None, **kwargs) -> LyricsLLM:
-    """
-    Loader function called by ModelManager._dynamic_load().
-    Loads the specified lyrics model, falling back to settings default.
-    """
+    """Loader function called by ModelManager._dynamic_load()."""
     if model_id is None:
         settings = Settings()
         model_id = settings.get("lyrics.model_id", "llama-3.1-8b-q4")
