@@ -1,8 +1,13 @@
 """
 Slunder Studio v0.0.2 — ACE-Step Engine
-Native Python wrapper for ACE-Step v1.5 inference (not Gradio).
-Supports: generate, batch, retake, repaint, extend, cover.
-<4GB VRAM, 48kHz stereo, up to 10 min duration.
+Native Python wrapper for ACE-Step inference (not Gradio).
+Supports: generate, batch, retake, repaint, extend.
+<4GB VRAM, 48kHz stereo, up to 4 min duration.
+
+Real upstream API (pip install ace-step):
+  from acestep.pipeline_ace_step import ACEStepPipeline
+  pipe = ACEStepPipeline(checkpoint_dir=path)
+  result = pipe(prompt=..., lyrics=..., audio_duration=..., ...)
 """
 import os
 import time
@@ -20,19 +25,19 @@ from core.model_manager import ModelManager, cleanup_gpu
 class GenerationParams:
     """Parameters for ACE-Step song generation."""
     lyrics: str = ""
-    style_tags: str = ""  # comma-separated ACE-Step tags
-    duration: float = 60.0  # seconds
-    seed: int = -1  # -1 = random
-    cfg_scale: float = 5.0  # 1.0-15.0
-    infer_steps: int = 60  # 10-100
-    scheduler: str = "euler"  # euler, dpm++
+    style_tags: str = ""  # comma-separated ACE-Step tags (maps to 'prompt')
+    duration: float = 60.0  # seconds (maps to 'audio_duration')
+    seed: int = -1  # -1 = random (maps to 'manual_seeds')
+    cfg_scale: float = 15.0  # 1.0-30.0 (maps to 'guidance_scale')
+    infer_steps: int = 60  # 10-200 (maps to 'infer_step')
+    scheduler: str = "euler"  # euler, heun, pingpong (maps to 'scheduler_type')
     sample_rate: int = 48000
     # Repaint/retake
     repaint_start: float = -1.0  # -1 = disabled
     repaint_end: float = -1.0
     source_audio_path: str = ""  # for cover/repaint
     # LoRA
-    lora_path: str = ""
+    lora_path: str = ""  # maps to 'lora_name_or_path'
     lora_weight: float = 1.0
 
     def resolve_seed(self) -> int:
@@ -56,8 +61,8 @@ class GenerationResult:
 
 class ACEStepEngine:
     """
-    Wrapper around ACE-Step v1.5 inference pipeline.
-    Handles model loading, generation, batch mode, and advanced features.
+    Wrapper around ACE-Step inference pipeline.
+    Uses the real acestep.pipeline_ace_step.ACEStepPipeline API.
     """
 
     def __init__(self):
@@ -73,19 +78,20 @@ class ACEStepEngine:
     def load(self, cache_dir: str = None):
         """Load ACE-Step pipeline. Called by ModelManager."""
         try:
-            from ace_step.pipeline import ACEStepPipeline
+            from acestep.pipeline_ace_step import ACEStepPipeline
         except ImportError:
             from core.deps import ensure
-            ensure("ace_step", pip_name="ace-step")
-            from ace_step.pipeline import ACEStepPipeline
+            ensure("acestep", pip_name="ace-step")
+            from acestep.pipeline_ace_step import ACEStepPipeline
 
         if cache_dir:
-            model_path = cache_dir
+            checkpoint_dir = cache_dir
         else:
             mgr = ModelManager()
-            model_path = str(mgr.get_cache_dir("ace-step-v1.5"))
+            checkpoint_dir = str(mgr.get_cache_dir("ace-step-v1.5"))
 
-        self._pipeline = ACEStepPipeline(model_path=model_path)
+        # ACEStepPipeline downloads from HuggingFace if checkpoint_dir is empty
+        self._pipeline = ACEStepPipeline(checkpoint_dir=checkpoint_dir)
         self._model_loaded = True
 
     def unload(self):
@@ -115,22 +121,22 @@ class ACEStepEngine:
         seed = params.resolve_seed()
         start_time = time.time()
 
-        # Build output path
-        timestamp = int(time.time())
-        output_path = self._output_dir / f"song_{timestamp}_{seed}.wav"
+        save_dir = str(self._output_dir)
 
         if progress_cb:
             progress_cb(5)
 
-        # Build generation kwargs
+        # Build kwargs matching the real ACEStepPipeline.__call__ signature
         gen_kwargs = {
+            "prompt": params.style_tags,
             "lyrics": params.lyrics,
-            "tags": params.style_tags,
-            "duration": params.duration,
-            "seed": seed,
+            "audio_duration": params.duration,
+            "infer_step": params.infer_steps,
             "guidance_scale": params.cfg_scale,
-            "num_inference_steps": params.infer_steps,
-            "output_path": str(output_path),
+            "scheduler_type": params.scheduler,
+            "manual_seeds": str(seed),
+            "save_path": save_dir,
+            "format": "wav",
         }
 
         # Add repaint params if specified
@@ -138,38 +144,25 @@ class ACEStepEngine:
             gen_kwargs["repaint_start"] = params.repaint_start
             gen_kwargs["repaint_end"] = params.repaint_end
             if params.source_audio_path:
-                gen_kwargs["source_audio"] = params.source_audio_path
+                gen_kwargs["src_audio_path"] = params.source_audio_path
 
         # Add LoRA if specified
         if params.lora_path and os.path.exists(params.lora_path):
-            gen_kwargs["lora_path"] = params.lora_path
+            gen_kwargs["lora_name_or_path"] = params.lora_path
             gen_kwargs["lora_weight"] = params.lora_weight
 
-        # Run inference
-        try:
-            result = self._pipeline.generate(**gen_kwargs)
-        except Exception as e:
-            # Handle missing pipeline method gracefully
-            # Fallback: try the alternative API pattern
-            if hasattr(self._pipeline, '__call__'):
-                result = self._pipeline(**gen_kwargs)
-            else:
-                raise e
+        if progress_cb:
+            progress_cb(10)
+
+        # ACEStepPipeline is callable
+        result = self._pipeline(**gen_kwargs)
 
         if progress_cb:
             progress_cb(95)
 
         elapsed = time.time() - start_time
 
-        # Verify output exists
-        if not output_path.exists():
-            # Check if pipeline wrote to a different location
-            if isinstance(result, str) and os.path.exists(result):
-                output_path = Path(result)
-            elif isinstance(result, dict) and "audio_path" in result:
-                output_path = Path(result["audio_path"])
-            else:
-                raise RuntimeError(f"Generation completed but output file not found: {output_path}")
+        output_path = self._find_output(save_dir, result)
 
         if progress_cb:
             progress_cb(100)
@@ -183,6 +176,69 @@ class ACEStepEngine:
             generation_time=elapsed,
         )
 
+    def _find_output(self, save_dir: str, pipeline_result) -> Path:
+        """
+        Locate the output file from pipeline result.
+        Pipeline may return file paths, audio tensor, or save to save_path.
+        """
+        # If pipeline returned file path(s)
+        if isinstance(pipeline_result, str) and os.path.isfile(pipeline_result):
+            return Path(pipeline_result)
+        if isinstance(pipeline_result, (list, tuple)):
+            for item in pipeline_result:
+                if isinstance(item, str) and os.path.isfile(item):
+                    return Path(item)
+                if isinstance(item, (list, tuple)):
+                    for sub in item:
+                        if isinstance(sub, str) and os.path.isfile(sub):
+                            return Path(sub)
+        if isinstance(pipeline_result, dict):
+            for key in ("audio_path", "path", "output_path"):
+                val = pipeline_result.get(key)
+                if isinstance(val, str) and os.path.isfile(val):
+                    return Path(val)
+
+        # If pipeline returned audio tensor, save it ourselves
+        try:
+            import torch
+            import numpy as np
+
+            audio_data = None
+            if isinstance(pipeline_result, torch.Tensor):
+                audio_data = pipeline_result
+            elif isinstance(pipeline_result, np.ndarray):
+                audio_data = torch.from_numpy(pipeline_result)
+            elif isinstance(pipeline_result, (list, tuple)):
+                for item in pipeline_result:
+                    if isinstance(item, (torch.Tensor, np.ndarray)):
+                        audio_data = item if isinstance(item, torch.Tensor) else torch.from_numpy(item)
+                        break
+
+            if audio_data is not None:
+                import torchaudio
+                if audio_data.dim() == 1:
+                    audio_data = audio_data.unsqueeze(0)
+                if audio_data.dim() == 3:
+                    audio_data = audio_data.squeeze(0)
+                audio_data = audio_data.float().cpu()
+                peak = audio_data.abs().max()
+                if peak > 0:
+                    audio_data = audio_data / peak * 0.95
+
+                timestamp = int(time.time())
+                out_path = Path(save_dir) / f"output_{timestamp}.wav"
+                torchaudio.save(str(out_path), audio_data, 48000)
+                return out_path
+        except (ImportError, Exception):
+            pass
+
+        # Fallback: find most recent wav in save_dir
+        wavs = sorted(Path(save_dir).glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if wavs:
+            return wavs[0]
+
+        raise RuntimeError(f"Generation completed but no output file found in {save_dir}")
+
     def generate_batch(
         self,
         params: GenerationParams,
@@ -191,10 +247,7 @@ class ACEStepEngine:
         step_cb: Callable = None,
         cancel_event: threading.Event = None,
     ) -> list[GenerationResult]:
-        """
-        Generate multiple variations with different random seeds.
-        Returns list of GenerationResult sorted by generation order.
-        """
+        """Generate multiple variations with different random seeds."""
         results = []
         for i in range(count):
             if cancel_event and cancel_event.is_set():
@@ -203,12 +256,11 @@ class ACEStepEngine:
             if step_cb:
                 step_cb(f"Generating variation {i+1}/{count}...")
 
-            # Each variation gets a unique random seed
             batch_params = GenerationParams(
                 lyrics=params.lyrics,
                 style_tags=params.style_tags,
                 duration=params.duration,
-                seed=-1,  # Force random for each
+                seed=-1,
                 cfg_scale=params.cfg_scale,
                 infer_steps=params.infer_steps,
                 scheduler=params.scheduler,
@@ -261,14 +313,14 @@ class ACEStepEngine:
         return self.generate(params, progress_cb=progress_cb, cancel_event=cancel_event)
 
 
-# ── High-Level Functions for InferenceWorker ───────────────────────────────────
+# -- High-Level Functions for InferenceWorker ----------------------------------
 
 def generate_song(
     lyrics: str,
     style_tags: str,
     duration: float = 60.0,
     seed: int = -1,
-    cfg_scale: float = 5.0,
+    cfg_scale: float = 15.0,
     infer_steps: int = 60,
     progress_cb: Callable = None,
     step_cb: Callable = None,
@@ -325,7 +377,7 @@ def generate_song_batch(
     style_tags: str,
     count: int = 4,
     duration: float = 60.0,
-    cfg_scale: float = 5.0,
+    cfg_scale: float = 15.0,
     infer_steps: int = 60,
     progress_cb: Callable = None,
     step_cb: Callable = None,
