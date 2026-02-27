@@ -1,0 +1,25 @@
+{
+  "id": "rnb",
+  "name": "R&B",
+  "description": "Smooth, soulful with vocal runs and emotional depth",
+  "category": "rnb",
+  "structure": "pop",
+  "rhyme_scheme": "ABCB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Smooth, sensual language. Vocal embellishments implied. Emotional vulnerability.",
+  "emotional_register": "Intimate, romantic, sultry. Deep feeling delivered smoothly.",
+  "example_themes": [
+    "desire",
+    "late nights",
+    "devotion",
+    "heartache",
+    "intimacy"
+  ],
+  "style_tags": [
+    "r&b",
+    "soul",
+    "smooth",
+    "groovy"
+  ],
+  "system_prompt_extra": ""
+}

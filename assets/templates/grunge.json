@@ -1,0 +1,25 @@
+{
+  "id": "grunge",
+  "name": "Grunge",
+  "description": "Raw, disaffected with distorted emotional honesty",
+  "category": "rock",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABAB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Raw, disaffected. Mumbled clarity. Self-deprecating. Anti-pretension.",
+  "emotional_register": "Apathetic exterior, intense pain underneath. Gen-X angst.",
+  "example_themes": [
+    "apathy",
+    "self-destruction",
+    "faking it",
+    "teen spirit",
+    "rain"
+  ],
+  "style_tags": [
+    "grunge",
+    "distorted guitar",
+    "90s rock",
+    "raw"
+  ],
+  "system_prompt_extra": ""
+}

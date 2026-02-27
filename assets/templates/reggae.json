@@ -1,0 +1,25 @@
+{
+  "id": "reggae",
+  "name": "Reggae",
+  "description": "Laid-back with conscious lyrics and offbeat rhythm",
+  "category": "world",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABCB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Conscious, spiritual. Patois welcome. Nature imagery, unity, resistance.",
+  "emotional_register": "Peaceful, conscious, resilient. One love vibration.",
+  "example_themes": [
+    "unity",
+    "Jah",
+    "redemption",
+    "sunshine",
+    "resistance"
+  ],
+  "style_tags": [
+    "reggae",
+    "ska",
+    "offbeat guitar",
+    "bass heavy"
+  ],
+  "system_prompt_extra": ""
+}
