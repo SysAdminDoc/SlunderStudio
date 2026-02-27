@@ -26,11 +26,13 @@ _PIP_NAMES = {
     "onnxruntime": "onnxruntime",
     "torchaudio": "torchaudio",
     "stable_audio_tools": "stable-audio-tools",
-    "ace_step": "ace-step",
+    "acestep": "ace-step",
     "whisper": "openai-whisper",
     "demucs": "demucs",
     "llama_cpp": "llama-cpp-python",
     "pretty_midi": "pretty-midi",
+    "torch": "torch",
+    "transformers": "transformers",
 }
 
 # Track packages we've already installed this session (skip re-checks)
