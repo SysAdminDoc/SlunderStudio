@@ -1,0 +1,24 @@
+{
+  "id": "hip_hop",
+  "name": "Hip-Hop",
+  "description": "Rhythmic flow with wordplay and storytelling",
+  "category": "hip-hop",
+  "structure": "hip_hop",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "high",
+  "vocabulary_style": "Dense, rhythmic wordplay. Internal rhymes, multisyllabic rhymes, slang. Vivid storytelling.",
+  "emotional_register": "Confident, street-smart, sometimes vulnerable. Braggadocio to introspection.",
+  "example_themes": [
+    "hustle",
+    "success",
+    "streets",
+    "legacy",
+    "real talk"
+  ],
+  "style_tags": [
+    "hip hop",
+    "rap",
+    "trap beat"
+  ],
+  "system_prompt_extra": "Pack lines with internal rhymes and wordplay. Maintain rhythmic flow. Use vivid imagery."
+}

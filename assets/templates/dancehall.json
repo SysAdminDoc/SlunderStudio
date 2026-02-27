@@ -1,0 +1,25 @@
+{
+  "id": "dancehall",
+  "name": "Dancehall",
+  "description": "Caribbean rhythm with energetic toasting",
+  "category": "world",
+  "structure": "verse_hook",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "high",
+  "vocabulary_style": "Patois, energetic chanting. Dance instructions. Riddim-driven.",
+  "emotional_register": "High energy, party vibes. Boss attitude.",
+  "example_themes": [
+    "wine up",
+    "bad gyal",
+    "party",
+    "nuff respect",
+    "tek it easy"
+  ],
+  "style_tags": [
+    "dancehall",
+    "caribbean",
+    "riddim",
+    "bass"
+  ],
+  "system_prompt_extra": ""
+}

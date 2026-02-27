@@ -1,0 +1,25 @@
+{
+  "id": "disco",
+  "name": "Disco / Funk",
+  "description": "Groovy, feel-good with dancefloor energy",
+  "category": "pop",
+  "structure": "pop",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Groovy, playful. Dancefloor commands. Feel-good catchphrases.",
+  "emotional_register": "Joyful, liberated, sexy. Saturday night fever.",
+  "example_themes": [
+    "get on the floor",
+    "boogie",
+    "last dance",
+    "staying alive",
+    "groove tonight"
+  ],
+  "style_tags": [
+    "disco",
+    "funk",
+    "bass guitar",
+    "strings"
+  ],
+  "system_prompt_extra": ""
+}

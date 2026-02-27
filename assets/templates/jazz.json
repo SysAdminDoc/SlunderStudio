@@ -1,0 +1,25 @@
+{
+  "id": "jazz",
+  "name": "Jazz",
+  "description": "Sophisticated, poetic with complex imagery",
+  "category": "jazz",
+  "structure": "aab",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Sophisticated, poetic. Urban imagery, nightlife, smoke and mirrors. Metaphor-rich.",
+  "emotional_register": "Cool, world-weary, romantic. Understated emotion.",
+  "example_themes": [
+    "midnight",
+    "smoke-filled rooms",
+    "love gone wrong",
+    "city lights",
+    "solitude"
+  ],
+  "style_tags": [
+    "jazz",
+    "piano",
+    "saxophone",
+    "smooth"
+  ],
+  "system_prompt_extra": ""
+}

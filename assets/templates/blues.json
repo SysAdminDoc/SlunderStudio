@@ -1,0 +1,24 @@
+{
+  "id": "blues",
+  "name": "Blues",
+  "description": "AAB form with gritty, soulful lament",
+  "category": "blues",
+  "structure": "aab",
+  "rhyme_scheme": "AAB",
+  "syllable_density": "low",
+  "vocabulary_style": "Gritty, earthy. Repetition is key (AAB form). Delta imagery. Hardship and humor.",
+  "emotional_register": "Lamenting but resilient. Pain expressed with groove.",
+  "example_themes": [
+    "hard times",
+    "woman done left",
+    "crossroads",
+    "rain",
+    "whiskey"
+  ],
+  "style_tags": [
+    "blues",
+    "electric guitar",
+    "harmonica"
+  ],
+  "system_prompt_extra": "Use AAB blues form: first line stated, repeated with variation, then resolved. Keep it raw."
+}
