@@ -1,0 +1,25 @@
+{
+  "id": "acoustic",
+  "name": "Acoustic / Singer-Songwriter",
+  "description": "Intimate, personal with raw honesty",
+  "category": "folk",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABCB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Personal, confessional. Diary-like honesty. Small details that feel enormous.",
+  "emotional_register": "Intimate, vulnerable. Whispering secrets to a room.",
+  "example_themes": [
+    "unrequited love",
+    "growing apart",
+    "small towns",
+    "3am thoughts",
+    "letters unsent"
+  ],
+  "style_tags": [
+    "acoustic",
+    "singer-songwriter",
+    "guitar",
+    "intimate"
+  ],
+  "system_prompt_extra": ""
+}

@@ -1,0 +1,25 @@
+{
+  "id": "soul",
+  "name": "Soul",
+  "description": "Deep emotional expression with gospel roots",
+  "category": "rnb",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABCB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Deep, emotive. Gospel-influenced testimony. Raw honesty.",
+  "emotional_register": "Deep feeling, raw vulnerability. From whisper to wail.",
+  "example_themes": [
+    "real love",
+    "struggle",
+    "rising up",
+    "healing",
+    "truth"
+  ],
+  "style_tags": [
+    "soul",
+    "motown",
+    "gospel",
+    "organ"
+  ],
+  "system_prompt_extra": ""
+}

@@ -1,0 +1,24 @@
+{
+  "id": "latin",
+  "name": "Latin Pop / Reggaeton",
+  "description": "Rhythmic, passionate with Latin flavor",
+  "category": "latin",
+  "structure": "pop",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "high",
+  "vocabulary_style": "Rhythmic, passionate. Mix of romance and party. Can be bilingual. Danceable.",
+  "emotional_register": "Fiery, sensual, celebratory. Heat and passion.",
+  "example_themes": [
+    "dancing",
+    "passion",
+    "the night",
+    "mi amor",
+    "fiesta"
+  ],
+  "style_tags": [
+    "reggaeton",
+    "latin pop",
+    "tropical"
+  ],
+  "system_prompt_extra": ""
+}

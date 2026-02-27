@@ -1,0 +1,24 @@
+{
+  "id": "pop",
+  "name": "Pop",
+  "description": "Catchy, radio-friendly with strong hooks",
+  "category": "pop",
+  "structure": "pop",
+  "rhyme_scheme": "ABAB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Accessible, everyday language with memorable phrases. Short, punchy lines.",
+  "emotional_register": "Upbeat to bittersweet. Relatable emotions, universal themes.",
+  "example_themes": [
+    "love",
+    "heartbreak",
+    "dancing",
+    "self-empowerment",
+    "summer nights"
+  ],
+  "style_tags": [
+    "pop",
+    "catchy",
+    "radio"
+  ],
+  "system_prompt_extra": "Focus on a singable, memorable chorus hook. Keep language simple and universal."
+}

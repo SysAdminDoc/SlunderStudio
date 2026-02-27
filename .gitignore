@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/SlunderStudio/
+build/version_info.txt
+*.spec
+.venv/
+venv/
+*.log
+*.lock

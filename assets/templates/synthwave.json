@@ -1,0 +1,25 @@
+{
+  "id": "synthwave",
+  "name": "Synthwave / Retrowave",
+  "description": "80s-inspired neon-soaked nostalgia",
+  "category": "electronic",
+  "structure": "pop",
+  "rhyme_scheme": "ABAB",
+  "syllable_density": "low",
+  "vocabulary_style": "Retro-futuristic. Neon lights, chrome, night drives, VHS static. 80s nostalgia.",
+  "emotional_register": "Nostalgic, dreamy, melancholic with hope. Neon-lit longing.",
+  "example_themes": [
+    "night drive",
+    "neon city",
+    "lost signal",
+    "retrograde",
+    "electric dreams"
+  ],
+  "style_tags": [
+    "synthwave",
+    "retro",
+    "80s synth",
+    "electronic"
+  ],
+  "system_prompt_extra": ""
+}

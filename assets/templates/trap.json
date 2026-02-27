@@ -1,0 +1,25 @@
+{
+  "id": "trap",
+  "name": "Trap",
+  "description": "808-heavy with melodic hooks and ad-libs",
+  "category": "hip-hop",
+  "structure": "hip_hop",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "high",
+  "vocabulary_style": "Melodic flow, auto-tune friendly. Ad-libs (yeah, what, skrrt). Flex and feels.",
+  "emotional_register": "Confident exterior, vulnerable moments. Flex meets feelings.",
+  "example_themes": [
+    "drip",
+    "late nights",
+    "trust issues",
+    "counting up",
+    "no sleep"
+  ],
+  "style_tags": [
+    "trap",
+    "808",
+    "hi-hats",
+    "auto-tune"
+  ],
+  "system_prompt_extra": ""
+}

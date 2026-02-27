@@ -1,0 +1,25 @@
+{
+  "id": "classical_art",
+  "name": "Art Song / Classical",
+  "description": "Poetic, literary with complex structure",
+  "category": "classical",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABAB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Literary, poetic. Rich metaphor, formal diction. Classical poetry influence.",
+  "emotional_register": "Profound, layered. Beauty and sorrow intertwined.",
+  "example_themes": [
+    "nature",
+    "mortality",
+    "love eternal",
+    "seasons",
+    "the sublime"
+  ],
+  "style_tags": [
+    "classical",
+    "orchestral",
+    "piano",
+    "strings"
+  ],
+  "system_prompt_extra": ""
+}

@@ -1,0 +1,25 @@
+{
+  "id": "ambient",
+  "name": "Ambient / Experimental",
+  "description": "Atmospheric textures with abstract lyrics",
+  "category": "electronic",
+  "structure": "minimal",
+  "rhyme_scheme": "free",
+  "syllable_density": "low",
+  "vocabulary_style": "Abstract, fragmented. Sound-poetry quality. Words as texture.",
+  "emotional_register": "Ethereal, detached, transcendent. Beyond conventional emotion.",
+  "example_themes": [
+    "dissolving",
+    "space",
+    "echo",
+    "void",
+    "light particles"
+  ],
+  "style_tags": [
+    "ambient",
+    "atmospheric",
+    "experimental",
+    "ethereal"
+  ],
+  "system_prompt_extra": "Extremely sparse. Fragmented phrases. Words chosen for sound quality as much as meaning."
+}

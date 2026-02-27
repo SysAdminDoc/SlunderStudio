@@ -1,0 +1,24 @@
+{
+  "id": "indie",
+  "name": "Indie / Alternative",
+  "description": "Artistic, introspective with unexpected imagery",
+  "category": "indie",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "free",
+  "syllable_density": "medium",
+  "vocabulary_style": "Artistic, offbeat imagery. Unexpected metaphors. Self-aware, sometimes ironic.",
+  "emotional_register": "Introspective, melancholic with hope. Layered emotions.",
+  "example_themes": [
+    "growing up",
+    "existential doubt",
+    "quiet moments",
+    "suburban ennui",
+    "weird love"
+  ],
+  "style_tags": [
+    "indie",
+    "alternative",
+    "lo-fi guitar"
+  ],
+  "system_prompt_extra": ""
+}

@@ -1,0 +1,25 @@
+{
+  "id": "drill",
+  "name": "Drill",
+  "description": "Dark, aggressive with sliding bass and hard-hitting bars",
+  "category": "hip-hop",
+  "structure": "hip_hop",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "high",
+  "vocabulary_style": "Hard, street-level. Slang-heavy, aggressive posturing. Dark humor.",
+  "emotional_register": "Cold, menacing, unflinching. Controlled aggression.",
+  "example_themes": [
+    "the block",
+    "opps",
+    "no lacking",
+    "come up",
+    "staying solid"
+  ],
+  "style_tags": [
+    "drill",
+    "dark trap",
+    "808",
+    "aggressive"
+  ],
+  "system_prompt_extra": ""
+}

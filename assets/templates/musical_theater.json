@@ -1,0 +1,25 @@
+{
+  "id": "musical_theater",
+  "name": "Musical Theater",
+  "description": "Dramatic, narrative with character voice",
+  "category": "theater",
+  "structure": "extended",
+  "rhyme_scheme": "AABB",
+  "syllable_density": "high",
+  "vocabulary_style": "Theatrical, dramatic. Character-driven. Internal monologue turned outward. Wit.",
+  "emotional_register": "High drama, humor to heartbreak. Every line advances the story.",
+  "example_themes": [
+    "wanting more",
+    "the big moment",
+    "impossible love",
+    "defiance",
+    "transformation"
+  ],
+  "style_tags": [
+    "broadway",
+    "musical",
+    "theatrical",
+    "dramatic"
+  ],
+  "system_prompt_extra": ""
+}

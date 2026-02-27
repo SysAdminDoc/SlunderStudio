@@ -1,0 +1,25 @@
+{
+  "id": "cinematic",
+  "name": "Cinematic / Orchestral",
+  "description": "Epic, sweeping with dramatic arc",
+  "category": "cinematic",
+  "structure": "ballad",
+  "rhyme_scheme": "ABAB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Epic, sweeping imagery. Cinematic language. Grand metaphors. Anthemic.",
+  "emotional_register": "Overwhelmingly emotional. Goosebumps moments. Epic highs and devastating lows.",
+  "example_themes": [
+    "destiny",
+    "the final stand",
+    "beyond the horizon",
+    "legends never die",
+    "into the storm"
+  ],
+  "style_tags": [
+    "cinematic",
+    "orchestral",
+    "epic",
+    "dramatic"
+  ],
+  "system_prompt_extra": ""
+}

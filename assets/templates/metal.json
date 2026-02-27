@@ -1,0 +1,25 @@
+{
+  "id": "metal",
+  "name": "Metal",
+  "description": "Aggressive, powerful with dark imagery",
+  "category": "rock",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABAB",
+  "syllable_density": "high",
+  "vocabulary_style": "Dark, aggressive, epic. War imagery, fire, destruction, mythology. Power words.",
+  "emotional_register": "Furious, epic, cathartic. From controlled anger to unleashed chaos.",
+  "example_themes": [
+    "war",
+    "destruction",
+    "inner demons",
+    "rising from ashes",
+    "chaos"
+  ],
+  "style_tags": [
+    "metal",
+    "heavy",
+    "distorted guitar",
+    "double bass drums"
+  ],
+  "system_prompt_extra": ""
+}

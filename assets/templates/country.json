@@ -1,0 +1,24 @@
+{
+  "id": "country",
+  "name": "Country",
+  "description": "Storytelling with heart, twang, and imagery",
+  "category": "country",
+  "structure": "verse_chorus",
+  "rhyme_scheme": "ABAB",
+  "syllable_density": "medium",
+  "vocabulary_style": "Conversational, narrative. Rural imagery, pickup trucks, small towns, whiskey. Down-to-earth.",
+  "emotional_register": "Heartfelt, earnest. From rowdy to tearjerker.",
+  "example_themes": [
+    "home",
+    "lost love",
+    "dirt roads",
+    "family",
+    "friday nights"
+  ],
+  "style_tags": [
+    "country",
+    "acoustic guitar",
+    "steel guitar"
+  ],
+  "system_prompt_extra": ""
+}

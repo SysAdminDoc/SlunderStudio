@@ -1,0 +1,24 @@
+{
+  "id": "kpop",
+  "name": "K-Pop",
+  "description": "High-energy with catchy hooks and breakdowns",
+  "category": "pop",
+  "structure": "extended",
+  "rhyme_scheme": "ABAB",
+  "syllable_density": "high",
+  "vocabulary_style": "High-energy, trendy. Mix of sweet and fierce. Catchy English hooks in chorus.",
+  "emotional_register": "Energetic, confident, sweet-to-fierce transitions.",
+  "example_themes": [
+    "love at first sight",
+    "confidence",
+    "dancing all night",
+    "fighting for dreams"
+  ],
+  "style_tags": [
+    "k-pop",
+    "synth",
+    "dance pop",
+    "energetic"
+  ],
+  "system_prompt_extra": ""
+}
