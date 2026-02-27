@@ -162,7 +162,7 @@ class SFXEngine:
                 progress_callback(0.1, "Preparing generation...")
 
             sample_rate = self._model_config.get("sample_rate", params.sample_rate)
-            sample_size = int(params.duration * sample_rate)
+            sample_size = self._model_config.get("sample_size", int(params.duration * sample_rate))
 
             conditioning = [{
                 "prompt": params.prompt,
@@ -193,7 +193,11 @@ class SFXEngine:
                     steps=params.steps,
                     cfg_scale=params.cfg_scale,
                     sample_size=sample_size,
+                    sigma_min=0.3,
+                    sigma_max=500,
+                    sampler_type="dpmpp-3m-sde",
                     device=self._device,
+                    seed=seed,
                 )
 
             audio = output.squeeze().cpu().numpy()
