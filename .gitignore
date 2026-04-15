@@ -9,3 +9,4 @@ build/version_info.txt
 venv/
 *.log
 *.lock
+CLAUDE.md
