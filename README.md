@@ -1,3 +1,13 @@
+<!-- codex-branding:start -->
+<p align="center"><img src="icon.png" width="128" alt="Slunder Studio"></p>
+
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-preview-58A6FF?style=for-the-badge">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Python%20GUI-58A6FF?style=for-the-badge">
+</p>
+<!-- codex-branding:end -->
+
 # Slunder Studio
 
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
