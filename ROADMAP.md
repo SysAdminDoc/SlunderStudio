@@ -88,13 +88,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ## Research-Driven Additions
 
 ### P0
-- [ ] P0 - Stop false-success audio from placeholder engines
-  Why: SFX, RVC, and GPT-SoVITS paths can return placeholder or synthetic fallback audio that looks like a successful model render.
-  Evidence: `engines/sfx_engine.py`, `engines/rvc_engine.py`, GPT-SoVITS, Stable Audio Open.
-  Touches: `engines/sfx_engine.py`, `engines/rvc_engine.py`, `ui/sfx_view.py`, `ui/vocal_suite_view.py`, `tests/`.
-  Acceptance: Missing/unloaded models show an explicit fallback/demo state, exports and downstream routing are blocked unless the user explicitly chooses demo output, and tests prove real-model errors cannot be reported as successful generation.
-  Complexity: M
-
 - [ ] P0 - Harden model checkpoint trust and loading
   Why: Voice profiles load user-selected PyTorch checkpoints with unsafe deserialization, while model downloads do not persist revision/hash provenance.
   Evidence: `engines/rvc_engine.py`, `core/model_manager.py`, PyTorch security policy, Hugging Face download docs.

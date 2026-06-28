@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.5 — SFX Generator View
+Slunder Studio v0.1.6 — SFX Generator View
 Text-to-SFX generation with preset categories, batch generation,
 waveform preview, and drag-to-mixer support.
 """
@@ -8,7 +8,7 @@ from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
     QComboBox, QSpinBox, QDoubleSpinBox, QFrame, QScrollArea,
-    QGridLayout, QSlider, QLineEdit, QFileDialog,
+    QGridLayout, QSlider, QLineEdit, QFileDialog, QCheckBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -42,7 +42,7 @@ class SFXCard(QFrame):
                 border-color: {t['accent']};
             }}
         """)
-        self.setFixedHeight(80)
+        self.setFixedHeight(92)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -60,12 +60,17 @@ class SFXCard(QFrame):
         # Info
         info = QVBoxLayout()
         info.setSpacing(2)
-        seed_label = QLabel(f"Seed: {result.seed}")
+        prefix = "DEMO " if result.is_demo else ""
+        seed_label = QLabel(f"{prefix}Seed: {result.seed}")
         seed_label.setStyleSheet(f"color: {t['text']}; font-size: 10px; font-weight: bold;")
         dur_label = QLabel(f"{result.duration:.1f}s | {result.generation_time:.1f}s gen")
         dur_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
         info.addWidget(seed_label)
         info.addWidget(dur_label)
+        if result.is_demo:
+            demo_label = QLabel("Demo synthesis")
+            demo_label.setStyleSheet(f"color: #f9e2af; font-size: 9px;")
+            info.addWidget(demo_label)
         info.addStretch()
         layout.addLayout(info, 1)
 
@@ -89,8 +94,9 @@ class SFXCard(QFrame):
         play_btn.setStyleSheet(btn_style)
         play_btn.clicked.connect(lambda: self.play_requested.emit(self.result))
 
-        use_btn = QPushButton("Use")
+        use_btn = QPushButton("Use Demo" if result.is_demo else "Use")
         use_btn.setStyleSheet(btn_style.replace(t['background'], '#238636').replace(t['text'], 'white'))
+        use_btn.setEnabled(result.can_route)
         use_btn.clicked.connect(lambda: self.use_requested.emit(self.result))
 
         del_btn = QPushButton("X")
@@ -259,6 +265,17 @@ class SFXView(QWidget):
         self._gen_btn.clicked.connect(self._on_generate)
         ctrl_layout.addWidget(self._gen_btn)
 
+        self._demo_checkbox = QCheckBox("Demo synthesis if model is not loaded")
+        self._demo_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {t['text_secondary']}; border: none; font-size: 10px;
+            }}
+            QCheckBox::indicator {{
+                width: 13px; height: 13px;
+            }}
+        """)
+        ctrl_layout.addWidget(self._demo_checkbox)
+
         # Status
         self._status = QLabel("")
         self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
@@ -342,6 +359,7 @@ class SFXView(QWidget):
             cfg_scale=self._cfg.value(),
             steps=self._steps.value(),
             batch_size=self._batch.value(),
+            allow_demo_output=self._demo_checkbox.isChecked(),
         )
 
         if not params.prompt:
@@ -353,6 +371,8 @@ class SFXView(QWidget):
 
         try:
             batch_count = params.batch_size
+            success_count = 0
+            demo_count = 0
             for i in range(batch_count):
                 p = SFXParams(
                     prompt=params.prompt,
@@ -361,6 +381,7 @@ class SFXView(QWidget):
                     cfg_scale=params.cfg_scale,
                     steps=params.steps,
                     seed=None,
+                    allow_demo_output=params.allow_demo_output,
                 )
                 result = generate_sfx(p)
 
@@ -370,14 +391,22 @@ class SFXView(QWidget):
 
                 self._results.append(result)
                 self._add_result_card(result)
+                success_count += 1
+                if result.is_demo:
+                    demo_count += 1
 
                 # Show first result in main waveform
                 if i == 0 and result.audio is not None:
                     import numpy as np
                     mono = result.audio[:, 0] if result.audio.ndim == 2 else result.audio
-                    self._main_waveform.load_audio(mono, result.sample_rate)
+                    self._main_waveform.set_audio(mono, result.sample_rate)
 
-            self._status.setText(f"Generated {batch_count} SFX ({params.duration:.1f}s each)")
+            if success_count:
+                suffix = f" ({demo_count} demo)" if demo_count else ""
+                self._status.setText(
+                    f"Generated {success_count}/{batch_count} SFX{suffix} "
+                    f"({params.duration:.1f}s each)"
+                )
 
         except Exception as e:
             self._status.setText(f"Error: {e}")
@@ -392,8 +421,10 @@ class SFXView(QWidget):
         self._results_layout.insertWidget(self._results_layout.count() - 1, card)
 
     def _on_use_sfx(self, result: SFXResult):
-        if result.file_path:
+        if result.file_path and result.can_route:
             self.send_to_mixer.emit(result.file_path)
+        else:
+            self._status.setText("SFX cannot be routed to the mixer")
 
     def _on_delete_card(self, card: SFXCard):
         if card in self._cards:

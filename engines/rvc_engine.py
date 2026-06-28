@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.5 — RVC / GPT-SoVITS Engine
+Slunder Studio v0.1.6 — RVC / GPT-SoVITS Engine
 Voice conversion (RVC v2) and voice cloning (GPT-SoVITS) for transforming
 existing vocals or cloning a target voice from reference audio.
 """
@@ -27,6 +27,7 @@ class VoiceConvertParams:
     filter_radius: int = 3  # median filter for pitch
     rms_mix_rate: float = 0.25  # envelope mix
     protect: float = 0.33  # consonant protection
+    allow_demo_output: bool = False
 
 
 @dataclass
@@ -40,6 +41,7 @@ class VoiceCloneParams:
     temperature: float = 0.7
     top_p: float = 0.9
     sample_rate: int = 32000
+    allow_demo_output: bool = False
 
 
 @dataclass
@@ -77,6 +79,13 @@ class VoiceResult:
     duration: float = 0.0
     generation_time: float = 0.0
     error: Optional[str] = None
+    is_demo: bool = False
+    output_kind: str = "model"  # "model" | "demo" | "error"
+    can_route: bool = True
+
+    @property
+    def is_success(self) -> bool:
+        return self.error is None and self.audio is not None
 
 
 def _dbfs(value: float) -> float:
@@ -309,7 +318,11 @@ class RVCEngine:
                 progress_callback: Optional[Callable] = None) -> VoiceResult:
         """Convert voice using loaded RVC model."""
         if not self.is_loaded:
-            return VoiceResult(error="RVC model not loaded")
+            return VoiceResult(
+                error="RVC model not loaded",
+                output_kind="error",
+                can_route=False,
+            )
 
         t0 = time.time()
 
@@ -323,7 +336,22 @@ class RVCEngine:
                 audio = self._load_audio(params.input_path, params.sample_rate)
 
             if audio is None:
-                return VoiceResult(error="No input audio provided")
+                return VoiceResult(
+                    error="No input audio provided",
+                    output_kind="error",
+                    can_route=False,
+                )
+
+            if not params.allow_demo_output:
+                return VoiceResult(
+                    error=(
+                        "RVC inference pipeline is not available yet. "
+                        "Demo spectral conversion must be explicitly enabled."
+                    ),
+                    output_kind="error",
+                    can_route=False,
+                    generation_time=time.time() - t0,
+                )
 
             if progress_callback:
                 progress_callback(0.2, f"Extracting pitch ({params.f0_method})...")
@@ -361,10 +389,18 @@ class RVCEngine:
                 sample_rate=params.sample_rate,
                 duration=duration,
                 generation_time=gen_time,
+                is_demo=True,
+                output_kind="demo",
+                can_route=True,
             )
 
         except Exception as e:
-            return VoiceResult(error=str(e), generation_time=time.time() - t0)
+            return VoiceResult(
+                error=str(e),
+                generation_time=time.time() - t0,
+                output_kind="error",
+                can_route=False,
+            )
 
     def _load_audio(self, path: str, target_sr: int) -> np.ndarray:
         """Load audio file to numpy array."""
@@ -475,7 +511,7 @@ class RVCEngine:
 
     def save_output(self, result: VoiceResult, name: Optional[str] = None) -> Optional[str]:
         """Save conversion result to WAV."""
-        if result.audio is None:
+        if result.audio is None or not result.can_route:
             return None
 
         import wave
@@ -565,7 +601,11 @@ class GPTSoVITSEngine:
               progress_callback: Optional[Callable] = None) -> VoiceResult:
         """Generate speech/singing in the cloned voice."""
         if not self.is_loaded:
-            return VoiceResult(error="GPT-SoVITS model not loaded")
+            return VoiceResult(
+                error="GPT-SoVITS model not loaded",
+                output_kind="error",
+                can_route=False,
+            )
 
         t0 = time.time()
 
@@ -578,12 +618,29 @@ class GPTSoVITSEngine:
                 return VoiceResult(
                     error="Reference audio failed guardrails: " + "; ".join(quality.issues),
                     generation_time=time.time() - t0,
+                    output_kind="error",
+                    can_route=False,
                 )
 
             # Load reference audio
             ref_audio = self._load_reference(params.ref_audio_path, params.sample_rate)
             if ref_audio is None:
-                return VoiceResult(error="Failed to load reference audio")
+                return VoiceResult(
+                    error="Failed to load reference audio",
+                    output_kind="error",
+                    can_route=False,
+                )
+
+            if not params.allow_demo_output:
+                return VoiceResult(
+                    error=(
+                        "GPT-SoVITS inference pipeline is not available yet. "
+                        "Demo voice synthesis must be explicitly enabled."
+                    ),
+                    generation_time=time.time() - t0,
+                    output_kind="error",
+                    can_route=False,
+                )
 
             if progress_callback:
                 progress_callback(0.3, "Extracting voice features...")
@@ -624,10 +681,18 @@ class GPTSoVITSEngine:
                 sample_rate=params.sample_rate,
                 duration=duration,
                 generation_time=gen_time,
+                is_demo=True,
+                output_kind="demo",
+                can_route=True,
             )
 
         except Exception as e:
-            return VoiceResult(error=str(e), generation_time=time.time() - t0)
+            return VoiceResult(
+                error=str(e),
+                generation_time=time.time() - t0,
+                output_kind="error",
+                can_route=False,
+            )
 
     def _load_reference(self, path: str, sr: int) -> Optional[np.ndarray]:
         if not path or not os.path.isfile(path):
@@ -677,7 +742,7 @@ class GPTSoVITSEngine:
             return audio
 
     def save_output(self, result: VoiceResult, name: Optional[str] = None) -> Optional[str]:
-        if result.audio is None:
+        if result.audio is None or not result.can_route:
             return None
         import wave
         if name is None:

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.5 — SFX Engine
+Slunder Studio v0.1.6 — SFX Engine
 Text-to-SFX generation using Stable Audio Open for creating sound effects,
 ambient textures, and audio layers from text prompts.
 """
@@ -24,6 +24,7 @@ class SFXParams:
     seed: Optional[int] = None
     sample_rate: int = 44100
     batch_size: int = 1
+    allow_demo_output: bool = False
 
 
 @dataclass
@@ -36,6 +37,13 @@ class SFXResult:
     seed: int = 0
     file_path: Optional[str] = None
     error: Optional[str] = None
+    is_demo: bool = False
+    output_kind: str = "model"  # "model" | "demo" | "error"
+    can_route: bool = True
+
+    @property
+    def is_success(self) -> bool:
+        return self.error is None and self.audio is not None and self.file_path is not None
 
 
 @dataclass
@@ -149,7 +157,15 @@ class SFXEngine:
                  progress_callback: Optional[Callable] = None) -> SFXResult:
         """Generate a single SFX from text prompt."""
         if not self.is_loaded:
-            # Fallback to noise-based generation
+            if not params.allow_demo_output:
+                return SFXResult(
+                    error=(
+                        "Stable Audio Open model not loaded. Load it in Model Hub "
+                        "or explicitly enable demo synthesis."
+                    ),
+                    output_kind="error",
+                    can_route=False,
+                )
             return self._generate_fallback(params, progress_callback)
 
         t0 = time.time()
@@ -229,7 +245,12 @@ class SFXEngine:
             )
 
         except Exception as e:
-            return SFXResult(error=str(e), generation_time=time.time() - t0)
+            return SFXResult(
+                error=str(e),
+                generation_time=time.time() - t0,
+                output_kind="error",
+                can_route=False,
+            )
 
     def generate_batch(self, params: SFXParams,
                        progress_callback: Optional[Callable] = None) -> SFXBatchResult:
@@ -251,6 +272,7 @@ class SFXEngine:
                 seed=params.seed + i if params.seed is not None else random.randint(0, 2**31 - 1),
                 sample_rate=params.sample_rate,
                 batch_size=1,
+                allow_demo_output=params.allow_demo_output,
             )
             result = self.generate(p)
             results.append(result)
@@ -262,12 +284,12 @@ class SFXEngine:
 
     def _generate_fallback(self, params: SFXParams,
                            progress_callback: Optional[Callable] = None) -> SFXResult:
-        """Generate placeholder SFX using noise synthesis when model is unavailable."""
+        """Generate explicitly opted-in demo SFX when the model is unavailable."""
         import random
         t0 = time.time()
 
         if progress_callback:
-            progress_callback(0.2, "Generating placeholder SFX...")
+            progress_callback(0.2, "Generating demo SFX...")
 
         seed = params.seed if params.seed is not None else int(time.time()) % (2**31)
         random.seed(seed)
@@ -335,13 +357,16 @@ class SFXEngine:
         file_path = self._save_sfx(stereo, sr, params.prompt)
 
         if progress_callback:
-            progress_callback(1.0, "Done (placeholder)")
+            progress_callback(1.0, "Done (demo)")
 
         return SFXResult(
             audio=stereo, sample_rate=sr,
             duration=params.duration,
             generation_time=gen_time,
             seed=seed, file_path=file_path,
+            is_demo=True,
+            output_kind="demo",
+            can_route=True,
         )
 
     def _save_sfx(self, audio: np.ndarray, sr: int, prompt: str) -> str:
@@ -378,7 +403,7 @@ def get_sfx_engine() -> SFXEngine:
 
 def generate_sfx(params: SFXParams,
                  progress_callback: Optional[Callable] = None) -> SFXResult:
-    """Generate SFX. Uses model if loaded, falls back to synthesis."""
+    """Generate SFX. Uses the model unless demo output was explicitly requested."""
     engine = get_sfx_engine()
     return engine.generate(params, progress_callback)
 
