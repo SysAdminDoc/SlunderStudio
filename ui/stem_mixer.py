@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.1 — Stem Mixer Widget
+Slunder Studio v0.1.2 — Stem Mixer Widget
 Visual stem mixer for Demucs separation results.
 Per-stem volume, pan, mute/solo, waveform preview, and remix export.
 """

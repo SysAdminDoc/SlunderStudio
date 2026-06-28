@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.1 — Song Forge View
+Slunder Studio v0.1.2 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
@@ -142,6 +142,7 @@ class SongForgeView(QWidget):
         self._current_audio_path = ""
         self._is_generating = False
         self._worker = None
+        self._seed_explore_params: list[dict] = []
         self._setup_ui()
 
     def _setup_ui(self):
@@ -480,6 +481,14 @@ class SongForgeView(QWidget):
     def _on_cancel(self):
         if self._worker:
             self._worker.cancel()
+        if self._seed_explore_params:
+            for cell in self._seed_explore_params:
+                self._seed_explorer.set_cell_failed(
+                    int(cell.get("row", 0)),
+                    int(cell.get("col", 0)),
+                    "Cancelled",
+                )
+            self._seed_explore_params = []
         self._reset_ui()
         self._status.setText("Cancelled")
 
@@ -604,13 +613,115 @@ class SongForgeView(QWidget):
 
     def _on_seed_explore(self, params_list: list[dict]):
         """Handle seed explorer grid generation request."""
-        # Would kick off sequential generation for each cell
-        # For now, show toast indicating the feature flow
+        if self._is_generating:
+            if self._toast:
+                self._toast.show_toast("Wait for the current generation to finish", "warning")
+            return
+
+        lyrics = self._get_lyrics()
+        tags = self._get_tags()
+        if not lyrics and not tags:
+            for cell in params_list:
+                self._seed_explorer.set_cell_failed(
+                    int(cell.get("row", 0)),
+                    int(cell.get("col", 0)),
+                    "Missing prompt",
+                )
+            if self._toast:
+                self._toast.show_toast("Add lyrics or style tags before exploring seeds", "warning")
+            return
+
+        duration = self._duration_spin.value() if self._mode_tabs.currentIndex() == 1 else 60.0
+        steps = self._steps_spin.value() if self._mode_tabs.currentIndex() == 1 else 60
+        long_form = (
+            self._mode_tabs.currentIndex() == 1
+            and duration > 120
+            and self._long_form_check.isChecked()
+        )
+
+        self._seed_explore_params = params_list
+        self._is_generating = True
+        self._generate_btn.hide()
+        self._cancel_btn.show()
+        self._progress.setValue(0)
+        self._progress.show()
+        self._sub_tabs.setCurrentWidget(self._seed_explorer)
+        self._status.setText("Starting seed exploration...")
+
+        from engines.ace_step_engine import generate_seed_grid
+        self._worker = InferenceWorker(
+            generate_seed_grid,
+            lyrics=lyrics,
+            style_tags=tags,
+            params_list=params_list,
+            duration=duration,
+            infer_steps=steps,
+            long_form=long_form,
+        )
+        self._worker.progress.connect(self._on_progress)
+        self._worker.step_info.connect(self._on_step)
+        self._worker.finished.connect(self._on_seed_finished)
+        self._worker.error.connect(self._on_seed_error)
+        self._worker.start()
+
         if self._toast:
             count = len(params_list)
             self._toast.show_toast(
-                f"Seed exploration: {count} cells queued for generation", "info"
+                f"Seed exploration started: {count} cells", "info"
             )
+
+    def _on_seed_finished(self, result: dict):
+        """Handle completed seed explorer generation."""
+        self._reset_ui()
+        self._seed_explore_params = []
+
+        if result.get("cancelled"):
+            self._status.setText("Seed exploration cancelled")
+            return
+
+        results = result.get("results", [])
+        successes = []
+        failures = 0
+        for item in results:
+            row = int(item.get("row", 0))
+            col = int(item.get("col", 0))
+            if item.get("error"):
+                failures += 1
+                self._seed_explorer.set_cell_failed(row, col, item.get("error", "Failed"))
+                continue
+
+            audio_path = item.get("audio_path", "")
+            seed = int(item.get("seed", 0))
+            self._seed_explorer.set_cell_result(row, col, audio_path, seed)
+            successes.append(item)
+
+        if successes:
+            first = successes[0]
+            self._load_output(first.get("audio_path", ""), int(first.get("seed", 0)))
+
+        self._status.setText(
+            f"Seed exploration complete: {len(successes)} generated, {failures} failed"
+        )
+        if self._toast:
+            self._toast.show_toast(
+                f"Seed exploration complete: {len(successes)} generated",
+                "success" if successes else "warning",
+            )
+
+    def _on_seed_error(self, error_msg: str):
+        """Handle fatal seed explorer worker errors."""
+        self._reset_ui()
+        for cell in self._seed_explore_params:
+            self._seed_explorer.set_cell_failed(
+                int(cell.get("row", 0)),
+                int(cell.get("col", 0)),
+                error_msg,
+            )
+        self._seed_explore_params = []
+        self._status.setText(f"Seed exploration error: {error_msg[:100]}")
+        self._status.setStyleSheet("color: #F38BA8; font-size: 11px;")
+        if self._toast:
+            self._toast.show_toast(f"Seed exploration failed: {error_msg[:80]}", "error")
 
     # ── Reference Panel ───────────────────────────────────────────────────────
 

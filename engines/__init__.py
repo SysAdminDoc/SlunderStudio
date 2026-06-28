@@ -1,2 +1,2 @@
-# Slunder Studio v0.1.1 — Engines Package
+# Slunder Studio v0.1.2 — Engines Package
 # AI model inference wrappers (populated in Phases 2-7)

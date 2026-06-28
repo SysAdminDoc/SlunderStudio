@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.1 — Smart Mastering
+Slunder Studio v0.1.2 — Smart Mastering
 Automated mastering chain: EQ, compression, stereo enhancement,
 limiting, and loudness normalization (LUFS targeting).
 """

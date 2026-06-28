@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.1 — Voice Bank
+Slunder Studio v0.1.2 — Voice Bank
 Voice profile management for RVC and GPT-SoVITS models.
 Handles model discovery, metadata, favorites, and preset management.
 """

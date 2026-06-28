@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.1 — Audio Export
+Slunder Studio v0.1.2 — Audio Export
 Multi-format audio export: WAV, FLAC, MP3, OGG.
 Uses soundfile for lossless, ffmpeg subprocess for lossy.
 """

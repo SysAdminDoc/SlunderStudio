@@ -1,11 +1,12 @@
 """
-Slunder Studio v0.1.1 — Seed Interpolation Explorer
+Slunder Studio v0.1.2 — Seed Interpolation Explorer
 2D grid where each cell represents a generation with varying parameters.
 Progressive generation, click to play, star favorites, zoom into regions.
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel,
     QSpinBox, QDoubleSpinBox, QFrame, QScrollArea, QComboBox,
+    QSlider,
 )
 from PySide6.QtCore import Signal, Qt
 
@@ -193,7 +194,17 @@ class SeedExplorer(QWidget):
         self._range_spin.setRange(1, 10000)
         self._range_spin.setValue(100)
         self._range_spin.setFixedWidth(80)
+        self._range_spin.valueChanged.connect(self._on_range_spin_changed)
         ctrl.addWidget(self._range_spin)
+
+        ctrl.addWidget(QLabel("Distance:"))
+        self._distance_slider = QSlider(Qt.Horizontal)
+        self._distance_slider.setRange(1, 10000)
+        self._distance_slider.setValue(100)
+        self._distance_slider.setFixedWidth(110)
+        self._distance_slider.setToolTip("How far generated variants can drift from the center seed")
+        self._distance_slider.valueChanged.connect(self._on_distance_changed)
+        ctrl.addWidget(self._distance_slider)
 
         ctrl.addWidget(QLabel("CFG:"))
         self._cfg_min_spin = QDoubleSpinBox()
@@ -309,6 +320,14 @@ class SeedExplorer(QWidget):
 
         self._info.setText(f"Generating {len(params_list)} variations...")
         self.generate_requested.emit(params_list)
+
+    def _on_distance_changed(self, value: int):
+        if self._range_spin.value() != value:
+            self._range_spin.setValue(value)
+
+    def _on_range_spin_changed(self, value: int):
+        if self._distance_slider.value() != value:
+            self._distance_slider.setValue(value)
 
     def set_cell_result(self, row: int, col: int, audio_path: str, seed: int):
         """Set result for a specific grid cell."""

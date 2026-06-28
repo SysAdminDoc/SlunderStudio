@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.1 — ACE-Step Engine
+Slunder Studio v0.1.2 — ACE-Step Engine
 Native Python wrapper for ACE-Step inference (not Gradio).
 Supports: generate, batch, retake, repaint, extend.
 <4GB VRAM, 48kHz stereo, up to 4 min duration.
@@ -848,6 +848,109 @@ def generate_song_batch(
         ],
         "count": len(results),
     }
+
+
+def generate_seed_grid(
+    lyrics: str,
+    style_tags: str,
+    params_list: list[dict],
+    duration: float = 60.0,
+    infer_steps: int = 60,
+    long_form: bool = False,
+    progress_cb: Callable = None,
+    step_cb: Callable = None,
+    log_cb: Callable = None,
+    cancel_event: threading.Event = None,
+    **kwargs,
+) -> dict:
+    """Generate a seed explorer grid with explicit seed/CFG per cell."""
+    if step_cb:
+        step_cb("Loading ACE-Step model...")
+
+    from core.model_manager import ModelManager
+    mgr = ModelManager()
+    engine = ACEStepEngine()
+
+    def _loader():
+        engine.load()
+        return engine
+
+    mgr.load_model("ace-step-v1.5", loader_fn=_loader)
+
+    total = max(1, len(params_list))
+    results = []
+
+    for i, cell in enumerate(params_list):
+        if cancel_event and cancel_event.is_set():
+            return {"cancelled": True, "results": results}
+
+        row = int(cell.get("row", 0))
+        col = int(cell.get("col", 0))
+        seed = int(cell.get("seed", -1))
+        cfg_scale = float(cell.get("cfg_scale", kwargs.get("cfg_scale", 5.0)))
+
+        if step_cb:
+            step_cb(f"Generating seed cell {i + 1}/{total} (seed {seed})...")
+
+        cell_params = GenerationParams(
+            lyrics=lyrics,
+            style_tags=style_tags,
+            duration=duration,
+            seed=seed,
+            cfg_scale=cfg_scale,
+            infer_steps=infer_steps,
+            long_form=long_form,
+        )
+
+        start_pct = int(i * 100 / total)
+        end_pct = int((i + 1) * 100 / total)
+
+        def _cell_progress(pct, start=start_pct, end=end_pct):
+            if progress_cb:
+                progress_cb(start + int((end - start) * pct / 100))
+
+        try:
+            if long_form or duration > 120:
+                result = engine.generate_long_form(
+                    cell_params,
+                    progress_cb=_cell_progress,
+                    step_cb=step_cb,
+                    cancel_event=cancel_event,
+                )
+            else:
+                result = engine.generate(
+                    cell_params,
+                    progress_cb=_cell_progress,
+                    cancel_event=cancel_event,
+                )
+
+            results.append({
+                "row": row,
+                "col": col,
+                "audio_path": result.audio_path,
+                "seed": result.seed,
+                "cfg_scale": cfg_scale,
+                "duration": result.duration,
+                "generation_time": result.generation_time,
+                "mode": "long_form" if result.sections else "single",
+                "sections": result.sections,
+            })
+        except Exception as exc:
+            message = f"{type(exc).__name__}: {exc}"
+            if log_cb:
+                log_cb(f"Seed cell {row},{col} failed: {message}")
+            results.append({
+                "row": row,
+                "col": col,
+                "seed": seed,
+                "cfg_scale": cfg_scale,
+                "error": message,
+            })
+
+    if progress_cb:
+        progress_cb(100)
+
+    return {"results": results, "count": len(results)}
 
 
 def load_model(cache_dir: str = None, **kwargs) -> ACEStepEngine:
