@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.4 — Onboarding Wizard
+Slunder Studio v0.1.5 — Onboarding Wizard
 First-run experience: welcome, system check, model download prompt,
 quick start guide, and preference setup.
 """
@@ -94,7 +94,7 @@ class WelcomePage(QWidget):
         logo.setStyleSheet(f"color: {t['accent']}; font-size: 28px; font-weight: bold;")
         layout.addWidget(logo)
 
-        version = QLabel("v0.1.4")
+        version = QLabel("v0.1.5")
         version.setAlignment(Qt.AlignCenter)
         version.setStyleSheet(f"color: {t['text_secondary']}; font-size: 14px;")
         layout.addWidget(version)

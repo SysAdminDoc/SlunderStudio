@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.4 — RVC / GPT-SoVITS Engine
+Slunder Studio v0.1.5 — RVC / GPT-SoVITS Engine
 Voice conversion (RVC v2) and voice cloning (GPT-SoVITS) for transforming
 existing vocals or cloning a target voice from reference audio.
 """
@@ -43,6 +43,33 @@ class VoiceCloneParams:
 
 
 @dataclass
+class CloneReferenceQuality:
+    """Quality report for a GPT-SoVITS reference sample."""
+    path: str = ""
+    duration: float = 0.0
+    sample_rate: int = 0
+    channels: int = 1
+    peak_dbfs: float = -120.0
+    rms_dbfs: float = -120.0
+    silence_percent: float = 100.0
+    clipped_percent: float = 0.0
+    score: int = 0
+    status: str = "fail"  # "pass" | "warn" | "fail"
+    issues: list[str] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
+
+    @property
+    def can_onboard(self) -> bool:
+        return self.status in ("pass", "warn")
+
+    def metrics_summary(self) -> str:
+        return (
+            f"{self.duration:.1f}s, {self.sample_rate / 1000:.1f} kHz, "
+            f"RMS {self.rms_dbfs:.1f} dBFS, silence {self.silence_percent:.0f}%"
+        )
+
+
+@dataclass
 class VoiceResult:
     """Result from voice conversion or cloning."""
     audio: Optional[np.ndarray] = None
@@ -50,6 +77,165 @@ class VoiceResult:
     duration: float = 0.0
     generation_time: float = 0.0
     error: Optional[str] = None
+
+
+def _dbfs(value: float) -> float:
+    return 20.0 * np.log10(max(float(value), 1e-8))
+
+
+def _load_audio_for_quality(path: str) -> tuple[np.ndarray, int, int]:
+    """Load reference audio without forcing optional dependencies."""
+    try:
+        import soundfile as sf
+        audio, sample_rate = sf.read(path, dtype="float32", always_2d=True)
+        channels = audio.shape[1]
+        return audio.mean(axis=1).astype(np.float32), int(sample_rate), int(channels)
+    except Exception:
+        pass
+
+    if path.lower().endswith(".wav"):
+        import wave
+        with wave.open(path, "rb") as wf:
+            sample_rate = wf.getframerate()
+            channels = wf.getnchannels()
+            width = wf.getsampwidth()
+            frames = wf.readframes(wf.getnframes())
+
+        if width == 1:
+            audio = (np.frombuffer(frames, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+        elif width == 2:
+            audio = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
+        elif width == 4:
+            audio = np.frombuffer(frames, dtype="<i4").astype(np.float32) / 2147483648.0
+        else:
+            raise ValueError(f"Unsupported WAV bit depth: {width * 8}")
+
+        if channels > 1:
+            audio = audio.reshape(-1, channels).mean(axis=1)
+        return audio.astype(np.float32), int(sample_rate), int(channels)
+
+    try:
+        import librosa
+        loaded = librosa.load(path, sr=None, mono=False)
+        audio, sample_rate = loaded
+        channels = 1
+        if audio.ndim > 1:
+            channels = int(audio.shape[0])
+            audio = audio.mean(axis=0)
+        return audio.astype(np.float32), int(sample_rate), channels
+    except Exception as exc:
+        raise ValueError(f"Could not read reference audio: {exc}") from exc
+
+
+def assess_clone_reference(
+    path: str,
+    min_duration: float = 10.0,
+    max_duration: float = 30.0,
+) -> CloneReferenceQuality:
+    """Assess whether a 10-30s reference sample is suitable for GPT-SoVITS."""
+    report = CloneReferenceQuality(path=path)
+    if not path or not os.path.isfile(path):
+        report.issues.append("Reference audio file is missing.")
+        report.suggestions.append("Choose a WAV, FLAC, MP3, or OGG file before onboarding.")
+        return report
+
+    try:
+        audio, sample_rate, channels = _load_audio_for_quality(path)
+    except Exception as exc:
+        report.issues.append(str(exc))
+        report.suggestions.append("Use a readable WAV file if the decoder for this format is unavailable.")
+        return report
+
+    if audio.size == 0 or sample_rate <= 0:
+        report.issues.append("Reference audio is empty.")
+        report.suggestions.append("Record a clean 10-30 second phrase with audible voice.")
+        return report
+
+    audio = np.nan_to_num(audio.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    duration = len(audio) / sample_rate
+    peak = float(np.max(np.abs(audio))) if audio.size else 0.0
+    rms = float(np.sqrt(np.mean(audio ** 2))) if audio.size else 0.0
+    clipped = float(np.mean(np.abs(audio) >= 0.995) * 100.0) if audio.size else 0.0
+
+    frame_len = max(1, int(sample_rate * 0.05))
+    frame_count = max(1, len(audio) // frame_len)
+    frames = audio[:frame_count * frame_len].reshape(frame_count, frame_len)
+    frame_rms = np.sqrt(np.mean(frames ** 2, axis=1))
+    silence_threshold = 10 ** (-45.0 / 20.0)
+    silence_percent = float(np.mean(frame_rms < silence_threshold) * 100.0)
+
+    report.duration = duration
+    report.sample_rate = sample_rate
+    report.channels = channels
+    report.peak_dbfs = _dbfs(peak)
+    report.rms_dbfs = _dbfs(rms)
+    report.silence_percent = silence_percent
+    report.clipped_percent = clipped
+
+    score = 100
+    fatal = False
+
+    if duration < min_duration:
+        fatal = True
+        score -= 55
+        report.issues.append(f"Sample is too short ({duration:.1f}s).")
+        report.suggestions.append("Use a continuous 10-30 second reference take.")
+    elif duration > max_duration:
+        fatal = True
+        score -= 45
+        report.issues.append(f"Sample is too long ({duration:.1f}s).")
+        report.suggestions.append("Trim the reference to the strongest 10-30 seconds.")
+
+    if report.rms_dbfs < -38.0:
+        fatal = True
+        score -= 35
+        report.issues.append("Voice level is too quiet.")
+        report.suggestions.append("Record closer to the mic or normalize the sample.")
+    elif report.rms_dbfs < -30.0:
+        score -= 15
+        report.issues.append("Voice level is low.")
+        report.suggestions.append("Normalize the sample before onboarding.")
+    elif report.rms_dbfs > -8.0:
+        score -= 12
+        report.issues.append("Voice level is very hot.")
+        report.suggestions.append("Lower input gain to leave headroom.")
+
+    if clipped > 1.0:
+        fatal = True
+        score -= 30
+        report.issues.append(f"Sample is clipping ({clipped:.1f}% clipped samples).")
+        report.suggestions.append("Re-record without clipping or use a cleaner take.")
+    elif clipped > 0.0:
+        score -= 10
+        report.issues.append("Sample has clipped peaks.")
+        report.suggestions.append("Use a take with clean peaks below 0 dBFS.")
+
+    if silence_percent > 60.0:
+        fatal = True
+        score -= 30
+        report.issues.append("Sample contains too much silence.")
+        report.suggestions.append("Trim leading gaps and long pauses.")
+    elif silence_percent > 35.0:
+        score -= 12
+        report.issues.append("Sample has long quiet gaps.")
+        report.suggestions.append("Trim pauses so the model hears mostly voice.")
+
+    if sample_rate < 16000:
+        score -= 10
+        report.issues.append("Sample rate is below 16 kHz.")
+        report.suggestions.append("Use a 24 kHz or higher reference when possible.")
+
+    report.score = max(0, min(100, int(round(score))))
+    if fatal:
+        report.status = "fail"
+    elif report.issues:
+        report.status = "warn"
+    else:
+        report.status = "pass"
+
+    if not report.suggestions:
+        report.suggestions.append("Ready for GPT-SoVITS onboarding.")
+    return report
 
 
 # ── RVC Engine ─────────────────────────────────────────────────────────────────
@@ -386,6 +572,13 @@ class GPTSoVITSEngine:
         try:
             if progress_callback:
                 progress_callback(0.1, "Processing reference audio...")
+
+            quality = assess_clone_reference(params.ref_audio_path)
+            if not quality.can_onboard:
+                return VoiceResult(
+                    error="Reference audio failed guardrails: " + "; ".join(quality.issues),
+                    generation_time=time.time() - t0,
+                )
 
             # Load reference audio
             ref_audio = self._load_reference(params.ref_audio_path, params.sample_rate)

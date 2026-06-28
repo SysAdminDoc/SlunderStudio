@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.4 — Vocal Suite View
+Slunder Studio v0.1.5 — Vocal Suite View
 Main Vocal Suite page combining singing synthesis (DiffSinger),
 voice conversion (RVC), voice cloning (GPT-SoVITS), stem separation (Demucs),
 and stem remix/export.
@@ -17,6 +17,7 @@ from ui.theme import ThemeEngine
 from ui.waveform_widget import WaveformWidget
 from ui.stem_mixer import StemMixer
 from core.voice_bank import VoiceBank, VoiceProfile
+from core.workers import InferenceWorker
 
 
 class VocalSuiteView(QWidget):
@@ -28,6 +29,8 @@ class VocalSuiteView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._current_audio_path: Optional[str] = None
+        self._clone_quality_report = None
+        self._clone_worker: Optional[InferenceWorker] = None
 
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(self)
@@ -122,6 +125,7 @@ class VocalSuiteView(QWidget):
         action_bar.addWidget(self._to_mixer_btn)
         action_bar.addWidget(self._export_btn)
         layout.addLayout(action_bar)
+        self.refresh_voice_bank()
 
     # ── Tab Builders ───────────────────────────────────────────────────────────
 
@@ -445,6 +449,24 @@ class VocalSuiteView(QWidget):
             QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
         """
 
+        # Onboarded voice profile
+        profile_row = QHBoxLayout()
+        profile_label = QLabel("Profile:")
+        profile_label.setFixedWidth(50)
+        profile_label.setStyleSheet(param_style)
+        self._clone_voice = QComboBox()
+        self._clone_voice.setStyleSheet(param_style)
+        self._clone_voice.currentIndexChanged.connect(self._on_clone_profile_changed)
+        profile_row.addWidget(profile_label)
+        profile_row.addWidget(self._clone_voice)
+        ctrl_layout.addLayout(profile_row)
+
+        self._clone_profile_name = QLineEdit()
+        self._clone_profile_name.setPlaceholderText("New voice profile name...")
+        self._clone_profile_name.setStyleSheet(param_style)
+        self._clone_profile_name.textChanged.connect(self._update_clone_profile_ready)
+        ctrl_layout.addWidget(self._clone_profile_name)
+
         # Reference audio
         ref_row = QHBoxLayout()
         self._clone_ref_label = QLabel("No reference audio")
@@ -468,7 +490,31 @@ class VocalSuiteView(QWidget):
         self._clone_ref_text = QLineEdit()
         self._clone_ref_text.setPlaceholderText("Transcript of reference audio...")
         self._clone_ref_text.setStyleSheet(param_style)
+        self._clone_ref_text.textChanged.connect(self._update_clone_profile_ready)
         ctrl_layout.addWidget(self._clone_ref_text)
+
+        self._clone_quality_label = QLabel("Reference guardrails: select a clean 10-30s voice sample.")
+        self._clone_quality_label.setWordWrap(True)
+        self._clone_quality_label.setStyleSheet(
+            f"color: {t['text_secondary']}; background: {t['background']}; "
+            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 6px; font-size: 10px;"
+        )
+        ctrl_layout.addWidget(self._clone_quality_label)
+
+        self._clone_save_profile_btn = QPushButton("Save Voice Profile")
+        self._clone_save_profile_btn.setFixedHeight(28)
+        self._clone_save_profile_btn.setEnabled(False)
+        self._clone_save_profile_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['surface_hover']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 4px;
+                font-weight: bold; font-size: 11px;
+            }}
+            QPushButton:hover {{ background: {t['accent']}; color: white; }}
+            QPushButton:disabled {{ color: {t['muted']}; }}
+        """)
+        self._clone_save_profile_btn.clicked.connect(self._on_clone_save_profile)
+        ctrl_layout.addWidget(self._clone_save_profile_btn)
 
         # Text to generate
         self._clone_text = QTextEdit()
@@ -633,9 +679,165 @@ class VocalSuiteView(QWidget):
         if path:
             self._clone_ref_label.setText(os.path.basename(path))
             self._clone_ref_label.setProperty("path", path)
+            if not self._clone_profile_name.text().strip():
+                self._clone_profile_name.setText(os.path.splitext(os.path.basename(path))[0])
+            try:
+                self._load_waveform_preview(self._clone_waveform, path)
+            except Exception:
+                pass
+            self._update_clone_reference_quality(path)
 
     def _on_clone_generate(self):
-        self._status.setText("GPT-SoVITS cloning requires a loaded model (see Model Hub)")
+        text = self._clone_text.toPlainText().strip()
+        if not text:
+            self._status.setText("Enter text to synthesize before cloning")
+            return
+
+        profile_id = self._clone_voice.currentData()
+        profile = VoiceBank().get(profile_id) if profile_id else None
+        if not profile:
+            self._status.setText("Save or select a validated GPT-SoVITS voice profile first")
+            return
+
+        from engines.rvc_engine import VoiceCloneParams, assess_clone_reference, get_sovits
+
+        quality = assess_clone_reference(profile.ref_audio_path)
+        if not quality.can_onboard:
+            self._status.setText("Reference failed guardrails: " + "; ".join(quality.issues[:2]))
+            return
+
+        engine = get_sovits()
+        if not engine.is_loaded:
+            self._status.setText("Load a GPT-SoVITS base model in Model Hub before cloning")
+            return
+
+        params = VoiceCloneParams(
+            text=text,
+            ref_audio_path=profile.ref_audio_path,
+            ref_text=profile.ref_text,
+            language=self._clone_language_code(),
+            speed=self._clone_speed.value(),
+            temperature=self._clone_temp.value(),
+        )
+        self._clone_gen_btn.setEnabled(False)
+        self._status.setText("Starting GPT-SoVITS clone...")
+        self._clone_worker = InferenceWorker(self._run_clone_generation, params)
+        self._clone_worker.step_info.connect(self._status.setText)
+        self._clone_worker.finished.connect(self._on_clone_generated)
+        self._clone_worker.error.connect(self._on_clone_error)
+        self._clone_worker.start()
+
+    def _on_clone_profile_changed(self, _index: int):
+        if not hasattr(self, "_clone_voice"):
+            return
+        profile_id = self._clone_voice.currentData()
+        profile = VoiceBank().get(profile_id) if profile_id else None
+        if not profile:
+            return
+        self._clone_profile_name.setText(profile.name)
+        self._clone_ref_text.setText(profile.ref_text)
+        self._clone_ref_label.setText(os.path.basename(profile.ref_audio_path) or "No reference audio")
+        self._clone_ref_label.setProperty("path", profile.ref_audio_path)
+        if profile.ref_audio_path:
+            self._update_clone_reference_quality(profile.ref_audio_path)
+
+    def _update_clone_reference_quality(self, path: str):
+        from engines.rvc_engine import assess_clone_reference
+
+        report = assess_clone_reference(path)
+        self._clone_quality_report = report
+        self._clone_quality_label.setText(self._format_clone_quality(report))
+        self._update_clone_profile_ready()
+
+    def _format_clone_quality(self, report) -> str:
+        status = report.status.upper()
+        details = report.issues[:2] if report.issues else ["Ready for GPT-SoVITS onboarding."]
+        return (
+            f"{status} {report.score}/100 - {report.metrics_summary()}\n"
+            + "\n".join(details)
+        )
+
+    def _update_clone_profile_ready(self):
+        if not hasattr(self, "_clone_save_profile_btn"):
+            return
+        has_text = bool(self._clone_ref_text.text().strip())
+        has_name = bool(self._clone_profile_name.text().strip())
+        can_save = bool(self._clone_quality_report and self._clone_quality_report.can_onboard and has_text and has_name)
+        self._clone_save_profile_btn.setEnabled(can_save)
+
+    def _on_clone_save_profile(self):
+        path = self._clone_ref_label.property("path")
+        if not path or not self._clone_quality_report:
+            self._status.setText("Select reference audio before saving a voice profile")
+            return
+        if not self._clone_quality_report.can_onboard:
+            self._status.setText("Reference audio must pass guardrails before onboarding")
+            return
+
+        name = self._clone_profile_name.text().strip()
+        ref_text = self._clone_ref_text.text().strip()
+        if not name or not ref_text:
+            self._status.setText("Profile name and reference transcript are required")
+            return
+
+        report = self._clone_quality_report
+        profile = VoiceProfile(
+            name=name,
+            engine="gpt_sovits",
+            ref_audio_path=path,
+            ref_text=ref_text,
+            tags=["onboarded", report.status, f"{report.duration:.0f}s"],
+            notes=f"Reference quality {report.status} {report.score}/100; {report.metrics_summary()}",
+        )
+        bank = VoiceBank()
+        bank.add(profile)
+        self.refresh_voice_bank()
+        idx = self._clone_voice.findData(profile.id)
+        if idx >= 0:
+            self._clone_voice.setCurrentIndex(idx)
+        self._status.setText(f"GPT-SoVITS voice profile saved: {profile.name}")
+
+    def _clone_language_code(self) -> str:
+        return {"English": "en", "Chinese": "zh", "Japanese": "ja"}.get(
+            self._clone_lang.currentText(), "en"
+        )
+
+    def _run_clone_generation(self, params, progress_cb=None, step_cb=None, log_cb=None, cancel_event=None):
+        from engines.rvc_engine import get_sovits
+
+        def progress(fraction: float, message: str):
+            if progress_cb:
+                progress_cb(int(fraction * 100))
+            if step_cb:
+                step_cb(message)
+
+        if cancel_event and cancel_event.is_set():
+            return None
+        engine = get_sovits()
+        result = engine.clone(params, progress)
+        if result.error:
+            raise RuntimeError(result.error)
+        path = engine.save_output(result)
+        return {"result": result, "path": path}
+
+    def _on_clone_generated(self, payload):
+        self._clone_worker = None
+        self._clone_gen_btn.setEnabled(True)
+        if not payload or not payload.get("path"):
+            self._status.setText("GPT-SoVITS clone finished without an output file")
+            return
+        result = payload["result"]
+        path = payload["path"]
+        if result.audio is not None:
+            self._clone_waveform.load_audio(result.audio, result.sample_rate)
+        self._current_audio_path = path
+        self._status.setText(f"Cloned voice generated: {os.path.basename(path)} ({result.duration:.1f}s)")
+        self._enable_routing()
+
+    def _on_clone_error(self, error: str):
+        self._clone_worker = None
+        self._clone_gen_btn.setEnabled(True)
+        self._status.setText(f"GPT-SoVITS clone failed: {error}")
 
     def _on_stems_browse(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -730,3 +932,17 @@ class VocalSuiteView(QWidget):
                 self._rvc_voice.addItem(v.name, v.id)
         else:
             self._rvc_voice.addItem("(No RVC models)")
+
+        # GPT-SoVITS clone profiles
+        self._clone_voice.blockSignals(True)
+        self._clone_voice.clear()
+        clone_voices = bank.list_by_engine("gpt_sovits")
+        if clone_voices:
+            for v in clone_voices:
+                self._clone_voice.addItem(v.name, v.id)
+        else:
+            self._clone_voice.addItem("(No GPT-SoVITS profiles)", "")
+        self._clone_voice.blockSignals(False)
+        if clone_voices:
+            self._clone_voice.setCurrentIndex(0)
+            self._on_clone_profile_changed(0)
