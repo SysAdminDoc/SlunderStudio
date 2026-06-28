@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.0.2 — Theme Engine
+Slunder Studio v0.1.1 — Theme Engine
 Catppuccin Mocha dark theme with glassmorphism, animations, accent color system,
 and full QComboBox ControlTemplate for proper dark rendering.
 """

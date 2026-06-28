@@ -1,23 +1,34 @@
 #!/usr/bin/env python3
 """
-Slunder Studio v0.1.0
+Slunder Studio v0.1.1
 Offline AI Music Generation Suite
 
 Run: python main.py
 """
+import multiprocessing
+multiprocessing.freeze_support()
+
 import sys
 import os
 import subprocess
 import importlib
 import traceback
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
+
+
+def _is_frozen() -> bool:
+    """Return True when running from a PyInstaller executable."""
+    return getattr(sys, "frozen", False) or hasattr(sys, "_MEIPASS")
 
 
 # ── Phase 1: Console Bootstrap (no GUI deps yet) ─────────────────────────────
 
 def _phase1_bootstrap():
     """Install absolute minimum deps needed before GUI can start."""
+    if _is_frozen():
+        return
+
     if sys.version_info < (3, 10):
         print(f"Slunder Studio requires Python 3.10+. Current: {sys.version}")
         input("Press Enter to exit...")
@@ -64,6 +75,10 @@ def _phase1_bootstrap():
 
 def _pip_install(pip_name: str):
     """Robust pip install with fallback strategies and site-packages refresh."""
+    if _is_frozen():
+        print(f"[Slunder Studio] WARNING: Missing bundled dependency: {pip_name}")
+        return
+
     strategies = [
         [sys.executable, "-m", "pip", "install", pip_name],
         [sys.executable, "-m", "pip", "install", pip_name, "--user"],

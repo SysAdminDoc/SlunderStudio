@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.0.2 — Song Forge View
+Slunder Studio v0.1.1 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
@@ -249,6 +249,13 @@ class SongForgeView(QWidget):
         self._batch_spin.setValue(1)
         pg.addWidget(self._batch_spin, 2, 1)
 
+        self._long_form_check = QCheckBox("Long-form stitching")
+        self._long_form_check.setChecked(True)
+        self._long_form_check.setToolTip(
+            "For durations over 120 seconds, render sections separately and stitch them."
+        )
+        pg.addWidget(self._long_form_check, 2, 2, 1, 2)
+
         al.addWidget(params)
         adv_scroll.setWidget(adv_inner)
 
@@ -433,6 +440,11 @@ class SongForgeView(QWidget):
         cfg = self._cfg_spin.value() if self._mode_tabs.currentIndex() == 1 else 5.0
         steps = self._steps_spin.value() if self._mode_tabs.currentIndex() == 1 else 60
         seed = self._seed_spin.value() if self._mode_tabs.currentIndex() == 1 else -1
+        long_form = (
+            self._mode_tabs.currentIndex() == 1
+            and duration > 120
+            and self._long_form_check.isChecked()
+        )
 
         if batch_count > 1:
             from engines.ace_step_engine import generate_song_batch
@@ -444,6 +456,7 @@ class SongForgeView(QWidget):
                 duration=duration,
                 cfg_scale=cfg,
                 infer_steps=steps,
+                long_form=long_form,
             )
         else:
             from engines.ace_step_engine import generate_song
@@ -455,6 +468,7 @@ class SongForgeView(QWidget):
                 seed=seed,
                 cfg_scale=cfg,
                 infer_steps=steps,
+                long_form=long_form,
             )
 
         self._worker.progress.connect(self._on_progress)
@@ -499,7 +513,13 @@ class SongForgeView(QWidget):
             # Single result
             self._load_output(result.get("audio_path", ""), result.get("seed", 0))
             gen_time = result.get("generation_time", 0)
-            self._status.setText(f"Generated in {gen_time:.1f}s (seed: {result.get('seed', '?')})")
+            if result.get("mode") == "long_form":
+                sections = len(result.get("sections", []))
+                self._status.setText(
+                    f"Generated stitched long-form song ({sections} sections) in {gen_time:.1f}s"
+                )
+            else:
+                self._status.setText(f"Generated in {gen_time:.1f}s (seed: {result.get('seed', '?')})")
             if self._toast:
                 self._toast.show_toast(f"Song generated in {gen_time:.1f}s", "success")
 

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.0.2 — ACE-Step Engine
+Slunder Studio v0.1.1 — ACE-Step Engine
 Native Python wrapper for ACE-Step inference (not Gradio).
 Supports: generate, batch, retake, repaint, extend.
 <4GB VRAM, 48kHz stereo, up to 4 min duration.
@@ -10,15 +10,15 @@ Real upstream API (pip install ace-step):
   result = pipe(prompt=..., lyrics=..., audio_duration=..., ...)
 """
 import os
+import re
 import time
 import random
 import threading
 from typing import Optional, Callable
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from core.settings import Settings, get_config_dir
-from core.model_manager import ModelManager, cleanup_gpu
+from core.settings import get_config_dir
 
 
 @dataclass
@@ -39,6 +39,8 @@ class GenerationParams:
     # LoRA
     lora_path: str = ""  # maps to 'lora_name_or_path'
     lora_weight: float = 1.0
+    long_form: bool = False
+    section_crossfade: float = 2.0
 
     def resolve_seed(self) -> int:
         if self.seed < 0:
@@ -57,6 +59,282 @@ class GenerationResult:
     generation_time: float = 0.0
     is_favorite: bool = False
     rating: int = 0  # 0-5
+    sections: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class LongFormSection:
+    """A planned section for stitched long-form song generation."""
+    label: str
+    lyrics: str
+    duration: float = 0.0
+
+
+SECTION_HEADER_RE = re.compile(r"^\s*\[([A-Za-z][A-Za-z0-9 /_-]{0,60})\]\s*$")
+SONG_SECTION_PREFIXES = (
+    "intro",
+    "verse",
+    "pre-chorus",
+    "pre chorus",
+    "chorus",
+    "hook",
+    "bridge",
+    "breakdown",
+    "instrumental",
+    "solo",
+    "outro",
+    "coda",
+)
+SECTION_DURATION_WEIGHTS = {
+    "intro": 0.65,
+    "verse": 1.0,
+    "pre-chorus": 0.8,
+    "pre chorus": 0.8,
+    "chorus": 1.15,
+    "hook": 1.1,
+    "bridge": 0.9,
+    "breakdown": 0.85,
+    "instrumental": 0.95,
+    "solo": 0.95,
+    "outro": 0.7,
+    "coda": 0.6,
+}
+
+
+def _canonical_label(raw_label: str) -> str:
+    label = " ".join(raw_label.strip().split())
+    return label or "Section"
+
+
+def _section_key(label: str) -> str:
+    lowered = label.lower()
+    for prefix in SONG_SECTION_PREFIXES:
+        if lowered.startswith(prefix):
+            return prefix
+    return "section"
+
+
+def _is_song_section(label: str) -> bool:
+    return _section_key(label) != "section"
+
+
+def parse_lyric_sections(lyrics: str) -> list[LongFormSection]:
+    """Parse ACE/Suno-style structure tags into song sections."""
+    clean_lyrics = lyrics.strip()
+    if not clean_lyrics:
+        return [LongFormSection("Instrumental", "[Instrumental]")]
+
+    sections: list[LongFormSection] = []
+    current_label = "Full Track"
+    current_lines: list[str] = []
+    saw_song_section = False
+
+    def flush() -> None:
+        nonlocal current_lines
+        text = "\n".join(line for line in current_lines).strip()
+        if text:
+            sections.append(LongFormSection(current_label, text))
+        current_lines = []
+
+    for line in clean_lyrics.splitlines():
+        match = SECTION_HEADER_RE.match(line)
+        if match and _is_song_section(match.group(1)):
+            if current_lines:
+                flush()
+            current_label = _canonical_label(match.group(1))
+            current_lines = [f"[{current_label}]"]
+            saw_song_section = True
+            continue
+        current_lines.append(line)
+
+    if current_lines:
+        flush()
+
+    if not saw_song_section:
+        return [LongFormSection("Full Track", clean_lyrics)]
+
+    return sections or [LongFormSection("Full Track", clean_lyrics)]
+
+
+def _split_section_lines(section: LongFormSection, parts: int) -> list[LongFormSection]:
+    if parts <= 1:
+        return [section]
+
+    lines = [line for line in section.lyrics.splitlines() if line.strip()]
+    header = ""
+    if lines and SECTION_HEADER_RE.match(lines[0]):
+        header = lines.pop(0)
+
+    if not lines:
+        return [
+            LongFormSection(f"{section.label} Part {i + 1}", section.lyrics)
+            for i in range(parts)
+        ]
+
+    chunks: list[LongFormSection] = []
+    chunk_size = max(1, (len(lines) + parts - 1) // parts)
+    for i in range(parts):
+        start = i * chunk_size
+        chunk = lines[start:start + chunk_size]
+        if not chunk:
+            chunk = lines[-chunk_size:]
+        label = section.label if parts == 1 else f"{section.label} Part {i + 1}"
+        text_lines = [f"[{label}]"]
+        if header and i == 0:
+            text_lines[0] = header
+        text_lines.extend(chunk)
+        chunks.append(LongFormSection(label, "\n".join(text_lines)))
+    return chunks
+
+
+def _expand_sections_for_duration(
+    sections: list[LongFormSection],
+    target_duration: float,
+    max_section_duration: float,
+) -> list[LongFormSection]:
+    if not sections:
+        return [LongFormSection("Instrumental", "[Instrumental]")]
+
+    min_count = max(1, int((target_duration + max_section_duration - 0.001) // max_section_duration))
+    if len(sections) >= min_count:
+        return sections
+
+    expanded: list[LongFormSection] = []
+    extra_needed = min_count - len(sections)
+    weights = [_duration_weight(section.label) for section in sections]
+
+    while extra_needed > 0:
+        split_index = max(range(len(sections)), key=lambda i: weights[i])
+        sections[split_index:split_index + 1] = _split_section_lines(sections[split_index], 2)
+        weights[split_index:split_index + 1] = [
+            _duration_weight(section.label) for section in sections[split_index:split_index + 2]
+        ]
+        extra_needed -= 1
+
+    expanded.extend(sections)
+    return expanded
+
+
+def _duration_weight(label: str) -> float:
+    return SECTION_DURATION_WEIGHTS.get(_section_key(label), 1.0)
+
+
+def _allocate_durations(
+    sections: list[LongFormSection],
+    target_duration: float,
+    min_section_duration: float,
+    max_section_duration: float,
+) -> list[float]:
+    weights = [_duration_weight(section.label) for section in sections]
+    total_weight = sum(weights) or 1.0
+    durations = [
+        max(min_section_duration, min(max_section_duration, target_duration * weight / total_weight))
+        for weight in weights
+    ]
+
+    for _ in range(20):
+        diff = target_duration - sum(durations)
+        if abs(diff) < 0.01:
+            break
+        if diff > 0:
+            candidates = [i for i, dur in enumerate(durations) if dur < max_section_duration]
+        else:
+            candidates = [i for i, dur in enumerate(durations) if dur > min_section_duration]
+        if not candidates:
+            break
+        share = diff / len(candidates)
+        for i in candidates:
+            if diff > 0:
+                durations[i] = min(max_section_duration, durations[i] + share)
+            else:
+                durations[i] = max(min_section_duration, durations[i] + share)
+
+    return durations
+
+
+def plan_long_form_sections(
+    lyrics: str,
+    target_duration: float,
+    min_section_duration: float = 12.0,
+    max_section_duration: float = 120.0,
+) -> list[LongFormSection]:
+    """Build a duration-balanced section plan for stitched generation."""
+    target_duration = max(float(target_duration), min_section_duration)
+    sections = parse_lyric_sections(lyrics)
+    sections = _expand_sections_for_duration(sections, target_duration, max_section_duration)
+    if len(sections) * min_section_duration > target_duration:
+        min_section_duration = max(1.0, target_duration / len(sections))
+    durations = _allocate_durations(
+        sections,
+        target_duration,
+        min_section_duration,
+        max_section_duration,
+    )
+    return [
+        replace(section, duration=round(duration, 2))
+        for section, duration in zip(sections, durations)
+    ]
+
+
+def _ensure_stereo(audio):
+    import numpy as np
+
+    if audio.ndim == 1:
+        return np.column_stack([audio, audio])
+    if audio.shape[1] == 1:
+        return np.repeat(audio, 2, axis=1)
+    if audio.shape[1] > 2:
+        return audio[:, :2]
+    return audio
+
+
+def stitch_audio_files(
+    audio_paths: list[str],
+    output_path: str,
+    target_sample_rate: int = 48000,
+    crossfade_seconds: float = 2.0,
+) -> tuple[str, float]:
+    """Stitch rendered sections with an equal-power crossfade."""
+    if not audio_paths:
+        raise ValueError("No audio files to stitch")
+
+    import numpy as np
+    import soundfile as sf
+
+    stitched = None
+    crossfade_samples = max(0, int(target_sample_rate * crossfade_seconds))
+
+    for path in audio_paths:
+        audio, sr = sf.read(path, dtype="float32", always_2d=True)
+        if sr != target_sample_rate:
+            try:
+                import librosa
+                channels = [
+                    librosa.resample(audio[:, ch], orig_sr=sr, target_sr=target_sample_rate)
+                    for ch in range(audio.shape[1])
+                ]
+                audio = np.column_stack(channels)
+            except ImportError as exc:
+                raise RuntimeError("librosa is required to stitch mixed sample rates") from exc
+
+        audio = _ensure_stereo(audio)
+        if stitched is None:
+            stitched = audio
+            continue
+
+        fade_len = min(crossfade_samples, len(stitched) - 1, len(audio) - 1)
+        if fade_len <= 0:
+            stitched = np.concatenate([stitched, audio], axis=0)
+            continue
+
+        fade_out = np.linspace(1.0, 0.0, fade_len, dtype=np.float32)[:, None]
+        fade_in = np.linspace(0.0, 1.0, fade_len, dtype=np.float32)[:, None]
+        crossfade = stitched[-fade_len:] * fade_out + audio[:fade_len] * fade_in
+        stitched = np.concatenate([stitched[:-fade_len], crossfade, audio[fade_len:]], axis=0)
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    sf.write(output_path, stitched, target_sample_rate, subtype="PCM_16")
+    return output_path, len(stitched) / target_sample_rate
 
 
 class ACEStepEngine:
@@ -87,6 +365,7 @@ class ACEStepEngine:
         if cache_dir:
             checkpoint_dir = cache_dir
         else:
+            from core.model_manager import ModelManager
             mgr = ModelManager()
             checkpoint_dir = str(mgr.get_cache_dir("ace-step-v1.5"))
 
@@ -100,6 +379,7 @@ class ACEStepEngine:
             del self._pipeline
             self._pipeline = None
             self._model_loaded = False
+            from core.model_manager import cleanup_gpu
             cleanup_gpu()
 
     def cleanup(self):
@@ -174,6 +454,114 @@ class ACEStepEngine:
             sample_rate=params.sample_rate,
             params=params,
             generation_time=elapsed,
+        )
+
+    def generate_long_form(
+        self,
+        params: GenerationParams,
+        progress_cb: Callable = None,
+        step_cb: Callable = None,
+        cancel_event: threading.Event = None,
+    ) -> GenerationResult:
+        """
+        Generate a long song as section renders stitched with crossfades.
+        This keeps each ACE-Step call focused on a musical section while the
+        final output reaches the requested full-song duration.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("ACE-Step model not loaded. Call load() first.")
+
+        start_time = time.time()
+        base_seed = params.resolve_seed()
+        render_duration = params.duration
+        sections = plan_long_form_sections(params.lyrics, render_duration)
+        for _ in range(3):
+            if len(sections) <= 1 or params.section_crossfade <= 0:
+                break
+            adjusted_duration = params.duration + params.section_crossfade * (len(sections) - 1)
+            if abs(adjusted_duration - render_duration) < 0.01:
+                break
+            render_duration = adjusted_duration
+            sections = plan_long_form_sections(params.lyrics, render_duration)
+        section_results: list[GenerationResult] = []
+        section_paths: list[str] = []
+        total = max(1, len(sections))
+
+        if progress_cb:
+            progress_cb(3)
+
+        for i, section in enumerate(sections):
+            if cancel_event and cancel_event.is_set():
+                break
+
+            section_seed = (base_seed + i) % (2**32 - 1)
+            section_params = replace(
+                params,
+                lyrics=section.lyrics,
+                duration=section.duration,
+                seed=section_seed,
+                repaint_start=-1.0,
+                repaint_end=-1.0,
+                source_audio_path="",
+            )
+
+            if step_cb:
+                step_cb(f"Generating {section.label} ({i + 1}/{total})...")
+
+            start_pct = 5 + int(i * 82 / total)
+            end_pct = 5 + int((i + 1) * 82 / total)
+
+            def _section_progress(pct, start=start_pct, end=end_pct):
+                if progress_cb:
+                    progress_cb(start + int((end - start) * pct / 100))
+
+            result = self.generate(
+                section_params,
+                progress_cb=_section_progress,
+                cancel_event=cancel_event,
+            )
+            section_results.append(result)
+            section_paths.append(result.audio_path)
+
+        if cancel_event and cancel_event.is_set():
+            return GenerationResult(seed=base_seed, params=params, sections=[])
+
+        if step_cb:
+            step_cb("Stitching long-form sections...")
+        if progress_cb:
+            progress_cb(92)
+
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        output_path = self._output_dir / f"longform_{timestamp}_{base_seed}.wav"
+        stitched_path, actual_duration = stitch_audio_files(
+            section_paths,
+            str(output_path),
+            target_sample_rate=params.sample_rate,
+            crossfade_seconds=params.section_crossfade,
+        )
+
+        if progress_cb:
+            progress_cb(100)
+
+        elapsed = time.time() - start_time
+        section_payload = [
+            {
+                "label": section.label,
+                "duration": section.duration,
+                "audio_path": result.audio_path,
+                "seed": result.seed,
+            }
+            for section, result in zip(sections, section_results)
+        ]
+
+        return GenerationResult(
+            audio_path=stitched_path,
+            seed=base_seed,
+            duration=actual_duration,
+            sample_rate=params.sample_rate,
+            params=params,
+            generation_time=elapsed,
+            sections=section_payload,
         )
 
     def _find_output(self, save_dir: str, pipeline_result) -> Path:
@@ -275,7 +663,19 @@ class ACEStepEngine:
                     progress_cb(overall)
 
             try:
-                result = self.generate(batch_params, progress_cb=_batch_progress, cancel_event=cancel_event)
+                if batch_params.duration > 120 or batch_params.long_form:
+                    result = self.generate_long_form(
+                        batch_params,
+                        progress_cb=_batch_progress,
+                        step_cb=step_cb,
+                        cancel_event=cancel_event,
+                    )
+                else:
+                    result = self.generate(
+                        batch_params,
+                        progress_cb=_batch_progress,
+                        cancel_event=cancel_event,
+                    )
                 results.append(result)
             except Exception as e:
                 if step_cb:
@@ -317,11 +717,12 @@ class ACEStepEngine:
 
 def generate_song(
     lyrics: str,
-    style_tags: str,
+    style_tags: str = "",
     duration: float = 60.0,
     seed: int = -1,
     cfg_scale: float = 15.0,
     infer_steps: int = 60,
+    long_form: bool = False,
     progress_cb: Callable = None,
     step_cb: Callable = None,
     log_cb: Callable = None,
@@ -329,9 +730,14 @@ def generate_song(
     **kwargs,
 ) -> dict:
     """High-level song generation for InferenceWorker."""
+    style_tags = style_tags or kwargs.get("tags", "")
+    if seed is None:
+        seed = -1
+
     if step_cb:
         step_cb("Loading ACE-Step model...")
 
+    from core.model_manager import ModelManager
     mgr = ModelManager()
     engine = ACEStepEngine()
 
@@ -354,15 +760,26 @@ def generate_song(
         seed=seed,
         cfg_scale=cfg_scale,
         infer_steps=infer_steps,
+        long_form=long_form,
     )
 
-    result = engine.generate(params, progress_cb=progress_cb, cancel_event=cancel_event)
+    if long_form or duration > 120:
+        result = engine.generate_long_form(
+            params,
+            progress_cb=progress_cb,
+            step_cb=step_cb,
+            cancel_event=cancel_event,
+        )
+    else:
+        result = engine.generate(params, progress_cb=progress_cb, cancel_event=cancel_event)
 
     return {
         "audio_path": result.audio_path,
         "seed": result.seed,
         "duration": result.duration,
         "generation_time": result.generation_time,
+        "mode": "long_form" if result.sections else "single",
+        "sections": result.sections,
         "params": {
             "lyrics": lyrics[:200],
             "style_tags": style_tags,
@@ -379,6 +796,7 @@ def generate_song_batch(
     duration: float = 60.0,
     cfg_scale: float = 15.0,
     infer_steps: int = 60,
+    long_form: bool = False,
     progress_cb: Callable = None,
     step_cb: Callable = None,
     log_cb: Callable = None,
@@ -389,6 +807,7 @@ def generate_song_batch(
     if step_cb:
         step_cb("Loading ACE-Step model...")
 
+    from core.model_manager import ModelManager
     mgr = ModelManager()
     engine = ACEStepEngine()
 
@@ -407,6 +826,7 @@ def generate_song_batch(
         duration=duration,
         cfg_scale=cfg_scale,
         infer_steps=infer_steps,
+        long_form=long_form,
     )
 
     results = engine.generate_batch(
@@ -421,6 +841,8 @@ def generate_song_batch(
                 "seed": r.seed,
                 "duration": r.duration,
                 "generation_time": r.generation_time,
+                "mode": "long_form" if r.sections else "single",
+                "sections": r.sections,
             }
             for r in results
         ],

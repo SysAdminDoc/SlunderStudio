@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -24,7 +24,7 @@ Python 3.10+ required. Core dependencies install automatically. AI models are do
 
 | Module | Description | AI Engine |
 |--------|-------------|-----------|
-| Song Forge | Full song generation from lyrics + style tags | ACE-Step |
+| Song Forge | Full song generation from lyrics + style tags, including stitched long-form songs over 2 minutes | ACE-Step |
 | Lyrics Engine | AI-powered lyrics writing with 33 genre templates | Llama 3.2 1B |
 | MIDI Studio | Piano roll editor + text-to-MIDI composition | MIDI-LLM |
 | Vocal Suite | Singing synthesis, voice conversion, voice cloning | DiffSinger, RVC v2, GPT-SoVITS |
@@ -49,7 +49,7 @@ Python 3.10+ required. Core dependencies install automatically. AI models are do
 └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
 ```
 
-Every module can route audio to any other module. Generate a song in Song Forge, separate stems in Vocal Suite, add SFX, mix everything in the Mixer, and export a mastered track.
+Every module can route audio to any other module. Generate a song in Song Forge, separate stems in Vocal Suite, add SFX, mix everything in the Mixer, and export a mastered track. For songs over 2 minutes, Song Forge can render structured sections separately and stitch them with crossfades for more stable long-form arrangements.
 
 ## Mastering Presets
 

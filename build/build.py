@@ -16,7 +16,7 @@ import subprocess
 import shutil
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 ENTRY_POINT = "main.py"
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -95,6 +95,10 @@ def build(onefile: bool = False):
     # Hidden imports
     for imp in hidden:
         cmd.extend(["--hidden-import", imp])
+
+    runtime_hook = os.path.join("assets", "runtime_hook_mp.py")
+    if os.path.isfile(runtime_hook):
+        cmd.extend(["--runtime-hook", runtime_hook])
 
     # Icon (if exists)
     icon_path = os.path.join("assets", "icon.ico")
