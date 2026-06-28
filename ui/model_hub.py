@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.6 — Model Hub UI
+Slunder Studio v0.1.7 — Model Hub UI
 Grid view of all models with live download progress, speed tracking,
 partial download detection, and one-click download/delete.
 """
@@ -143,6 +143,15 @@ class ModelCard(QFrame):
             stats.addWidget(g)
         stats.addStretch()
         layout.addLayout(stats)
+
+        trust_text = (
+            f"Revision {self.info.revision} - "
+            f"{'trusted registry source' if self.info.trusted_source else 'untrusted source'}"
+        )
+        trust = QLabel(trust_text)
+        trust.setWordWrap(True)
+        trust.setStyleSheet(f"font-size: 10px; color: {Palette.SUBTEXT0};")
+        layout.addWidget(trust)
 
         # -- Download panel (hidden by default, expands inline) --
         self._dl_panel = QFrame()

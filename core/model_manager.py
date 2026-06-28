@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.6 — Model Manager
+Slunder Studio v0.1.7 — Model Manager
 Central singleton managing model lifecycle: download, load, unload, and GPU memory.
 Enforces one-large-model-at-a-time GPU residency for 16GB VRAM budget.
 """
@@ -8,6 +8,7 @@ import os
 import json
 import time
 import threading
+import hashlib
 from enum import Enum
 from typing import Any, Callable, Optional
 from pathlib import Path
@@ -57,8 +58,21 @@ class ModelInfo:
     requires: list[str] = field(default_factory=list)  # dependency model IDs
     tags: list[str] = field(default_factory=list)
     allow_patterns: list[str] = field(default_factory=list)  # HF download filter
+    ignore_patterns: list[str] = field(default_factory=list)
+    revision: str = "main"
     pip_managed: bool = False  # True = model managed by pip package, not HF download
     gated: bool = False  # True = requires HF login + license acceptance
+    trusted_source: bool = True
+    trust_note: str = "Built-in registry source"
+
+
+def hash_file_sha256(path: Path) -> str:
+    """Hash a model file for tamper detection."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 # ── Built-in Model Registry ───────────────────────────────────────────────────
@@ -496,10 +510,13 @@ class ModelManager(QObject):
                 "repo_id": info.source,
                 "cache_dir": cache_dir,
                 "local_dir": str(cache_path),
+                "revision": info.revision,
             }
 
             if info.allow_patterns:
                 kwargs["allow_patterns"] = info.allow_patterns
+            if info.ignore_patterns:
+                kwargs["ignore_patterns"] = info.ignore_patterns
 
             if info.gated:
                 token = self._get_hf_token()
@@ -571,13 +588,19 @@ class ModelManager(QObject):
                 marker.unlink()
 
             try:
-                snapshot_download(**kwargs)
+                resolved_path = snapshot_download(**kwargs)
             finally:
                 _download_done.set()
                 poll_thread.join(timeout=2)
 
             # -- Write completion marker --
-            self._write_complete_marker(model_id, cache_path)
+            resolved_revision = self._resolve_hf_revision(info, kwargs.get("token"))
+            self._write_complete_marker(
+                model_id,
+                cache_path,
+                resolved_path=resolved_path,
+                resolved_revision=resolved_revision,
+            )
 
             self._set_status(model_id, ModelStatus.DOWNLOADED)
             self.download_completed.emit(model_id)
@@ -589,15 +612,38 @@ class ModelManager(QObject):
             self.download_error.emit(model_id, str(e))
             raise
 
-    def _write_complete_marker(self, model_id: str, cache_path: Path):
+    def _resolve_hf_revision(self, info: ModelInfo, token: Optional[str] = None) -> str:
+        """Resolve a HuggingFace revision to a commit SHA when online."""
+        if not info.source:
+            return info.revision
+        try:
+            from huggingface_hub import HfApi
+            model = HfApi().model_info(info.source, revision=info.revision, token=token)
+            return getattr(model, "sha", "") or info.revision
+        except Exception:
+            return info.revision
+
+    def _write_complete_marker(
+        self,
+        model_id: str,
+        cache_path: Path,
+        resolved_path: str = "",
+        resolved_revision: str = "",
+    ):
         """Write a marker file indicating download is complete with metadata."""
         import time as _time
+        info = self._registry.get(model_id)
         file_count = 0
         total_size = 0
+        file_hashes: dict[str, str] = {}
         for f in cache_path.rglob("*"):
             if f.is_file() and f.name != self.COMPLETE_MARKER:
                 file_count += 1
                 total_size += f.stat().st_size
+                try:
+                    file_hashes[str(f.relative_to(cache_path)).replace("\\", "/")] = hash_file_sha256(f)
+                except OSError:
+                    pass
 
         marker = cache_path / self.COMPLETE_MARKER
         marker.write_text(json.dumps({
@@ -605,8 +651,28 @@ class ModelManager(QObject):
             "timestamp": _time.time(),
             "file_count": file_count,
             "total_bytes": total_size,
-            "source": self._registry[model_id].source if model_id in self._registry else "",
+            "source": info.source if info else "",
+            "revision": info.revision if info else "",
+            "resolved_revision": resolved_revision or (info.revision if info else ""),
+            "license": info.license if info else "unknown",
+            "gated": bool(info.gated) if info else False,
+            "trusted_source": bool(info.trusted_source) if info else False,
+            "trust_note": info.trust_note if info else "",
+            "allow_patterns": info.allow_patterns if info else [],
+            "ignore_patterns": info.ignore_patterns if info else [],
+            "resolved_path": resolved_path,
+            "file_hashes": file_hashes,
         }, indent=2))
+
+    def get_download_manifest(self, model_id: str) -> dict:
+        cache_path = self.get_cache_dir(model_id)
+        marker = cache_path / self.COMPLETE_MARKER
+        if not marker.exists():
+            return {}
+        try:
+            return json.loads(marker.read_text())
+        except Exception:
+            return {}
 
     def verify_download(self, model_id: str) -> tuple[bool, str]:
         """
@@ -637,6 +703,14 @@ class ModelManager(QObject):
             )
             if actual_files < expected_files:
                 return False, f"Missing files ({actual_files}/{expected_files})"
+            file_hashes = meta.get("file_hashes", {})
+            for rel_path, expected_hash in file_hashes.items():
+                path = cache_path / rel_path
+                if not path.is_file():
+                    return False, f"Missing hashed file: {rel_path}"
+                actual_hash = hash_file_sha256(path)
+                if actual_hash != expected_hash:
+                    return False, f"Hash mismatch: {rel_path}"
             return True, "OK"
         except Exception as e:
             return False, f"Marker corrupted: {e}"

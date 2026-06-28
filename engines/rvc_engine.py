@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.6 — RVC / GPT-SoVITS Engine
+Slunder Studio v0.1.7 — RVC / GPT-SoVITS Engine
 Voice conversion (RVC v2) and voice cloning (GPT-SoVITS) for transforming
 existing vocals or cloning a target voice from reference audio.
 """
@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from core.settings import get_config_dir
-from core.voice_bank import VoiceProfile
+from core.voice_bank import SAFER_CHECKPOINT_EXTENSIONS, UNSAFE_CHECKPOINT_EXTENSIONS, VoiceProfile
 
 
 @dataclass
@@ -247,6 +247,35 @@ def assess_clone_reference(
     return report
 
 
+def load_voice_checkpoint(profile: VoiceProfile, path: str, device: str):
+    """
+    Load a voice checkpoint while enforcing local trust for pickle-backed formats.
+    PyTorch pickle checkpoints can execute code during deserialization, so local
+    .pth/.pt/.ckpt/.bin files must be explicitly trusted in the voice profile.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext in UNSAFE_CHECKPOINT_EXTENSIONS and not profile.trusted:
+        raise RuntimeError(
+            f"{os.path.basename(path)} is an unsafe local checkpoint format. "
+            "Mark this voice profile as trusted before loading it, or use a safetensors/ONNX model."
+        )
+
+    if ext == ".safetensors":
+        try:
+            from safetensors.torch import load_file
+        except ImportError as exc:
+            raise RuntimeError(
+                "safetensors is required to load safetensors voice checkpoints."
+            ) from exc
+        return load_file(path, device=device)
+
+    if ext in SAFER_CHECKPOINT_EXTENSIONS and ext != ".safetensors":
+        raise RuntimeError(f"Unsupported safer checkpoint format: {ext}")
+
+    import torch
+    return torch.load(path, map_location=device, weights_only=False)
+
+
 # ── RVC Engine ─────────────────────────────────────────────────────────────────
 
 class RVCEngine:
@@ -272,14 +301,11 @@ class RVCEngine:
                    progress_callback: Optional[Callable] = None):
         """Load an RVC voice model."""
         try:
-            import torch
-
             if progress_callback:
                 progress_callback(0.1, "Loading RVC model...")
 
             # Load the model checkpoint
-            checkpoint = torch.load(profile.model_path, map_location=device,
-                                    weights_only=False)
+            checkpoint = load_voice_checkpoint(profile, profile.model_path, device)
 
             self._model = checkpoint
             self._model_path = profile.model_path
@@ -556,24 +582,18 @@ class GPTSoVITSEngine:
                    progress_callback: Optional[Callable] = None):
         """Load GPT-SoVITS model pair."""
         try:
-            import torch
-
             if progress_callback:
                 progress_callback(0.1, "Loading SoVITS model...")
 
             # Load SoVITS model
-            self._sovits_model = torch.load(
-                profile.model_path, map_location=device, weights_only=False
-            )
+            self._sovits_model = load_voice_checkpoint(profile, profile.model_path, device)
 
             # Look for corresponding GPT model
             gpt_path = profile.config_path
             if gpt_path and os.path.isfile(gpt_path):
                 if progress_callback:
                     progress_callback(0.5, "Loading GPT model...")
-                self._gpt_model = torch.load(
-                    gpt_path, map_location=device, weights_only=False
-                )
+                self._gpt_model = load_voice_checkpoint(profile, gpt_path, device)
 
             self._model_path = profile.model_path
             self._device = device

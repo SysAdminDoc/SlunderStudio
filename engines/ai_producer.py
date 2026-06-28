@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.6 — AI Producer Engine
+Slunder Studio v0.1.7 — AI Producer Engine
 One-prompt-to-full-song orchestrator. Decomposes a high-level creative brief
 into a multi-step pipeline: lyrics generation, style selection, song generation,
 vocal synthesis, SFX layering, and mastering — all automated.

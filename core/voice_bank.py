@@ -1,16 +1,29 @@
 """
-Slunder Studio v0.1.6 — Voice Bank
+Slunder Studio v0.1.7 — Voice Bank
 Voice profile management for RVC and GPT-SoVITS models.
 Handles model discovery, metadata, favorites, and preset management.
 """
 import os
 import json
 import time
+import hashlib
 from typing import Optional
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
 from core.settings import get_config_dir
+
+UNSAFE_CHECKPOINT_EXTENSIONS = {".bin", ".ckpt", ".pth", ".pt"}
+SAFER_CHECKPOINT_EXTENSIONS = {".onnx", ".safetensors"}
+
+
+def hash_file_sha256(path: str) -> str:
+    """Hash a local model/profile asset for provenance and tamper checks."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 @dataclass
@@ -30,12 +43,33 @@ class VoiceProfile:
     notes: str = ""
     created_at: float = 0.0
     is_favorite: bool = False
+    source: str = "local"
+    source_revision: str = ""
+    license: str = "unknown"
+    trusted: bool = False
+    trusted_at: float = 0.0
+    trust_note: str = ""
+    file_hashes: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
         if not self.id:
             self.id = f"voice_{int(time.time() * 1000)}"
         if self.created_at == 0.0:
             self.created_at = time.time()
+        if self.trusted and self.trusted_at == 0.0:
+            self.trusted_at = time.time()
+
+    @property
+    def checkpoint_extension(self) -> str:
+        return Path(self.model_path).suffix.lower()
+
+    @property
+    def uses_unsafe_checkpoint(self) -> bool:
+        return self.checkpoint_extension in UNSAFE_CHECKPOINT_EXTENSIONS
+
+    @property
+    def uses_safer_checkpoint(self) -> bool:
+        return self.checkpoint_extension in SAFER_CHECKPOINT_EXTENSIONS
 
 
 # ── Voice Bank ─────────────────────────────────────────────────────────────────
@@ -85,6 +119,7 @@ class VoiceBank:
     # ── CRUD ───────────────────────────────────────────────────────────────────
 
     def add(self, profile: VoiceProfile) -> str:
+        self.refresh_profile_hashes(profile)
         self._profiles[profile.id] = profile
         self._save()
         return profile.id
@@ -100,8 +135,31 @@ class VoiceBank:
         return False
 
     def update(self, profile: VoiceProfile):
+        self.refresh_profile_hashes(profile)
         self._profiles[profile.id] = profile
         self._save()
+
+    def trust_profile(self, profile_id: str, note: str = "Trusted local checkpoint") -> bool:
+        profile = self.get(profile_id)
+        if not profile:
+            return False
+        profile.trusted = True
+        profile.trusted_at = time.time()
+        profile.trust_note = note
+        self.refresh_profile_hashes(profile)
+        self._save()
+        return True
+
+    def refresh_profile_hashes(self, profile: VoiceProfile):
+        hashes: dict[str, str] = {}
+        for key in ("model_path", "index_path", "config_path", "ref_audio_path"):
+            path = getattr(profile, key, "")
+            if path and os.path.isfile(path):
+                try:
+                    hashes[key] = hash_file_sha256(path)
+                except OSError:
+                    pass
+        profile.file_hashes = hashes
 
     def list_all(self) -> list[VoiceProfile]:
         return sorted(self._profiles.values(), key=lambda p: p.name.lower())
@@ -161,7 +219,11 @@ class VoiceBank:
                     profile = VoiceProfile(
                         name=name, engine="rvc",
                         model_path=path, index_path=index_path,
-                        tags=["imported"],
+                        source="local scan",
+                        license="unknown",
+                        trusted=False,
+                        trust_note="Unsafe pickle checkpoint requires explicit trust before loading.",
+                        tags=["imported", "unsafe-checkpoint"],
                     )
                     if profile.id not in self._profiles:
                         self.add(profile)
@@ -170,9 +232,19 @@ class VoiceBank:
                 # GPT-SoVITS models
                 elif ext in ("ckpt", "safetensors") and "sovits" in root.lower():
                     name = f.rsplit(".", 1)[0]
+                    safer = ext == "safetensors"
                     profile = VoiceProfile(
                         name=name, engine="gpt_sovits",
-                        model_path=path, tags=["imported"],
+                        model_path=path,
+                        source="local scan",
+                        license="unknown",
+                        trusted=safer,
+                        trust_note=(
+                            "Safer safetensors checkpoint"
+                            if safer else
+                            "Unsafe pickle checkpoint requires explicit trust before loading."
+                        ),
+                        tags=["imported", "safer-format" if safer else "unsafe-checkpoint"],
                     )
                     if profile.id not in self._profiles:
                         self.add(profile)
@@ -183,7 +255,12 @@ class VoiceBank:
                     name = f.rsplit(".", 1)[0]
                     profile = VoiceProfile(
                         name=name, engine="diffsinger",
-                        model_path=path, tags=["imported"],
+                        model_path=path,
+                        source="local scan",
+                        license="unknown",
+                        trusted=True,
+                        trust_note="ONNX model file discovered locally.",
+                        tags=["imported", "onnx"],
                     )
                     if profile.id not in self._profiles:
                         self.add(profile)

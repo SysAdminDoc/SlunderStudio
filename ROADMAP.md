@@ -88,13 +88,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ## Research-Driven Additions
 
 ### P0
-- [ ] P0 - Harden model checkpoint trust and loading
-  Why: Voice profiles load user-selected PyTorch checkpoints with unsafe deserialization, while model downloads do not persist revision/hash provenance.
-  Evidence: `engines/rvc_engine.py`, `core/model_manager.py`, PyTorch security policy, Hugging Face download docs.
-  Touches: `engines/rvc_engine.py`, `core/model_manager.py`, `core/voice_bank.py`, `ui/model_hub.py`, `tests/`.
-  Acceptance: Model/profile records store source, revision, file hashes, trusted state, and license metadata; unsafe pickle loads require an explicit trusted-local profile path; safer formats are preferred when available.
-  Complexity: L
-
 - [ ] P0 - Replace runtime dependency installation with explicit diagnostics
   Why: Startup and build paths mutate the Python environment, which undermines offline reproducibility and makes support failures hard to diagnose.
   Evidence: `main.py`, `core/deps.py`, `build/build.py`, `requirements.txt`.

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.6 — Dependency Manager
+Slunder Studio v0.1.7 — Dependency Manager
 Auto-installs missing packages at runtime. No user intervention required.
 """
 import sys
