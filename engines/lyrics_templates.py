@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.3 — Lyrics Templates & Prompt Engineering
+Slunder Studio v0.1.4 — Lyrics Templates & Prompt Engineering
 30+ genre-specific prompt templates with structure tags matching ACE-Step v1.5 input format.
 Two-stage prompting: plan → generate.
 """
@@ -459,3 +459,32 @@ def get_style_tags(genre_id: str) -> list[str]:
     """Get ACE-Step style tags for a genre (used in Song Forge integration)."""
     template = GENRE_TEMPLATES.get(genre_id, GENRE_TEMPLATES["pop"])
     return template.style_tags
+
+
+def blend_genre_style_tags(
+    primary_genre_id: str,
+    secondary_genre_id: str,
+    secondary_weight: float = 0.5,
+    max_tags: int = 8,
+) -> list[str]:
+    """
+    Blend two genre tag sets into a weighted ACE-Step prompt.
+    secondary_weight=0 keeps mostly the primary genre; 1 keeps mostly secondary.
+    """
+    primary = GENRE_TEMPLATES.get(primary_genre_id, GENRE_TEMPLATES["pop"])
+    secondary = GENRE_TEMPLATES.get(secondary_genre_id, GENRE_TEMPLATES["pop"])
+    secondary_weight = min(1.0, max(0.0, float(secondary_weight)))
+    primary_weight = 1.0 - secondary_weight
+
+    scored: dict[str, float] = {}
+    for idx, tag in enumerate(primary.style_tags):
+        scored[tag] = max(scored.get(tag, 0.0), primary_weight - idx * 0.01)
+    for idx, tag in enumerate(secondary.style_tags):
+        scored[tag] = max(scored.get(tag, 0.0), secondary_weight - idx * 0.01)
+
+    if primary.id != secondary.id:
+        scored[f"{primary.name.lower()} {secondary.name.lower()} fusion"] = 0.50
+        scored["hybrid"] = 0.45
+
+    ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)
+    return [tag for tag, _ in ranked[:max_tags]]

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.3 — Settings View
+Slunder Studio v0.1.4 — Settings View
 Two-tier settings: Simple Mode (essentials) and Advanced Mode (full controls).
 All changes apply immediately with toast feedback.
 """

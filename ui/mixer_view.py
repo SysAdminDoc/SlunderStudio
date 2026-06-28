@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.3 — Mixer View
+Slunder Studio v0.1.4 — Mixer View
 Multi-track mixer timeline with per-track volume/pan/effects,
 smart mastering presets, waveform overview, and final export.
 """

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.3 — Song Forge View
+Slunder Studio v0.1.4 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QSplitter, QTabWidget, QTextEdit, QLineEdit, QComboBox,
     QSpinBox, QDoubleSpinBox, QFrame, QScrollArea, QProgressBar,
     QFileDialog, QCheckBox, QGroupBox, QGridLayout, QListWidget,
-    QListWidgetItem, QPlainTextEdit,
+    QListWidgetItem, QPlainTextEdit, QSlider,
 )
 from PySide6.QtCore import Signal, Qt
 
@@ -258,6 +258,51 @@ class SongForgeView(QWidget):
         pg.addWidget(self._long_form_check, 2, 2, 1, 2)
 
         al.addWidget(params)
+
+        # Genre fusion presets
+        fusion = QGroupBox("Genre Fusion")
+        fusion.setStyleSheet(
+            "QGroupBox { color: #A6ADC8; border: 1px solid #313244; border-radius: 6px; "
+            "margin-top: 8px; padding-top: 14px; }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 10px; }"
+        )
+        fg = QGridLayout(fusion)
+        fg.setSpacing(6)
+
+        from engines.lyrics_templates import get_genre_list
+        genres = get_genre_list()
+
+        fg.addWidget(QLabel("Primary:"), 0, 0)
+        self._fusion_primary = QComboBox()
+        for genre in genres:
+            self._fusion_primary.addItem(genre["name"], genre["id"])
+        fg.addWidget(self._fusion_primary, 0, 1)
+
+        fg.addWidget(QLabel("Secondary:"), 0, 2)
+        self._fusion_secondary = QComboBox()
+        for genre in genres:
+            self._fusion_secondary.addItem(genre["name"], genre["id"])
+        self._fusion_secondary.setCurrentIndex(min(2, max(0, self._fusion_secondary.count() - 1)))
+        fg.addWidget(self._fusion_secondary, 0, 3)
+
+        fg.addWidget(QLabel("Blend:"), 1, 0)
+        self._fusion_slider = QSlider(Qt.Horizontal)
+        self._fusion_slider.setRange(0, 100)
+        self._fusion_slider.setValue(50)
+        self._fusion_slider.valueChanged.connect(self._on_fusion_weight_changed)
+        fg.addWidget(self._fusion_slider, 1, 1, 1, 2)
+
+        self._fusion_weight_label = QLabel("50/50")
+        self._fusion_weight_label.setStyleSheet("color: #94E2D5; font-size: 11px;")
+        fg.addWidget(self._fusion_weight_label, 1, 3)
+
+        self._fusion_apply_btn = QPushButton("Apply Fusion")
+        self._fusion_apply_btn.setFixedHeight(28)
+        self._fusion_apply_btn.setProperty("class", "secondary")
+        self._fusion_apply_btn.clicked.connect(self._apply_genre_fusion)
+        fg.addWidget(self._fusion_apply_btn, 2, 0, 1, 4)
+
+        al.addWidget(fusion)
         adv_scroll.setWidget(adv_inner)
 
         adv_layout = QVBoxLayout(adv_page)
@@ -415,6 +460,21 @@ class SongForgeView(QWidget):
             existing = self._quick_tags.text().strip()
             if not existing:
                 self._quick_tags.setText(tags)
+
+    def _on_fusion_weight_changed(self, value: int):
+        self._fusion_weight_label.setText(f"{100 - value}/{value}")
+
+    def _apply_genre_fusion(self):
+        from engines.lyrics_templates import blend_genre_style_tags
+
+        primary = self._fusion_primary.currentData()
+        secondary = self._fusion_secondary.currentData()
+        tags = blend_genre_style_tags(primary, secondary, self._fusion_slider.value() / 100)
+        tag_str = ", ".join(tags)
+        self._tag_browser.set_tags(tag_str)
+        self._quick_tags.setText(tag_str)
+        if self._toast:
+            self._toast.show_toast("Genre fusion tags applied", "success")
 
     def _on_generate(self):
         lyrics = self._get_lyrics()

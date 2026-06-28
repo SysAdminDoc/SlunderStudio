@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.3 — Main Window
+Slunder Studio v0.1.4 — Main Window
 QMainWindow shell with animated sidebar navigation, stacked module views,
 global audio transport bar, VRAM status indicator, and drag-and-drop support.
 """
