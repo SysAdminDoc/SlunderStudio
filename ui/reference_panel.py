@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.2 — Reference Panel
+Slunder Studio v0.1.3 — Reference Panel
 Reference track analysis UI: drag-drop audio, view analysis results,
 "Match This" one-click generation, and reference library management.
 """
@@ -131,6 +131,12 @@ class ReferencePanel(QWidget):
         self._tags_label.hide()
         self._results_layout.addWidget(self._tags_label)
 
+        self._clap_label = QLabel("")
+        self._clap_label.setWordWrap(True)
+        self._clap_label.setStyleSheet("color: #89B4FA; font-size: 11px; padding: 4px;")
+        self._clap_label.hide()
+        self._results_layout.addWidget(self._clap_label)
+
         # Sections
         self._sections_label = QLabel("")
         self._sections_label.setWordWrap(True)
@@ -238,6 +244,14 @@ class ReferencePanel(QWidget):
             self._tags_label.setText(f"Suggested tags: {tag_str}")
             self._tags_label.show()
 
+        clap_tags = getattr(analysis, "clap_style_tags", [])
+        if clap_tags:
+            backend = getattr(analysis, "clap_backend", "audio-clap")
+            self._clap_label.setText(
+                f"Audio-CLAP conditioning ({backend}): {', '.join(clap_tags)}"
+            )
+            self._clap_label.show()
+
         # Sections
         if analysis.sections:
             parts = [f"{s['label']} ({s['start']:.0f}s-{s['end']:.0f}s)" for s in analysis.sections[:6]]
@@ -274,6 +288,7 @@ class ReferencePanel(QWidget):
         self._waveform.hide()
         self._metrics_group.hide()
         self._tags_label.hide()
+        self._clap_label.hide()
         self._sections_label.hide()
         self._match_btn.setEnabled(False)
         self._use_tags_btn.setEnabled(False)

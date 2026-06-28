@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.2 — Audio Analyzer
+Slunder Studio v0.1.3 — Audio Analyzer
 Reference track analysis: BPM, key, energy envelope, spectral features,
 genre estimation, and song structure detection via librosa.
 """
@@ -39,6 +39,10 @@ class AudioAnalysis:
     # Suggested tags
     suggested_tags: list = field(default_factory=list)
     suggested_tempo_tag: str = ""
+    clap_backend: str = ""
+    clap_embedding: list = field(default_factory=list)
+    clap_style_tags: list = field(default_factory=list)
+    clap_similarity: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -51,15 +55,18 @@ class AudioAnalysis:
             "onset_density": self.onset_density,
             "suggested_tags": self.suggested_tags,
             "suggested_tempo_tag": self.suggested_tempo_tag,
+            "clap_backend": self.clap_backend,
+            "clap_style_tags": self.clap_style_tags,
+            "clap_similarity": self.clap_similarity,
             "sections": self.sections,
         }
 
     def to_ace_step_tags(self) -> str:
         """Convert analysis to ACE-Step compatible tag string."""
-        tags = list(self.suggested_tags)
+        tags = _dedupe_tags([*self.suggested_tags, *self.clap_style_tags])
         if self.suggested_tempo_tag:
             tags.append(self.suggested_tempo_tag)
-        return ", ".join(tags)
+        return ", ".join(_dedupe_tags(tags))
 
 
 # ── Key Detection ──────────────────────────────────────────────────────────────
@@ -150,6 +157,83 @@ def _estimate_genre_tags(bpm, brightness, onset_density, energy_mean, key) -> li
         tags.append("bright")
 
     return tags[:5]  # Limit suggestions
+
+
+def _dedupe_tags(tags: list[str]) -> list[str]:
+    """Keep tag order while dropping case-insensitive duplicates."""
+    seen = set()
+    result = []
+    for tag in tags:
+        clean = str(tag).strip()
+        if not clean:
+            continue
+        key = clean.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(clean)
+    return result
+
+
+CLAP_STYLE_PROTOTYPES = {
+    "ambient": [0.25, 0.12, 0.30, 0.12, 0.25, 0.20, 0.80, 0.90],
+    "cinematic": [0.45, 0.45, 0.55, 0.28, 0.55, 0.75, 0.55, 0.65],
+    "lo-fi": [0.42, 0.22, 0.25, 0.35, 0.45, 0.35, 0.85, 0.55],
+    "hip hop": [0.42, 0.45, 0.48, 0.62, 0.65, 0.55, 0.55, 0.35],
+    "trap": [0.72, 0.52, 0.60, 0.75, 0.75, 0.55, 0.42, 0.25],
+    "r&b": [0.48, 0.32, 0.42, 0.42, 0.35, 0.45, 0.60, 0.50],
+    "rock": [0.62, 0.72, 0.78, 0.72, 0.55, 0.65, 0.25, 0.20],
+    "metal": [0.78, 0.85, 0.86, 0.82, 0.85, 0.70, 0.15, 0.15],
+    "dance": [0.64, 0.62, 0.62, 0.78, 0.25, 0.35, 0.35, 0.18],
+    "acoustic": [0.45, 0.24, 0.38, 0.22, 0.20, 0.42, 0.70, 0.70],
+    "dark": [0.45, 0.45, 0.38, 0.45, 0.95, 0.60, 0.70, 0.35],
+    "bright": [0.56, 0.42, 0.82, 0.45, 0.05, 0.45, 0.20, 0.38],
+    "bass-heavy": [0.50, 0.62, 0.35, 0.60, 0.65, 0.50, 0.82, 0.35],
+    "energetic": [0.70, 0.78, 0.70, 0.82, 0.45, 0.55, 0.25, 0.15],
+}
+
+
+def _audio_clap_lite_embedding(analysis: AudioAnalysis) -> list[float]:
+    """
+    Build a compact local audio embedding for CLAP-style tag matching.
+    The vector tracks tempo, energy, brightness, density, tonality, dynamics,
+    warmth, and sparseness. A real CLAP backend can replace this vector without
+    changing downstream matching.
+    """
+    tempo = min(max(analysis.bpm, 0.0), 200.0) / 200.0
+    energy = min(max(analysis.energy_mean * 8.0, 0.0), 1.0)
+    brightness = min(max(analysis.brightness_mean / 6000.0, 0.0), 1.0)
+    onset = min(max(analysis.onset_density / 8.0, 0.0), 1.0)
+    minor = 1.0 if "minor" in analysis.key.lower() else 0.0
+    dynamics = min(max(analysis.energy_std * 10.0, 0.0), 1.0)
+    warmth = 1.0 - brightness
+    sparseness = 1.0 - onset
+    return [tempo, energy, brightness, onset, minor, dynamics, warmth, sparseness]
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    left_vec = np.asarray(left, dtype=np.float32)
+    right_vec = np.asarray(right, dtype=np.float32)
+    denom = float(np.linalg.norm(left_vec) * np.linalg.norm(right_vec))
+    if denom <= 1e-8:
+        return 0.0
+    return float(np.dot(left_vec, right_vec) / denom)
+
+
+def _match_clap_style_tags(embedding: list[float], limit: int = 5) -> tuple[list[str], dict]:
+    scores = {
+        tag: round(_cosine_similarity(embedding, prototype), 4)
+        for tag, prototype in CLAP_STYLE_PROTOTYPES.items()
+    }
+    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    return [tag for tag, _ in ranked[:limit]], dict(ranked[:limit])
+
+
+def infer_clap_style_tags(analysis: AudioAnalysis, limit: int = 5) -> tuple[list[str], str, dict, list[float]]:
+    """Infer style tags from a reference-track audio embedding."""
+    embedding = _audio_clap_lite_embedding(analysis)
+    tags, scores = _match_clap_style_tags(embedding, limit=limit)
+    return tags, "audio-clap-lite", scores, embedding
 
 
 # ── Main Analysis Function ─────────────────────────────────────────────────────
@@ -304,6 +388,12 @@ def analyze_track(
         analysis.bpm, analysis.brightness_mean,
         analysis.onset_density, analysis.energy_mean, analysis.key,
     )
+    clap_tags, clap_backend, clap_scores, clap_embedding = infer_clap_style_tags(analysis)
+    analysis.clap_backend = clap_backend
+    analysis.clap_embedding = clap_embedding
+    analysis.clap_style_tags = clap_tags
+    analysis.suggested_tags = _dedupe_tags([*analysis.suggested_tags, *clap_tags])[:8]
+    analysis.clap_similarity = clap_scores
 
     if progress_cb:
         progress_cb(100)
