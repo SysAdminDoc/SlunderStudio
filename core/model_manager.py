@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.7 — Model Manager
+Slunder Studio v0.1.8 — Model Manager
 Central singleton managing model lifecycle: download, load, unload, and GPU memory.
 Enforces one-large-model-at-a-time GPU residency for 16GB VRAM budget.
 """

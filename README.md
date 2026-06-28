@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.7-blue)
+![Version](https://img.shields.io/badge/version-0.1.8-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -15,10 +15,11 @@
 ```bash
 git clone https://github.com/SysAdminDoc/SlunderStudio.git
 cd SlunderStudio
-python main.py  # Auto-installs dependencies on first run
+py -3.12 -m pip install -r requirements.txt
+py -3.12 main.py
 ```
 
-Python 3.10+ required. Core dependencies install automatically. AI models are downloaded on-demand from HuggingFace via the built-in Model Hub.
+Python 3.10+ required. Install core dependencies explicitly before launch; if anything is missing, Slunder Studio opens a diagnostics screen with the exact setup command. AI models are downloaded on-demand from HuggingFace via the built-in Model Hub.
 
 ## Features
 
@@ -120,9 +121,9 @@ SlunderStudio/
 Create a standalone executable with PyInstaller:
 
 ```bash
-pip install pyinstaller
-python build/build.py           # One-folder distribution
-python build/build.py --onefile # Single .exe (Windows)
+py -3.12 -m pip install pyinstaller
+py -3.12 build/build.py           # One-folder distribution
+py -3.12 build/build.py --onefile # Single .exe (Windows)
 ```
 
 Output lands in `dist/SlunderStudio/`.
@@ -131,7 +132,7 @@ Output lands in `dist/SlunderStudio/`.
 
 ```
 SlunderStudio/
-├── main.py                     # Entry point with auto-bootstrap
+├── main.py                     # Entry point with dependency diagnostics
 ├── core/                       # Core infrastructure
 │   ├── audio_engine.py         # Playback engine (sounddevice)
 │   ├── audio_export.py         # WAV/FLAC/MP3 export

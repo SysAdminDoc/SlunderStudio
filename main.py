@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Slunder Studio v0.1.7
+Slunder Studio v0.1.8
 Offline AI Music Generation Suite
 
 Run: python main.py
@@ -10,11 +10,10 @@ multiprocessing.freeze_support()
 
 import sys
 import os
-import subprocess
-import importlib
 import traceback
+from typing import Sequence
 
-APP_VERSION = "0.1.7"
+APP_VERSION = "0.1.8"
 
 
 def _is_frozen() -> bool:
@@ -25,85 +24,82 @@ def _is_frozen() -> bool:
 # ── Phase 1: Console Bootstrap (no GUI deps yet) ─────────────────────────────
 
 def _phase1_bootstrap():
-    """Install absolute minimum deps needed before GUI can start."""
+    """Report missing core dependencies before importing PySide6."""
     if _is_frozen():
-        return
+        return []
 
     if sys.version_info < (3, 10):
         print(f"Slunder Studio requires Python 3.10+. Current: {sys.version}")
-        input("Press Enter to exit...")
         sys.exit(1)
 
-    # Ensure pip exists
+    from core.deps import CORE_RUNTIME_PACKAGES, dependency_status
+
+    missing = dependency_status(CORE_RUNTIME_PACKAGES)
+    if missing and any(import_name == "PySide6" for import_name, _ in missing):
+        _print_dependency_diagnostics(missing)
+        _show_dependency_diagnostics_tk(missing)
+        sys.exit(1)
+    return missing
+
+
+def _print_dependency_diagnostics(missing: Sequence[tuple[str, str]]) -> None:
+    from core.deps import format_missing_dependency_message
+    print(format_missing_dependency_message(missing), file=sys.stderr)
+
+
+def _show_dependency_diagnostics_tk(
+    missing: Sequence[tuple[str, str]],
+) -> None:
+    """Best-effort dark diagnostics when Qt itself is missing."""
     try:
-        import pip  # noqa: F401
-    except ImportError:
-        print("[Slunder Studio] Installing pip...")
-        subprocess.check_call([sys.executable, "-m", "ensurepip", "--default-pip"])
+        import tkinter as tk
+        from core.deps import format_missing_dependency_message
 
-    # Phase 1 packages: everything needed before the main window can render.
-    # These are installed in console before any GUI appears.
-    phase1 = {
-        "PySide6": "PySide6",
-        "numpy": "numpy",
-        "pyqtgraph": "pyqtgraph",
-        "sounddevice": "sounddevice",
-        "soundfile": "soundfile",
-        "huggingface_hub": "huggingface-hub",
-        "librosa": "librosa",
-        "psutil": "psutil",
-    }
-    missing = []
-    for import_name, pip_name in phase1.items():
-        try:
-            importlib.import_module(import_name)
-        except Exception:
-            missing.append((import_name, pip_name))
+        root = tk.Tk()
+        root.title("Slunder Studio - Missing Dependencies")
+        root.geometry("720x420")
+        root.configure(bg="#1e1e2e")
 
-    if missing:
-        print(f"[Slunder Studio] Installing {len(missing)} packages...")
-        for import_name, pip_name in missing:
-            print(f"  -> {pip_name}")
-            _pip_install(pip_name)
-            # Verify it actually works
-            try:
-                importlib.invalidate_caches()
-                importlib.import_module(import_name)
-            except Exception:
-                print(f"  [!] {pip_name} install may have failed, will retry later")
+        title = tk.Label(
+            root,
+            text="Slunder Studio cannot start",
+            bg="#1e1e2e",
+            fg="#f38ba8",
+            font=("Segoe UI", 18, "bold"),
+        )
+        title.pack(padx=24, pady=(22, 8), anchor="w")
 
+        text = tk.Text(
+            root,
+            bg="#11111b",
+            fg="#cdd6f4",
+            insertbackground="#cdd6f4",
+            relief="flat",
+            wrap="word",
+            font=("Consolas", 10),
+        )
+        text.insert("1.0", format_missing_dependency_message(missing))
+        text.configure(state="disabled")
+        text.pack(padx=24, pady=8, fill="both", expand=True)
 
-def _pip_install(pip_name: str):
-    """Robust pip install with fallback strategies and site-packages refresh."""
-    if _is_frozen():
-        print(f"[Slunder Studio] WARNING: Missing bundled dependency: {pip_name}")
-        return
-
-    strategies = [
-        [sys.executable, "-m", "pip", "install", pip_name],
-        [sys.executable, "-m", "pip", "install", pip_name, "--user"],
-        [sys.executable, "-m", "pip", "install", pip_name, "--break-system-packages"],
-        [sys.executable, "-m", "pip", "install", pip_name, "--force-reinstall"],
-    ]
-    for cmd in strategies:
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-            if result.returncode == 0:
-                # Refresh import paths so newly installed packages are visible
-                importlib.invalidate_caches()
-                import site
-                if hasattr(site, "getusersitepackages"):
-                    usp = site.getusersitepackages()
-                    if usp and usp not in sys.path:
-                        sys.path.insert(0, usp)
-                print(f"[Slunder Studio] Installed: {pip_name}")
-                return
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            continue
-    print(f"[Slunder Studio] WARNING: Failed to install {pip_name}")
+        close = tk.Button(
+            root,
+            text="Close",
+            command=root.destroy,
+            bg="#89b4fa",
+            fg="#11111b",
+            relief="flat",
+            font=("Segoe UI", 10, "bold"),
+            padx=20,
+            pady=8,
+        )
+        close.pack(padx=24, pady=(4, 20), anchor="e")
+        root.mainloop()
+    except Exception:
+        pass
 
 
-_phase1_bootstrap()
+_BOOTSTRAP_MISSING = _phase1_bootstrap()
 
 
 # Clean stale bytecode — prevents old .pyc from overriding updated .py files
@@ -124,136 +120,110 @@ _clean_pycache()
 # ── Phase 2: GUI Splash + Remaining Dependencies ─────────────────────────────
 
 from PySide6.QtWidgets import (  # noqa: E402
-    QApplication, QWidget, QVBoxLayout, QLabel, QProgressBar,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QPlainTextEdit, QPushButton,
 )
-from PySide6.QtCore import Qt, QTimer  # noqa: E402
-from PySide6.QtGui import QFont, QColor  # noqa: E402
+from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtGui import QFont  # noqa: E402
 
 
-class _SplashInstaller(QWidget):
-    """Dark splash screen — safety net for any deps Phase 1 missed."""
+class _DependencyDiagnostics(QWidget):
+    """Dark diagnostics screen for missing runtime dependencies."""
 
-    # All packages the app needs (Phase 1 should have gotten these already)
-    PACKAGES = [
-        ("PySide6", "PySide6"),
-        ("numpy", "numpy"),
-        ("sounddevice", "sounddevice"),
-        ("soundfile", "soundfile"),
-        ("huggingface_hub", "huggingface-hub"),
-        ("pyqtgraph", "pyqtgraph"),
-        ("librosa", "librosa"),
-        ("psutil", "psutil"),
-    ]
-
-    def __init__(self):
+    def __init__(self, missing: Sequence[tuple[str, str]]):
         super().__init__()
-        self.setWindowTitle("Slunder Studio")
-        self.setFixedSize(460, 200)
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
+        from core.deps import (
+            format_missing_dependency_message,
+            package_install_command,
+            setup_commands,
         )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-        self.setStyleSheet("background: #1e1e2e;")
+
+        self._commands = setup_commands()
+        self._direct_command = package_install_command(
+            pip_name for _, pip_name in missing
+        )
+        self.setWindowTitle("Slunder Studio - Dependency Diagnostics")
+        self.setMinimumSize(720, 440)
+        self.setFont(QFont("Segoe UI", 10))
+        self.setStyleSheet("""
+            QWidget {
+                background: #1e1e2e; color: #cdd6f4; font-family: "Segoe UI";
+            }
+            QLabel#Title { color: #f38ba8; font-size: 22px; font-weight: 800; }
+            QLabel#Subtitle { color: #a6adc8; font-size: 12px; }
+            QPlainTextEdit {
+                background: #11111b; color: #cdd6f4; border: 1px solid #313244;
+                border-radius: 6px; padding: 10px; font-family: Consolas, "Courier New";
+                font-size: 10pt;
+            }
+            QPushButton {
+                background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+                border-radius: 5px; padding: 8px 14px; font-weight: 700;
+            }
+            QPushButton:hover { background: #45475a; }
+            QPushButton#Primary {
+                background: #89b4fa; color: #11111b; border-color: #89b4fa;
+            }
+            QPushButton#Primary:hover { background: #74c7ec; }
+        """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 28, 32, 28)
-        layout.setSpacing(12)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(14)
 
-        title = QLabel("Slunder Studio")
-        title.setStyleSheet(
-            "font-size: 22px; font-weight: 800; color: #89b4fa;"
-        )
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title = QLabel("Missing Python dependencies")
+        title.setObjectName("Title")
         layout.addWidget(title)
 
-        self._status = QLabel("Checking dependencies...")
-        self._status.setStyleSheet("font-size: 12px; color: #a6adc8;")
-        self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle = QLabel(
+            "Install the dependencies below, then launch Slunder Studio again."
+        )
+        subtitle.setObjectName("Subtitle")
+        layout.addWidget(subtitle)
+
+        details = QPlainTextEdit()
+        details.setReadOnly(True)
+        details.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        details.setPlainText(format_missing_dependency_message(missing))
+        details.setAccessibleName("Dependency diagnostics")
+        layout.addWidget(details, 1)
+
+        self._status = QLabel("")
+        self._status.setObjectName("Subtitle")
         layout.addWidget(self._status)
 
-        self._progress = QProgressBar()
-        self._progress.setFixedHeight(8)
-        self._progress.setTextVisible(False)
-        self._progress.setStyleSheet("""
-            QProgressBar {
-                background: #313244; border: none; border-radius: 4px;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #89b4fa, stop:1 #cba6f7
-                );
-                border-radius: 4px;
-            }
-        """)
-        self._progress.setMaximum(len(self.PACKAGES))
-        self._progress.setValue(0)
-        layout.addWidget(self._progress)
+        buttons = QHBoxLayout()
+        buttons.addStretch()
 
-        layout.addStretch()
+        copy_setup = QPushButton("Copy Setup Command")
+        copy_setup.setObjectName("Primary")
+        copy_setup.clicked.connect(self._copy_setup_command)
+        buttons.addWidget(copy_setup)
 
-        self._install_index = 0
-        self._all_ok = True
+        copy_direct = QPushButton("Copy Direct Command")
+        copy_direct.clicked.connect(self._copy_direct_command)
+        buttons.addWidget(copy_direct)
 
-        # Center on screen
-        self.show()
-        screen = self.screen().geometry()
-        self.move(
-            (screen.width() - self.width()) // 2,
-            (screen.height() - self.height()) // 2,
-        )
+        close = QPushButton("Close")
+        close.clicked.connect(self.close)
+        buttons.addWidget(close)
 
-        # Start installing after event loop begins
-        QTimer.singleShot(100, self._install_next)
+        layout.addLayout(buttons)
 
-    def _install_next(self):
-        """Install packages one at a time, keeping the GUI responsive."""
-        if self._install_index >= len(self.PACKAGES):
-            self._status.setText("Starting Slunder Studio...")
-            self._progress.setValue(len(self.PACKAGES))
-            QTimer.singleShot(300, self._finish)
-            return
+    def _copy_setup_command(self):
+        QApplication.clipboard().setText("\n".join(self._commands))
+        self._status.setText("Setup command copied.")
 
-        import_name, pip_name = self.PACKAGES[self._install_index]
-
-        try:
-            importlib.import_module(import_name)
-            # Already installed
-        except ImportError:
-            self._status.setText(f"Installing {pip_name}...")
-            self.repaint()
-            QApplication.processEvents()
-
-            try:
-                from core.deps import _install
-                _install(pip_name, import_name)
-            except ImportError as e:
-                print(f"[Slunder Studio] WARNING: {e}")
-                self._all_ok = False
-
-        self._install_index += 1
-        self._progress.setValue(self._install_index)
-        self._status.setText(
-            f"Checked {self._install_index}/{len(self.PACKAGES)} packages"
-        )
-        QApplication.processEvents()
-
-        # Yield back to event loop before next package
-        QTimer.singleShot(10, self._install_next)
-
-    def _finish(self):
-        self.close()
-        _launch_app()
+    def _copy_direct_command(self):
+        QApplication.clipboard().setText(self._direct_command)
+        self._status.setText("Direct install command copied.")
 
 
-def _needs_install() -> bool:
-    """Quick check if any packages are missing or broken."""
-    for import_name, _ in _SplashInstaller.PACKAGES:
-        try:
-            importlib.import_module(import_name)
-        except Exception:
-            return True
-    return False
+def _missing_core_dependencies() -> list[tuple[str, str]]:
+    if _is_frozen():
+        return []
+    from core.deps import CORE_RUNTIME_PACKAGES, dependency_status
+    return dependency_status(CORE_RUNTIME_PACKAGES)
 
 
 # ── Crash Logging ─────────────────────────────────────────────────────────────
@@ -390,15 +360,18 @@ def main():
     app.setApplicationName("Slunder Studio")
     app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName("SysAdminDoc")
+    font = QFont("Segoe UI", 10)
+    font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+    app.setFont(font)
 
-    if _needs_install():
-        # Show splash and install missing deps
-        splash = _SplashInstaller()
+    missing = _BOOTSTRAP_MISSING or _missing_core_dependencies()
+    if missing:
+        diagnostics = _DependencyDiagnostics(missing)
+        diagnostics.show()
         sys.exit(app.exec())
-    else:
-        # Everything ready — launch directly
-        _launch_app()
-        sys.exit(app.exec())
+
+    _launch_app()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

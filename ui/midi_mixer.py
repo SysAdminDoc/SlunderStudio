@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.7 — MIDI Mixer Widget
+Slunder Studio v0.1.8 — MIDI Mixer Widget
 Per-track mixer with volume, pan, mute/solo, program selector, and master controls.
 """
 from typing import Optional

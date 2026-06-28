@@ -16,26 +16,28 @@ import subprocess
 import shutil
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.7"
+APP_VERSION = "0.1.8"
 ENTRY_POINT = "main.py"
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def ensure_pyinstaller():
-    """Install PyInstaller if not present."""
+def require_pyinstaller():
+    """Fail with setup instructions if PyInstaller is not present."""
     try:
-        import PyInstaller
+        import PyInstaller  # noqa: F401
     except ImportError:
-        print("Installing PyInstaller...")
-        subprocess.check_call([
-            sys.executable, "-m", "pip", "install", "pyinstaller", "-q"
-        ])
+        print("PyInstaller is not installed.")
+        print("Run this setup command before building:")
+        print(f'  "{sys.executable}" -m pip install pyinstaller')
+        print("Then rerun:")
+        print(f'  "{sys.executable}" build/build.py')
+        sys.exit(2)
 
 
 def build(onefile: bool = False):
     """Run the PyInstaller build."""
-    ensure_pyinstaller()
+    require_pyinstaller()
 
     os.chdir(PROJECT_ROOT)
 

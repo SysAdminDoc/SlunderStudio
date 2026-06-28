@@ -88,13 +88,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ## Research-Driven Additions
 
 ### P0
-- [ ] P0 - Replace runtime dependency installation with explicit diagnostics
-  Why: Startup and build paths mutate the Python environment, which undermines offline reproducibility and makes support failures hard to diagnose.
-  Evidence: `main.py`, `core/deps.py`, `build/build.py`, `requirements.txt`.
-  Touches: `main.py`, `core/deps.py`, `ui/onboarding.py`, `README.md`, `requirements.txt`, `tests/`.
-  Acceptance: App startup never runs pip; missing dependencies produce a dark themed diagnostics screen with exact setup commands; build-time PyInstaller install becomes an explicit setup/preflight command.
-  Complexity: M
-
 - [ ] P0 - Add recoverable deletes for projects, models, and generated assets
   Why: Project deletion uses recursive removal with ignored errors, and creative assets/model caches are too expensive to lose without undo or quarantine.
   Evidence: `core/project.py`, `ui/project_manager.py`, `ui/model_hub.py`.

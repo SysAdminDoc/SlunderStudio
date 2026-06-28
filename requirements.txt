@@ -1,5 +1,5 @@
-# ── Slunder Studio v0.1.7 — Dependencies ──────────────────────────
-# Core (auto-installed on first run)
+# ── Slunder Studio v0.1.8 — Dependencies ──────────────────────────
+# Core runtime dependencies (install explicitly before first run)
 PySide6>=6.6
 numpy>=1.24
 sounddevice>=0.4

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.7 — Vocal Suite View
+Slunder Studio v0.1.8 — Vocal Suite View
 Main Vocal Suite page combining singing synthesis (DiffSinger),
 voice conversion (RVC), voice cloning (GPT-SoVITS), stem separation (Demucs),
 and stem remix/export.

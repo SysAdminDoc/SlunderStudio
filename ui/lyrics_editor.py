@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.7 — Lyrics Editor
+Slunder Studio v0.1.8 — Lyrics Editor
 Rich text editor with syntax highlighting for structure tags ([Verse], [Chorus], etc.),
 right-click section regeneration, streaming token display, and export tools.
 """

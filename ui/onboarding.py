@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.7 — Onboarding Wizard
+Slunder Studio v0.1.8 — Onboarding Wizard
 First-run experience: welcome, system check, model download prompt,
 quick start guide, and preference setup.
 """
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 
+from core.settings import APP_VERSION
 from ui.theme import ThemeEngine
 
 
@@ -40,6 +41,16 @@ def check_system() -> dict:
     except ImportError:
         checks["ram_gb"] = 0
         checks["ram_ok"] = True  # assume OK if psutil missing
+
+    # Core Python dependencies
+    try:
+        from core.deps import CORE_RUNTIME_PACKAGES, dependency_status
+        missing_deps = dependency_status(CORE_RUNTIME_PACKAGES)
+        checks["deps_missing"] = [pip_name for _, pip_name in missing_deps]
+        checks["deps_ok"] = not missing_deps
+    except Exception:
+        checks["deps_missing"] = []
+        checks["deps_ok"] = True
 
     # GPU / CUDA
     checks["cuda"] = False
@@ -94,7 +105,7 @@ class WelcomePage(QWidget):
         logo.setStyleSheet(f"color: {t['accent']}; font-size: 28px; font-weight: bold;")
         layout.addWidget(logo)
 
-        version = QLabel("v0.1.7")
+        version = QLabel(f"v{APP_VERSION}")
         version.setAlignment(Qt.AlignCenter)
         version.setStyleSheet(f"color: {t['text_secondary']}; font-size: 14px;")
         layout.addWidget(version)
@@ -153,6 +164,10 @@ class SystemCheckPage(QWidget):
         items = [
             ("Python", checks["python"], checks["python_ok"],
              "3.10+ required"),
+            ("Dependencies",
+             "Ready" if checks["deps_ok"] else ", ".join(checks["deps_missing"]),
+             checks["deps_ok"],
+             "" if checks["deps_ok"] else "Run setup command from launch diagnostics"),
             ("Operating System", f"{checks['os']} {checks['arch']}", True, ""),
             ("GPU / CUDA", checks["gpu_name"],
              checks["cuda"],
