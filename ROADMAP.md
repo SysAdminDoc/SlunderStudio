@@ -7,7 +7,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### Generation quality
 
 ### Vocals & voice
-- Lyric-to-melody generator (humming input -> MIDI line -> DiffSinger render)
 - Vocal stem recovery: isolated vocal track exported separately after Song Forge renders
 
 ### MIDI & composition

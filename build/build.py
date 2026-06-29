@@ -20,7 +20,7 @@ import zipfile
 from pathlib import Path
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.19"
+APP_VERSION = "0.1.20"
 ENTRY_POINT = "main.py"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +65,7 @@ def build(onefile: bool = False, smoke: bool = True):
         "engines.ai_producer",
         "engines.audio_analyzer",
         "engines.lyrics_templates",
+        "engines.melody_extractor",
         "engines.style_tags",
         "engines.vocal_tuning",
         "core.audio_engine",

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.19 — AI Producer View
+Slunder Studio v0.1.20 — AI Producer View
 One-prompt-to-full-song interface with creative brief input,
 live pipeline stage visualization, and final output preview.
 """

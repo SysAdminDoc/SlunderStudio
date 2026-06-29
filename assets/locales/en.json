@@ -144,6 +144,7 @@
   "vocal": {
     "tabs": {
       "singing": "Singing Synthesis",
+      "lyric_melody": "Lyric Melody",
       "conversion": "Voice Conversion",
       "cloning": "Voice Cloning",
       "autotune": "Auto-Tune",
@@ -156,6 +157,16 @@
       "strength": "Strength:",
       "apply": "Apply Auto-Tune",
       "corrected": "Corrected"
+    },
+    "melody": {
+      "input_short": "Hum:",
+      "no_file": "No file selected",
+      "browse": "Browse",
+      "lyrics_placeholder": "Paste lyrics to align with the hummed melody...",
+      "tempo": "BPM:",
+      "render_diffsinger": "Render DiffSinger if loaded",
+      "generate": "Generate Melody MIDI",
+      "preview": "Humming Preview"
     },
     "clone": {
       "language_short": "Lang:"

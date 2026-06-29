@@ -78,7 +78,7 @@ class VocalTuningTests(unittest.TestCase):
                     view.set_audio(str(source))
                     self.assertEqual(str(source), view._autotune_input_label.property("path"))
                     self.assertTrue(view._autotune_apply_btn.isEnabled())
-                    self.assertEqual(4, view._tabs.currentIndex())
+                    self.assertEqual(5, view._tabs.currentIndex())
 
                     view._autotune_strength.setValue(42)
                     self.assertEqual(0.42, Settings().get("vocal_suite.autotune_strength"))

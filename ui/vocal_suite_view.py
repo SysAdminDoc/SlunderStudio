@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.19 — Vocal Suite View
+Slunder Studio v0.1.20 — Vocal Suite View
 Main Vocal Suite page combining singing synthesis (DiffSinger),
 voice conversion (RVC), voice cloning (GPT-SoVITS), stem separation (Demucs),
 and stem remix/export.
@@ -40,7 +40,9 @@ class VocalSuiteView(QWidget):
         super().__init__(parent)
         self._settings = Settings()
         self._current_audio_path: Optional[str] = None
+        self._melody_midi_path: Optional[str] = None
         self._clone_quality_report = None
+        self._melody_worker: Optional[InferenceWorker] = None
         self._clone_worker: Optional[InferenceWorker] = None
         self._autotune_worker: Optional[InferenceWorker] = None
 
@@ -78,16 +80,19 @@ class VocalSuiteView(QWidget):
         # Tab 1: Singing Synthesis (DiffSinger)
         self._tabs.addTab(self._build_singing_tab(), tr("vocal.tabs.singing"))
 
-        # Tab 2: Voice Conversion (RVC)
+        # Tab 2: Humming to lyric melody
+        self._tabs.addTab(self._build_melody_tab(), tr("vocal.tabs.lyric_melody"))
+
+        # Tab 3: Voice Conversion (RVC)
         self._tabs.addTab(self._build_rvc_tab(), tr("vocal.tabs.conversion"))
 
-        # Tab 3: Voice Cloning (GPT-SoVITS)
+        # Tab 4: Voice Cloning (GPT-SoVITS)
         self._tabs.addTab(self._build_clone_tab(), tr("vocal.tabs.cloning"))
 
-        # Tab 4: Auto-Tune
+        # Tab 5: Auto-Tune
         self._tabs.addTab(self._build_autotune_tab(), tr("vocal.tabs.autotune"))
 
-        # Tab 5: Stem Separation (Demucs)
+        # Tab 6: Stem Separation (Demucs)
         self._tabs.addTab(self._build_stems_tab(), tr("vocal.tabs.stems"))
 
         layout.addWidget(self._tabs, 1)
@@ -155,6 +160,11 @@ class VocalSuiteView(QWidget):
                 (self._sing_vibrato, "Singing vibrato", "Adjusts vibrato expression."),
                 (self._sing_gender, "Singing gender", "Adjusts vocal formant character."),
                 (self._sing_gen_btn, "Synthesize vocals", "Starts DiffSinger vocal synthesis."),
+                (self._melody_browse_btn, "Browse humming input", "Selects a hummed melody recording."),
+                (self._melody_lyrics, "Melody lyrics", "Lyrics to align with the hummed MIDI melody."),
+                (self._melody_tempo, "Melody tempo", "Sets the generated MIDI tempo."),
+                (self._melody_render_diffsinger, "Render melody vocal", "Attempts DiffSinger rendering after MIDI extraction."),
+                (self._melody_generate_btn, "Generate melody MIDI", "Extracts a MIDI melody from humming audio."),
                 (self._rvc_browse_btn, "Browse RVC input", "Selects input audio for voice conversion."),
                 (self._rvc_voice, "RVC voice", "Selects the target RVC voice model."),
                 (self._rvc_pitch, "RVC pitch shift", "Adjusts pitch shift in semitones."),
@@ -196,6 +206,11 @@ class VocalSuiteView(QWidget):
                 self._sing_vibrato,
                 self._sing_gender,
                 self._sing_gen_btn,
+                self._melody_browse_btn,
+                self._melody_lyrics,
+                self._melody_tempo,
+                self._melody_render_diffsinger,
+                self._melody_generate_btn,
                 self._rvc_browse_btn,
                 self._rvc_voice,
                 self._rvc_pitch,
@@ -362,6 +377,125 @@ class VocalSuiteView(QWidget):
         # Right: Waveform output
         self._sing_waveform = WaveformWidget()
         layout.addWidget(self._sing_waveform, 1)
+
+        return widget
+
+    def _build_melody_tab(self) -> QWidget:
+        """Hummed melody to lyric-aligned MIDI tab."""
+        t = ThemeEngine.get_colors()
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        left = QVBoxLayout()
+        left.setSpacing(6)
+
+        ctrl_frame = QFrame()
+        ctrl_frame.setStyleSheet(f"""
+            QFrame {{ background: {t['surface']}; border: 1px solid {t['border']};
+                border-radius: 8px; }}
+        """)
+        ctrl_layout = QVBoxLayout(ctrl_frame)
+        ctrl_layout.setContentsMargins(12, 10, 12, 10)
+        ctrl_layout.setSpacing(8)
+
+        title = QLabel(tr("vocal.tabs.lyric_melody"))
+        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
+        ctrl_layout.addWidget(title)
+
+        param_style = f"""
+            QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {{
+                background: {t['background']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 3px;
+                padding: 3px 6px; font-size: 11px;
+            }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
+        """
+
+        input_row = QHBoxLayout()
+        input_label = QLabel(tr("vocal.melody.input_short"))
+        input_label.setStyleSheet(param_style)
+        self._melody_input_label = QLabel(tr("vocal.melody.no_file"))
+        self._melody_input_label.setStyleSheet(
+            f"color: {t['text_secondary']}; font-size: 10px; border: none;"
+        )
+        self._melody_browse_btn = QPushButton(tr("vocal.melody.browse"))
+        self._melody_browse_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['background']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 3px;
+                padding: 4px 10px; font-size: 10px;
+            }}
+        """)
+        self._melody_browse_btn.clicked.connect(self._on_melody_browse)
+        input_row.addWidget(input_label)
+        input_row.addWidget(self._melody_input_label, 1)
+        input_row.addWidget(self._melody_browse_btn)
+        ctrl_layout.addLayout(input_row)
+
+        self._melody_lyrics = QTextEdit()
+        self._melody_lyrics.setPlaceholderText(tr("vocal.melody.lyrics_placeholder"))
+        self._melody_lyrics.setMaximumHeight(90)
+        self._melody_lyrics.setStyleSheet(f"""
+            QTextEdit {{
+                background: {t['background']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 4px;
+                padding: 6px; font-size: 12px;
+            }}
+        """)
+        ctrl_layout.addWidget(self._melody_lyrics)
+
+        tempo_row = QHBoxLayout()
+        tempo_label = QLabel(tr("vocal.melody.tempo"))
+        tempo_label.setFixedWidth(42)
+        tempo_label.setStyleSheet(param_style)
+        self._melody_tempo = QSpinBox()
+        self._melody_tempo.setRange(40, 300)
+        self._melody_tempo.setValue(120)
+        self._melody_tempo.setStyleSheet(param_style)
+        tempo_row.addWidget(tempo_label)
+        tempo_row.addWidget(self._melody_tempo)
+        tempo_row.addStretch()
+        ctrl_layout.addLayout(tempo_row)
+
+        self._melody_render_diffsinger = QCheckBox(tr("vocal.melody.render_diffsinger"))
+        self._melody_render_diffsinger.setChecked(True)
+        ctrl_layout.addWidget(self._melody_render_diffsinger)
+
+        self._melody_generate_btn = QPushButton(tr("vocal.melody.generate"))
+        self._melody_generate_btn.setFixedHeight(34)
+        self._melody_generate_btn.setEnabled(False)
+        self._melody_generate_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {t['accent']}, stop:1 #a371f7);
+                color: white; border: none; border-radius: 6px;
+                font-weight: bold; font-size: 12px;
+            }}
+            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
+        """)
+        self._melody_generate_btn.clicked.connect(self._on_melody_generate)
+        ctrl_layout.addWidget(self._melody_generate_btn)
+
+        left.addWidget(ctrl_frame)
+        left.addStretch()
+
+        left_w = QWidget()
+        left_w.setLayout(left)
+        left_w.setFixedWidth(320)
+        layout.addWidget(left_w)
+
+        right = QVBoxLayout()
+        right.setSpacing(4)
+        preview_label = QLabel(tr("vocal.melody.preview"))
+        preview_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        self._melody_waveform = WaveformWidget()
+        right.addWidget(preview_label)
+        right.addWidget(self._melody_waveform, 1)
+        right_w = QWidget()
+        right_w.setLayout(right)
+        layout.addWidget(right_w, 1)
 
         return widget
 
@@ -920,6 +1054,109 @@ class VocalSuiteView(QWidget):
     def _on_sing_generate(self):
         self._status.setText("DiffSinger synthesis requires a loaded model (see Model Hub)")
 
+    def _on_melody_browse(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Humming Audio", "", "Audio (*.wav *.flac *.mp3 *.ogg)"
+        )
+        if path:
+            self._set_melody_input(path)
+
+    def _set_melody_input(self, path: str):
+        self._melody_input_label.setText(os.path.basename(path))
+        self._melody_input_label.setProperty("path", path)
+        self._melody_generate_btn.setEnabled(True)
+        try:
+            self._load_waveform_preview(self._melody_waveform, path)
+        except Exception:
+            pass
+
+    def _on_melody_generate(self):
+        path = self._melody_input_label.property("path")
+        if not path:
+            self._status.setText("Select humming audio before generating a melody")
+            return
+
+        lyrics = self._melody_lyrics.toPlainText().strip()
+        tempo = float(self._melody_tempo.value())
+        render_diffsinger = self._melody_render_diffsinger.isChecked()
+        self._melody_generate_btn.setEnabled(False)
+        self._status.setText("Extracting humming melody...")
+        self._melody_worker = InferenceWorker(
+            self._run_melody_generation,
+            path,
+            lyrics,
+            tempo,
+            render_diffsinger,
+            job_kind="lyric_melody",
+            job_label=f"Lyric melody {os.path.basename(path)}",
+            job_inputs={
+                "input_path": path,
+                "lyrics": lyrics,
+                "tempo": tempo,
+                "render_diffsinger": render_diffsinger,
+            },
+            job_metadata={"module": "vocal_suite"},
+        )
+        self._melody_worker.progress.connect(
+            lambda pct: self._status.setText(f"Generating melody... {pct}%")
+        )
+        self._melody_worker.step_info.connect(self._status.setText)
+        self._melody_worker.finished.connect(self._on_melody_generated)
+        self._melody_worker.error.connect(self._on_melody_error)
+        self._melody_worker.cancelled.connect(self._on_melody_cancelled)
+        self._melody_worker.start()
+
+    def _run_melody_generation(self, path: str, lyrics: str, tempo: float, render_diffsinger: bool,
+                               progress_cb=None, step_cb=None, log_cb=None, cancel_event=None):
+        from engines.melody_extractor import LyricMelodyParams, generate_lyric_melody
+
+        return generate_lyric_melody(
+            LyricMelodyParams(
+                input_path=path,
+                lyrics=lyrics,
+                tempo=tempo,
+                render_diffsinger=render_diffsinger,
+            ),
+            progress_cb=progress_cb,
+            step_cb=step_cb,
+            log_cb=log_cb,
+            cancel_event=cancel_event,
+        )
+
+    def _on_melody_generated(self, result):
+        self._melody_worker = None
+        self._melody_generate_btn.setEnabled(True)
+        if not result or not result.midi_path:
+            self._status.setText("Lyric melody generation finished without a MIDI file")
+            return
+
+        self._melody_midi_path = result.midi_path
+        if result.vocal_path:
+            self._current_audio_path = result.vocal_path
+            try:
+                self._load_waveform_preview(self._melody_waveform, result.vocal_path)
+            except Exception:
+                pass
+            self._status.setText(
+                f"Lyric melody rendered: {os.path.basename(result.vocal_path)} + "
+                f"{os.path.basename(result.midi_path)}"
+            )
+            self._enable_routing()
+            return
+
+        suffix = f"; {result.diffsinger_error}" if result.diffsinger_error else ""
+        self._status.setText(f"Melody MIDI created: {result.midi_path}{suffix}")
+
+    def _on_melody_error(self, error: str):
+        self._melody_worker = None
+        self._melody_generate_btn.setEnabled(True)
+        self._status.setText(f"Lyric melody generation failed: {error}")
+
+    def _on_melody_cancelled(self):
+        self._melody_worker = None
+        self._melody_generate_btn.setEnabled(True)
+        self._status.setText("Lyric melody generation cancelled")
+
     def _on_rvc_browse(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Select Audio", "", "Audio (*.wav *.flac *.mp3 *.ogg)"
@@ -1348,12 +1585,14 @@ class VocalSuiteView(QWidget):
 
     def set_audio(self, audio_path: str):
         """Receive audio from another module (Song Forge, MIDI Studio)."""
+        if hasattr(self, "_melody_input_label"):
+            self._set_melody_input(audio_path)
         if hasattr(self, "_autotune_input_label"):
             self._set_autotune_input(audio_path)
         self._stem_input_label.setText(os.path.basename(audio_path))
         self._stem_input_label.setProperty("path", audio_path)
         self._stem_separate_btn.setEnabled(True)
-        self._tabs.setCurrentIndex(4)  # Switch to stems tab
+        self._tabs.setCurrentIndex(5)  # Switch to stems tab
         self._status.setText(f"Audio received: {os.path.basename(audio_path)}")
 
     def refresh_voice_bank(self):
