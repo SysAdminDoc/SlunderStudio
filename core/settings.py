@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.18 — Settings System
+Slunder Studio v0.1.19 — Settings System
 JSON config in %APPDATA%/SlunderStudio with presets, reactive updates, and two-tier mode.
 """
 import json
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.18"
+APP_VERSION = "0.1.19"
 SETTINGS_SCHEMA_VERSION = 2
 
 
@@ -81,6 +81,7 @@ DEFAULTS = {
         "rvc_protect": 0.33,
         "diffsinger_model": "default",
         "sovits_reference_path": "",
+        "autotune_strength": 0.75,
     },
     "production": {
         "mastering_target": "spotify",

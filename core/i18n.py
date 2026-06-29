@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.18 - Locale catalog and language helpers.
+Slunder Studio v0.1.19 - Locale catalog and language helpers.
 """
 from __future__ import annotations
 
@@ -118,7 +118,14 @@ REQUIRED_I18N_KEYS = (
     "vocal.tabs.singing",
     "vocal.tabs.conversion",
     "vocal.tabs.cloning",
+    "vocal.tabs.autotune",
     "vocal.tabs.stems",
+    "vocal.autotune.input_short",
+    "vocal.autotune.no_file",
+    "vocal.autotune.browse",
+    "vocal.autotune.strength",
+    "vocal.autotune.apply",
+    "vocal.autotune.corrected",
     "vocal.clone.language_short",
     "vocal.actions.send_to_forge",
     "vocal.actions.send_to_mixer",

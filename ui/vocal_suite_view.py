@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.18 — Vocal Suite View
+Slunder Studio v0.1.19 — Vocal Suite View
 Main Vocal Suite page combining singing synthesis (DiffSinger),
 voice conversion (RVC), voice cloning (GPT-SoVITS), stem separation (Demucs),
 and stem remix/export.
@@ -42,6 +42,7 @@ class VocalSuiteView(QWidget):
         self._current_audio_path: Optional[str] = None
         self._clone_quality_report = None
         self._clone_worker: Optional[InferenceWorker] = None
+        self._autotune_worker: Optional[InferenceWorker] = None
 
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(self)
@@ -83,7 +84,10 @@ class VocalSuiteView(QWidget):
         # Tab 3: Voice Cloning (GPT-SoVITS)
         self._tabs.addTab(self._build_clone_tab(), tr("vocal.tabs.cloning"))
 
-        # Tab 4: Stem Separation (Demucs)
+        # Tab 4: Auto-Tune
+        self._tabs.addTab(self._build_autotune_tab(), tr("vocal.tabs.autotune"))
+
+        # Tab 5: Stem Separation (Demucs)
         self._tabs.addTab(self._build_stems_tab(), tr("vocal.tabs.stems"))
 
         layout.addWidget(self._tabs, 1)
@@ -171,6 +175,9 @@ class VocalSuiteView(QWidget):
                 (self._clone_speed, "Clone speed", "Adjusts cloned speech speed."),
                 (self._clone_temp, "Clone temperature", "Adjusts generation variation."),
                 (self._clone_gen_btn, "Clone voice", "Starts GPT-SoVITS voice cloning."),
+                (self._autotune_browse_btn, "Browse auto-tune input", "Selects vocal audio for pitch correction."),
+                (self._autotune_strength, "Auto-tune strength", "Controls how strongly pitch is pulled toward the nearest semitone."),
+                (self._autotune_apply_btn, "Apply auto-tune", "Writes a pitch-corrected vocal WAV."),
                 (self._stem_browse_btn, "Browse stem input", "Selects audio for stem separation."),
                 (self._stem_model, "Stem separation model", "Selects the Demucs model."),
                 (self._stem_separate_btn, "Separate stems", "Starts stem separation."),
@@ -209,6 +216,9 @@ class VocalSuiteView(QWidget):
                 self._clone_speed,
                 self._clone_temp,
                 self._clone_gen_btn,
+                self._autotune_browse_btn,
+                self._autotune_strength,
+                self._autotune_apply_btn,
                 self._stem_browse_btn,
                 self._stem_model,
                 self._stem_separate_btn,
@@ -729,6 +739,115 @@ class VocalSuiteView(QWidget):
 
         return widget
 
+    def _build_autotune_tab(self) -> QWidget:
+        """Vocal pitch correction tab."""
+        t = ThemeEngine.get_colors()
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        left = QVBoxLayout()
+        left.setSpacing(6)
+
+        ctrl_frame = QFrame()
+        ctrl_frame.setStyleSheet(f"""
+            QFrame {{ background: {t['surface']}; border: 1px solid {t['border']};
+                border-radius: 8px; }}
+        """)
+        ctrl_layout = QVBoxLayout(ctrl_frame)
+        ctrl_layout.setContentsMargins(12, 10, 12, 10)
+        ctrl_layout.setSpacing(8)
+
+        title = QLabel(tr("vocal.tabs.autotune"))
+        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
+        ctrl_layout.addWidget(title)
+
+        param_style = f"""
+            QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {{
+                background: {t['background']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 3px;
+                padding: 3px 6px; font-size: 11px;
+            }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
+        """
+
+        input_row = QHBoxLayout()
+        input_label = QLabel(tr("vocal.autotune.input_short"))
+        input_label.setStyleSheet(param_style)
+        self._autotune_input_label = QLabel(tr("vocal.autotune.no_file"))
+        self._autotune_input_label.setStyleSheet(
+            f"color: {t['text_secondary']}; font-size: 10px; border: none;"
+        )
+        self._autotune_browse_btn = QPushButton(tr("vocal.autotune.browse"))
+        self._autotune_browse_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['background']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 3px;
+                padding: 4px 10px; font-size: 10px;
+            }}
+        """)
+        self._autotune_browse_btn.clicked.connect(self._on_autotune_browse)
+        input_row.addWidget(input_label)
+        input_row.addWidget(self._autotune_input_label, 1)
+        input_row.addWidget(self._autotune_browse_btn)
+        ctrl_layout.addLayout(input_row)
+
+        strength_row = QHBoxLayout()
+        strength_label = QLabel(tr("vocal.autotune.strength"))
+        strength_label.setFixedWidth(58)
+        strength_label.setStyleSheet(param_style)
+        self._autotune_strength = QSlider(Qt.Horizontal)
+        self._autotune_strength.setRange(0, 100)
+        self._autotune_strength.setValue(
+            int(self._settings.get("vocal_suite.autotune_strength", 0.75) * 100)
+        )
+        self._autotune_strength.setFixedHeight(18)
+        self._autotune_strength_val = QLabel(f"{self._autotune_strength.value()}%")
+        self._autotune_strength_val.setFixedWidth(38)
+        self._autotune_strength_val.setStyleSheet(param_style)
+        self._autotune_strength.valueChanged.connect(self._on_autotune_strength_changed)
+        strength_row.addWidget(strength_label)
+        strength_row.addWidget(self._autotune_strength)
+        strength_row.addWidget(self._autotune_strength_val)
+        ctrl_layout.addLayout(strength_row)
+
+        self._autotune_apply_btn = QPushButton(tr("vocal.autotune.apply"))
+        self._autotune_apply_btn.setFixedHeight(34)
+        self._autotune_apply_btn.setEnabled(False)
+        self._autotune_apply_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {t['accent']}, stop:1 #f38ba8);
+                color: white; border: none; border-radius: 6px;
+                font-weight: bold; font-size: 12px;
+            }}
+            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
+        """)
+        self._autotune_apply_btn.clicked.connect(self._on_autotune_apply)
+        ctrl_layout.addWidget(self._autotune_apply_btn)
+
+        left.addWidget(ctrl_frame)
+        left.addStretch()
+
+        left_w = QWidget()
+        left_w.setLayout(left)
+        left_w.setFixedWidth(320)
+        layout.addWidget(left_w)
+
+        right = QVBoxLayout()
+        right.setSpacing(4)
+        preview_label = QLabel(tr("vocal.autotune.corrected"))
+        preview_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        self._autotune_waveform = WaveformWidget()
+        right.addWidget(preview_label)
+        right.addWidget(self._autotune_waveform, 1)
+        right_w = QWidget()
+        right_w.setLayout(right)
+        layout.addWidget(right_w, 1)
+
+        return widget
+
     def _build_stems_tab(self) -> QWidget:
         """Demucs stem separation tab."""
         t = ThemeEngine.get_colors()
@@ -1072,6 +1191,97 @@ class VocalSuiteView(QWidget):
         self._clone_gen_btn.setEnabled(True)
         self._status.setText(f"GPT-SoVITS clone failed: {error}")
 
+    def _on_autotune_browse(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Vocal Audio", "", "Audio (*.wav *.flac *.mp3 *.ogg)"
+        )
+        if path:
+            self._set_autotune_input(path)
+
+    def _set_autotune_input(self, path: str):
+        self._autotune_input_label.setText(os.path.basename(path))
+        self._autotune_input_label.setProperty("path", path)
+        self._autotune_apply_btn.setEnabled(True)
+        try:
+            self._load_waveform_preview(self._autotune_waveform, path)
+        except Exception:
+            pass
+
+    def _on_autotune_strength_changed(self, value: int):
+        self._autotune_strength_val.setText(f"{value}%")
+        self._settings.set("vocal_suite.autotune_strength", value / 100)
+
+    def _on_autotune_apply(self):
+        path = self._autotune_input_label.property("path")
+        if not path:
+            self._status.setText("Select vocal audio before applying auto-tune")
+            return
+
+        strength = self._autotune_strength.value() / 100
+        self._autotune_apply_btn.setEnabled(False)
+        self._status.setText(f"Applying auto-tune at {self._autotune_strength.value()}% strength...")
+        self._autotune_worker = InferenceWorker(
+            self._run_autotune,
+            path,
+            strength,
+            job_kind="vocal_autotune",
+            job_label=f"Auto-tune {os.path.basename(path)}",
+            job_inputs={"input_path": path, "strength": strength},
+            job_metadata={"module": "vocal_suite"},
+        )
+        self._autotune_worker.progress.connect(
+            lambda pct: self._status.setText(f"Auto-tune processing... {pct}%")
+        )
+        self._autotune_worker.step_info.connect(self._status.setText)
+        self._autotune_worker.finished.connect(self._on_autotune_generated)
+        self._autotune_worker.error.connect(self._on_autotune_error)
+        self._autotune_worker.cancelled.connect(self._on_autotune_cancelled)
+        self._autotune_worker.start()
+
+    def _run_autotune(self, path: str, strength: float, progress_cb=None,
+                      step_cb=None, log_cb=None, cancel_event=None):
+        from engines.vocal_tuning import AutoTuneParams, autotune_file
+
+        return autotune_file(
+            AutoTuneParams(input_path=path, strength=strength),
+            progress_cb=progress_cb,
+            step_cb=step_cb,
+            log_cb=log_cb,
+            cancel_event=cancel_event,
+        )
+
+    def _on_autotune_generated(self, result):
+        self._autotune_worker = None
+        self._autotune_apply_btn.setEnabled(True)
+        if not result or not result.output_path:
+            self._status.setText("Auto-tune finished without an output file")
+            return
+        self._current_audio_path = result.output_path
+        try:
+            self._load_waveform_preview(self._autotune_waveform, result.output_path)
+        except Exception:
+            pass
+        if result.voiced_frames:
+            self._status.setText(
+                f"Auto-tuned vocal: {os.path.basename(result.output_path)} "
+                f"({result.mean_abs_correction:.2f} st average correction)"
+            )
+        else:
+            self._status.setText(
+                f"Auto-tune wrote a copy; no stable vocal pitch was detected in {os.path.basename(result.output_path)}"
+            )
+        self._enable_routing()
+
+    def _on_autotune_error(self, error: str):
+        self._autotune_worker = None
+        self._autotune_apply_btn.setEnabled(True)
+        self._status.setText(f"Auto-tune failed: {error}")
+
+    def _on_autotune_cancelled(self):
+        self._autotune_worker = None
+        self._autotune_apply_btn.setEnabled(True)
+        self._status.setText("Auto-tune cancelled")
+
     def _on_stems_browse(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Select Audio to Separate", "", "Audio (*.wav *.flac *.mp3 *.ogg)"
@@ -1138,10 +1348,12 @@ class VocalSuiteView(QWidget):
 
     def set_audio(self, audio_path: str):
         """Receive audio from another module (Song Forge, MIDI Studio)."""
+        if hasattr(self, "_autotune_input_label"):
+            self._set_autotune_input(audio_path)
         self._stem_input_label.setText(os.path.basename(audio_path))
         self._stem_input_label.setProperty("path", audio_path)
         self._stem_separate_btn.setEnabled(True)
-        self._tabs.setCurrentIndex(3)  # Switch to stems tab
+        self._tabs.setCurrentIndex(4)  # Switch to stems tab
         self._status.setText(f"Audio received: {os.path.basename(audio_path)}")
 
     def refresh_voice_bank(self):

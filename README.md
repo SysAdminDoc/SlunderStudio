@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.18-blue)
+![Version](https://img.shields.io/badge/version-0.1.19-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -28,7 +28,7 @@ Python 3.10+ required. Install core dependencies explicitly before launch; if an
 | Song Forge | Full song generation from lyrics + style tags, including stitched long-form songs over 2 minutes | ACE-Step |
 | Lyrics Engine | AI-powered lyrics writing with 33 genre templates | Llama 3.2 1B |
 | MIDI Studio | Piano roll editor + text-to-MIDI composition | MIDI-LLM |
-| Vocal Suite | Singing synthesis, voice conversion, voice cloning | DiffSinger, RVC v2, GPT-SoVITS |
+| Vocal Suite | Singing synthesis, voice conversion, voice cloning, and vocal auto-tune pitch correction | DiffSinger, RVC v2, GPT-SoVITS, librosa |
 | Stem Separation | Isolate vocals, drums, bass, and other instruments | Demucs (htdemucs) |
 | SFX Generator | Text-to-sound-effect generation | Stable Audio Open |
 | Mixer | Multi-track mixing with smart mastering (8 presets) | Built-in DSP |
@@ -54,7 +54,7 @@ Every module can route audio to any other module. Generate a song in Song Forge,
 
 Settings can export a redacted health report ZIP with app/dependency versions, GPU and ffmpeg status, model cache state, settings repair status, crash log metadata, and recent failed jobs. HuggingFace tokens are always redacted, and job prompts/lyrics stay out of the report unless the private-input opt-in is enabled.
 
-Major app chrome and lyric controls use an English locale catalog, and Settings > Appearance > Default Lyrics Language feeds Quick lyrics prompts, Guided lyrics metadata, and new GPT-SoVITS voice profile language defaults where supported.
+Major app chrome and lyric controls use an English locale catalog, and Settings > Appearance > Default Lyrics Language feeds Quick lyrics prompts, Guided lyrics metadata, and new GPT-SoVITS voice profile language defaults where supported. Vocal Suite includes an Auto-Tune tab that writes routed, provenance-tracked WAV files with adjustable pitch correction toward the nearest semitone.
 
 ## Mastering Presets
 
@@ -161,6 +161,7 @@ SlunderStudio/
 │   ├── lyrics_templates.py     # 33 genre template definitions
 │   ├── midi_llm_engine.py      # Text-to-MIDI generation
 │   ├── rvc_engine.py           # RVC + GPT-SoVITS voice engines
+│   ├── vocal_tuning.py         # Vocal auto-tune pitch correction
 │   ├── sfx_engine.py           # Stable Audio Open SFX
 │   └── style_tags.py           # ACE-Step style tag database
 ├── ui/                         # PySide6 interface

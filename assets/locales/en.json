@@ -146,7 +146,16 @@
       "singing": "Singing Synthesis",
       "conversion": "Voice Conversion",
       "cloning": "Voice Cloning",
+      "autotune": "Auto-Tune",
       "stems": "Stem Separation"
+    },
+    "autotune": {
+      "input_short": "Input:",
+      "no_file": "No file selected",
+      "browse": "Browse",
+      "strength": "Strength:",
+      "apply": "Apply Auto-Tune",
+      "corrected": "Corrected"
     },
     "clone": {
       "language_short": "Lang:"
