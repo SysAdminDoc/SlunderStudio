@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.23 — Onboarding Wizard
+Slunder Studio v0.1.24 — Onboarding Wizard
 First-run experience: welcome, system check, model download prompt,
 quick start guide, and preference setup.
 """

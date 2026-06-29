@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.23-blue)
+![Version](https://img.shields.io/badge/version-0.1.24-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -27,7 +27,7 @@ Python 3.10+ required. Install core dependencies explicitly before launch; if an
 |--------|-------------|-----------|
 | Song Forge | Full song generation from lyrics + style tags, stitched long-form songs, and recovered vocal-stem export | ACE-Step, Demucs |
 | Lyrics Engine | AI-powered lyrics writing with 33 genre templates | Llama 3.2 1B |
-| MIDI Studio | Piano roll editor + text-to-MIDI composition with chord-progression priors and groove-template drum tracks | MIDI-LLM |
+| MIDI Studio | Piano roll editor, text-to-MIDI composition, groove-template drum tracks, and chord chart export | MIDI-LLM |
 | Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, voice conversion, voice cloning, and vocal auto-tune pitch correction | DiffSinger, RVC v2, GPT-SoVITS, librosa |
 | Stem Separation | Isolate vocals, drums, bass, and other instruments | Demucs (htdemucs) |
 | SFX Generator | Text-to-sound-effect generation | Stable Audio Open |
@@ -54,7 +54,7 @@ Every module can route audio to any other module. Generate a song in Song Forge,
 
 Settings can export a redacted health report ZIP with app/dependency versions, GPU and ffmpeg status, model cache state, settings repair status, crash log metadata, and recent failed jobs. HuggingFace tokens are always redacted, and job prompts/lyrics stay out of the report unless the private-input opt-in is enabled.
 
-Major app chrome and lyric controls use an English locale catalog, and Settings > Appearance > Default Lyrics Language feeds Quick lyrics prompts, Guided lyrics metadata, and new GPT-SoVITS voice profile language defaults where supported. MIDI Studio supports explicit chord-progression priors such as `I-V-vi-IV` and `ii-V-I` for text-to-MIDI prompts and fallback generation. MIDI Studio also includes selectable drum groove templates with swing timing, snare ghost notes, and velocity humanization for generated GM drum tracks. Vocal Suite includes a Lyric Melody tab that converts hummed audio into provenance-tracked MIDI, aligns pasted lyrics to detected notes, and can render a routed DiffSinger vocal when a model is loaded. The Auto-Tune tab writes routed, provenance-tracked WAV files with adjustable pitch correction toward the nearest semitone.
+Major app chrome and lyric controls use an English locale catalog, and Settings > Appearance > Default Lyrics Language feeds Quick lyrics prompts, Guided lyrics metadata, and new GPT-SoVITS voice profile language defaults where supported. MIDI Studio supports explicit chord-progression priors such as `I-V-vi-IV` and `ii-V-I` for text-to-MIDI prompts and fallback generation. MIDI Studio also includes selectable drum groove templates with swing timing, snare ghost notes, and velocity humanization for generated GM drum tracks, plus `.chordpro` and `.crd` chord chart export with optional pasted lyrics. Vocal Suite includes a Lyric Melody tab that converts hummed audio into provenance-tracked MIDI, aligns pasted lyrics to detected notes, and can render a routed DiffSinger vocal when a model is loaded. The Auto-Tune tab writes routed, provenance-tracked WAV files with adjustable pitch correction toward the nearest semitone.
 
 ## Mastering Presets
 
@@ -141,6 +141,7 @@ SlunderStudio/
 ├── core/                       # Core infrastructure
 │   ├── audio_engine.py         # Playback engine (sounddevice)
 │   ├── audio_export.py         # WAV/FLAC/MP3 export
+│   ├── chord_chart.py          # MIDI chord inference and ChordPro/CRD export
 │   ├── lyrics_db.py            # Lyrics database with search
 │   ├── mastering.py            # DSP mastering chain
 │   ├── midi_utils.py           # MIDI I/O (pretty_midi wrapper)

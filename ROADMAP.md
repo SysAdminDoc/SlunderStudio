@@ -9,7 +9,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### Vocals & voice
 
 ### MIDI & composition
-- MIDI -> chord chart export (`.chordpro`, `.crd`) for lyric + chord sheet printing
 - Piano roll quantize, swing, velocity humanize, CC automation lanes
 
 ### Mixing & mastering

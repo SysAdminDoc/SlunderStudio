@@ -1,10 +1,11 @@
 """
-Slunder Studio v0.1.23 — MIDI Studio View
+Slunder Studio v0.1.24 — MIDI Studio View
 Main MIDI Studio page: text-to-MIDI generation, piano roll editor,
 per-track mixer, .mid import/export, FluidSynth rendering, and
 cross-module routing (Song Forge, Vocal Suite).
 """
 from typing import Optional
+from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
     QComboBox, QSpinBox, QDoubleSpinBox, QFileDialog, QTabWidget,
@@ -19,6 +20,7 @@ from ui.waveform_widget import WaveformWidget
 from core.midi_utils import (
     MidiData, TrackData, NoteData, load_midi, save_midi, get_program_name,
 )
+from core.chord_chart import save_chord_chart
 from engines.midi_llm_engine import (
     DRUM_GROOVE_NAMES, MidiGenParams, MidiGenResult, generate_demo_midi,
 )
@@ -227,6 +229,21 @@ class MidiStudioView(QWidget):
         row5.addWidget(self._groove_combo)
         gen_layout.addLayout(row5)
 
+        self._chart_lyrics = QTextEdit()
+        self._chart_lyrics.setPlaceholderText("Optional lyrics for chord chart export...")
+        self._chart_lyrics.setMaximumHeight(54)
+        self._chart_lyrics.setStyleSheet(f"""
+            QTextEdit {{
+                background: {t.get('background', '#0d1117')};
+                color: {t.get('text', '#e6edf3')};
+                border: 1px solid {t.get('border', '#1e2733')};
+                border-radius: 4px;
+                padding: 5px;
+                font-size: 11px;
+            }}
+        """)
+        gen_layout.addWidget(self._chart_lyrics)
+
         # Generate button
         self._gen_btn = QPushButton("Generate MIDI")
         self._gen_btn.setFixedHeight(36)
@@ -278,6 +295,10 @@ class MidiStudioView(QWidget):
         self._export_btn.setStyleSheet(btn_style)
         self._export_btn.clicked.connect(self._on_export)
 
+        self._chart_btn = QPushButton("Export Chart")
+        self._chart_btn.setStyleSheet(btn_style)
+        self._chart_btn.clicked.connect(self._on_export_chart)
+
         self._render_btn = QPushButton("Render Audio")
         self._render_btn.setStyleSheet(f"""
             QPushButton {{
@@ -291,6 +312,7 @@ class MidiStudioView(QWidget):
 
         action_row.addWidget(self._import_btn)
         action_row.addWidget(self._export_btn)
+        action_row.addWidget(self._chart_btn)
         action_row.addWidget(self._render_btn)
         left.addLayout(action_row)
 
@@ -491,6 +513,35 @@ class MidiStudioView(QWidget):
                 self._status.setText(f"Export error: {e}")
 
     # ── Render ─────────────────────────────────────────────────────────────────
+
+    def _on_export_chart(self):
+        if not self._midi_data:
+            self._status.setText("Nothing to export")
+            return
+
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Chord Chart",
+            "chord_chart.chordpro",
+            "ChordPro (*.chordpro);;Chord sheet (*.crd)",
+        )
+        if not path:
+            return
+
+        target = Path(path)
+        if not target.suffix:
+            target = target.with_suffix(".crd" if "crd" in selected_filter.lower() else ".chordpro")
+
+        try:
+            output = save_chord_chart(
+                self._midi_data,
+                str(target),
+                lyrics=self._chart_lyrics.toPlainText().strip(),
+                title=target.stem,
+            )
+            self._status.setText(f"Exported chart: {output}")
+        except Exception as e:
+            self._status.setText(f"Chart export error: {e}")
 
     def _on_render(self):
         """Render MIDI to audio via FluidSynth or fallback."""
