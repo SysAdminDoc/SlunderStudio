@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.12 — Model Manager
+Slunder Studio v0.1.13 — Model Manager
 Central singleton managing model lifecycle: download, load, unload, and GPU memory.
 Enforces one-large-model-at-a-time GPU residency for 16GB VRAM budget.
 """
@@ -502,9 +502,23 @@ class ModelManager(QObject):
 
         cache_path = self.get_cache_dir(model_id)
 
+        def _mark_cancelled_download():
+            self._set_status(
+                model_id,
+                ModelStatus.PARTIAL if self.has_partial_download(model_id) else ModelStatus.NOT_DOWNLOADED,
+            )
+
+        def _raise_if_cancelled():
+            if cancel_event and cancel_event.is_set():
+                _mark_cancelled_download()
+                from core.workers import CancelledJobError
+                raise CancelledJobError("Download cancelled", outputs={"model_id": model_id})
+
         try:
             from huggingface_hub import snapshot_download
             import time as _time
+
+            _raise_if_cancelled()
 
             cache_dir = str(cache_path.parent)
 
@@ -590,10 +604,13 @@ class ModelManager(QObject):
                 marker.unlink()
 
             try:
+                _raise_if_cancelled()
                 resolved_path = snapshot_download(**kwargs)
             finally:
                 _download_done.set()
                 poll_thread.join(timeout=2)
+
+            _raise_if_cancelled()
 
             # -- Write completion marker --
             resolved_revision = self._resolve_hf_revision(info, kwargs.get("token"))
@@ -610,8 +627,11 @@ class ModelManager(QObject):
                 progress_cb(100)
 
         except Exception as e:
-            self._set_status(model_id, ModelStatus.ERROR)
-            self.download_error.emit(model_id, str(e))
+            if cancel_event and cancel_event.is_set():
+                _mark_cancelled_download()
+            else:
+                self._set_status(model_id, ModelStatus.ERROR)
+                self.download_error.emit(model_id, str(e))
             raise
 
     def _resolve_hf_revision(self, info: ModelInfo, token: Optional[str] = None) -> str:

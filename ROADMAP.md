@@ -90,12 +90,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### P0
 
 ### P1
-- [ ] P1 - Make long jobs cancel-safe and crash-resumable
-  Why: Worker cancellation is cooperative, but long model calls and downloads need durable job state so users can recover after cancel, crash, or restart.
-  Evidence: `core/workers.py`, `engines/ace_step_engine.py`, `core/model_manager.py`, existing batch/download roadmap items.
-  Touches: `core/workers.py`, `core/model_manager.py`, `engines/ace_step_engine.py`, `ui/batch_view.py`, `ui/model_hub.py`, `tests/`.
-  Acceptance: Jobs persist queued/running/completed/failed/cancel-requested state, partial outputs are cleaned or resumed deterministically, and restart shows recoverable jobs instead of orphaned files.
-  Complexity: L
 
 ### P2
 - [ ] P2 - Add voice consent and profile provenance guardrails

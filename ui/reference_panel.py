@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.12 — Reference Panel
+Slunder Studio v0.1.13 — Reference Panel
 Reference track analysis UI: drag-drop audio, view analysis results,
 "Match This" one-click generation, and reference library management.
 """

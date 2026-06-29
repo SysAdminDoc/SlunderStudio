@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.12 — Threading & Worker System
+Slunder Studio v0.1.13 — Threading & Worker System
 InferenceWorker base class, WorkflowQueue for multi-step pipelines,
 cancellation support, and progress aggregation.
 """
@@ -9,6 +9,16 @@ from typing import Any, Callable, Optional
 from collections import deque
 
 from PySide6.QtCore import QThread, Signal, QObject, QTimer
+
+from core.job_state import JobStore, extract_output_paths
+
+
+class CancelledJobError(RuntimeError):
+    """Raised by long-running tasks after cleaning or reporting partial outputs."""
+
+    def __init__(self, message: str = "Job cancelled", outputs: Any = None):
+        super().__init__(message)
+        self.outputs = outputs
 
 
 class InferenceWorker(QThread):
@@ -28,39 +38,100 @@ class InferenceWorker(QThread):
     log = Signal(str)
     finished = Signal(object)
     error = Signal(str)
+    cancelled = Signal()
 
-    def __init__(self, task_fn: Callable, *args, **kwargs):
+    def __init__(
+        self,
+        task_fn: Callable,
+        *args,
+        job_kind: str = "",
+        job_label: str = "",
+        job_inputs: Optional[dict[str, Any]] = None,
+        job_metadata: Optional[dict[str, Any]] = None,
+        job_store: Optional[JobStore] = None,
+        **kwargs,
+    ):
         super().__init__()
         self.task_fn = task_fn
         self.args = args
         self.kwargs = kwargs
         self._cancel_event = threading.Event()
         self._result = None
+        self._job_store = job_store or JobStore()
+        self._job_record = None
+        self.job_id = ""
+        if job_kind:
+            self._job_record = self._job_store.create(
+                job_kind,
+                job_label or getattr(task_fn, "__name__", "Inference job"),
+                inputs=job_inputs or {},
+                metadata=job_metadata or {},
+            )
+            self.job_id = self._job_record.id
 
     def run(self):
+        if self.job_id:
+            self._job_store.mark_running(self.job_id, "Starting")
         try:
             self._result = self.task_fn(
                 *self.args,
                 **self.kwargs,
-                progress_cb=self.progress.emit,
-                step_cb=self.step_info.emit,
-                log_cb=self.log.emit,
+                progress_cb=self._emit_progress,
+                step_cb=self._emit_step,
+                log_cb=self._emit_log,
                 cancel_event=self._cancel_event,
             )
-            if not self._cancel_event.is_set():
+            output_paths = extract_output_paths(self._result)
+            outputs = {"paths": output_paths} if output_paths else {}
+            if self._cancel_event.is_set():
+                self._job_store.cleanup_outputs(output_paths)
+                if self.job_id:
+                    self._job_store.mark_cancelled(self.job_id, outputs=outputs)
+                self.log.emit("Worker cancelled; partial outputs cleaned.")
+                self.cancelled.emit()
+            else:
+                if self.job_id:
+                    self._job_store.mark_completed(self.job_id, outputs=outputs)
                 self.finished.emit(self._result)
+        except CancelledJobError as e:
+            output_paths = extract_output_paths(e.outputs)
+            outputs = {"paths": output_paths} if output_paths else {}
+            self._job_store.cleanup_outputs(output_paths)
+            if self.job_id:
+                self._job_store.mark_cancelled(self.job_id, outputs=outputs)
+            self.log.emit(str(e))
+            self.cancelled.emit()
         except Exception as e:
             tb = traceback.format_exc()
             self.log.emit(f"Worker error:\n{tb}")
+            if self.job_id:
+                self._job_store.mark_failed(self.job_id, f"{type(e).__name__}: {e}")
             self.error.emit(f"{type(e).__name__}: {e}")
 
     def cancel(self):
         """Request cancellation. Task must check cancel_event.is_set() periodically."""
         self._cancel_event.set()
+        if self.job_id:
+            self._job_store.request_cancel(self.job_id)
 
     @property
     def is_cancelled(self) -> bool:
         return self._cancel_event.is_set()
+
+    def _emit_progress(self, pct: int):
+        if self.job_id:
+            self._job_store.update_progress(self.job_id, pct)
+        self.progress.emit(pct)
+
+    def _emit_step(self, message: str):
+        if self.job_id:
+            self._job_store.update_message(self.job_id, message)
+        self.step_info.emit(message)
+
+    def _emit_log(self, message: str):
+        if self.job_id:
+            self._job_store.update_message(self.job_id, message)
+        self.log.emit(message)
 
 
 class DownloadWorker(QThread):
@@ -79,29 +150,73 @@ class DownloadWorker(QThread):
     downloaded = Signal(str)
     finished = Signal(str)
     error = Signal(str)
+    cancelled = Signal(str)
 
-    def __init__(self, download_fn: Callable, model_id: str):
+    def __init__(
+        self,
+        download_fn: Callable,
+        model_id: str,
+        model_name: str = "",
+        job_store: Optional[JobStore] = None,
+    ):
         super().__init__()
         self.download_fn = download_fn
         self.model_id = model_id
         self._cancel_event = threading.Event()
+        self._job_store = job_store or JobStore()
+        self._job_record = self._job_store.create(
+            "model_download",
+            model_name or model_id,
+            inputs={"model_id": model_id},
+            metadata={"model_id": model_id},
+        )
+        self.job_id = self._job_record.id
 
     def run(self):
+        self._job_store.mark_running(self.job_id, "Starting download")
         try:
             self.download_fn(
                 self.model_id,
-                progress_cb=self.progress.emit,
+                progress_cb=self._emit_progress,
                 speed_cb=self.speed.emit,
                 downloaded_cb=self.downloaded.emit,
                 cancel_event=self._cancel_event,
             )
             if not self._cancel_event.is_set():
+                self._job_store.mark_completed(
+                    self.job_id,
+                    outputs={"model_id": self.model_id},
+                )
                 self.finished.emit(self.model_id)
+            else:
+                self._job_store.mark_cancelled(
+                    self.job_id,
+                    outputs={"model_id": self.model_id},
+                    recoverable=True,
+                )
+                self.cancelled.emit(self.model_id)
+        except CancelledJobError:
+            self._job_store.mark_cancelled(
+                self.job_id,
+                outputs={"model_id": self.model_id},
+                recoverable=True,
+            )
+            self.cancelled.emit(self.model_id)
         except Exception as e:
+            self._job_store.mark_failed(
+                self.job_id,
+                f"{type(e).__name__}: {e}",
+                outputs={"model_id": self.model_id},
+            )
             self.error.emit(f"{type(e).__name__}: {e}")
 
     def cancel(self):
         self._cancel_event.set()
+        self._job_store.request_cancel(self.job_id)
+
+    def _emit_progress(self, pct: int):
+        self._job_store.update_progress(self.job_id, pct)
+        self.progress.emit(pct)
 
 
 class WorkflowStep:

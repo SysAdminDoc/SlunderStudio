@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.12 — Project Manager View
+Slunder Studio v0.1.13 — Project Manager View
 Project browser with create, open, delete, asset management,
 version history, and auto-save controls.
 """

@@ -1,5 +1,5 @@
-"""
-Slunder Studio v0.1.12 - Dependency diagnostics.
+﻿"""
+Slunder Studio v0.1.13 - Dependency diagnostics.
 
 This module never installs packages. Runtime code may import through these
 helpers, but missing packages are reported with explicit setup commands.

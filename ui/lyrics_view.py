@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.12 — Lyrics View
+Slunder Studio v0.1.13 — Lyrics View
 Full lyrics generation page with Quick/Guided/Pro modes, genre browser,
 history panel, streaming generation, and section regeneration.
 """
@@ -614,6 +614,7 @@ class LyricsView(QWidget):
         self._worker.progress.connect(self._progress.setValue)
         self._worker.finished.connect(self._on_section_regenerated)
         self._worker.error.connect(self._on_generation_error)
+        self._worker.cancelled.connect(self._on_generation_cancelled)
         self._worker.start()
 
     def _run_generation(self, gen_fn, prompt: str, **kwargs):
@@ -641,6 +642,7 @@ class LyricsView(QWidget):
         self._worker.progress.connect(self._progress.setValue)
         self._worker.finished.connect(self._on_generation_complete)
         self._worker.error.connect(self._on_generation_error)
+        self._worker.cancelled.connect(self._on_generation_cancelled)
         self._worker.start()
 
     def _cancel_generation(self):
@@ -654,6 +656,7 @@ class LyricsView(QWidget):
 
     def _on_generation_complete(self, result: dict):
         """Handle completed lyrics generation."""
+        self._worker = None
         self._set_generating(False)
         self._editor.stop_streaming()
 
@@ -688,6 +691,7 @@ class LyricsView(QWidget):
 
     def _on_section_regenerated(self, result: dict):
         """Handle completed section regeneration."""
+        self._worker = None
         self._set_generating(False)
         tag = result.get("section_tag", "")
         new_content = result.get("new_content", "")
@@ -700,11 +704,16 @@ class LyricsView(QWidget):
 
     def _on_generation_error(self, error_msg: str):
         """Handle generation error."""
+        self._worker = None
         self._set_generating(False)
         self._editor.stop_streaming()
         self._editor.set_status(f"Error: {error_msg}", Palette.RED)
         if self.toast_mgr:
             self.toast_mgr.error(f"Generation failed: {error_msg}")
+
+    def _on_generation_cancelled(self):
+        self._worker = None
+        self._editor.stop_streaming()
 
     def _set_generating(self, generating: bool):
         """Toggle UI state for generation in progress."""

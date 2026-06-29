@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.12 — Batch View
+Slunder Studio v0.1.13 — Batch View
 Grid display for batch-generated song variations.
 Mini waveform cards with one-click playback, star/rank, delete, and "Best of" refinement.
 """
@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt
 
 from ui.waveform_widget import MiniWaveform
+from core.job_state import JobStatus, JobStore
 
 
 class BatchCard(QFrame):
@@ -161,7 +162,9 @@ class BatchView(QWidget):
         super().__init__(parent)
         self._cards: list[BatchCard] = []
         self._playing_index = -1
+        self._job_store = JobStore()
         self._setup_ui()
+        self.refresh_recoverable_jobs()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -195,6 +198,16 @@ class BatchView(QWidget):
         header.addWidget(self._clear_btn)
 
         layout.addLayout(header)
+
+        self._recovery_label = QLabel("")
+        self._recovery_label.setWordWrap(True)
+        self._recovery_label.setVisible(False)
+        self._recovery_label.setStyleSheet(
+            "background: rgba(249, 226, 175, 28); color: #F9E2AF; "
+            "border: 1px solid rgba(249, 226, 175, 70); border-radius: 6px; "
+            "padding: 7px 9px; font-size: 11px;"
+        )
+        layout.addWidget(self._recovery_label)
 
         # Scrollable grid
         self._scroll = QScrollArea()
@@ -301,6 +314,26 @@ class BatchView(QWidget):
         self._count_label.setText("0 variations")
         self._use_best_btn.setEnabled(False)
         self._empty_label.show()
+
+    def refresh_recoverable_jobs(self):
+        self._job_store.recover_stale_jobs()
+        records = self._job_store.list_records(
+            status=JobStatus.RECOVERABLE,
+            kind="song_generation",
+        )
+        if not records:
+            self._recovery_label.setVisible(False)
+            return
+
+        labels = [record.label for record in records[:3]]
+        suffix = f" and {len(records) - 3} more" if len(records) > 3 else ""
+        self._recovery_label.setText(
+            "Recoverable generation jobs: "
+            + ", ".join(labels)
+            + suffix
+            + ". Partial render files were cleaned; start a new run when ready."
+        )
+        self._recovery_label.setVisible(True)
 
     @property
     def count(self) -> int:

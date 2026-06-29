@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.12 — Song Forge View
+Slunder Studio v0.1.13 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
@@ -575,6 +575,14 @@ class SongForgeView(QWidget):
             and duration > 120
             and self._long_form_check.isChecked()
         )
+        job_inputs = {
+            "duration": duration,
+            "batch_count": batch_count,
+            "long_form": long_form,
+            "has_lyrics": bool(lyrics),
+            "lyrics_chars": len(lyrics),
+            "style_tags": tags[:240],
+        }
 
         if batch_count > 1:
             from engines.ace_step_engine import generate_song_batch
@@ -587,6 +595,9 @@ class SongForgeView(QWidget):
                 cfg_scale=cfg,
                 infer_steps=steps,
                 long_form=long_form,
+                job_kind="song_generation",
+                job_label=f"Song Forge batch ({batch_count})",
+                job_inputs=job_inputs,
             )
         else:
             from engines.ace_step_engine import generate_song
@@ -599,12 +610,16 @@ class SongForgeView(QWidget):
                 cfg_scale=cfg,
                 infer_steps=steps,
                 long_form=long_form,
+                job_kind="song_generation",
+                job_label="Song Forge generation",
+                job_inputs=job_inputs,
             )
 
         self._worker.progress.connect(self._on_progress)
         self._worker.step_info.connect(self._on_step)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
+        self._worker.cancelled.connect(self._on_cancelled)
         self._worker.start()
 
     def _on_cancel(self):
@@ -618,7 +633,8 @@ class SongForgeView(QWidget):
                     "Cancelled",
                 )
             self._seed_explore_params = []
-        self._reset_ui()
+        self._reset_ui(clear_worker=False)
+        self._batch_view.refresh_recoverable_jobs()
         self._status.setText("Cancelled")
 
     def _on_progress(self, pct: int):
@@ -629,6 +645,7 @@ class SongForgeView(QWidget):
 
     def _on_finished(self, result: dict):
         self._reset_ui()
+        self._batch_view.refresh_recoverable_jobs()
 
         if result.get("cancelled"):
             self._status.setText("Cancelled")
@@ -663,17 +680,23 @@ class SongForgeView(QWidget):
 
     def _on_error(self, error_msg: str):
         self._reset_ui()
+        self._batch_view.refresh_recoverable_jobs()
         self._status.setText(f"Error: {error_msg[:100]}")
         self._status.setStyleSheet("color: #F38BA8; font-size: 11px;")
         if self._toast:
             self._toast.show_toast(f"Generation failed: {error_msg[:80]}", "error")
 
-    def _reset_ui(self):
+    def _on_cancelled(self):
+        self._worker = None
+        self._batch_view.refresh_recoverable_jobs()
+
+    def _reset_ui(self, clear_worker: bool = True):
         self._is_generating = False
         self._generate_btn.show()
         self._cancel_btn.hide()
         self._progress.hide()
-        self._worker = None
+        if clear_worker:
+            self._worker = None
         self._status.setStyleSheet("color: #6C7086; font-size: 11px;")
 
     def _load_output(self, audio_path: str, seed: int = 0):
@@ -786,11 +809,22 @@ class SongForgeView(QWidget):
             duration=duration,
             infer_steps=steps,
             long_form=long_form,
+            job_kind="song_generation",
+            job_label=f"Seed Explorer grid ({len(params_list)} cells)",
+            job_inputs={
+                "duration": duration,
+                "cell_count": len(params_list),
+                "long_form": long_form,
+                "has_lyrics": bool(lyrics),
+                "lyrics_chars": len(lyrics),
+                "style_tags": tags[:240],
+            },
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.step_info.connect(self._on_step)
         self._worker.finished.connect(self._on_seed_finished)
         self._worker.error.connect(self._on_seed_error)
+        self._worker.cancelled.connect(self._on_cancelled)
         self._worker.start()
 
         if self._toast:
@@ -802,6 +836,7 @@ class SongForgeView(QWidget):
     def _on_seed_finished(self, result: dict):
         """Handle completed seed explorer generation."""
         self._reset_ui()
+        self._batch_view.refresh_recoverable_jobs()
         self._seed_explore_params = []
 
         if result.get("cancelled"):
@@ -840,6 +875,7 @@ class SongForgeView(QWidget):
     def _on_seed_error(self, error_msg: str):
         """Handle fatal seed explorer worker errors."""
         self._reset_ui()
+        self._batch_view.refresh_recoverable_jobs()
         for cell in self._seed_explore_params:
             self._seed_explorer.set_cell_failed(
                 int(cell.get("row", 0)),

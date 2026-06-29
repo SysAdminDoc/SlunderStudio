@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.12 — Model Hub UI
+Slunder Studio v0.1.13 — Model Hub UI
 Grid view of all models with live download progress, speed tracking,
 partial download detection, and one-click download/delete.
 """
@@ -17,6 +17,7 @@ from ui.accessibility import install_accessibility, set_accessible
 from core.model_manager import ModelManager, ModelInfo, ModelStatus, ModelCategory
 from core.settings import Settings
 from core.workers import DownloadWorker
+from core.job_state import JobStatus, JobStore
 
 
 class HFTokenDialog(QDialog):
@@ -361,6 +362,7 @@ class ModelHubView(QWidget):
         self._cards: dict[str, ModelCard] = {}
         self._workers: dict[str, DownloadWorker] = {}
         self._mgr = ModelManager()
+        self._job_store = JobStore()
         self._build_ui()
         self._connect_signals()
         self._refresh_all_cards()
@@ -381,6 +383,16 @@ class ModelHubView(QWidget):
         subtitle.setObjectName("caption")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
+
+        self._recovery_label = QLabel("")
+        self._recovery_label.setWordWrap(True)
+        self._recovery_label.setVisible(False)
+        self._recovery_label.setStyleSheet(
+            f"background: rgba(249, 226, 175, 28); color: {Palette.YELLOW}; "
+            f"border: 1px solid rgba(249, 226, 175, 70); border-radius: 6px; "
+            "padding: 8px 10px; font-size: 12px;"
+        )
+        layout.addWidget(self._recovery_label)
 
         # GPU status bar
         self._gpu_bar = QFrame()
@@ -477,11 +489,18 @@ class ModelHubView(QWidget):
         self._mgr.gpu_status_changed.connect(self._on_gpu_changed)
 
     def _refresh_all_cards(self):
+        self._job_store.recover_stale_jobs()
+        for record in self._recoverable_download_records():
+            model_id = record.inputs.get("model_id") or record.metadata.get("model_id")
+            if model_id in self._mgr.registry and self._mgr.has_partial_download(model_id):
+                self._mgr._set_status(model_id, ModelStatus.PARTIAL)
+
         for model_id, card in self._cards.items():
             status = self._mgr.get_status(model_id)
             card.update_status(status)
         self._update_gpu_display()
         self._update_disk_display()
+        self._update_recovery_banner()
 
         # Alert user about partial downloads on startup
         partials = [
@@ -495,6 +514,35 @@ class ModelHubView(QWidget):
             self.toast_mgr.warning(
                 f"Incomplete downloads detected: {names}. Click Resume to finish."
             )
+
+    def _update_recovery_banner(self):
+        names: list[str] = []
+        for record in self._recoverable_download_records():
+            model_id = record.inputs.get("model_id") or record.metadata.get("model_id")
+            if not model_id or model_id not in self._mgr.registry:
+                continue
+            if self._mgr.get_status(model_id) != ModelStatus.PARTIAL:
+                continue
+            info = self._mgr.get_model_info(model_id)
+            names.append(info.name if info else model_id)
+
+        if names:
+            self._recovery_label.setText(
+                "Recoverable downloads: "
+                + ", ".join(names[:4])
+                + (f" and {len(names) - 4} more" if len(names) > 4 else "")
+                + ". Use Resume Download on the model card."
+            )
+            self._recovery_label.setVisible(True)
+        else:
+            self._recovery_label.setVisible(False)
+
+    def _recoverable_download_records(self):
+        return [
+            record
+            for record in self._job_store.list_records(kind="model_download")
+            if record.status == JobStatus.RECOVERABLE or record.recoverable
+        ]
 
     def _on_status_changed(self, model_id: str, status_str: str):
         if model_id in self._cards:
@@ -577,14 +625,10 @@ class ModelHubView(QWidget):
                 else:
                     return
 
-        # Quarantine partial download files before fresh start
-        if self._mgr.has_partial_download(model_id):
-            self._mgr.delete_model_cache(model_id)
-
         card = self._cards[model_id]
         card.update_status(ModelStatus.DOWNLOADING)
 
-        worker = DownloadWorker(self._mgr.download_model, model_id)
+        worker = DownloadWorker(self._mgr.download_model, model_id, model_name=info.name)
 
         # Wire all progress signals into the card
         worker.progress.connect(
@@ -597,6 +641,7 @@ class ModelHubView(QWidget):
             lambda s, mid=model_id: self._on_dl_size(mid, s)
         )
         worker.finished.connect(self._on_download_finished)
+        worker.cancelled.connect(self._on_download_cancelled)
         worker.error.connect(
             lambda err, mid=model_id: self._on_download_error(mid, err)
         )
@@ -623,17 +668,26 @@ class ModelHubView(QWidget):
         """Cancel an active download and mark as partial."""
         if model_id in self._workers:
             self._workers[model_id].cancel()
-            del self._workers[model_id]
         self._mgr._set_status(model_id, ModelStatus.PARTIAL)
         if model_id in self._cards:
             self._cards[model_id].update_status(ModelStatus.PARTIAL)
+        self._update_recovery_banner()
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
             self.toast_mgr.info(f"{info.name} download cancelled.")
 
+    def _on_download_cancelled(self, model_id: str):
+        if model_id in self._workers:
+            del self._workers[model_id]
+        self._mgr._set_status(model_id, ModelStatus.PARTIAL)
+        if model_id in self._cards:
+            self._cards[model_id].update_status(ModelStatus.PARTIAL)
+        self._update_recovery_banner()
+
     def _on_download_finished(self, model_id: str):
         if model_id in self._workers:
             del self._workers[model_id]
+        self._update_recovery_banner()
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
             self.toast_mgr.success(f"{info.name} downloaded successfully!")
@@ -641,6 +695,7 @@ class ModelHubView(QWidget):
     def _on_download_error(self, model_id: str, error: str):
         if model_id in self._workers:
             del self._workers[model_id]
+        self._update_recovery_banner()
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
             self.toast_mgr.error(f"Failed to download {info.name}: {error}")

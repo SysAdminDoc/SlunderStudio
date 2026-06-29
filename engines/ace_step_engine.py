@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.12 — ACE-Step Engine
+Slunder Studio v0.1.13 — ACE-Step Engine
 Native Python wrapper for ACE-Step inference (not Gradio).
 Supports: generate, batch, retake, repaint, extend.
 <4GB VRAM, 48kHz stereo, up to 4 min duration.
@@ -20,6 +20,39 @@ from dataclasses import asdict, dataclass, field, replace
 
 from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir
+
+
+def _cleanup_output_paths(paths: list[str | Path]) -> None:
+    for raw_path in paths:
+        if not raw_path:
+            continue
+        path = Path(raw_path)
+        try:
+            if path.is_file():
+                path.unlink()
+        except OSError:
+            pass
+
+
+def _result_paths(results: list["GenerationResult"]) -> list[str]:
+    paths: list[str] = []
+    for result in results:
+        if result.audio_path:
+            paths.append(result.audio_path)
+        if result.provenance_path:
+            paths.append(result.provenance_path)
+    return paths
+
+
+def _raise_if_cancelled(
+    cancel_event: threading.Event = None,
+    outputs: Optional[list[str | Path]] = None,
+) -> None:
+    if cancel_event and cancel_event.is_set():
+        output_paths = [str(path) for path in (outputs or []) if path]
+        _cleanup_output_paths(output_paths)
+        from core.workers import CancelledJobError
+        raise CancelledJobError("Generation cancelled", outputs={"paths": output_paths})
 
 
 @dataclass
@@ -412,6 +445,7 @@ class ACEStepEngine:
         if not self.is_loaded:
             raise RuntimeError("ACE-Step model not loaded. Call load() first.")
 
+        _raise_if_cancelled(cancel_event)
         seed = params.resolve_seed()
         start_time = time.time()
 
@@ -448,15 +482,19 @@ class ACEStepEngine:
         if progress_cb:
             progress_cb(10)
 
+        _raise_if_cancelled(cancel_event)
+
         # ACEStepPipeline is callable
         result = self._pipeline(**gen_kwargs)
-
-        if progress_cb:
-            progress_cb(95)
 
         elapsed = time.time() - start_time
 
         output_path = self._find_output(save_dir, result)
+        _raise_if_cancelled(cancel_event, [output_path])
+
+        if progress_cb:
+            progress_cb(95)
+
         sidecar = write_provenance_sidecar(
             output_path,
             module="song_forge",
@@ -470,6 +508,7 @@ class ACEStepEngine:
             export_format="wav",
             output_kind="model",
         )
+        _raise_if_cancelled(cancel_event, [output_path, sidecar])
 
         if progress_cb:
             progress_cb(100)
@@ -499,6 +538,7 @@ class ACEStepEngine:
         if not self.is_loaded:
             raise RuntimeError("ACE-Step model not loaded. Call load() first.")
 
+        _raise_if_cancelled(cancel_event)
         start_time = time.time()
         base_seed = params.resolve_seed()
         render_duration = params.duration
@@ -519,8 +559,7 @@ class ACEStepEngine:
             progress_cb(3)
 
         for i, section in enumerate(sections):
-            if cancel_event and cancel_event.is_set():
-                break
+            _raise_if_cancelled(cancel_event, _result_paths(section_results))
 
             section_seed = (base_seed + i) % (2**32 - 1)
             section_params = replace(
@@ -543,16 +582,20 @@ class ACEStepEngine:
                 if progress_cb:
                     progress_cb(start + int((end - start) * pct / 100))
 
-            result = self.generate(
-                section_params,
-                progress_cb=_section_progress,
-                cancel_event=cancel_event,
-            )
+            try:
+                result = self.generate(
+                    section_params,
+                    progress_cb=_section_progress,
+                    cancel_event=cancel_event,
+                )
+            except Exception as exc:
+                from core.workers import CancelledJobError
+                if isinstance(exc, CancelledJobError):
+                    _cleanup_output_paths(_result_paths(section_results))
+                raise
             section_results.append(result)
             section_paths.append(result.audio_path)
-
-        if cancel_event and cancel_event.is_set():
-            return GenerationResult(seed=base_seed, params=params, sections=[])
+            _raise_if_cancelled(cancel_event, _result_paths(section_results))
 
         if step_cb:
             step_cb("Stitching long-form sections...")
@@ -567,6 +610,8 @@ class ACEStepEngine:
             target_sample_rate=params.sample_rate,
             crossfade_seconds=params.section_crossfade,
         )
+        stitched_outputs = _result_paths(section_results) + [stitched_path]
+        _raise_if_cancelled(cancel_event, stitched_outputs)
         sidecar = write_provenance_sidecar(
             stitched_path,
             module="song_forge",
@@ -584,6 +629,7 @@ class ACEStepEngine:
                 "section_crossfade": params.section_crossfade,
             },
         )
+        _raise_if_cancelled(cancel_event, stitched_outputs + [sidecar])
 
         if progress_cb:
             progress_cb(100)
@@ -684,8 +730,7 @@ class ACEStepEngine:
         """Generate multiple variations with different random seeds."""
         results = []
         for i in range(count):
-            if cancel_event and cancel_event.is_set():
-                break
+            _raise_if_cancelled(cancel_event, _result_paths(results))
 
             if step_cb:
                 step_cb(f"Generating variation {i+1}/{count}...")
@@ -724,6 +769,10 @@ class ACEStepEngine:
                     )
                 results.append(result)
             except Exception as e:
+                from core.workers import CancelledJobError
+                if isinstance(e, CancelledJobError):
+                    _cleanup_output_paths(_result_paths(results))
+                    raise
                 if step_cb:
                     step_cb(f"Variation {i+1} failed: {e}")
                 continue
@@ -929,8 +978,15 @@ def generate_seed_grid(
     results = []
 
     for i, cell in enumerate(params_list):
-        if cancel_event and cancel_event.is_set():
-            return {"cancelled": True, "results": results}
+        _raise_if_cancelled(
+            cancel_event,
+            [
+                path
+                for item in results
+                for path in (item.get("audio_path", ""), item.get("provenance_path", ""))
+                if path
+            ],
+        )
 
         row = int(cell.get("row", 0))
         col = int(cell.get("col", 0))
@@ -985,6 +1041,15 @@ def generate_seed_grid(
                 "sections": result.sections,
             })
         except Exception as exc:
+            from core.workers import CancelledJobError
+            if isinstance(exc, CancelledJobError):
+                _cleanup_output_paths([
+                    path
+                    for item in results
+                    for path in (item.get("audio_path", ""), item.get("provenance_path", ""))
+                    if path
+                ])
+                raise
             message = f"{type(exc).__name__}: {exc}"
             if log_cb:
                 log_cb(f"Seed cell {row},{col} failed: {message}")
