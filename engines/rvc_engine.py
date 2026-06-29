@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.13 — RVC / GPT-SoVITS Engine
+Slunder Studio v0.1.14 — RVC / GPT-SoVITS Engine
 Voice conversion (RVC v2) and voice cloning (GPT-SoVITS) for transforming
 existing vocals or cloning a target voice from reference audio.
 """
@@ -13,7 +13,15 @@ import numpy as np
 
 from core.provenance import file_sha256, write_provenance_sidecar
 from core.settings import get_config_dir
-from core.voice_bank import SAFER_CHECKPOINT_EXTENSIONS, UNSAFE_CHECKPOINT_EXTENSIONS, VoiceProfile
+from core.voice_bank import (
+    SAFER_CHECKPOINT_EXTENSIONS,
+    UNSAFE_CHECKPOINT_EXTENSIONS,
+    VOICE_OPERATION_CLONE,
+    VOICE_OPERATION_CONVERSION,
+    VoiceProfile,
+    ensure_voice_profile_allowed,
+    voice_profile_provenance,
+)
 
 
 @dataclass
@@ -298,6 +306,7 @@ class RVCEngine:
         self._model = None
         self._index = None
         self._model_path: Optional[str] = None
+        self._profile: Optional[VoiceProfile] = None
         self._device = "cpu"
         self._output_dir = os.path.join(get_config_dir(), "generations", "voice_convert")
         os.makedirs(self._output_dir, exist_ok=True)
@@ -314,11 +323,14 @@ class RVCEngine:
             if progress_callback:
                 progress_callback(0.1, "Loading RVC model...")
 
+            ensure_voice_profile_allowed(profile, VOICE_OPERATION_CONVERSION)
+
             # Load the model checkpoint
             checkpoint = load_voice_checkpoint(profile, profile.model_path, device)
 
             self._model = checkpoint
             self._model_path = profile.model_path
+            self._profile = profile
             self._device = device
 
             # Load feature index if available
@@ -343,6 +355,7 @@ class RVCEngine:
         self._model = None
         self._index = None
         self._model_path = None
+        self._profile = None
         try:
             import torch
             if torch.cuda.is_available():
@@ -438,11 +451,19 @@ class RVCEngine:
                     "module": "vocal_suite",
                     "operation": "rvc_convert",
                     "model_id": "rvc-v2",
+                    "model_name": self._profile.name if self._profile else "",
+                    "model_source": self._profile.source if self._profile else "",
+                    "model_revision": self._profile.source_revision if self._profile else "",
                     "model_hash": _safe_file_hash(self._model_path),
+                    "model_license": self._profile.license if self._profile else "",
                     "parameters": param_meta,
+                    "source_asset_ids": [self._profile.id] if self._profile else [],
                     "source_paths": [params.input_path] if params.input_path else [],
                     "output_kind": "demo",
-                    "extra": {"model_path": self._model_path or ""},
+                    "extra": {
+                        "model_path": self._model_path or "",
+                        "voice_profile": voice_profile_provenance(self._profile),
+                    },
                 },
             )
 
@@ -561,7 +582,12 @@ class RVCEngine:
 
         return converted
 
-    def save_output(self, result: VoiceResult, name: Optional[str] = None) -> Optional[str]:
+    def save_output(
+        self,
+        result: VoiceResult,
+        name: Optional[str] = None,
+        profile: Optional[VoiceProfile] = None,
+    ) -> Optional[str]:
         """Save conversion result to WAV."""
         if result.audio is None or not result.can_route:
             return None
@@ -582,18 +608,26 @@ class RVCEngine:
             wf.writeframes(int_audio.tobytes())
 
         prov = result.provenance or {}
+        active_profile = profile or self._profile
+        extra = dict(prov.get("extra", {}))
+        if active_profile:
+            extra["voice_profile"] = voice_profile_provenance(active_profile)
         sidecar = write_provenance_sidecar(
             path,
             module=prov.get("module", "vocal_suite"),
             operation=prov.get("operation", "rvc_convert"),
             model_id=prov.get("model_id", "rvc-v2"),
+            model_name=prov.get("model_name", active_profile.name if active_profile else ""),
+            model_source=prov.get("model_source", active_profile.source if active_profile else ""),
+            model_revision=prov.get("model_revision", active_profile.source_revision if active_profile else ""),
             model_hash=prov.get("model_hash", ""),
+            model_license=prov.get("model_license", active_profile.license if active_profile else ""),
             parameters=prov.get("parameters", {}),
-            source_asset_ids=prov.get("source_asset_ids", []),
+            source_asset_ids=prov.get("source_asset_ids") or ([active_profile.id] if active_profile else []),
             source_paths=prov.get("source_paths", []),
             export_format="wav",
             output_kind=prov.get("output_kind", result.output_kind),
-            extra=prov.get("extra", {}),
+            extra=extra,
         )
         result.provenance_path = str(sidecar)
         return path
@@ -611,6 +645,7 @@ class GPTSoVITSEngine:
         self._gpt_model = None
         self._sovits_model = None
         self._model_path: Optional[str] = None
+        self._profile: Optional[VoiceProfile] = None
         self._device = "cpu"
         self._output_dir = os.path.join(get_config_dir(), "generations", "voice_clone")
         os.makedirs(self._output_dir, exist_ok=True)
@@ -626,6 +661,8 @@ class GPTSoVITSEngine:
             if progress_callback:
                 progress_callback(0.1, "Loading SoVITS model...")
 
+            ensure_voice_profile_allowed(profile, VOICE_OPERATION_CLONE)
+
             # Load SoVITS model
             self._sovits_model = load_voice_checkpoint(profile, profile.model_path, device)
 
@@ -637,6 +674,7 @@ class GPTSoVITSEngine:
                 self._gpt_model = load_voice_checkpoint(profile, gpt_path, device)
 
             self._model_path = profile.model_path
+            self._profile = profile
             self._device = device
 
             if progress_callback:
@@ -651,6 +689,7 @@ class GPTSoVITSEngine:
         self._sovits_model = None
         self._gpt_model = None
         self._model_path = None
+        self._profile = None
         try:
             import torch
             if torch.cuda.is_available():
@@ -749,12 +788,20 @@ class GPTSoVITSEngine:
                     "module": "vocal_suite",
                     "operation": "gpt_sovits_clone",
                     "model_id": "gpt-sovits-v2",
+                    "model_name": self._profile.name if self._profile else "",
+                    "model_source": self._profile.source if self._profile else "",
+                    "model_revision": self._profile.source_revision if self._profile else "",
                     "model_hash": _safe_file_hash(self._model_path),
+                    "model_license": self._profile.license if self._profile else "",
                     "prompt": params.text,
                     "parameters": asdict(params),
+                    "source_asset_ids": [self._profile.id] if self._profile else [],
                     "source_paths": [params.ref_audio_path] if params.ref_audio_path else [],
                     "output_kind": "demo",
-                    "extra": {"model_path": self._model_path or ""},
+                    "extra": {
+                        "model_path": self._model_path or "",
+                        "loaded_voice_profile": voice_profile_provenance(self._profile),
+                    },
                 },
             )
 
@@ -813,7 +860,12 @@ class GPTSoVITSEngine:
         except ImportError:
             return audio
 
-    def save_output(self, result: VoiceResult, name: Optional[str] = None) -> Optional[str]:
+    def save_output(
+        self,
+        result: VoiceResult,
+        name: Optional[str] = None,
+        profile: Optional[VoiceProfile] = None,
+    ) -> Optional[str]:
         if result.audio is None or not result.can_route:
             return None
         import wave
@@ -828,19 +880,27 @@ class GPTSoVITSEngine:
             wf.setframerate(result.sample_rate)
             wf.writeframes(int_audio.tobytes())
         prov = result.provenance or {}
+        active_profile = profile or self._profile
+        extra = dict(prov.get("extra", {}))
+        if active_profile:
+            extra["voice_profile"] = voice_profile_provenance(active_profile)
         sidecar = write_provenance_sidecar(
             path,
             module=prov.get("module", "vocal_suite"),
             operation=prov.get("operation", "gpt_sovits_clone"),
             model_id=prov.get("model_id", "gpt-sovits-v2"),
+            model_name=prov.get("model_name", active_profile.name if active_profile else ""),
+            model_source=prov.get("model_source", active_profile.source if active_profile else ""),
+            model_revision=prov.get("model_revision", active_profile.source_revision if active_profile else ""),
             model_hash=prov.get("model_hash", ""),
+            model_license=prov.get("model_license", active_profile.license if active_profile else ""),
             prompt=prov.get("prompt", ""),
             parameters=prov.get("parameters", {}),
-            source_asset_ids=prov.get("source_asset_ids", []),
+            source_asset_ids=prov.get("source_asset_ids") or ([active_profile.id] if active_profile else []),
             source_paths=prov.get("source_paths", []),
             export_format="wav",
             output_kind=prov.get("output_kind", result.output_kind),
-            extra=prov.get("extra", {}),
+            extra=extra,
         )
         result.provenance_path = str(sidecar)
         return path

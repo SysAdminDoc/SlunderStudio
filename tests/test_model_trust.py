@@ -73,6 +73,12 @@ class ModelTrustTests(unittest.TestCase):
                 engine="rvc",
                 model_path=str(checkpoint),
                 trusted=False,
+                owner_name="Singer",
+                consent_status="confirmed",
+                consent_source="Self-recorded / my voice",
+                consent_scope="Clone + conversion",
+                language="en",
+                permitted_uses=["voice-conversion"],
             )
 
             with self.assertRaises(RuntimeError) as ctx:

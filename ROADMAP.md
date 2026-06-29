@@ -92,13 +92,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### P1
 
 ### P2
-- [ ] P2 - Add voice consent and profile provenance guardrails
-  Why: Voice cloning/conversion can use personal voice data, so profiles need ownership, consent, language, source, and permitted-use metadata.
-  Evidence: `ui/vocal_suite_view.py`, `core/voice_bank.py`, GPT-SoVITS, RVC.
-  Touches: `core/voice_bank.py`, `ui/vocal_suite_view.py`, `engines/rvc_engine.py`, `tests/`.
-  Acceptance: Saving a voice profile records consent/source metadata, displays it before clone/convert jobs, embeds it in generation sidecars, and blocks profiles with missing required metadata.
-  Complexity: M
-
 - [ ] P2 - Surface model license and commercial-use compatibility in Model Hub
   Why: The registry mixes MIT, Apache, Llama community, Stability community, gated, and CC-BY-NC models while README claims local ownership.
   Evidence: `core/model_manager.py`, `README.md`, Stable Audio Open, MusicGen.

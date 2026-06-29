@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.13 — Voice Bank
+Slunder Studio v0.1.14 — Voice Bank
 Voice profile management for RVC and GPT-SoVITS models.
 Handles model discovery, metadata, favorites, and preset management.
 """
@@ -15,6 +15,17 @@ from core.settings import get_config_dir
 
 UNSAFE_CHECKPOINT_EXTENSIONS = {".bin", ".ckpt", ".pth", ".pt"}
 SAFER_CHECKPOINT_EXTENSIONS = {".onnx", ".safetensors"}
+VOICE_OPERATION_CLONE = "voice-clone"
+VOICE_OPERATION_CONVERSION = "voice-conversion"
+CONFIRMED_CONSENT_STATUS = "confirmed"
+VOICE_OPERATION_USE_MAP = {
+    "clone": VOICE_OPERATION_CLONE,
+    "gpt_sovits_clone": VOICE_OPERATION_CLONE,
+    VOICE_OPERATION_CLONE: VOICE_OPERATION_CLONE,
+    "convert": VOICE_OPERATION_CONVERSION,
+    "rvc_convert": VOICE_OPERATION_CONVERSION,
+    VOICE_OPERATION_CONVERSION: VOICE_OPERATION_CONVERSION,
+}
 
 
 def hash_file_sha256(path: str) -> str:
@@ -50,6 +61,14 @@ class VoiceProfile:
     trusted_at: float = 0.0
     trust_note: str = ""
     file_hashes: dict[str, str] = field(default_factory=dict)
+    owner_name: str = ""
+    consent_status: str = "missing"
+    consent_source: str = ""
+    consent_scope: str = ""
+    language: str = ""
+    permitted_uses: list[str] = field(default_factory=list)
+    consent_note: str = ""
+    consent_recorded_at: float = 0.0
 
     def __post_init__(self):
         if not self.id:
@@ -58,6 +77,24 @@ class VoiceProfile:
             self.created_at = time.time()
         if self.trusted and self.trusted_at == 0.0:
             self.trusted_at = time.time()
+        self.normalize_consent_metadata()
+
+    def normalize_consent_metadata(self):
+        if isinstance(self.permitted_uses, str):
+            self.permitted_uses = [self.permitted_uses]
+        self.permitted_uses = sorted({
+            str(use).strip().lower()
+            for use in self.permitted_uses
+            if str(use).strip()
+        })
+        self.owner_name = (self.owner_name or "").strip()
+        self.consent_status = (self.consent_status or "missing").strip().lower()
+        self.consent_source = (self.consent_source or "").strip()
+        self.consent_scope = (self.consent_scope or "").strip()
+        self.language = (self.language or "").strip().lower()
+        self.consent_note = (self.consent_note or "").strip()
+        if self.consent_status == CONFIRMED_CONSENT_STATUS and self.consent_recorded_at == 0.0:
+            self.consent_recorded_at = time.time()
 
     @property
     def checkpoint_extension(self) -> str:
@@ -70,6 +107,74 @@ class VoiceProfile:
     @property
     def uses_safer_checkpoint(self) -> bool:
         return self.checkpoint_extension in SAFER_CHECKPOINT_EXTENSIONS
+
+    @property
+    def consent_confirmed(self) -> bool:
+        return self.consent_status == CONFIRMED_CONSENT_STATUS
+
+    def guardrail_issues(self, operation: str = "") -> list[str]:
+        required_use = VOICE_OPERATION_USE_MAP.get(operation, operation).strip().lower()
+        issues: list[str] = []
+        if not self.owner_name:
+            issues.append("voice owner is required")
+        if self.consent_status != CONFIRMED_CONSENT_STATUS:
+            issues.append("consent status must be confirmed")
+        if not self.consent_source:
+            issues.append("consent/source record is required")
+        if not self.language:
+            issues.append("voice language is required")
+        if not self.permitted_uses:
+            issues.append("permitted use metadata is required")
+        elif required_use and "all" not in self.permitted_uses and required_use not in self.permitted_uses:
+            issues.append(f"permitted uses must include {required_use}")
+        return issues
+
+    def consent_summary(self, operation: str = "") -> str:
+        issues = self.guardrail_issues(operation)
+        if issues:
+            return "Blocked: " + "; ".join(issues[:3])
+        uses = ", ".join(self.permitted_uses)
+        return f"Consent confirmed for {self.owner_name}; {self.language}; uses: {uses}"
+
+    def provenance(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "engine": self.engine,
+            "owner_name": self.owner_name,
+            "consent_status": self.consent_status,
+            "consent_source": self.consent_source,
+            "consent_scope": self.consent_scope,
+            "language": self.language,
+            "permitted_uses": list(self.permitted_uses),
+            "consent_note": self.consent_note,
+            "consent_recorded_at": self.consent_recorded_at,
+            "source": self.source,
+            "source_revision": self.source_revision,
+            "license": self.license,
+            "trusted": self.trusted,
+            "trusted_at": self.trusted_at,
+            "trust_note": self.trust_note,
+            "file_hashes": dict(self.file_hashes),
+        }
+
+
+def validate_voice_profile(profile: VoiceProfile, operation: str = "") -> list[str]:
+    profile.normalize_consent_metadata()
+    return profile.guardrail_issues(operation)
+
+
+def ensure_voice_profile_allowed(profile: VoiceProfile, operation: str = ""):
+    issues = validate_voice_profile(profile, operation)
+    if issues:
+        raise RuntimeError("Voice profile consent metadata incomplete: " + "; ".join(issues))
+
+
+def voice_profile_provenance(profile: Optional[VoiceProfile]) -> dict:
+    if not profile:
+        return {}
+    profile.normalize_consent_metadata()
+    return profile.provenance()
 
 
 # ── Voice Bank ─────────────────────────────────────────────────────────────────
@@ -119,6 +224,7 @@ class VoiceBank:
     # ── CRUD ───────────────────────────────────────────────────────────────────
 
     def add(self, profile: VoiceProfile) -> str:
+        profile.normalize_consent_metadata()
         self.refresh_profile_hashes(profile)
         self._profiles[profile.id] = profile
         self._save()
@@ -135,6 +241,7 @@ class VoiceBank:
         return False
 
     def update(self, profile: VoiceProfile):
+        profile.normalize_consent_metadata()
         self.refresh_profile_hashes(profile)
         self._profiles[profile.id] = profile
         self._save()
@@ -146,9 +253,13 @@ class VoiceBank:
         profile.trusted = True
         profile.trusted_at = time.time()
         profile.trust_note = note
+        profile.normalize_consent_metadata()
         self.refresh_profile_hashes(profile)
         self._save()
         return True
+
+    def validate_profile(self, profile: VoiceProfile, operation: str = "") -> list[str]:
+        return validate_voice_profile(profile, operation)
 
     def refresh_profile_hashes(self, profile: VoiceProfile):
         hashes: dict[str, str] = {}

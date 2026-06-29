@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.13 — Model Hub UI
+Slunder Studio v0.1.14 — Model Hub UI
 Grid view of all models with live download progress, speed tracking,
 partial download detection, and one-click download/delete.
 """
