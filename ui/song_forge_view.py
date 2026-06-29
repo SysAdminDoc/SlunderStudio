@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.20 — Song Forge View
+Slunder Studio v0.1.21 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
@@ -157,6 +157,7 @@ class SongForgeView(QWidget):
         super().__init__(parent)
         self._toast = toast_mgr
         self._current_audio_path = ""
+        self._current_vocal_stem_path = ""
         self._is_generating = False
         self._worker = None
         self._seed_explore_params: list[dict] = []
@@ -395,7 +396,7 @@ class SongForgeView(QWidget):
         self._export_btn.clicked.connect(self._on_export)
         out_row.addWidget(self._export_btn)
 
-        self._to_vocals_btn = QPushButton("Send to Vocals")
+        self._to_vocals_btn = QPushButton("Send Song to Vocals")
         self._to_vocals_btn.setFixedHeight(28)
         self._to_vocals_btn.setProperty("class", "secondary")
         self._to_vocals_btn.setEnabled(False)
@@ -403,6 +404,13 @@ class SongForgeView(QWidget):
             lambda: self.send_to_vocals.emit(self._current_audio_path)
         )
         out_row.addWidget(self._to_vocals_btn)
+
+        self._to_vocal_stem_btn = QPushButton("Send Vocal Stem")
+        self._to_vocal_stem_btn.setFixedHeight(28)
+        self._to_vocal_stem_btn.setProperty("class", "secondary")
+        self._to_vocal_stem_btn.setEnabled(False)
+        self._to_vocal_stem_btn.clicked.connect(self._on_send_vocal_stem)
+        out_row.addWidget(self._to_vocal_stem_btn)
 
         out_row.addStretch()
 
@@ -469,6 +477,7 @@ class SongForgeView(QWidget):
                 (self._play_btn, "Play generated song", "Plays the current generated output."),
                 (self._export_btn, "Export generated song", "Exports the current generated output."),
                 (self._to_vocals_btn, "Send generated song to vocals", "Routes generated audio to Vocal Suite."),
+                (self._to_vocal_stem_btn, "Send recovered vocal stem", "Routes the recovered vocals-only Song Forge stem to Vocal Suite."),
                 (self._sub_tabs, "Song Forge result tools", "Switches between batch results, seed explorer, and mood curve."),
             ],
             tab_order=[
@@ -495,6 +504,7 @@ class SongForgeView(QWidget):
                 self._play_btn,
                 self._export_btn,
                 self._to_vocals_btn,
+                self._to_vocal_stem_btn,
                 self._sub_tabs,
             ],
         )
@@ -663,18 +673,32 @@ class SongForgeView(QWidget):
             # Load first result into main waveform
             if result["results"]:
                 first = result["results"][0]
-                self._load_output(first["audio_path"], first.get("seed", 0))
+                self._load_output(
+                    first["audio_path"],
+                    first.get("seed", 0),
+                    first.get("vocal_stem_path", ""),
+                    first.get("vocal_stem_error", ""),
+                )
+                recovered = sum(1 for item in result["results"] if item.get("vocal_stem_path"))
+                if recovered:
+                    self._status.setText(f"Generated {count} variations; recovered {recovered} vocal stems")
         else:
             # Single result
-            self._load_output(result.get("audio_path", ""), result.get("seed", 0))
+            self._load_output(
+                result.get("audio_path", ""),
+                result.get("seed", 0),
+                result.get("vocal_stem_path", ""),
+                result.get("vocal_stem_error", ""),
+            )
             gen_time = result.get("generation_time", 0)
+            stem_status = self._format_vocal_recovery_status(result)
             if result.get("mode") == "long_form":
                 sections = len(result.get("sections", []))
                 self._status.setText(
-                    f"Generated stitched long-form song ({sections} sections) in {gen_time:.1f}s"
+                    f"Generated stitched long-form song ({sections} sections) in {gen_time:.1f}s{stem_status}"
                 )
             else:
-                self._status.setText(f"Generated in {gen_time:.1f}s (seed: {result.get('seed', '?')})")
+                self._status.setText(f"Generated in {gen_time:.1f}s (seed: {result.get('seed', '?')}){stem_status}")
             if self._toast:
                 self._toast.show_toast(f"Song generated in {gen_time:.1f}s", "success")
 
@@ -699,11 +723,18 @@ class SongForgeView(QWidget):
             self._worker = None
         self._status.setStyleSheet("color: #6C7086; font-size: 11px;")
 
-    def _load_output(self, audio_path: str, seed: int = 0):
+    def _load_output(
+        self,
+        audio_path: str,
+        seed: int = 0,
+        vocal_stem_path: str = "",
+        vocal_stem_error: str = "",
+    ):
         """Load generated audio into waveform display."""
         if not audio_path:
             return
         self._current_audio_path = audio_path
+        self._current_vocal_stem_path = vocal_stem_path or ""
         try:
             self._waveform.load_file(audio_path)
         except Exception:
@@ -712,10 +743,24 @@ class SongForgeView(QWidget):
         self._play_btn.setEnabled(True)
         self._export_btn.setEnabled(True)
         self._to_vocals_btn.setEnabled(True)
+        self._to_vocal_stem_btn.setEnabled(bool(self._current_vocal_stem_path))
 
         import os
         size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-        self._output_info.setText(f"seed: {seed} | {size_mb:.1f} MB")
+        info = f"seed: {seed} | {size_mb:.1f} MB"
+        if self._current_vocal_stem_path:
+            info += f" | vocals: {os.path.basename(self._current_vocal_stem_path)}"
+        elif vocal_stem_error:
+            info += " | vocals: unavailable"
+        self._output_info.setText(info)
+
+    def _format_vocal_recovery_status(self, result: dict) -> str:
+        if result.get("vocal_stem_path"):
+            import os
+            return f"; vocal stem: {os.path.basename(result['vocal_stem_path'])}"
+        if result.get("vocal_stem_error"):
+            return "; vocal stem unavailable"
+        return ""
 
     # ── Playback ──────────────────────────────────────────────────────────────
 
@@ -731,6 +776,10 @@ class SongForgeView(QWidget):
         except Exception as e:
             if self._toast:
                 self._toast.show_toast(f"Playback error: {e}", "error")
+
+    def _on_send_vocal_stem(self):
+        if self._current_vocal_stem_path:
+            self.send_to_vocals.emit(self._current_vocal_stem_path)
 
     # ── Export ────────────────────────────────────────────────────────────────
 

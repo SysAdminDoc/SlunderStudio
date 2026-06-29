@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.20 - Vocal pitch correction.
+Slunder Studio v0.1.21 - Vocal pitch correction.
 """
 from __future__ import annotations
 

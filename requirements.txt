@@ -1,4 +1,4 @@
-# ── Slunder Studio v0.1.20 — Dependencies ──────────────────────────
+# ── Slunder Studio v0.1.21 — Dependencies ──────────────────────────
 # Core runtime dependencies (install explicitly before first run)
 PySide6>=6.6
 numpy>=1.24

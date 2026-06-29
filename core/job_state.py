@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.20 - Durable job state and recovery records.
+Slunder Studio v0.1.21 - Durable job state and recovery records.
 """
 from __future__ import annotations
 
@@ -281,6 +281,8 @@ OUTPUT_KEYS = {
     "output_path",
     "path",
     "file_path",
+    "vocal_stem_path",
+    "vocal_stem_provenance_path",
 }
 
 
@@ -309,7 +311,7 @@ def extract_output_paths(payload: Any) -> list[str]:
             for item in value:
                 visit(item)
             return
-        for attr in ("audio_path", "provenance_path", "output_path"):
+        for attr in ("audio_path", "provenance_path", "output_path", "vocal_stem_path", "vocal_stem_provenance_path"):
             item = getattr(value, attr, None)
             if item:
                 paths.append(str(item))

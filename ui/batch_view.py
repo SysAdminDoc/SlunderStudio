@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.20 — Batch View
+Slunder Studio v0.1.21 — Batch View
 Grid display for batch-generated song variations.
 Mini waveform cards with one-click playback, star/rank, delete, and "Best of" refinement.
 """

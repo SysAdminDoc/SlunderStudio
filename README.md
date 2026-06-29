@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.20-blue)
+![Version](https://img.shields.io/badge/version-0.1.21-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -25,7 +25,7 @@ Python 3.10+ required. Install core dependencies explicitly before launch; if an
 
 | Module | Description | AI Engine |
 |--------|-------------|-----------|
-| Song Forge | Full song generation from lyrics + style tags, including stitched long-form songs over 2 minutes | ACE-Step |
+| Song Forge | Full song generation from lyrics + style tags, stitched long-form songs, and recovered vocal-stem export | ACE-Step, Demucs |
 | Lyrics Engine | AI-powered lyrics writing with 33 genre templates | Llama 3.2 1B |
 | MIDI Studio | Piano roll editor + text-to-MIDI composition | MIDI-LLM |
 | Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, voice conversion, voice cloning, and vocal auto-tune pitch correction | DiffSinger, RVC v2, GPT-SoVITS, librosa |
@@ -50,7 +50,7 @@ Python 3.10+ required. Install core dependencies explicitly before launch; if an
 └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
 ```
 
-Every module can route audio to any other module. Generate a song in Song Forge, separate stems in Vocal Suite, add SFX, mix everything in the Mixer, and export a mastered track. Generated and exported assets write adjacent `.provenance.json` sidecars with app version, prompt/lyrics, seed, model revision/hash metadata, source paths, and render parameters so projects can be audited or reproduced. Long-running generation and model-download jobs persist queued/running/completed/failed/cancelled/recoverable state so interrupted sessions can show what needs recovery on restart. Settings and project files use versioned schemas with timestamped backups before migrations, repairs, and saves. Primary creative workflows expose screen-reader names, descriptions, high-contrast focus rings, and predictable tab traversal. For songs over 2 minutes, Song Forge can render structured sections separately and stitch them with crossfades for more stable long-form arrangements. Seed Explorer renders nearby seed/CFG variations from the current lyrics and style prompt so you can compare takes before committing to a full arrangement. Reference Track analysis maps an audio fingerprint to ACE-Step tags for one-click style conditioning, Genre Fusion blends two template tag sets into weighted hybrid prompts, and Voice Cloning validates 10-30s GPT-SoVITS reference samples before saving reusable voice profiles with owner, consent source, language, permitted-use, and sidecar provenance metadata.
+Every module can route audio to any other module. Generate a song in Song Forge, separate stems in Vocal Suite, add SFX, mix everything in the Mixer, and export a mastered track. Generated and exported assets write adjacent `.provenance.json` sidecars with app version, prompt/lyrics, seed, model revision/hash metadata, source paths, and render parameters so projects can be audited or reproduced. Long-running generation and model-download jobs persist queued/running/completed/failed/cancelled/recoverable state so interrupted sessions can show what needs recovery on restart. Settings and project files use versioned schemas with timestamped backups before migrations, repairs, and saves. Primary creative workflows expose screen-reader names, descriptions, high-contrast focus rings, and predictable tab traversal. For songs over 2 minutes, Song Forge can render structured sections separately and stitch them with crossfades for more stable long-form arrangements; completed Song Forge renders also attempt a Demucs vocal-stem recovery and expose a separate vocals-only route when recovery succeeds. Seed Explorer renders nearby seed/CFG variations from the current lyrics and style prompt so you can compare takes before committing to a full arrangement. Reference Track analysis maps an audio fingerprint to ACE-Step tags for one-click style conditioning, Genre Fusion blends two template tag sets into weighted hybrid prompts, and Voice Cloning validates 10-30s GPT-SoVITS reference samples before saving reusable voice profiles with owner, consent source, language, permitted-use, and sidecar provenance metadata.
 
 Settings can export a redacted health report ZIP with app/dependency versions, GPU and ffmpeg status, model cache state, settings repair status, crash log metadata, and recent failed jobs. HuggingFace tokens are always redacted, and job prompts/lyrics stay out of the report unless the private-input opt-in is enabled.
 

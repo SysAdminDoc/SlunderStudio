@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.20 — Mood/Energy Curve Editor
+Slunder Studio v0.1.21 — Mood/Energy Curve Editor
 Visual curve editor for drawing song energy arcs.
 Draggable control points with Bezier interpolation.
 Preset curves and reference overlay.

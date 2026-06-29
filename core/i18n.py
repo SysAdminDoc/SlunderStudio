@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.20 - Locale catalog and language helpers.
+Slunder Studio v0.1.21 - Locale catalog and language helpers.
 """
 from __future__ import annotations
 

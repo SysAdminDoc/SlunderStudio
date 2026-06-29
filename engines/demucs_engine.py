@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.20 — Demucs Engine
+Slunder Studio v0.1.21 — Demucs Engine
 Audio stem separation using Demucs (htdemucs) for isolating
 vocals, drums, bass, and other instruments from mixed audio.
 """
@@ -7,6 +7,7 @@ import os
 import time
 from typing import Optional, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
@@ -69,6 +70,15 @@ class SeparationResult:
         for stem in non_vocal:
             result += stem[:len(result)]
         return result
+
+
+@dataclass
+class VocalStemRecoveryResult:
+    """Recovered vocal stem artifact from a rendered Song Forge track."""
+    path: str = ""
+    provenance_path: str = ""
+    model_name: str = ""
+    error: str = ""
 
 
 class DemucsEngine:
@@ -363,6 +373,74 @@ def separate_stems(input_path: str,
             return SeparationResult(error=str(e))
 
     return engine.separate(input_path, progress_callback)
+
+
+def recover_vocal_stem(
+    input_path: str,
+    model_name: str = "htdemucs",
+    progress_callback: Optional[Callable] = None,
+    separation_fn: Optional[Callable] = None,
+) -> VocalStemRecoveryResult:
+    """Separate a rendered song and return a provenance-tracked vocals stem."""
+    source = Path(input_path)
+    if not source.is_file():
+        return VocalStemRecoveryResult(error=f"Song render not found: {source}")
+
+    separator = separation_fn or separate_stems
+    try:
+        result = separator(
+            str(source),
+            model_name=model_name,
+            progress_callback=progress_callback,
+        )
+    except TypeError:
+        result = separator(str(source), model_name)
+    except Exception as exc:
+        return VocalStemRecoveryResult(error=str(exc))
+
+    if result is None:
+        return VocalStemRecoveryResult(error="Vocal stem recovery returned no result")
+    if getattr(result, "error", None):
+        return VocalStemRecoveryResult(error=str(result.error))
+
+    vocal = result.vocals if hasattr(result, "vocals") else result.get_stem("vocals")
+    if not vocal or not vocal.file_path:
+        return VocalStemRecoveryResult(error="No vocals stem was produced")
+
+    vocal_path = Path(vocal.file_path)
+    if not vocal_path.is_file():
+        return VocalStemRecoveryResult(error=f"Vocals stem file not found: {vocal_path}")
+
+    resolved_model = getattr(result, "model_name", "") or model_name
+    sidecar = write_provenance_sidecar(
+        vocal_path,
+        module="song_forge",
+        operation="recover_vocal_stem",
+        model_id="demucs-v4",
+        model_name=resolved_model,
+        parameters={
+            "stem_name": "vocals",
+            "model_name": resolved_model,
+            "source_file": str(source),
+            "sample_rate": getattr(vocal, "sample_rate", 0),
+            "source_duration": getattr(result, "duration", 0.0),
+            "separation_time": getattr(result, "separation_time", 0.0),
+        },
+        source_paths=[str(source)],
+        export_format="wav",
+        output_kind="model",
+        extra={
+            "stems_exported": [
+                stem.name for stem in getattr(result, "stems", [])
+                if getattr(stem, "file_path", None)
+            ],
+        },
+    )
+    return VocalStemRecoveryResult(
+        path=str(vocal_path),
+        provenance_path=str(sidecar),
+        model_name=resolved_model,
+    )
 
 
 def load_model(cache_dir: str = None, **kwargs) -> DemucsEngine:

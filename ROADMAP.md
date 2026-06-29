@@ -7,7 +7,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### Generation quality
 
 ### Vocals & voice
-- Vocal stem recovery: isolated vocal track exported separately after Song Forge renders
 
 ### MIDI & composition
 - Text-to-MIDI improvements with chord-progression priors (`I-V-vi-IV`, `ii-V-I`)

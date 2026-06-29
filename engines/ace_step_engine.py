@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.20 — ACE-Step Engine
+Slunder Studio v0.1.21 — ACE-Step Engine
 Native Python wrapper for ACE-Step inference (not Gradio).
 Supports: generate, batch, retake, repaint, extend.
 <4GB VRAM, 48kHz stereo, up to 4 min duration.
@@ -41,6 +41,10 @@ def _result_paths(results: list["GenerationResult"]) -> list[str]:
             paths.append(result.audio_path)
         if result.provenance_path:
             paths.append(result.provenance_path)
+        if result.vocal_stem_path:
+            paths.append(result.vocal_stem_path)
+        if result.vocal_stem_provenance_path:
+            paths.append(result.vocal_stem_provenance_path)
     return paths
 
 
@@ -53,6 +57,59 @@ def _raise_if_cancelled(
         _cleanup_output_paths(output_paths)
         from core.workers import CancelledJobError
         raise CancelledJobError("Generation cancelled", outputs={"paths": output_paths})
+
+
+def recover_song_vocal_stem(
+    audio_path: str,
+    *,
+    model_name: str = "htdemucs",
+    step_cb: Callable = None,
+    log_cb: Callable = None,
+    cancel_event: threading.Event = None,
+) -> dict:
+    """Recover a vocals-only stem for a completed Song Forge render without failing the song."""
+    if not audio_path:
+        return {"vocal_stem_path": "", "vocal_stem_provenance_path": "", "vocal_stem_error": "Missing song render path"}
+    if cancel_event and cancel_event.is_set():
+        return {"vocal_stem_path": "", "vocal_stem_provenance_path": "", "vocal_stem_error": "Cancelled before vocal stem recovery"}
+
+    if step_cb:
+        step_cb("Recovering vocal stem...")
+
+    try:
+        from engines.demucs_engine import recover_vocal_stem
+
+        recovery = recover_vocal_stem(
+            audio_path,
+            model_name=model_name,
+            progress_callback=lambda _fraction, message: step_cb(message) if step_cb else None,
+        )
+    except Exception as exc:
+        message = str(exc)
+        if log_cb:
+            log_cb(f"Vocal stem recovery failed: {message}")
+        return {
+            "vocal_stem_path": "",
+            "vocal_stem_provenance_path": "",
+            "vocal_stem_error": message,
+        }
+
+    if recovery.error:
+        if log_cb:
+            log_cb(f"Vocal stem recovery skipped: {recovery.error}")
+        return {
+            "vocal_stem_path": "",
+            "vocal_stem_provenance_path": "",
+            "vocal_stem_error": recovery.error,
+        }
+
+    if log_cb:
+        log_cb(f"Recovered vocal stem: {recovery.path}")
+    return {
+        "vocal_stem_path": recovery.path,
+        "vocal_stem_provenance_path": recovery.provenance_path,
+        "vocal_stem_error": "",
+    }
 
 
 @dataclass
@@ -95,6 +152,9 @@ class GenerationResult:
     rating: int = 0  # 0-5
     sections: list[dict] = field(default_factory=list)
     provenance_path: str = ""
+    vocal_stem_path: str = ""
+    vocal_stem_provenance_path: str = ""
+    vocal_stem_error: str = ""
 
 
 @dataclass
@@ -868,9 +928,16 @@ def generate_song(
     else:
         result = engine.generate(params, progress_cb=progress_cb, cancel_event=cancel_event)
 
+    vocal_recovery = recover_song_vocal_stem(
+        result.audio_path,
+        step_cb=step_cb,
+        log_cb=log_cb,
+        cancel_event=cancel_event,
+    )
     return {
         "audio_path": result.audio_path,
         "provenance_path": result.provenance_path,
+        **vocal_recovery,
         "seed": result.seed,
         "duration": result.duration,
         "generation_time": result.generation_time,
@@ -930,18 +997,28 @@ def generate_song_batch(
         progress_cb=progress_cb, step_cb=step_cb, cancel_event=cancel_event,
     )
 
+    recovered = [
+        recover_song_vocal_stem(
+            item.audio_path,
+            step_cb=step_cb,
+            log_cb=log_cb,
+            cancel_event=cancel_event,
+        )
+        for item in results
+    ]
     return {
         "results": [
             {
                 "audio_path": r.audio_path,
                 "provenance_path": r.provenance_path,
+                **recovered[index],
                 "seed": r.seed,
                 "duration": r.duration,
                 "generation_time": r.generation_time,
                 "mode": "long_form" if r.sections else "single",
                 "sections": r.sections,
             }
-            for r in results
+            for index, r in enumerate(results)
         ],
         "count": len(results),
     }

@@ -80,6 +80,7 @@ class AccessibilityBaselineTests(unittest.TestCase):
                             "_generate_btn",
                             "_play_btn",
                             "_sub_tabs",
+                            "_to_vocal_stem_btn",
                         ],
                     ),
                     (
