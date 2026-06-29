@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.21 — MIDI Studio View
+Slunder Studio v0.1.22 — MIDI Studio View
 Main MIDI Studio page: text-to-MIDI generation, piano roll editor,
 per-track mixer, .mid import/export, FluidSynth rendering, and
 cross-module routing (Song Forge, Vocal Suite).
@@ -40,6 +40,16 @@ INSTRUMENT_PRESETS = {
     "Rock Band": ["Lead Guitar", "Rhythm Guitar", "Bass", "Drums"],
     "String Quartet": ["Violin 1", "Violin 2", "Viola", "Cello"],
 }
+
+CHORD_PROGRESSIONS = [
+    "Auto",
+    "I-V-vi-IV",
+    "ii-V-I",
+    "I-vi-IV-V",
+    "12-bar blues",
+    "i-VI-III-VII",
+    "i-VI-iv-v",
+]
 
 
 class MidiStudioView(QWidget):
@@ -188,6 +198,19 @@ class MidiStudioView(QWidget):
         row3.addWidget(inst_l)
         row3.addWidget(self._inst_combo)
         gen_layout.addLayout(row3)
+
+        # Row 4: Chord progression prior
+        row4 = QHBoxLayout()
+        row4.setSpacing(6)
+        prog_l = QLabel("Chords:")
+        prog_l.setFixedWidth(48)
+        prog_l.setStyleSheet(param_style)
+        self._progression_combo = QComboBox()
+        self._progression_combo.addItems(CHORD_PROGRESSIONS)
+        self._progression_combo.setStyleSheet(param_style)
+        row4.addWidget(prog_l)
+        row4.addWidget(self._progression_combo)
+        gen_layout.addLayout(row4)
 
         # Generate button
         self._gen_btn = QPushButton("Generate MIDI")
@@ -354,6 +377,7 @@ class MidiStudioView(QWidget):
             time_signature=time_sig,
             duration_bars=self._bars_spin.value(),
             instruments=instruments,
+            chord_progression=self._progression_combo.currentText(),
         )
 
     def _on_generate(self):

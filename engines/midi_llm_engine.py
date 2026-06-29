@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.21 — MIDI-LLM Engine
+Slunder Studio v0.1.22 — MIDI-LLM Engine
 Text-to-MIDI generation using fine-tuned language models that output MIDI token sequences.
 Supports prompt-based composition, continuation, and style-conditioned generation.
 """
@@ -43,6 +43,7 @@ class MidiGenParams:
     time_signature: tuple = (4, 4)
     duration_bars: int = 16
     instruments: list[str] = field(default_factory=lambda: ["Piano"])
+    chord_progression: str = "Auto"
     temperature: float = 0.85
     top_p: float = 0.92
     max_tokens: int = 4096
@@ -80,6 +81,7 @@ Rules:
 - Use General MIDI program numbers
 - Drum tracks use channel 9 (drum=true)
 - Time values are in seconds
+- Honor requested chord progressions by repeating one chord per bar unless the user asks otherwise
 - Generate musically coherent compositions"""
 
 
@@ -97,6 +99,13 @@ def build_generation_prompt(params: MidiGenParams) -> str:
     parts.append(f"Time Signature: {params.time_signature[0]}/{params.time_signature[1]}")
     parts.append(f"Length: {params.duration_bars} bars")
     parts.append(f"Instruments: {', '.join(params.instruments)}")
+    if normalize_chord_progression(params.chord_progression):
+        parts.append(
+            f"Chord Progression: {params.chord_progression} "
+            "(one chord per bar, repeat for the full length)"
+        )
+    else:
+        parts.append("Chord Progression: choose a coherent progression for the style")
 
     if params.continuation_context:
         parts.append(f"\nContinue from this existing sequence:\n{params.continuation_context}")
@@ -105,6 +114,76 @@ def build_generation_prompt(params: MidiGenParams) -> str:
         parts.append("\nGenerate the MIDI token sequence:")
 
     return "\n".join(parts)
+
+
+ROMAN_DEGREES = {
+    "I": 0,
+    "II": 1,
+    "III": 2,
+    "IV": 3,
+    "V": 4,
+    "VI": 5,
+    "VII": 6,
+}
+
+MAJOR_PROGRESSIONS = {
+    "I-V-vi-IV": [0, 4, 5, 3],
+    "I-vi-IV-V": [0, 5, 3, 4],
+    "I-IV-V-V": [0, 3, 4, 4],
+    "ii-V-I": [1, 4, 0],
+    "12-bar blues": [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 4],
+}
+
+MINOR_PROGRESSIONS = {
+    "i-VI-iv-v": [0, 5, 3, 4],
+    "i-iv-VI-v": [0, 3, 5, 4],
+    "i-VI-VII-v": [0, 5, 6, 4],
+    "i-VI-III-VII": [0, 5, 2, 6],
+    "ii-V-i": [1, 4, 0],
+}
+
+
+def normalize_chord_progression(value: str) -> str:
+    normalized = (value or "").strip()
+    if not normalized or normalized.lower() == "auto":
+        return ""
+    return normalized
+
+
+def parse_chord_progression(value: str, *, is_minor: bool = False) -> list[int]:
+    """Parse a Roman-numeral chord progression into zero-based scale degrees."""
+    normalized = normalize_chord_progression(value)
+    if not normalized:
+        return []
+
+    preset_map = MINOR_PROGRESSIONS if is_minor else MAJOR_PROGRESSIONS
+    if normalized in preset_map:
+        return list(preset_map[normalized])
+
+    degrees: list[int] = []
+    for raw in re.split(r"[-\s,|/]+", normalized):
+        token = raw.strip()
+        if not token:
+            continue
+        match = re.match(r"^[#b]*([ivIV]+)", token)
+        if not match:
+            continue
+        roman = match.group(1).upper()
+        if roman in ROMAN_DEGREES:
+            degrees.append(ROMAN_DEGREES[roman])
+    return degrees
+
+
+def select_chord_progression(params: MidiGenParams, *, is_minor: bool, rng) -> tuple[str, list[int]]:
+    requested = normalize_chord_progression(params.chord_progression)
+    if requested:
+        parsed = parse_chord_progression(requested, is_minor=is_minor)
+        if parsed:
+            return requested, parsed
+
+    candidates = MINOR_PROGRESSIONS if is_minor else MAJOR_PROGRESSIONS
+    label = rng.choice(list(candidates.keys()))
+    return label, list(candidates[label])
 
 
 # ── Token Parser ───────────────────────────────────────────────────────────────
@@ -443,8 +522,7 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
     """
     import random
 
-    if params.seed is not None:
-        random.seed(params.seed)
+    rng = random.Random(params.seed) if params.seed is not None else random
 
     midi_data = MidiData(
         tempo=params.tempo,
@@ -466,39 +544,31 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
     is_minor = "minor" in params.key.lower() or "min" in params.key.lower()
 
     scale = [0, 2, 3, 5, 7, 8, 10] if is_minor else [0, 2, 4, 5, 7, 9, 11]
-
-    # Common chord progressions
-    if is_minor:
-        prog = random.choice([
-            [0, 5, 3, 4],  # i-VI-iv-v
-            [0, 3, 5, 4],  # i-iv-VI-v
-            [0, 5, 6, 4],  # i-VI-VII-v
-        ])
-    else:
-        prog = random.choice([
-            [0, 4, 5, 3],  # I-V-vi-IV
-            [0, 5, 3, 4],  # I-vi-IV-V
-            [0, 3, 4, 4],  # I-IV-V-V
-        ])
+    _progression_label, prog = select_chord_progression(params, is_minor=is_minor, rng=rng)
 
     def scale_note(degree: int, octave_offset: int = 0) -> int:
         oct = degree // 7
         deg = degree % 7
         return root + scale[deg] + (oct + octave_offset) * 12
 
+    def chord_tones(degree: int, octave_offset: int = -1) -> list[int]:
+        return [
+            scale_note(degree, octave_offset),
+            scale_note(degree + 2, octave_offset),
+            scale_note(degree + 4, octave_offset),
+        ]
+
     # Piano chords track
     piano = TrackData(name="Piano", program=0, channel=0)
     for bar in range(params.duration_bars):
         chord_deg = prog[bar % len(prog)]
-        chord_root = scale_note(chord_deg, -1)
-        # Triad
-        chord_notes = [chord_root, chord_root + scale[2 % 7], chord_root + scale[4 % 7]]
+        chord_notes = chord_tones(chord_deg)
         t = bar * bar_dur
         for p in chord_notes:
             piano.notes.append(NoteData(
                 pitch=max(0, min(127, p)),
                 start=t, end=t + bar_dur * 0.95,
-                velocity=random.randint(70, 90),
+                velocity=rng.randint(70, 90),
             ))
     midi_data.tracks.append(piano)
 
@@ -507,18 +577,24 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
     t = 0.0
     prev_deg = 0
     while t < total_dur:
-        deg = prev_deg + random.choice([-2, -1, 0, 1, 1, 2])
+        bar = min(params.duration_bars - 1, int(t // bar_dur))
+        chord_deg = prog[bar % len(prog)]
+        chord_bias = [chord_deg, chord_deg + 2, chord_deg + 4]
+        if rng.random() < 0.65:
+            deg = rng.choice(chord_bias)
+        else:
+            deg = prev_deg + rng.choice([-2, -1, 0, 1, 1, 2])
         deg = max(-3, min(10, deg))
         pitch = scale_note(deg, 1)
 
         dur_choices = [beat_dur * 0.5, beat_dur, beat_dur * 1.5, beat_dur * 2]
-        dur = random.choice(dur_choices)
+        dur = rng.choice(dur_choices)
 
-        if random.random() > 0.15:  # 85% note density
+        if rng.random() > 0.15:  # 85% note density
             melody.notes.append(NoteData(
                 pitch=max(0, min(127, pitch)),
                 start=t, end=min(t + dur * 0.9, total_dur),
-                velocity=random.randint(80, 110),
+                velocity=rng.randint(80, 110),
             ))
 
         prev_deg = deg
@@ -538,7 +614,7 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
                 bass.notes.append(NoteData(
                     pitch=max(0, min(127, bass_pitch)),
                     start=bt, end=bt + beat_dur * 0.8,
-                    velocity=random.randint(80, 100),
+                    velocity=rng.randint(80, 100),
                 ))
     midi_data.tracks.append(bass)
 

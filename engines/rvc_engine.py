@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.21 — RVC / GPT-SoVITS Engine
+Slunder Studio v0.1.22 — RVC / GPT-SoVITS Engine
 Voice conversion (RVC v2) and voice cloning (GPT-SoVITS) for transforming
 existing vocals or cloning a target voice from reference audio.
 """

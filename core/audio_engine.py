@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.21 — Audio Engine
+Slunder Studio v0.1.22 — Audio Engine
 sounddevice + soundfile playback with transport controls,
 seek, loop, and waveform data extraction for mini-display.
 """
