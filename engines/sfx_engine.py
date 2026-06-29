@@ -1,15 +1,16 @@
 """
-Slunder Studio v0.1.9 — SFX Engine
+Slunder Studio v0.1.10 — SFX Engine
 Text-to-SFX generation using Stable Audio Open for creating sound effects,
 ambient textures, and audio layers from text prompts.
 """
 import os
 import time
 from typing import Optional, Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir
 
 
@@ -40,6 +41,7 @@ class SFXResult:
     is_demo: bool = False
     output_kind: str = "model"  # "model" | "demo" | "error"
     can_route: bool = True
+    provenance_path: str = ""
 
     @property
     def is_success(self) -> bool:
@@ -231,6 +233,17 @@ class SFXEngine:
 
             # Save
             file_path = self._save_sfx(audio, sample_rate, params.prompt)
+            sidecar = write_provenance_sidecar(
+                file_path,
+                module="sfx",
+                operation="generate",
+                model_id="stable-audio-open",
+                seed=seed,
+                prompt=params.prompt,
+                parameters=asdict(params),
+                export_format="wav",
+                output_kind="model",
+            )
 
             if progress_callback:
                 progress_callback(1.0, "Done")
@@ -242,6 +255,7 @@ class SFXEngine:
                 generation_time=gen_time,
                 seed=seed,
                 file_path=file_path,
+                provenance_path=str(sidecar),
             )
 
         except Exception as e:
@@ -355,6 +369,18 @@ class SFXEngine:
         stereo = np.column_stack([audio, audio]).astype(np.float32)
         gen_time = time.time() - t0
         file_path = self._save_sfx(stereo, sr, params.prompt)
+        sidecar = write_provenance_sidecar(
+            file_path,
+            module="sfx",
+            operation="generate",
+            model_id="stable-audio-open",
+            seed=seed,
+            prompt=params.prompt,
+            parameters=asdict(params),
+            export_format="wav",
+            output_kind="demo",
+            extra={"demo_synthesis": True},
+        )
 
         if progress_callback:
             progress_callback(1.0, "Done (demo)")
@@ -364,6 +390,7 @@ class SFXEngine:
             duration=params.duration,
             generation_time=gen_time,
             seed=seed, file_path=file_path,
+            provenance_path=str(sidecar),
             is_demo=True,
             output_kind="demo",
             can_route=True,

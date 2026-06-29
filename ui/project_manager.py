@@ -1,20 +1,23 @@
 """
-Slunder Studio v0.1.9 — Project Manager View
+Slunder Studio v0.1.10 — Project Manager View
 Project browser with create, open, delete, asset management,
 version history, and auto-save controls.
 """
 import os
+import json
 import time
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QScrollArea, QLineEdit, QTextEdit, QFileDialog,
     QListWidget, QListWidgetItem, QStackedWidget, QInputDialog,
+    QDialog, QPlainTextEdit,
 )
 from PySide6.QtCore import Qt, Signal
 
 from ui.theme import ThemeEngine
 from core.project import ProjectManager, Project, ProjectAsset, get_project_manager
+from core.provenance import read_provenance_sidecar
 
 
 # ── Project Card ───────────────────────────────────────────────────────────────
@@ -106,6 +109,7 @@ class ProjectDetailPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         t = ThemeEngine.get_colors()
+        self._asset_by_id: dict[str, ProjectAsset] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -155,6 +159,7 @@ class ProjectDetailPanel(QWidget):
                 background: {t['accent']}33;
             }}
         """)
+        self._asset_list.currentItemChanged.connect(self._on_asset_selected)
         layout.addWidget(self._asset_list, 1)
 
         # Version history
@@ -195,9 +200,15 @@ class ProjectDetailPanel(QWidget):
         self._import_btn.setStyleSheet(btn_style)
         self._import_btn.clicked.connect(self._on_import_asset)
 
+        self._provenance_btn = QPushButton("Open Provenance")
+        self._provenance_btn.setStyleSheet(btn_style)
+        self._provenance_btn.setEnabled(False)
+        self._provenance_btn.clicked.connect(self._on_open_provenance)
+
         btn_row.addWidget(self._save_btn)
         btn_row.addWidget(self._snapshot_btn)
         btn_row.addWidget(self._import_btn)
+        btn_row.addWidget(self._provenance_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -218,11 +229,17 @@ class ProjectDetailPanel(QWidget):
 
         # Assets
         self._asset_list.clear()
+        self._asset_by_id = {}
         for asset in project.assets:
+            self._asset_by_id[asset.id] = asset
             item = QListWidgetItem(
                 f"[{asset.asset_type}] {asset.name} ({asset.module})"
             )
+            item.setData(Qt.UserRole, asset.id)
+            if asset.provenance_path:
+                item.setToolTip(asset.provenance_path)
             self._asset_list.addItem(item)
+        self._provenance_btn.setEnabled(False)
 
         # Versions
         self._version_list.clear()
@@ -237,6 +254,8 @@ class ProjectDetailPanel(QWidget):
         self._meta_label.setText("")
         self._notes.clear()
         self._asset_list.clear()
+        self._asset_by_id = {}
+        self._provenance_btn.setEnabled(False)
         self._version_list.clear()
 
     def _on_save(self):
@@ -270,6 +289,53 @@ class ProjectDetailPanel(QWidget):
             atype = "midi" if ext in ("mid", "midi") else "audio"
             mgr.import_asset(path, atype, "project_manager")
             self.load_project(mgr.current)
+
+    def _selected_asset(self) -> Optional[ProjectAsset]:
+        item = self._asset_list.currentItem()
+        if item is None:
+            return None
+        return self._asset_by_id.get(item.data(Qt.UserRole))
+
+    def _on_asset_selected(self, current, previous):
+        asset = self._selected_asset()
+        has_provenance = bool(asset and asset.provenance_path and os.path.isfile(asset.provenance_path))
+        self._provenance_btn.setEnabled(has_provenance)
+
+    def _on_open_provenance(self):
+        asset = self._selected_asset()
+        if not asset or not asset.provenance_path:
+            return
+
+        record = read_provenance_sidecar(asset.provenance_path)
+        if not record:
+            record = asset.metadata.get("provenance", {})
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Provenance - {asset.name}")
+        dialog.resize(720, 520)
+        t = ThemeEngine.get_colors()
+        layout = QVBoxLayout(dialog)
+
+        editor = QPlainTextEdit()
+        editor.setReadOnly(True)
+        editor.setPlainText(json.dumps(record, indent=2, ensure_ascii=False))
+        editor.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background: {t['surface']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
+                border-radius: 4px;
+                padding: 8px;
+                font-family: Consolas, monospace;
+                font-size: 11px;
+            }}
+        """)
+        layout.addWidget(editor, 1)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn, alignment=Qt.AlignRight)
+        dialog.exec()
 
 
 # ── Project Manager View ───────────────────────────────────────────────────────

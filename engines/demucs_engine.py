@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — Demucs Engine
+Slunder Studio v0.1.10 — Demucs Engine
 Audio stem separation using Demucs (htdemucs) for isolating
 vocals, drums, bass, and other instruments from mixed audio.
 """
@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir
 
 
@@ -312,6 +313,23 @@ class DemucsEngine:
             wf.setframerate(sr)
             wf.writeframes(int_audio.tobytes())
 
+        write_provenance_sidecar(
+            path,
+            module="stem_separation",
+            operation="separate_stem",
+            model_id="demucs-v4",
+            model_name=self._model_name or "",
+            prompt="",
+            parameters={
+                "stem_name": stem_name,
+                "sample_rate": sr,
+                "model_name": self._model_name or "",
+                "source_file": input_path,
+            },
+            source_paths=[input_path],
+            export_format="wav",
+            output_kind="model",
+        )
         return path
 
 

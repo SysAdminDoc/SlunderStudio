@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — AI Producer Engine
+Slunder Studio v0.1.10 — AI Producer Engine
 One-prompt-to-full-song orchestrator. Decomposes a high-level creative brief
 into a multi-step pipeline: lyrics generation, style selection, song generation,
 vocal synthesis, SFX layering, and mastering — all automated.
@@ -8,11 +8,12 @@ import os
 import time
 import json
 from typing import Optional, Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 
 import numpy as np
 
+from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir
 
 
@@ -370,13 +371,23 @@ class AIProducer:
         """Generate the instrumental track."""
         try:
             from engines.ace_step_engine import generate_song
-            audio_path = generate_song(
+            song_result = generate_song(
                 lyrics=result.lyrics_text,
                 tags=", ".join(result.style_tags),
                 duration=brief.duration_seconds,
                 seed=brief.seed,
             )
+            audio_path = (
+                song_result.get("audio_path", "")
+                if isinstance(song_result, dict)
+                else str(song_result)
+            )
+            if not audio_path:
+                raise RuntimeError("Song generation completed without an audio path")
             result.song_audio_path = audio_path
+            if isinstance(song_result, dict):
+                song_result["audio_path"] = audio_path
+                return song_result
             return {"audio_path": audio_path}
         except Exception:
             # Create a placeholder silence file
@@ -391,6 +402,18 @@ class AIProducer:
                 wf.setsampwidth(2)
                 wf.setframerate(sr)
                 wf.writeframes(silence.tobytes())
+            write_provenance_sidecar(
+                path,
+                module="ai_producer",
+                operation="generate_song_fallback",
+                seed=brief.seed,
+                prompt=brief.prompt,
+                lyrics=result.lyrics_text,
+                parameters=asdict(brief),
+                export_format="wav",
+                output_kind="demo",
+                extra={"fallback": True, "reason": "song_generation_failed"},
+            )
             result.song_audio_path = path
             return {"audio_path": path, "fallback": True}
 
@@ -480,6 +503,21 @@ class AIProducer:
             wf.setsampwidth(2)
             wf.setframerate(sr)
             wf.writeframes(int_audio.tobytes())
+        write_provenance_sidecar(
+            mix_path,
+            module="ai_producer",
+            operation="mix",
+            seed=brief.seed,
+            prompt=brief.prompt,
+            lyrics=result.lyrics_text,
+            parameters={"brief": asdict(brief), "layers": [name for name, _, _ in layers]},
+            source_paths=[
+                path for path in [result.song_audio_path, result.sfx_audio_path]
+                if path
+            ],
+            export_format="wav",
+            output_kind="export",
+        )
 
         return {"mix_path": mix_path, "layers": len(layers), "duration": max_len / sr}
 
@@ -518,6 +556,24 @@ class AIProducer:
             wf.setsampwidth(2)
             wf.setframerate(sr)
             wf.writeframes(int_audio.tobytes())
+        write_provenance_sidecar(
+            master_path,
+            module="ai_producer",
+            operation="master",
+            seed=brief.seed,
+            prompt=brief.prompt,
+            lyrics=result.lyrics_text,
+            parameters={
+                "brief": asdict(brief),
+                "preset": brief.mastering_preset,
+                "input_lufs": master_result.input_lufs,
+                "output_lufs": master_result.output_lufs,
+                "peak_db": master_result.peak_db,
+            },
+            source_paths=[mix_path],
+            export_format="wav",
+            output_kind="export",
+        )
 
         result.mastered_audio_path = master_path
         result.final_audio_path = master_path

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — Lyrics View
+Slunder Studio v0.1.10 — Lyrics View
 Full lyrics generation page with Quick/Guided/Pro modes, genre browser,
 history panel, streaming generation, and section regeneration.
 """

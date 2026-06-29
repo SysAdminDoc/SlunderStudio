@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — Audio Engine
+Slunder Studio v0.1.10 — Audio Engine
 sounddevice + soundfile playback with transport controls,
 seek, loop, and waveform data extraction for mini-display.
 """
@@ -10,6 +10,8 @@ from typing import Optional, Callable
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, QTimer
+
+from core.provenance import write_provenance_sidecar
 
 # Lazy imports for audio libraries
 _sd = None
@@ -326,6 +328,18 @@ class AudioEngine(QObject):
                 seg.export(file_path, format="mp3", bitrate="320k")
             else:
                 _sf.write(file_path, data, sr)
+            write_provenance_sidecar(
+                file_path,
+                module="audio_engine",
+                operation="save_to_file",
+                parameters={
+                    "sample_rate": sr,
+                    "shape": list(data.shape) if hasattr(data, "shape") else [],
+                },
+                source_paths=[self._source_path] if self._source_path else [],
+                export_format=Path(file_path).suffix.lstrip(".").lower(),
+                output_kind="export",
+            )
             return True
         except Exception as e:
             print(f"AudioEngine: Save error: {e}")

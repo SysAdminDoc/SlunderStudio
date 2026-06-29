@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — Audio Export
+Slunder Studio v0.1.10 — Audio Export
 Multi-format audio export: WAV, FLAC, MP3, OGG.
 Uses soundfile for lossless, ffmpeg subprocess for lossy.
 """
@@ -8,9 +8,11 @@ import shutil
 import subprocess
 from typing import Optional
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import numpy as np
+
+from core.provenance import write_provenance_sidecar
 
 
 @dataclass
@@ -86,6 +88,12 @@ def export_audio(
     source_path: str,
     output_path: str,
     settings: ExportSettings = None,
+    *,
+    module: str = "export",
+    operation: str = "export_audio",
+    source_asset_ids: Optional[list[str]] = None,
+    source_paths: Optional[list[str]] = None,
+    provenance_extra: Optional[dict] = None,
 ) -> str:
     """
     Export audio file to target format with optional processing.
@@ -184,6 +192,17 @@ def export_audio(
     else:
         raise ValueError(f"Unsupported format: {settings.format}")
 
+    write_provenance_sidecar(
+        output_path,
+        module=module,
+        operation=operation,
+        parameters={"settings": asdict(settings)},
+        source_asset_ids=source_asset_ids or [],
+        source_paths=source_paths if source_paths is not None else [source_path],
+        export_format=settings.format,
+        output_kind="export",
+        extra=provenance_extra or {},
+    )
     return output_path
 
 
@@ -192,6 +211,12 @@ def export_from_numpy(
     sr: int,
     output_path: str,
     settings: ExportSettings = None,
+    *,
+    module: str = "export",
+    operation: str = "export_from_numpy",
+    source_asset_ids: Optional[list[str]] = None,
+    source_paths: Optional[list[str]] = None,
+    provenance_extra: Optional[dict] = None,
 ) -> str:
     """Export a numpy audio array directly to file."""
     import soundfile as sf
@@ -204,7 +229,19 @@ def export_from_numpy(
     sf.write(temp_path, audio, sr, subtype="FLOAT")
 
     try:
-        return export_audio(temp_path, output_path, settings)
+        extra = {"input_sample_rate": sr, "input_shape": list(audio.shape)}
+        if provenance_extra:
+            extra.update(provenance_extra)
+        return export_audio(
+            temp_path,
+            output_path,
+            settings,
+            module=module,
+            operation=operation,
+            source_asset_ids=source_asset_ids or [],
+            source_paths=source_paths or [],
+            provenance_extra=extra,
+        )
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -217,6 +254,8 @@ def trim_audio(
     end_sec: float,
     fade_in_ms: int = 0,
     fade_out_ms: int = 0,
+    *,
+    source_asset_ids: Optional[list[str]] = None,
 ) -> str:
     """Trim audio to selection with optional fades."""
     import soundfile as sf
@@ -230,4 +269,20 @@ def trim_audio(
         trimmed = apply_fade(trimmed, sr, fade_in_ms, fade_out_ms)
 
     sf.write(output_path, trimmed, sr, subtype="PCM_16")
+    write_provenance_sidecar(
+        output_path,
+        module="export",
+        operation="trim_audio",
+        parameters={
+            "start_sec": start_sec,
+            "end_sec": end_sec,
+            "fade_in_ms": fade_in_ms,
+            "fade_out_ms": fade_out_ms,
+            "sample_rate": sr,
+        },
+        source_asset_ids=source_asset_ids or [],
+        source_paths=[source_path],
+        export_format=Path(output_path).suffix.lstrip(".").lower() or "wav",
+        output_kind="export",
+    )
     return output_path

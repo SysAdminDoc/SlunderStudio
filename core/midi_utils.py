@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — MIDI Utilities
+Slunder Studio v0.1.10 — MIDI Utilities
 Helpers for MIDI parsing, quantization, import/export, and track manipulation.
 Wraps pretty_midi for consistent API across the app.
 """
@@ -7,6 +7,8 @@ import os
 from typing import Optional
 from pathlib import Path
 from dataclasses import dataclass, field
+
+from core.provenance import write_provenance_sidecar
 
 
 def _ensure_pretty_midi():
@@ -143,7 +145,7 @@ def load_midi(file_path: str) -> MidiData:
     return midi_data
 
 
-def save_midi(midi_data: MidiData, file_path: str):
+def save_midi(midi_data: MidiData, file_path: str, provenance: Optional[dict] = None):
     """Save MidiData to a MIDI file."""
     _ensure_pretty_midi()
     import pretty_midi
@@ -172,6 +174,22 @@ def save_midi(midi_data: MidiData, file_path: str):
         pm.instruments.append(inst)
 
     pm.write(file_path)
+    if provenance:
+        write_provenance_sidecar(
+            file_path,
+            module=provenance.get("module", "midi_studio"),
+            operation=provenance.get("operation", "save_midi"),
+            model_id=provenance.get("model_id", ""),
+            seed=provenance.get("seed"),
+            prompt=provenance.get("prompt", ""),
+            lyrics=provenance.get("lyrics", ""),
+            parameters=provenance.get("parameters", {}),
+            source_asset_ids=provenance.get("source_asset_ids", []),
+            source_paths=provenance.get("source_paths", []),
+            export_format="mid",
+            output_kind=provenance.get("output_kind", "model"),
+            extra=provenance.get("extra", {}),
+        )
 
 
 def export_tracks_separately(midi_data: MidiData, output_dir: str) -> list[str]:
@@ -195,6 +213,21 @@ def export_tracks_separately(midi_data: MidiData, output_dir: str) -> list[str]:
         safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in track.name)
         path = os.path.join(output_dir, f"{i:02d}_{safe_name}.mid")
         pm.write(path)
+        write_provenance_sidecar(
+            path,
+            module="midi_studio",
+            operation="export_midi_track",
+            parameters={
+                "track_index": i,
+                "track_name": track.name,
+                "program": track.program,
+                "is_drum": track.is_drum,
+                "tempo": midi_data.tempo,
+                "time_signature": midi_data.time_signature,
+            },
+            export_format="mid",
+            output_kind="export",
+        )
         paths.append(path)
 
     return paths

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — DiffSinger Engine
+Slunder Studio v0.1.10 — DiffSinger Engine
 Singing voice synthesis from lyrics + MIDI using DiffSinger/ONNX models.
 Converts phoneme-aligned lyrics into natural singing audio.
 """
@@ -7,10 +7,11 @@ import os
 import time
 import json
 from typing import Optional, Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from core.provenance import file_sha256, write_provenance_sidecar
 from core.settings import get_config_dir
 from core.voice_bank import VoiceProfile
 
@@ -42,6 +43,15 @@ class SingResult:
     duration: float = 0.0
     generation_time: float = 0.0
     error: Optional[str] = None
+    provenance: dict = field(default_factory=dict)
+    provenance_path: str = ""
+
+
+def _safe_file_hash(path: Optional[str]) -> str:
+    try:
+        return file_sha256(path) if path and os.path.isfile(path) else ""
+    except Exception:
+        return ""
 
 
 class DiffSingerEngine:
@@ -177,6 +187,16 @@ class DiffSingerEngine:
                 sample_rate=params.sample_rate,
                 duration=duration,
                 generation_time=gen_time,
+                provenance={
+                    "module": "vocal_suite",
+                    "operation": "diffsinger_synthesize",
+                    "model_id": "diffsinger",
+                    "model_hash": _safe_file_hash(self._model_path),
+                    "lyrics": params.lyrics,
+                    "parameters": asdict(params),
+                    "output_kind": "model",
+                    "extra": {"model_path": self._model_path or ""},
+                },
             )
 
         except Exception as e:
@@ -305,6 +325,22 @@ class DiffSingerEngine:
             wf.setframerate(result.sample_rate)
             wf.writeframes(int_audio.tobytes())
 
+        prov = result.provenance or {}
+        sidecar = write_provenance_sidecar(
+            path,
+            module=prov.get("module", "vocal_suite"),
+            operation=prov.get("operation", "diffsinger_synthesize"),
+            model_id=prov.get("model_id", "diffsinger"),
+            model_hash=prov.get("model_hash", ""),
+            lyrics=prov.get("lyrics", ""),
+            parameters=prov.get("parameters", {}),
+            source_asset_ids=prov.get("source_asset_ids", []),
+            source_paths=prov.get("source_paths", []),
+            export_format="wav",
+            output_kind=prov.get("output_kind", "model"),
+            extra=prov.get("extra", {}),
+        )
+        result.provenance_path = str(sidecar)
         return path
 
 

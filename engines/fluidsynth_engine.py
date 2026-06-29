@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — FluidSynth Engine
+Slunder Studio v0.1.10 — FluidSynth Engine
 MIDI-to-audio rendering via FluidSynth with SoundFont support.
 Renders MidiData to WAV/numpy arrays for playback and export.
 """
@@ -8,11 +8,12 @@ import time
 import struct
 import wave
 from typing import Optional, Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
 
+from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir
 from core.midi_utils import MidiData, save_midi
 
@@ -208,6 +209,21 @@ class FluidSynthEngine:
             wf.setframerate(s.sample_rate)
             wf.writeframes(int_audio.tobytes())
 
+        write_provenance_sidecar(
+            output_path,
+            module="midi_studio",
+            operation="render_midi_to_wav",
+            parameters={
+                "render_settings": asdict(s),
+                "soundfont_path": self._soundfont_path or "",
+                "track_count": midi_data.track_count,
+                "total_notes": midi_data.total_notes,
+                "tempo": midi_data.tempo,
+                "time_signature": midi_data.time_signature,
+            },
+            export_format="wav",
+            output_kind="export",
+        )
         return output_path
 
     def render_track(self, midi_data: MidiData, track_idx: int,
@@ -385,5 +401,20 @@ def render_midi_to_audio(midi_data: MidiData,
             wf.setsampwidth(2)
             wf.setframerate(44100)
             wf.writeframes(int_audio.tobytes())
+        write_provenance_sidecar(
+            output_path,
+            module="midi_studio",
+            operation="render_midi_to_audio",
+            parameters={
+                "renderer": "sine_fallback",
+                "sample_rate": 44100,
+                "track_count": midi_data.track_count,
+                "total_notes": midi_data.total_notes,
+                "tempo": midi_data.tempo,
+                "time_signature": midi_data.time_signature,
+            },
+            export_format="wav",
+            output_kind="demo",
+        )
 
     return audio

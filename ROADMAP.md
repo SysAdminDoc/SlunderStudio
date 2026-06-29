@@ -90,13 +90,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### P0
 
 ### P1
-- [ ] P1 - Write generation provenance sidecars for every render
-  Why: Seeds, prompts, model revisions, settings, and source assets are needed to reproduce or audit generated songs, stems, voices, and exports.
-  Evidence: `engines/ace_step_engine.py`, `core/project.py`, Suno stem/workspace features, ACE-Step quality/provenance features.
-  Touches: `core/project.py`, `core/model_manager.py`, `engines/*`, `ui/project_manager.py`, `ui/song_forge_view.py`, `tests/`.
-  Acceptance: Each generated asset has a JSON sidecar and project entry with model id, revision/hash, seed, prompt/lyrics, parameters, source asset ids, app version, and export format; Project Manager can open the provenance record.
-  Complexity: M
-
 - [ ] P1 - Add settings and project schema migrations with repair
   Why: Settings and project JSON contain versions but no migration or corruption-recovery path.
   Evidence: `core/settings.py`, `core/project.py`.

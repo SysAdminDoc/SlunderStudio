@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — Project Management
+Slunder Studio v0.1.10 — Project Management
 Save, load, and manage music projects with auto-save, version history,
 and asset tracking across all modules.
 """
@@ -11,6 +11,12 @@ from typing import Optional
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
+from core.provenance import (
+    find_provenance_sidecar,
+    project_metadata_from_provenance,
+    read_provenance_sidecar,
+    sidecar_path_for,
+)
 from core.settings import get_config_dir
 from core.trash import TrashEntry, TrashError, TrashManager
 
@@ -23,6 +29,7 @@ class ProjectAsset:
     asset_type: str = ""  # "audio" | "midi" | "lyrics" | "stems" | "sfx" | "export"
     file_path: str = ""
     module: str = ""  # which module created it
+    provenance_path: str = ""
     created_at: float = 0.0
     metadata: dict = field(default_factory=dict)
 
@@ -348,7 +355,8 @@ class ProjectManager:
     # ── Asset Management ───────────────────────────────────────────────────────
 
     def import_asset(self, file_path: str, asset_type: str,
-                     module: str, name: Optional[str] = None) -> Optional[str]:
+                     module: str, name: Optional[str] = None,
+                     provenance_path: Optional[str] = None) -> Optional[str]:
         """Import a file as a project asset (copies to project directory)."""
         if self._current is None:
             return None
@@ -363,9 +371,22 @@ class ProjectManager:
         if os.path.abspath(file_path) != os.path.abspath(dest):
             shutil.copy2(file_path, dest)
 
+        sidecar = Path(provenance_path) if provenance_path else find_provenance_sidecar(file_path)
+        dest_sidecar = ""
+        provenance_metadata = {}
+        if sidecar and sidecar.is_file():
+            sidecar_dest = sidecar_path_for(dest)
+            if os.path.abspath(sidecar) != os.path.abspath(sidecar_dest):
+                shutil.copy2(sidecar, sidecar_dest)
+            dest_sidecar = str(sidecar_dest)
+            provenance = read_provenance_sidecar(dest_sidecar)
+            provenance_metadata = project_metadata_from_provenance(provenance, dest_sidecar)
+
         asset = ProjectAsset(
             name=name, asset_type=asset_type,
             file_path=dest, module=module,
+            provenance_path=dest_sidecar,
+            metadata=provenance_metadata,
         )
         self._current.add_asset(asset)
         self.save()

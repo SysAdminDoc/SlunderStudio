@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — RVC / GPT-SoVITS Engine
+Slunder Studio v0.1.10 — RVC / GPT-SoVITS Engine
 Voice conversion (RVC v2) and voice cloning (GPT-SoVITS) for transforming
 existing vocals or cloning a target voice from reference audio.
 """
@@ -7,10 +7,11 @@ import os
 import time
 import json
 from typing import Optional, Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from core.provenance import file_sha256, write_provenance_sidecar
 from core.settings import get_config_dir
 from core.voice_bank import SAFER_CHECKPOINT_EXTENSIONS, UNSAFE_CHECKPOINT_EXTENSIONS, VoiceProfile
 
@@ -82,6 +83,8 @@ class VoiceResult:
     is_demo: bool = False
     output_kind: str = "model"  # "model" | "demo" | "error"
     can_route: bool = True
+    provenance: dict = field(default_factory=dict)
+    provenance_path: str = ""
 
     @property
     def is_success(self) -> bool:
@@ -276,6 +279,13 @@ def load_voice_checkpoint(profile: VoiceProfile, path: str, device: str):
     return torch.load(path, map_location=device, weights_only=False)
 
 
+def _safe_file_hash(path: Optional[str]) -> str:
+    try:
+        return file_sha256(path) if path and os.path.isfile(path) else ""
+    except Exception:
+        return ""
+
+
 # ── RVC Engine ─────────────────────────────────────────────────────────────────
 
 class RVCEngine:
@@ -406,6 +416,12 @@ class RVCEngine:
 
             gen_time = time.time() - t0
             duration = len(converted) / params.sample_rate
+            param_meta = {
+                k: v for k, v in asdict(params).items()
+                if k != "input_audio"
+            }
+            if params.input_audio is not None:
+                param_meta["input_audio_shape"] = list(params.input_audio.shape)
 
             if progress_callback:
                 progress_callback(1.0, "Done")
@@ -418,6 +434,16 @@ class RVCEngine:
                 is_demo=True,
                 output_kind="demo",
                 can_route=True,
+                provenance={
+                    "module": "vocal_suite",
+                    "operation": "rvc_convert",
+                    "model_id": "rvc-v2",
+                    "model_hash": _safe_file_hash(self._model_path),
+                    "parameters": param_meta,
+                    "source_paths": [params.input_path] if params.input_path else [],
+                    "output_kind": "demo",
+                    "extra": {"model_path": self._model_path or ""},
+                },
             )
 
         except Exception as e:
@@ -555,6 +581,21 @@ class RVCEngine:
             wf.setframerate(result.sample_rate)
             wf.writeframes(int_audio.tobytes())
 
+        prov = result.provenance or {}
+        sidecar = write_provenance_sidecar(
+            path,
+            module=prov.get("module", "vocal_suite"),
+            operation=prov.get("operation", "rvc_convert"),
+            model_id=prov.get("model_id", "rvc-v2"),
+            model_hash=prov.get("model_hash", ""),
+            parameters=prov.get("parameters", {}),
+            source_asset_ids=prov.get("source_asset_ids", []),
+            source_paths=prov.get("source_paths", []),
+            export_format="wav",
+            output_kind=prov.get("output_kind", result.output_kind),
+            extra=prov.get("extra", {}),
+        )
+        result.provenance_path = str(sidecar)
         return path
 
 
@@ -704,6 +745,17 @@ class GPTSoVITSEngine:
                 is_demo=True,
                 output_kind="demo",
                 can_route=True,
+                provenance={
+                    "module": "vocal_suite",
+                    "operation": "gpt_sovits_clone",
+                    "model_id": "gpt-sovits-v2",
+                    "model_hash": _safe_file_hash(self._model_path),
+                    "prompt": params.text,
+                    "parameters": asdict(params),
+                    "source_paths": [params.ref_audio_path] if params.ref_audio_path else [],
+                    "output_kind": "demo",
+                    "extra": {"model_path": self._model_path or ""},
+                },
             )
 
         except Exception as e:
@@ -775,6 +827,22 @@ class GPTSoVITSEngine:
             wf.setsampwidth(2)
             wf.setframerate(result.sample_rate)
             wf.writeframes(int_audio.tobytes())
+        prov = result.provenance or {}
+        sidecar = write_provenance_sidecar(
+            path,
+            module=prov.get("module", "vocal_suite"),
+            operation=prov.get("operation", "gpt_sovits_clone"),
+            model_id=prov.get("model_id", "gpt-sovits-v2"),
+            model_hash=prov.get("model_hash", ""),
+            prompt=prov.get("prompt", ""),
+            parameters=prov.get("parameters", {}),
+            source_asset_ids=prov.get("source_asset_ids", []),
+            source_paths=prov.get("source_paths", []),
+            export_format="wav",
+            output_kind=prov.get("output_kind", result.output_kind),
+            extra=prov.get("extra", {}),
+        )
+        result.provenance_path = str(sidecar)
         return path
 
 

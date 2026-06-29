@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — ACE-Step Engine
+Slunder Studio v0.1.10 — ACE-Step Engine
 Native Python wrapper for ACE-Step inference (not Gradio).
 Supports: generate, batch, retake, repaint, extend.
 <4GB VRAM, 48kHz stereo, up to 4 min duration.
@@ -16,8 +16,9 @@ import random
 import threading
 from typing import Optional, Callable
 from pathlib import Path
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 
+from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir
 
 
@@ -60,6 +61,7 @@ class GenerationResult:
     is_favorite: bool = False
     rating: int = 0  # 0-5
     sections: list[dict] = field(default_factory=list)
+    provenance_path: str = ""
 
 
 @dataclass
@@ -334,6 +336,18 @@ def stitch_audio_files(
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     sf.write(output_path, stitched, target_sample_rate, subtype="PCM_16")
+    write_provenance_sidecar(
+        output_path,
+        module="song_forge",
+        operation="stitch_audio_files",
+        parameters={
+            "target_sample_rate": target_sample_rate,
+            "crossfade_seconds": crossfade_seconds,
+        },
+        source_paths=audio_paths,
+        export_format="wav",
+        output_kind="export",
+    )
     return output_path, len(stitched) / target_sample_rate
 
 
@@ -443,6 +457,19 @@ class ACEStepEngine:
         elapsed = time.time() - start_time
 
         output_path = self._find_output(save_dir, result)
+        sidecar = write_provenance_sidecar(
+            output_path,
+            module="song_forge",
+            operation="generate",
+            model_id="ace-step-v1.5",
+            seed=seed,
+            prompt=params.style_tags,
+            lyrics=params.lyrics,
+            parameters=asdict(params),
+            source_paths=[params.source_audio_path] if params.source_audio_path else [],
+            export_format="wav",
+            output_kind="model",
+        )
 
         if progress_cb:
             progress_cb(100)
@@ -454,6 +481,7 @@ class ACEStepEngine:
             sample_rate=params.sample_rate,
             params=params,
             generation_time=elapsed,
+            provenance_path=str(sidecar),
         )
 
     def generate_long_form(
@@ -539,6 +567,23 @@ class ACEStepEngine:
             target_sample_rate=params.sample_rate,
             crossfade_seconds=params.section_crossfade,
         )
+        sidecar = write_provenance_sidecar(
+            stitched_path,
+            module="song_forge",
+            operation="generate_long_form",
+            model_id="ace-step-v1.5",
+            seed=base_seed,
+            prompt=params.style_tags,
+            lyrics=params.lyrics,
+            parameters=asdict(params),
+            source_paths=section_paths,
+            export_format="wav",
+            output_kind="model",
+            extra={
+                "section_count": len(section_results),
+                "section_crossfade": params.section_crossfade,
+            },
+        )
 
         if progress_cb:
             progress_cb(100)
@@ -562,6 +607,7 @@ class ACEStepEngine:
             params=params,
             generation_time=elapsed,
             sections=section_payload,
+            provenance_path=str(sidecar),
         )
 
     def _find_output(self, save_dir: str, pipeline_result) -> Path:
@@ -775,6 +821,7 @@ def generate_song(
 
     return {
         "audio_path": result.audio_path,
+        "provenance_path": result.provenance_path,
         "seed": result.seed,
         "duration": result.duration,
         "generation_time": result.generation_time,
@@ -838,6 +885,7 @@ def generate_song_batch(
         "results": [
             {
                 "audio_path": r.audio_path,
+                "provenance_path": r.provenance_path,
                 "seed": r.seed,
                 "duration": r.duration,
                 "generation_time": r.generation_time,
@@ -928,6 +976,7 @@ def generate_seed_grid(
                 "row": row,
                 "col": col,
                 "audio_path": result.audio_path,
+                "provenance_path": result.provenance_path,
                 "seed": result.seed,
                 "cfg_scale": cfg_scale,
                 "duration": result.duration,

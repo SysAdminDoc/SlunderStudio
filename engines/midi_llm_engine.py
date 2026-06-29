@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.9 — MIDI-LLM Engine
+Slunder Studio v0.1.10 — MIDI-LLM Engine
 Text-to-MIDI generation using fine-tuned language models that output MIDI token sequences.
 Supports prompt-based composition, continuation, and style-conditioned generation.
 """
@@ -8,9 +8,10 @@ import json
 import re
 import time
 from typing import Optional, Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from core.provenance import sidecar_path_for
 from core.settings import get_config_dir
 from core.midi_utils import MidiData, TrackData, NoteData
 
@@ -57,6 +58,8 @@ class MidiGenResult:
     generation_time: float = 0.0
     token_count: int = 0
     error: Optional[str] = None
+    provenance: dict = field(default_factory=dict)
+    provenance_path: str = ""
 
 
 # ── Prompt Templates ───────────────────────────────────────────────────────────
@@ -363,6 +366,18 @@ class MidiLLMEngine:
                 raw_tokens=raw_text,
                 generation_time=gen_time,
                 token_count=len(new_tokens),
+                provenance={
+                    "module": "midi_studio",
+                    "operation": "generate_midi",
+                    "model_id": self._model_id or "midi-llm-1b",
+                    "prompt": params.prompt,
+                    "parameters": asdict(params),
+                    "output_kind": "model",
+                    "extra": {
+                        "token_count": len(new_tokens),
+                        "raw_tokens_preview": raw_text[:500],
+                    },
+                },
             )
 
         except Exception as e:
@@ -386,7 +401,22 @@ class MidiLLMEngine:
             name = f"midi_gen_{ts}"
 
         midi_path = os.path.join(self._generation_dir, f"{name}.mid")
-        save_midi(result.midi_data, midi_path)
+        provenance = result.provenance or {
+            "module": "midi_studio",
+            "operation": "save_generation",
+            "model_id": self._model_id or "midi-llm-1b",
+            "parameters": {
+                "generation_time": result.generation_time,
+                "token_count": result.token_count,
+                "tracks": result.midi_data.track_count,
+                "total_notes": result.midi_data.total_notes,
+                "duration": result.midi_data.duration,
+                "tempo": result.midi_data.tempo,
+            },
+            "output_kind": "export",
+        }
+        save_midi(result.midi_data, midi_path, provenance=provenance)
+        result.provenance_path = str(sidecar_path_for(midi_path))
 
         # Save metadata
         meta = {
@@ -559,6 +589,15 @@ def generate_midi(params: MidiGenParams,
             raw_tokens="[algorithmic demo - no model]",
             generation_time=gen_time,
             token_count=0,
+            provenance={
+                "module": "midi_studio",
+                "operation": "generate_midi",
+                "model_id": "midi-llm-1b",
+                "prompt": params.prompt,
+                "parameters": asdict(params),
+                "output_kind": "demo",
+                "extra": {"demo_synthesis": True},
+            },
         )
 
 
