@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.24 — SFX Engine
+Slunder Studio v0.1.25 — SFX Engine
 Text-to-SFX generation using Stable Audio Open for creating sound effects,
 ambient textures, and audio layers from text prompts.
 """

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.24 — MIDI Utilities
+Slunder Studio v0.1.25 — MIDI Utilities
 Helpers for MIDI parsing, quantization, import/export, and track manipulation.
 Wraps pretty_midi for consistent API across the app.
 """
@@ -36,12 +36,22 @@ class NoteData:
 
 
 @dataclass
+class CCEvent:
+    """Single MIDI control-change event."""
+    controller: int = 1
+    value: int = 0
+    time: float = 0.0
+    channel: int = 0
+
+
+@dataclass
 class TrackData:
     """Single MIDI track."""
     name: str = "Track"
     program: int = 0  # General MIDI program number
     channel: int = 0
     notes: list[NoteData] = field(default_factory=list)
+    cc_events: list[CCEvent] = field(default_factory=list)
     is_drum: bool = False
 
     @property
@@ -140,6 +150,13 @@ def load_midi(file_path: str) -> MidiData:
                 velocity=note.velocity,
                 channel=track.channel,
             ))
+        for cc in inst.control_changes:
+            track.cc_events.append(CCEvent(
+                controller=cc.number,
+                value=cc.value,
+                time=cc.time,
+                channel=track.channel,
+            ))
         midi_data.tracks.append(track)
 
     return midi_data
@@ -170,6 +187,12 @@ def save_midi(midi_data: MidiData, file_path: str, provenance: Optional[dict] = 
                 pitch=note.pitch,
                 start=note.start,
                 end=note.end,
+            ))
+        for event in track.cc_events:
+            inst.control_changes.append(pretty_midi.ControlChange(
+                number=max(0, min(127, event.controller)),
+                value=max(0, min(127, event.value)),
+                time=max(0.0, event.time),
             ))
         pm.instruments.append(inst)
 
@@ -209,6 +232,12 @@ def export_tracks_separately(midi_data: MidiData, output_dir: str) -> list[str]:
                 velocity=note.velocity, pitch=note.pitch,
                 start=note.start, end=note.end,
             ))
+        for event in track.cc_events:
+            inst.control_changes.append(pretty_midi.ControlChange(
+                number=max(0, min(127, event.controller)),
+                value=max(0, min(127, event.value)),
+                time=max(0.0, event.time),
+            ))
         pm.instruments.append(inst)
         safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in track.name)
         path = os.path.join(output_dir, f"{i:02d}_{safe_name}.mid")
@@ -222,6 +251,7 @@ def export_tracks_separately(midi_data: MidiData, output_dir: str) -> list[str]:
                 "track_name": track.name,
                 "program": track.program,
                 "is_drum": track.is_drum,
+                "cc_events": len(track.cc_events),
                 "tempo": midi_data.tempo,
                 "time_signature": midi_data.time_signature,
             },
@@ -257,6 +287,58 @@ def quantize_notes(notes: list[NoteData], grid: float = 0.25, tempo: float = 120
             channel=note.channel,
         ))
     return quantized
+
+
+def apply_swing_to_notes(
+    notes: list[NoteData],
+    grid: float = 0.25,
+    tempo: float = 120.0,
+    amount: float = 0.33,
+) -> list[NoteData]:
+    """Delay every second grid subdivision by amount*grid for a swing feel."""
+    if grid <= 0 or amount <= 0:
+        return [NoteData(n.pitch, n.start, n.end, n.velocity, n.channel) for n in notes]
+
+    beat_dur = 60.0 / tempo
+    grid_sec = grid * beat_dur
+    shifted = []
+    for note in notes:
+        step = round(note.start / grid_sec)
+        nearest = step * grid_sec
+        shift = grid_sec * amount if step % 2 == 1 and abs(note.start - nearest) <= grid_sec * 0.35 else 0.0
+        shifted.append(NoteData(
+            pitch=note.pitch,
+            start=round(max(0.0, note.start + shift), 6),
+            end=round(max(note.start + shift + 0.01, note.end + shift), 6),
+            velocity=note.velocity,
+            channel=note.channel,
+        ))
+    return shifted
+
+
+def humanize_note_velocities(
+    notes: list[NoteData],
+    amount: int = 8,
+    seed: int | None = None,
+) -> list[NoteData]:
+    """Apply deterministic optional random velocity offsets to notes."""
+    if amount <= 0:
+        return [NoteData(n.pitch, n.start, n.end, n.velocity, n.channel) for n in notes]
+
+    import random
+
+    rng = random.Random(seed) if seed is not None else random
+    humanized = []
+    for note in notes:
+        velocity = max(1, min(127, note.velocity + rng.randint(-amount, amount)))
+        humanized.append(NoteData(
+            pitch=note.pitch,
+            start=note.start,
+            end=note.end,
+            velocity=velocity,
+            channel=note.channel,
+        ))
+    return humanized
 
 
 def transpose_notes(notes: list[NoteData], semitones: int) -> list[NoteData]:

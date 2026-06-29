@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.24 — SFX Generator View
+Slunder Studio v0.1.25 — SFX Generator View
 Text-to-SFX generation with preset categories, batch generation,
 waveform preview, and drag-to-mixer support.
 """

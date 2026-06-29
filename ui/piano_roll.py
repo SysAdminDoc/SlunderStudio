@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.24 — Piano Roll Widget
+Slunder Studio v0.1.25 — Piano Roll Widget
 QGraphicsView-based MIDI piano roll editor with note creation, editing,
 selection, quantization, and snap-to-grid.
 """
@@ -7,14 +7,15 @@ from typing import Optional
 from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsTextItem,
     QGraphicsLineItem, QWidget, QVBoxLayout, QHBoxLayout, QComboBox,
-    QSpinBox, QLabel, QPushButton, QGraphicsItem,
+    QSpinBox, QDoubleSpinBox, QLabel, QPushButton, QGraphicsItem,
+    QTableWidget, QTableWidgetItem, QHeaderView,
 )
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF
 from PySide6.QtGui import (
     QColor, QPen, QBrush, QPainter, QWheelEvent, QMouseEvent, QKeyEvent,
 )
 
-from core.midi_utils import NoteData, TrackData, get_pitch_range
+from core.midi_utils import CCEvent, NoteData, TrackData, get_pitch_range
 from ui.theme import ThemeEngine
 
 
@@ -30,6 +31,14 @@ TOTAL_KEYS = MAX_PITCH - MIN_PITCH + 1
 SNAP_VALUES = {
     "1/1": 4.0, "1/2": 2.0, "1/4": 1.0, "1/8": 0.5,
     "1/16": 0.25, "1/32": 0.125, "Off": 0.0,
+}
+
+CC_LANES = {
+    "Mod Wheel (CC1)": 1,
+    "Volume (CC7)": 7,
+    "Pan (CC10)": 10,
+    "Expression (CC11)": 11,
+    "Sustain (CC64)": 64,
 }
 
 # Piano key colors
@@ -173,6 +182,7 @@ class PianoRollScene(QGraphicsScene):
         self.tempo: float = 120.0
         self.bars: int = 16
         self.snap_value: float = 0.25  # 1/16 note in beats
+        self.default_velocity: int = 100
         self._note_items: list[NoteItem] = []
         self._drawing = False
 
@@ -266,7 +276,14 @@ class PianoRollScene(QGraphicsScene):
     def add_note(self, pitch: int, start: float, duration: float = 0.25,
                  velocity: int = 100) -> NoteItem:
         """Add a new note to the scene and track."""
-        note = NoteData(pitch=pitch, start=start, end=start + duration, velocity=velocity)
+        channel = self.track.channel if self.track else 0
+        note = NoteData(
+            pitch=pitch,
+            start=start,
+            end=start + duration,
+            velocity=velocity,
+            channel=channel,
+        )
         if self.track:
             self.track.notes.append(note)
         item = NoteItem(note, self.tempo, self)
@@ -308,7 +325,12 @@ class PianoRollScene(QGraphicsScene):
                 grid = self.snap_value * beat_dur
                 start_time = round(start_time / grid) * grid
 
-            self.add_note(pitch, max(0, start_time), self.snap_value * beat_dur if self.snap_value > 0 else 0.25 * beat_dur)
+            self.add_note(
+                pitch,
+                max(0, start_time),
+                self.snap_value * beat_dur if self.snap_value > 0 else 0.25 * beat_dur,
+                self.default_velocity,
+            )
             event.accept()
         else:
             super().mousePressEvent(event)
@@ -373,6 +395,147 @@ class PianoRollView(QGraphicsView):
 
 # ── Piano Roll Widget (with toolbar) ──────────────────────────────────────────
 
+class CCAutomationLane(QWidget):
+    """Compact control-change lane editor for the loaded track."""
+
+    cc_changed = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._track: Optional[TrackData] = None
+        self._tempo: float = 120.0
+
+        t = ThemeEngine.get_colors()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(6)
+
+        label = QLabel("CC Lane:")
+        label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        self._controller_combo = QComboBox()
+        for name, controller in CC_LANES.items():
+            self._controller_combo.addItem(name, controller)
+        self._controller_combo.currentIndexChanged.connect(self._refresh)
+
+        beat_label = QLabel("Beat:")
+        beat_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        self._beat_spin = QDoubleSpinBox()
+        self._beat_spin.setRange(0.0, 512.0)
+        self._beat_spin.setDecimals(2)
+        self._beat_spin.setSingleStep(0.25)
+        self._beat_spin.setValue(0.0)
+        self._beat_spin.setFixedWidth(72)
+
+        value_label = QLabel("Value:")
+        value_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        self._value_spin = QSpinBox()
+        self._value_spin.setRange(0, 127)
+        self._value_spin.setValue(64)
+        self._value_spin.setFixedWidth(58)
+
+        btn_style = f"""
+            QPushButton {{
+                background: {t.get('surface', '#161b22')};
+                color: {t.get('text', '#e6edf3')};
+                border: 1px solid {t.get('border', '#1e2733')};
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{ background: {t.get('surface_hover', '#1c2333')}; }}
+        """
+        self._add_cc_btn = QPushButton("Add CC")
+        self._add_cc_btn.setStyleSheet(btn_style)
+        self._add_cc_btn.clicked.connect(self._on_add_event)
+        self._clear_lane_btn = QPushButton("Clear Lane")
+        self._clear_lane_btn.setStyleSheet(btn_style)
+        self._clear_lane_btn.clicked.connect(self._on_clear_lane)
+
+        controls.addWidget(label)
+        controls.addWidget(self._controller_combo)
+        controls.addWidget(beat_label)
+        controls.addWidget(self._beat_spin)
+        controls.addWidget(value_label)
+        controls.addWidget(self._value_spin)
+        controls.addWidget(self._add_cc_btn)
+        controls.addWidget(self._clear_lane_btn)
+        controls.addStretch()
+        layout.addLayout(controls)
+
+        self._table = QTableWidget(0, 3)
+        self._table.setHorizontalHeaderLabels(["Beat", "CC", "Value"])
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setMaximumHeight(94)
+        self._table.setStyleSheet(f"""
+            QTableWidget {{
+                background: {t.get('background', '#0d1117')};
+                color: {t.get('text', '#e6edf3')};
+                border: 1px solid {t.get('border', '#1e2733')};
+                border-radius: 4px;
+                gridline-color: {t.get('border', '#1e2733')};
+                font-size: 11px;
+            }}
+            QHeaderView::section {{
+                background: {t.get('surface', '#161b22')};
+                color: {t.get('text_secondary', '#8b949e')};
+                border: none;
+                padding: 3px 6px;
+            }}
+        """)
+        layout.addWidget(self._table)
+
+    def load_track(self, track: TrackData, tempo: float):
+        self._track = track
+        self._tempo = tempo
+        self._refresh()
+
+    def _on_add_event(self):
+        if self._track is None:
+            return
+        beat_dur = 60.0 / self._tempo
+        event = CCEvent(
+            controller=int(self._controller_combo.currentData()),
+            value=self._value_spin.value(),
+            time=round(self._beat_spin.value() * beat_dur, 6),
+            channel=self._track.channel,
+        )
+        self._track.cc_events.append(event)
+        self._track.cc_events.sort(key=lambda cc: (cc.time, cc.controller, cc.value))
+        self._refresh()
+        self.cc_changed.emit()
+
+    def _on_clear_lane(self):
+        if self._track is None:
+            return
+        controller = int(self._controller_combo.currentData())
+        before = len(self._track.cc_events)
+        self._track.cc_events = [
+            event for event in self._track.cc_events
+            if event.controller != controller
+        ]
+        if len(self._track.cc_events) != before:
+            self._refresh()
+            self.cc_changed.emit()
+
+    def _refresh(self):
+        if self._track is None:
+            self._table.setRowCount(0)
+            return
+        controller = int(self._controller_combo.currentData())
+        events = [event for event in self._track.cc_events if event.controller == controller]
+        self._table.setRowCount(len(events))
+        beat_dur = 60.0 / self._tempo
+        for row, event in enumerate(events):
+            beat = event.time / beat_dur if beat_dur > 0 else 0.0
+            self._table.setItem(row, 0, QTableWidgetItem(f"{beat:.2f}"))
+            self._table.setItem(row, 1, QTableWidgetItem(f"CC{event.controller}"))
+            self._table.setItem(row, 2, QTableWidgetItem(str(event.value)))
+
+
 class PianoRollWidget(QWidget):
     """Complete piano roll widget with toolbar controls."""
 
@@ -409,6 +572,22 @@ class PianoRollWidget(QWidget):
         self._velocity_spin.setRange(1, 127)
         self._velocity_spin.setValue(100)
         self._velocity_spin.setFixedWidth(60)
+        self._velocity_spin.valueChanged.connect(self._on_velocity_changed)
+
+        swing_label = QLabel("Swing:")
+        swing_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        self._swing_spin = QSpinBox()
+        self._swing_spin.setRange(0, 75)
+        self._swing_spin.setValue(33)
+        self._swing_spin.setSuffix("%")
+        self._swing_spin.setFixedWidth(64)
+
+        human_label = QLabel("Human:")
+        human_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        self._humanize_spin = QSpinBox()
+        self._humanize_spin.setRange(0, 32)
+        self._humanize_spin.setValue(8)
+        self._humanize_spin.setFixedWidth(54)
 
         # Quantize button
         btn_style = f"""
@@ -426,6 +605,14 @@ class PianoRollWidget(QWidget):
         self._quantize_btn.setStyleSheet(btn_style)
         self._quantize_btn.clicked.connect(self._on_quantize)
 
+        self._swing_btn = QPushButton("Swing")
+        self._swing_btn.setStyleSheet(btn_style)
+        self._swing_btn.clicked.connect(self._on_apply_swing)
+
+        self._humanize_btn = QPushButton("Humanize")
+        self._humanize_btn.setStyleSheet(btn_style)
+        self._humanize_btn.clicked.connect(self._on_humanize_velocity)
+
         self._select_all_btn = QPushButton("Select All")
         self._select_all_btn.setStyleSheet(btn_style)
         self._select_all_btn.clicked.connect(self._scene.select_all)
@@ -438,22 +625,35 @@ class PianoRollWidget(QWidget):
         toolbar.addWidget(self._snap_combo)
         toolbar.addWidget(vel_label)
         toolbar.addWidget(self._velocity_spin)
+        toolbar.addWidget(swing_label)
+        toolbar.addWidget(self._swing_spin)
+        toolbar.addWidget(human_label)
+        toolbar.addWidget(self._humanize_spin)
         toolbar.addStretch()
         toolbar.addWidget(self._quantize_btn)
+        toolbar.addWidget(self._swing_btn)
+        toolbar.addWidget(self._humanize_btn)
         toolbar.addWidget(self._select_all_btn)
         toolbar.addWidget(self._delete_btn)
 
         layout.addLayout(toolbar)
         layout.addWidget(self._view, 1)
+        self._automation_lane = CCAutomationLane()
+        self._automation_lane.cc_changed.connect(self.notes_changed.emit)
+        layout.addWidget(self._automation_lane)
 
     def load_track(self, track: TrackData, tempo: float = 120.0, bars: int = 16):
         self._scene.load_track(track, tempo, bars)
+        self._automation_lane.load_track(track, tempo)
 
     def get_notes(self) -> list[NoteData]:
         return self._scene.get_notes()
 
     def _on_snap_changed(self, text: str):
         self._scene.snap_value = SNAP_VALUES.get(text, 0.25)
+
+    def _on_velocity_changed(self, value: int):
+        self._scene.default_velocity = value
 
     def _on_quantize(self):
         """Quantize all notes to current snap grid."""
@@ -465,7 +665,32 @@ class PianoRollWidget(QWidget):
         if snap <= 0:
             return
 
-        quantized = quantize_notes(self._scene.track.notes, snap, self._scene.tempo)
-        self._scene.track.notes = quantized
+        self._replace_track_notes(quantize_notes(self._scene.track.notes, snap, self._scene.tempo))
+
+    def _on_apply_swing(self):
+        from core.midi_utils import apply_swing_to_notes
+        if self._scene.track is None:
+            return
+        snap = self._scene.snap_value
+        if snap <= 0:
+            return
+        amount = self._swing_spin.value() / 100.0
+        self._replace_track_notes(
+            apply_swing_to_notes(self._scene.track.notes, snap, self._scene.tempo, amount)
+        )
+
+    def _on_humanize_velocity(self):
+        from core.midi_utils import humanize_note_velocities
+        if self._scene.track is None:
+            return
+        self._replace_track_notes(
+            humanize_note_velocities(self._scene.track.notes, self._humanize_spin.value())
+        )
+
+    def _replace_track_notes(self, notes: list[NoteData]):
+        if self._scene.track is None:
+            return
+        self._scene.track.notes = notes
         self._scene.load_track(self._scene.track, self._scene.tempo, self._scene.bars)
+        self._automation_lane.load_track(self._scene.track, self._scene.tempo)
         self.notes_changed.emit()
