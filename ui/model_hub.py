@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — Model Hub UI
+Slunder Studio v0.1.9 — Model Hub UI
 Grid view of all models with live download progress, speed tracking,
 partial download detection, and one-click download/delete.
 """
@@ -540,12 +540,9 @@ class ModelHubView(QWidget):
                 else:
                     return
 
-        # Wipe partial download files before fresh start
+        # Quarantine partial download files before fresh start
         if self._mgr.has_partial_download(model_id):
-            import shutil
-            cache_dir = self._mgr.get_cache_dir(model_id)
-            if cache_dir.exists():
-                shutil.rmtree(cache_dir, ignore_errors=True)
+            self._mgr.delete_model_cache(model_id)
 
         card = self._cards[model_id]
         card.update_status(ModelStatus.DOWNLOADING)
@@ -621,12 +618,29 @@ class ModelHubView(QWidget):
                 )
             return
 
-        import shutil
-        cache_dir = self._mgr.get_cache_dir(model_id)
-        if cache_dir.exists():
-            shutil.rmtree(cache_dir, ignore_errors=True)
-        self._mgr._set_status(model_id, ModelStatus.NOT_DOWNLOADED)
+        entry = self._mgr.delete_model_cache(model_id)
+        if not entry:
+            if self.toast_mgr:
+                self.toast_mgr.error(f"Failed to remove {info.name} from disk.")
+            return
+
         self._cards[model_id].update_status(ModelStatus.NOT_DOWNLOADED)
         self._update_disk_display()
         if self.toast_mgr:
-            self.toast_mgr.info(f"{info.name} removed from disk.")
+            self.toast_mgr.info(
+                f"{info.name} moved to trash.",
+                duration_ms=8000,
+                action_label="Undo",
+                action_callback=lambda entry_id=entry.id, mid=model_id: self._restore_model(mid, entry_id),
+            )
+
+    def _restore_model(self, model_id: str, trash_entry_id: str):
+        if self._mgr.restore_model_cache(trash_entry_id):
+            self._cards[model_id].update_status(self._mgr.get_status(model_id))
+            self._update_disk_display()
+            if self.toast_mgr:
+                info = self._mgr.get_model_info(model_id)
+                self.toast_mgr.success(f"{info.name} restored.")
+        elif self.toast_mgr:
+            info = self._mgr.get_model_info(model_id)
+            self.toast_mgr.error(f"Failed to restore {info.name}.")

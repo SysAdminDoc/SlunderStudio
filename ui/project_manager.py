@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — Project Manager View
+Slunder Studio v0.1.9 — Project Manager View
 Project browser with create, open, delete, asset management,
 version history, and auto-save controls.
 """
@@ -279,9 +279,10 @@ class ProjectManagerView(QWidget):
 
     project_opened = Signal(str)  # project_id
 
-    def __init__(self, parent=None):
+    def __init__(self, toast_mgr=None, parent=None):
         super().__init__(parent)
         self._cards: list[ProjectCard] = []
+        self.toast_mgr = toast_mgr
 
         t = ThemeEngine.get_colors()
         layout = QHBoxLayout(self)
@@ -395,9 +396,30 @@ class ProjectManagerView(QWidget):
 
     def _on_delete_project(self, project_id: str):
         mgr = get_project_manager()
-        mgr.delete(project_id)
+        entry = mgr.delete(project_id)
+        if not entry:
+            if self.toast_mgr:
+                self.toast_mgr.error("Project could not be moved to trash.")
+            return
+
         self._detail.clear()
         self._refresh_list()
+        if self.toast_mgr:
+            self.toast_mgr.info(
+                "Project moved to trash.",
+                duration_ms=8000,
+                action_label="Undo",
+                action_callback=lambda entry_id=entry.id: self._restore_project(entry_id),
+            )
+
+    def _restore_project(self, trash_entry_id: str):
+        mgr = get_project_manager()
+        if mgr.restore_deleted_project(trash_entry_id):
+            self._refresh_list()
+            if self.toast_mgr:
+                self.toast_mgr.success("Project restored.")
+        elif self.toast_mgr:
+            self.toast_mgr.error("Project restore failed.")
 
     def _on_search(self, text: str):
         query = text.lower()

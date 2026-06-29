@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — ACE-Step Style Tags
+Slunder Studio v0.1.9 — ACE-Step Style Tags
 Categorized database of 1000+ style tags supported by ACE-Step v1.5.
 Searchable, favoritable, with category browsing.
 """

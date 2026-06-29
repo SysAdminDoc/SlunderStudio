@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — SFX Generator View
+Slunder Studio v0.1.9 — SFX Generator View
 Text-to-SFX generation with preset categories, batch generation,
 waveform preview, and drag-to-mixer support.
 """
@@ -117,8 +117,9 @@ class SFXView(QWidget):
 
     send_to_mixer = Signal(str)  # audio file path
 
-    def __init__(self, parent=None):
+    def __init__(self, toast_mgr=None, parent=None):
         super().__init__(parent)
+        self.toast_mgr = toast_mgr
         self._results: list[SFXResult] = []
         self._cards: list[SFXCard] = []
 
@@ -427,12 +428,59 @@ class SFXView(QWidget):
             self._status.setText("SFX cannot be routed to the mixer")
 
     def _on_delete_card(self, card: SFXCard):
+        result = card.result
+        entry = None
+        if result.file_path and os.path.exists(result.file_path):
+            try:
+                from core.trash import TrashManager
+                entry = TrashManager().trash_path(
+                    result.file_path,
+                    category="generated_asset",
+                    label=os.path.basename(result.file_path),
+                    metadata={
+                        "module": "sfx",
+                        "seed": result.seed,
+                        "duration": result.duration,
+                        "sample_rate": result.sample_rate,
+                        "is_demo": result.is_demo,
+                    },
+                )
+            except Exception as e:
+                self._status.setText(f"Delete failed: {e}")
+                if self.toast_mgr:
+                    self.toast_mgr.error("SFX file could not be moved to trash.")
+                return
+
         if card in self._cards:
             self._cards.remove(card)
-        if card.result in self._results:
-            self._results.remove(card.result)
+        if result in self._results:
+            self._results.remove(result)
         self._results_layout.removeWidget(card)
         card.deleteLater()
+        if entry and self.toast_mgr:
+            self.toast_mgr.info(
+                "SFX moved to trash.",
+                duration_ms=8000,
+                action_label="Undo",
+                action_callback=lambda entry_id=entry.id, res=result: self._restore_sfx_card(entry_id, res),
+            )
+
+    def _restore_sfx_card(self, trash_entry_id: str, result: SFXResult):
+        try:
+            from core.trash import TrashManager
+            entry = TrashManager().restore(trash_entry_id)
+            result.file_path = entry.original_path
+        except Exception as e:
+            self._status.setText(f"Restore failed: {e}")
+            if self.toast_mgr:
+                self.toast_mgr.error("SFX restore failed.")
+            return
+
+        if result not in self._results:
+            self._results.append(result)
+            self._add_result_card(result)
+        if self.toast_mgr:
+            self.toast_mgr.success("SFX restored.")
 
     def _clear_results(self):
         for card in self._cards:

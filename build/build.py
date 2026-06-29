@@ -16,7 +16,7 @@ import subprocess
 import shutil
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.8"
+APP_VERSION = "0.1.9"
 ENTRY_POINT = "main.py"
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

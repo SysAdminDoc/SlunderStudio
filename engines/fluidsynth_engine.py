@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — FluidSynth Engine
+Slunder Studio v0.1.9 — FluidSynth Engine
 MIDI-to-audio rendering via FluidSynth with SoundFont support.
 Renders MidiData to WAV/numpy arrays for playback and export.
 """

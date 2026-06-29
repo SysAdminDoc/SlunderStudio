@@ -88,12 +88,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ## Research-Driven Additions
 
 ### P0
-- [ ] P0 - Add recoverable deletes for projects, models, and generated assets
-  Why: Project deletion uses recursive removal with ignored errors, and creative assets/model caches are too expensive to lose without undo or quarantine.
-  Evidence: `core/project.py`, `ui/project_manager.py`, `ui/model_hub.py`.
-  Touches: `core/project.py`, `core/model_manager.py`, `ui/project_manager.py`, `ui/model_hub.py`, `core/settings.py`, `tests/`.
-  Acceptance: Deletes move data to an app trash/quarantine with manifest metadata, toast action for undo, automatic retention cleanup, and tests for restore and failed-delete reporting.
-  Complexity: M
 
 ### P1
 - [ ] P1 - Write generation provenance sidecars for every render

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — Project Management
+Slunder Studio v0.1.9 — Project Management
 Save, load, and manage music projects with auto-save, version history,
 and asset tracking across all modules.
 """
@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
 from core.settings import get_config_dir
+from core.trash import TrashEntry, TrashError, TrashManager
 
 
 @dataclass
@@ -115,6 +116,7 @@ class ProjectManager:
         self._index_path = os.path.join(self._projects_dir, "index.json")
         self._current: Optional[Project] = None
         self._index: dict[str, dict] = {}  # id -> {name, path, updated_at}
+        self._trash = TrashManager()
         os.makedirs(self._projects_dir, exist_ok=True)
         self._load_index()
 
@@ -223,19 +225,52 @@ class ProjectManager:
             print(f"[Slunder Studio] Failed to save project: {e}")
             return False
 
-    def delete(self, project_id: str) -> bool:
+    def delete(self, project_id: str) -> Optional[TrashEntry]:
         if project_id not in self._index:
-            return False
+            return None
 
+        index_entry = dict(self._index[project_id])
         project_dir = self._index[project_id]["path"]
-        if os.path.isdir(project_dir):
-            shutil.rmtree(project_dir, ignore_errors=True)
+        try:
+            entry = self._trash.trash_path(
+                project_dir,
+                category="project",
+                label=index_entry.get("name") or project_id,
+                metadata={
+                    "project_id": project_id,
+                    "index_entry": index_entry,
+                },
+            )
+        except TrashError as e:
+            print(f"[Slunder Studio] Failed to delete project: {e}")
+            return None
 
         del self._index[project_id]
         self._save_index()
 
         if self._current and self._current.id == project_id:
             self._current = None
+        return entry
+
+    def restore_deleted_project(self, trash_entry_id: str) -> bool:
+        try:
+            entry = self._trash.restore(trash_entry_id)
+        except TrashError as e:
+            print(f"[Slunder Studio] Failed to restore project: {e}")
+            return False
+
+        project_id = entry.metadata.get("project_id")
+        index_entry = entry.metadata.get("index_entry") or {}
+        if not project_id:
+            return False
+
+        index_entry["path"] = str(Path(entry.original_path))
+        if "name" not in index_entry:
+            index_entry["name"] = Path(entry.original_path).name
+        if "updated_at" not in index_entry:
+            index_entry["updated_at"] = time.time()
+        self._index[project_id] = index_entry
+        self._save_index()
         return True
 
     def _save_project(self, project: Project):
@@ -335,6 +370,56 @@ class ProjectManager:
         self._current.add_asset(asset)
         self.save()
         return asset.id
+
+    def delete_asset(self, asset_id: str) -> Optional[TrashEntry]:
+        """Move a project asset file to trash and remove it from the project."""
+        if self._current is None:
+            return None
+
+        asset = next((a for a in self._current.assets if a.id == asset_id), None)
+        if asset is None:
+            return None
+
+        try:
+            entry = self._trash.trash_path(
+                asset.file_path,
+                category="project_asset",
+                label=asset.name or asset.id,
+                metadata={
+                    "project_id": self._current.id,
+                    "asset": asdict(asset),
+                },
+            )
+        except TrashError as e:
+            print(f"[Slunder Studio] Failed to delete project asset: {e}")
+            return None
+
+        self._current.remove_asset(asset_id)
+        self.save()
+        return entry
+
+    def restore_deleted_asset(self, trash_entry_id: str) -> bool:
+        try:
+            entry = self._trash.restore(trash_entry_id)
+        except TrashError as e:
+            print(f"[Slunder Studio] Failed to restore project asset: {e}")
+            return False
+
+        project_id = entry.metadata.get("project_id")
+        asset_data = entry.metadata.get("asset") or {}
+        if not project_id or not asset_data:
+            return False
+
+        project = self._current if self._current and self._current.id == project_id else self.open(project_id)
+        if project is None:
+            return False
+        asset_data["file_path"] = str(Path(entry.original_path))
+        project.assets.append(ProjectAsset(**{
+            k: v for k, v in asset_data.items()
+            if k in ProjectAsset.__dataclass_fields__
+        }))
+        self.save(project)
+        return True
 
 
 def get_project_manager() -> ProjectManager:

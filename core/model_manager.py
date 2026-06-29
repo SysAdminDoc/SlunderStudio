@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — Model Manager
+Slunder Studio v0.1.9 — Model Manager
 Central singleton managing model lifecycle: download, load, unload, and GPU memory.
 Enforces one-large-model-at-a-time GPU residency for 16GB VRAM budget.
 """
@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QObject, Signal
 
 from core.settings import Settings, get_config_dir
+from core.trash import TrashEntry, TrashError, TrashManager
 
 # ── Model Registry ─────────────────────────────────────────────────────────────
 
@@ -345,6 +346,7 @@ class ModelManager(QObject):
         self._current_model_id: Optional[str] = None
         self._current_model: Any = None
         self._settings = Settings()
+        self._trash = TrashManager()
 
         # Initialize status for all registered models
         for model_id in self._registry:
@@ -773,6 +775,64 @@ class ModelManager(QObject):
             return False
         # Has files but no marker = partial
         return any(f for f in cache_path.iterdir() if f.name != self.COMPLETE_MARKER)
+
+    def delete_model_cache(self, model_id: str) -> Optional[TrashEntry]:
+        """Move a model cache directory to trash instead of deleting it."""
+        info = self._registry.get(model_id)
+        if info is None or info.pip_managed:
+            return None
+
+        cache_path = self.get_cache_dir(model_id)
+        if not cache_path.exists():
+            return None
+
+        if self._current_model_id == model_id:
+            self.unload()
+
+        try:
+            entry = self._trash.trash_path(
+                cache_path,
+                category="model",
+                label=info.name or model_id,
+                metadata={
+                    "model_id": model_id,
+                    "model_name": info.name,
+                    "source": info.source,
+                    "revision": info.revision,
+                    "status": self.get_status(model_id).value,
+                },
+            )
+        except TrashError as e:
+            self.model_error.emit(model_id, str(e))
+            return None
+
+        self._set_status(model_id, ModelStatus.NOT_DOWNLOADED)
+        return entry
+
+    def restore_model_cache(self, trash_entry_id: str) -> bool:
+        """Restore a trashed model cache directory and refresh status."""
+        try:
+            entry = self._trash.restore(trash_entry_id)
+        except TrashError as e:
+            model_id = ""
+            err = str(e)
+        else:
+            model_id = entry.metadata.get("model_id", "")
+            err = ""
+
+        if err:
+            if model_id:
+                self.model_error.emit(model_id, err)
+            return False
+        if not model_id or model_id not in self._registry:
+            return False
+
+        ok, _reason = self.verify_download(model_id)
+        self._set_status(
+            model_id,
+            ModelStatus.DOWNLOADED if ok else ModelStatus.PARTIAL,
+        )
+        return True
 
     def get_total_disk_usage(self) -> float:
         """Get total disk usage of all downloaded models in GB."""

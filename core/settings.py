@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — Settings System
+Slunder Studio v0.1.9 — Settings System
 JSON config in %APPDATA%/SlunderStudio with presets, reactive updates, and two-tier mode.
 """
 import json
@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.8"
+APP_VERSION = "0.1.9"
 
 # ── Default Configuration ──────────────────────────────────────────────────────
 
@@ -27,6 +27,7 @@ DEFAULTS = {
         "onboarding_complete": False,
         "auto_save_interval": 60,
         "max_cache_gb": 20.0,
+        "trash_retention_days": 30,
     },
     "model_hub": {
         "cache_dir": "",
@@ -120,6 +121,13 @@ def get_default_cache_dir() -> Path:
     cache_dir = get_config_dir() / "models"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
+
+
+def get_trash_dir() -> Path:
+    """Get the app trash/quarantine directory."""
+    trash_dir = get_config_dir() / "trash"
+    trash_dir.mkdir(parents=True, exist_ok=True)
+    return trash_dir
 
 
 def get_presets_dir() -> Path:

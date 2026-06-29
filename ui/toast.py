@@ -1,9 +1,11 @@
 """
-Slunder Studio v0.1.8 — Toast Notification System
+Slunder Studio v0.1.9 — Toast Notification System
 Slide-in from bottom-right, auto-dismiss, no blocking dialogs.
 Supports success/error/warning/info types with color-coded borders.
 """
-from PySide6.QtWidgets import QFrame, QLabel, QHBoxLayout, QWidget, QApplication
+from PySide6.QtWidgets import (
+    QFrame, QLabel, QHBoxLayout, QWidget, QApplication, QPushButton,
+)
 from PySide6.QtCore import QTimer, QPropertyAnimation, QRect, QEasingCurve, Qt, Signal
 from PySide6.QtGui import QFont
 
@@ -22,10 +24,19 @@ class Toast(QFrame):
         "error": {"border": Palette.RED, "icon": "\u2717", "name": "toastError"},
     }
 
-    def __init__(self, message: str, toast_type: str = "info", duration_ms: int = 3000, parent=None):
+    def __init__(
+        self,
+        message: str,
+        toast_type: str = "info",
+        duration_ms: int = 3000,
+        parent=None,
+        action_label: str = "",
+        action_callback=None,
+    ):
         super().__init__(parent)
         self.duration_ms = duration_ms
         self._anim = None
+        self._action_callback = action_callback
 
         config = self.TYPES.get(toast_type, self.TYPES["info"])
         self.setObjectName(config["name"])
@@ -58,6 +69,20 @@ class Toast(QFrame):
         msg_label.setMaximumWidth(320)
         layout.addWidget(msg_label, 1)
 
+        if action_label and action_callback:
+            action_btn = QPushButton(action_label)
+            action_btn.setFixedHeight(28)
+            action_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {config["border"]}; color: {Palette.BASE};
+                    border: none; border-radius: 4px; padding: 4px 10px;
+                    font-size: 11px; font-weight: 700;
+                }}
+                QPushButton:hover {{ background: {Palette.TEXT}; }}
+            """)
+            action_btn.clicked.connect(self._on_action)
+            layout.addWidget(action_btn)
+
         self.setFixedWidth(380)
         self.adjustSize()
 
@@ -80,6 +105,11 @@ class Toast(QFrame):
         self._anim.setEndValue(target_rect)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._anim.start()
+
+    def _on_action(self):
+        if self._action_callback:
+            self._action_callback()
+        self.dismiss()
 
     def dismiss(self):
         """Animate sliding out to the right, then destroy."""
@@ -116,9 +146,23 @@ class ToastManager:
         self.parent = parent
         self._toasts: list[Toast] = []
 
-    def show_toast(self, message: str, toast_type: str = "info", duration_ms: int = 3000):
+    def show_toast(
+        self,
+        message: str,
+        toast_type: str = "info",
+        duration_ms: int = 3000,
+        action_label: str = "",
+        action_callback=None,
+    ):
         """Show a new toast notification."""
-        toast = Toast(message, toast_type, duration_ms, parent=self.parent)
+        toast = Toast(
+            message,
+            toast_type,
+            duration_ms,
+            parent=self.parent,
+            action_label=action_label,
+            action_callback=action_callback,
+        )
         toast.closed.connect(lambda t=toast: self._remove_toast(t))
 
         self._toasts.append(toast)
@@ -127,17 +171,21 @@ class ToastManager:
         target = self._get_toast_rect(len(self._toasts) - 1, toast)
         toast.slide_in(target)
 
-    def info(self, message: str, duration_ms: int = 3000):
-        self.show_toast(message, "info", duration_ms)
+    def info(self, message: str, duration_ms: int = 3000,
+             action_label: str = "", action_callback=None):
+        self.show_toast(message, "info", duration_ms, action_label, action_callback)
 
-    def success(self, message: str, duration_ms: int = 3000):
-        self.show_toast(message, "success", duration_ms)
+    def success(self, message: str, duration_ms: int = 3000,
+                action_label: str = "", action_callback=None):
+        self.show_toast(message, "success", duration_ms, action_label, action_callback)
 
-    def warning(self, message: str, duration_ms: int = 4000):
-        self.show_toast(message, "warning", duration_ms)
+    def warning(self, message: str, duration_ms: int = 4000,
+                action_label: str = "", action_callback=None):
+        self.show_toast(message, "warning", duration_ms, action_label, action_callback)
 
-    def error(self, message: str, duration_ms: int = 5000):
-        self.show_toast(message, "error", duration_ms)
+    def error(self, message: str, duration_ms: int = 5000,
+              action_label: str = "", action_callback=None):
+        self.show_toast(message, "error", duration_ms, action_label, action_callback)
 
     def _get_toast_rect(self, index: int, toast: Toast) -> QRect:
         """Calculate position for toast at given stack index."""

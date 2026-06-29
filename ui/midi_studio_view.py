@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — MIDI Studio View
+Slunder Studio v0.1.9 — MIDI Studio View
 Main MIDI Studio page: text-to-MIDI generation, piano roll editor,
 per-track mixer, .mid import/export, FluidSynth rendering, and
 cross-module routing (Song Forge, Vocal Suite).

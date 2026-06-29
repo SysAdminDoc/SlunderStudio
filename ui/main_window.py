@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.8 — Main Window
+Slunder Studio v0.1.9 — Main Window
 QMainWindow shell with animated sidebar navigation, stacked module views,
 global audio transport bar, VRAM status indicator, and drag-and-drop support.
 """
@@ -351,7 +351,7 @@ class MainWindow(QMainWindow):
         self._pages.addWidget(self._vocal_suite_view)
 
         # Page 4: SFX (Phase 6)
-        self._sfx_view = SFXView()
+        self._sfx_view = SFXView(toast_mgr=self.toast_mgr)
         self._sfx_view.send_to_mixer.connect(self._on_sfx_to_mixer)
         self._pages.addWidget(self._sfx_view)
 
@@ -364,7 +364,7 @@ class MainWindow(QMainWindow):
         self._pages.addWidget(self._ai_producer_view)
 
         # Page 7: Projects (Phase 6)
-        self._project_mgr_view = ProjectManagerView()
+        self._project_mgr_view = ProjectManagerView(toast_mgr=self.toast_mgr)
         self._pages.addWidget(self._project_mgr_view)
 
         # Page 8: Model Hub (built now)
