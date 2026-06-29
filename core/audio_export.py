@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.14 — Audio Export
+Slunder Studio v0.1.15 — Audio Export
 Multi-format audio export: WAV, FLAC, MP3, OGG.
 Uses soundfile for lossless, ffmpeg subprocess for lossy.
 """
@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 
-from core.provenance import write_provenance_sidecar
+from core.provenance import read_provenance_sidecar, write_provenance_sidecar
 
 
 @dataclass
@@ -82,6 +82,40 @@ def apply_fade(audio: np.ndarray, sr: int, fade_in_ms: int = 0, fade_out_ms: int
             result[-n_samples:] *= fade
 
     return result
+
+
+def _source_model_license_metadata(source_path: str) -> dict:
+    provenance = read_provenance_sidecar(source_path)
+    model = provenance.get("model") or {}
+    if not model:
+        return {}
+    keys = (
+        "id",
+        "name",
+        "license",
+        "license_url",
+        "commercial_use",
+        "commercial_use_label",
+        "commercial_use_note",
+        "license_warning",
+        "requires_export_warning",
+        "gated",
+        "access",
+    )
+    return {key: model.get(key) for key in keys if key in model}
+
+
+def get_export_license_warnings(source_path: str) -> list[str]:
+    metadata = _source_model_license_metadata(source_path)
+    if not metadata:
+        return []
+    warning = metadata.get("license_warning") or ""
+    if not metadata.get("requires_export_warning") and not warning:
+        return []
+    model_name = metadata.get("name") or metadata.get("id") or "Source model"
+    if warning:
+        return [f"{model_name}: {warning}"]
+    return [f"{model_name}: Review model license before release."]
 
 
 def export_audio(
@@ -192,6 +226,14 @@ def export_audio(
     else:
         raise ValueError(f"Unsupported format: {settings.format}")
 
+    extra = dict(provenance_extra or {})
+    source_model_license = _source_model_license_metadata(source_path)
+    if source_model_license:
+        extra["source_model_license"] = source_model_license
+    license_warnings = get_export_license_warnings(source_path)
+    if license_warnings:
+        extra["license_warnings"] = license_warnings
+
     write_provenance_sidecar(
         output_path,
         module=module,
@@ -201,7 +243,7 @@ def export_audio(
         source_paths=source_paths if source_paths is not None else [source_path],
         export_format=settings.format,
         output_kind="export",
-        extra=provenance_extra or {},
+        extra=extra,
     )
     return output_path
 

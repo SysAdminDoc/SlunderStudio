@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.14-blue)
+![Version](https://img.shields.io/badge/version-0.1.15-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -79,6 +79,7 @@ Models are downloaded on-demand through the Model Hub. Nothing downloads until y
 | Stable Audio Open | ~3 GB | SFX Generator | Optional |
 
 All models run entirely on your local machine. No cloud APIs, no subscriptions, no data leaves your computer.
+Model Hub cards show each model's license, gated/token status, and commercial-use status. Generated and exported provenance sidecars carry source model license policy forward, and Song Forge export warns when a source model is limited, non-commercial, or governed by model-specific terms.
 
 ## System Requirements
 

@@ -49,6 +49,8 @@ class GenerationProvenanceTests(unittest.TestCase):
 
             summary = project_metadata_from_provenance(data, sidecar)
             self.assertEqual(summary["provenance"]["model_id"], "ace-step-v1.5")
+            self.assertEqual(summary["provenance"]["model_license"], "Apache 2.0")
+            self.assertEqual(summary["provenance"]["model_commercial_use"], "allowed")
             self.assertEqual(summary["provenance"]["artifact_sha256"], data["artifact"]["sha256"])
 
     def test_sfx_demo_generation_writes_sidecar(self):
@@ -107,6 +109,9 @@ class GenerationProvenanceTests(unittest.TestCase):
                     self.assertTrue(Path(asset.provenance_path).is_file())
                     self.assertNotEqual(Path(asset.provenance_path).parent, source.parent)
                     self.assertEqual(asset.metadata["provenance"]["model_id"], "stable-audio-open")
+                    self.assertEqual(asset.metadata["provenance"]["model_license"], "Stability Community")
+                    self.assertEqual(asset.metadata["provenance"]["model_commercial_use"], "limited")
+                    self.assertIn("Commercial use is limited", asset.metadata["provenance"]["model_license_warning"])
                     self.assertEqual(asset.metadata["provenance"]["seed"], 99)
                     self.assertEqual(asset.metadata["provenance"]["prompt"], "rain")
             finally:

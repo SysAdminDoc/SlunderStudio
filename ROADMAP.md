@@ -92,13 +92,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### P1
 
 ### P2
-- [ ] P2 - Surface model license and commercial-use compatibility in Model Hub
-  Why: The registry mixes MIT, Apache, Llama community, Stability community, gated, and CC-BY-NC models while README claims local ownership.
-  Evidence: `core/model_manager.py`, `README.md`, Stable Audio Open, MusicGen.
-  Touches: `core/model_manager.py`, `ui/model_hub.py`, `core/audio_export.py`, `README.md`, `tests/`.
-  Acceptance: Model cards show license, gated status, commercial-use status, and export warnings; project provenance records active model license data.
-  Complexity: S
-
 - [ ] P2 - Build an exportable diagnostics and health report
   Why: Crash logs exist, but users need a single redacted report for model status, dependency versions, GPU/CPU, ffmpeg, config paths, and recent job failures.
   Evidence: `main.py`, `core/model_manager.py`, `core/settings.py`, `core/audio_export.py`.

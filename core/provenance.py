@@ -1,5 +1,5 @@
 ﻿"""
-Slunder Studio v0.1.14 - Generation provenance sidecars.
+Slunder Studio v0.1.15 - Generation provenance sidecars.
 Writes reproducibility metadata next to generated and exported artifacts.
 """
 from __future__ import annotations
@@ -93,9 +93,16 @@ def collect_model_metadata(
         "resolved_revision": "",
         "hash": model_hash or "",
         "license": model_license or "",
+        "license_url": "",
+        "commercial_use": "",
+        "commercial_use_label": "",
+        "commercial_use_note": "",
+        "license_warning": "",
+        "requires_export_warning": False,
         "file_hash_count": 0,
         "trusted_source": None,
         "gated": None,
+        "access": "",
     }
     if not model_id:
         return metadata
@@ -106,13 +113,21 @@ def collect_model_metadata(
         mgr = ModelManager()
         info = mgr.get_model_info(model_id)
         if info is not None:
+            license_meta = info.license_metadata()
             metadata.update({
                 "name": metadata["name"] or info.name,
                 "source": metadata["source"] or info.source,
                 "revision": metadata["revision"] or info.revision,
                 "license": metadata["license"] or info.license,
+                "license_url": license_meta.get("license_url", ""),
+                "commercial_use": license_meta.get("commercial_use", ""),
+                "commercial_use_label": license_meta.get("commercial_use_label", ""),
+                "commercial_use_note": license_meta.get("commercial_use_note", ""),
+                "license_warning": license_meta.get("license_warning", ""),
+                "requires_export_warning": license_meta.get("requires_export_warning", False),
                 "trusted_source": info.trusted_source,
                 "gated": info.gated,
+                "access": license_meta.get("access", ""),
             })
 
         manifest = mgr.get_download_manifest(model_id)
@@ -123,9 +138,19 @@ def collect_model_metadata(
                 "revision": metadata["revision"] or manifest.get("revision", ""),
                 "resolved_revision": manifest.get("resolved_revision", ""),
                 "license": metadata["license"] or manifest.get("license", ""),
+                "license_url": metadata["license_url"] or manifest.get("license_url", ""),
+                "commercial_use": metadata["commercial_use"] or manifest.get("commercial_use", ""),
+                "commercial_use_label": metadata["commercial_use_label"] or manifest.get("commercial_use_label", ""),
+                "commercial_use_note": metadata["commercial_use_note"] or manifest.get("commercial_use_note", ""),
+                "license_warning": metadata["license_warning"] or manifest.get("license_warning", ""),
+                "requires_export_warning": (
+                    metadata["requires_export_warning"]
+                    or manifest.get("requires_export_warning", False)
+                ),
                 "hash": metadata["hash"] or _hash_file_map(file_hashes),
                 "file_hash_count": len(file_hashes),
                 "total_bytes": manifest.get("total_bytes", 0),
+                "access": metadata["access"] or manifest.get("access", ""),
             })
     except Exception:
         pass
@@ -233,6 +258,11 @@ def project_metadata_from_provenance(
             "output_kind": provenance.get("output_kind", ""),
             "model_id": model.get("id", ""),
             "model_name": model.get("name", ""),
+            "model_license": model.get("license", ""),
+            "model_license_url": model.get("license_url", ""),
+            "model_commercial_use": model.get("commercial_use", ""),
+            "model_commercial_use_label": model.get("commercial_use_label", ""),
+            "model_license_warning": model.get("license_warning", ""),
             "model_revision": model.get("resolved_revision") or model.get("revision", ""),
             "model_hash": model.get("hash", ""),
             "seed": provenance.get("seed"),

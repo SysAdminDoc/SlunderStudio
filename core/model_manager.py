@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.14 — Model Manager
+Slunder Studio v0.1.15 — Model Manager
 Central singleton managing model lifecycle: download, load, unload, and GPU memory.
 Enforces one-large-model-at-a-time GPU residency for 16GB VRAM budget.
 """
@@ -42,6 +42,21 @@ class ModelStatus(str, Enum):
     ERROR = "error"
 
 
+COMMERCIAL_USE_ALLOWED = "allowed"
+COMMERCIAL_USE_TERMS = "check_terms"
+COMMERCIAL_USE_LIMITED = "limited"
+COMMERCIAL_USE_NON_COMMERCIAL = "non_commercial"
+COMMERCIAL_USE_UNKNOWN = "unknown"
+
+COMMERCIAL_USE_LABELS = {
+    COMMERCIAL_USE_ALLOWED: "Allowed",
+    COMMERCIAL_USE_TERMS: "Check terms",
+    COMMERCIAL_USE_LIMITED: "Limited",
+    COMMERCIAL_USE_NON_COMMERCIAL: "Non-commercial only",
+    COMMERCIAL_USE_UNKNOWN: "Unknown",
+}
+
+
 @dataclass
 class ModelInfo:
     """Metadata for a registered model."""
@@ -65,6 +80,51 @@ class ModelInfo:
     gated: bool = False  # True = requires HF login + license acceptance
     trusted_source: bool = True
     trust_note: str = "Built-in registry source"
+    commercial_use: str = COMMERCIAL_USE_UNKNOWN
+    commercial_use_note: str = ""
+    license_url: str = ""
+
+    @property
+    def commercial_use_label(self) -> str:
+        return COMMERCIAL_USE_LABELS.get(self.commercial_use, COMMERCIAL_USE_LABELS[COMMERCIAL_USE_UNKNOWN])
+
+    @property
+    def access_label(self) -> str:
+        return "Gated / token required" if self.gated else "Open download"
+
+    @property
+    def requires_export_warning(self) -> bool:
+        return self.commercial_use in {
+            COMMERCIAL_USE_TERMS,
+            COMMERCIAL_USE_LIMITED,
+            COMMERCIAL_USE_NON_COMMERCIAL,
+            COMMERCIAL_USE_UNKNOWN,
+        }
+
+    @property
+    def license_warning(self) -> str:
+        if self.commercial_use == COMMERCIAL_USE_NON_COMMERCIAL:
+            return "Outputs may not be cleared for commercial use with this model."
+        if self.commercial_use == COMMERCIAL_USE_LIMITED:
+            return "Commercial use is limited by the model license; verify eligibility before release."
+        if self.commercial_use == COMMERCIAL_USE_TERMS:
+            return "Commercial use is governed by model-specific terms; review the license before release."
+        if self.commercial_use == COMMERCIAL_USE_UNKNOWN:
+            return "Commercial-use rights are unknown; review the model license before release."
+        return ""
+
+    def license_metadata(self) -> dict[str, Any]:
+        return {
+            "license": self.license,
+            "license_url": self.license_url,
+            "commercial_use": self.commercial_use,
+            "commercial_use_label": self.commercial_use_label,
+            "commercial_use_note": self.commercial_use_note,
+            "license_warning": self.license_warning,
+            "requires_export_warning": self.requires_export_warning,
+            "gated": self.gated,
+            "access": self.access_label,
+        }
 
 
 def hash_file_sha256(path: Path) -> str:
@@ -92,6 +152,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         is_core=True,
         tags=["song", "vocals", "instrumental", "music generation"],
+        commercial_use=COMMERCIAL_USE_ALLOWED,
+        commercial_use_note="Apache 2.0 model weights; generated output rights still depend on prompts and inputs.",
+        license_url="https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
     ),
     "llama-3.1-8b-q4": ModelInfo(
         model_id="llama-3.1-8b-q4",
@@ -107,6 +170,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         is_core=True,
         tags=["lyrics", "text", "creative writing", "LLM"],
         allow_patterns=["Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"],
+        commercial_use=COMMERCIAL_USE_TERMS,
+        commercial_use_note="Meta Llama Community License allows commercial use subject to model terms and policy.",
+        license_url="https://www.llama.com/llama3_1/license/",
     ),
     "llama-3.2-3b-q4": ModelInfo(
         model_id="llama-3.2-3b-q4",
@@ -121,6 +187,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         tags=["lyrics", "text", "fast", "LLM"],
         allow_patterns=["Llama-3.2-3B-Instruct-Q4_K_M.gguf"],
+        commercial_use=COMMERCIAL_USE_TERMS,
+        commercial_use_note="Meta Llama Community License allows commercial use subject to model terms and policy.",
+        license_url="https://www.llama.com/llama3_2/license/",
     ),
     "qwen-2.5-14b-q4": ModelInfo(
         model_id="qwen-2.5-14b-q4",
@@ -135,6 +204,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         tags=["lyrics", "multilingual", "premium", "LLM"],
         allow_patterns=["Qwen2.5-14B-Instruct-Q4_K_M.gguf"],
+        commercial_use=COMMERCIAL_USE_ALLOWED,
+        commercial_use_note="Apache 2.0 model license.",
+        license_url="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct",
     ),
     "midi-llm-1b": ModelInfo(
         model_id="midi-llm-1b",
@@ -149,6 +221,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         is_core=True,
         tags=["MIDI", "composition", "multitrack", "instrumental"],
+        commercial_use=COMMERCIAL_USE_TERMS,
+        commercial_use_note="Derived from Llama 3.2; commercial use is governed by Meta Llama terms.",
+        license_url="https://www.llama.com/llama3_2/license/",
     ),
     "diffsinger": ModelInfo(
         model_id="diffsinger",
@@ -163,6 +238,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         pip_managed=True,
         tags=["singing", "voice synthesis", "MIDI"],
+        commercial_use=COMMERCIAL_USE_ALLOWED,
+        commercial_use_note="Apache 2.0 engine; individual voice models may carry separate terms.",
+        license_url="https://github.com/openvpi/DiffSinger",
     ),
     "rvc-v2": ModelInfo(
         model_id="rvc-v2",
@@ -177,6 +255,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         tags=["voice conversion", "AI cover", "timbre"],
         allow_patterns=["hubert_base.pt", "rmvpe.pt", "pretrained_v2/*"],
+        commercial_use=COMMERCIAL_USE_ALLOWED,
+        commercial_use_note="MIT engine; individual voice profiles require separate consent metadata.",
+        license_url="https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
     ),
     "gpt-sovits-v2": ModelInfo(
         model_id="gpt-sovits-v2",
@@ -190,6 +271,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.rvc_engine",
         loader_fn="load_model",
         tags=["voice cloning", "TTS", "zero-shot"],
+        commercial_use=COMMERCIAL_USE_ALLOWED,
+        commercial_use_note="MIT engine; individual voice profiles require separate consent metadata.",
+        license_url="https://github.com/RVC-Boss/GPT-SoVITS",
     ),
     "demucs-v4": ModelInfo(
         model_id="demucs-v4",
@@ -204,6 +288,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         pip_managed=True,
         tags=["stem separation", "vocals", "drums", "remixing"],
+        commercial_use=COMMERCIAL_USE_ALLOWED,
+        commercial_use_note="MIT model package.",
+        license_url="https://github.com/facebookresearch/demucs",
     ),
     "stable-audio-open": ModelInfo(
         model_id="stable-audio-open",
@@ -218,6 +305,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         tags=["SFX", "sound effects", "ambient", "foley"],
         gated=True,
+        commercial_use=COMMERCIAL_USE_LIMITED,
+        commercial_use_note="Stability Community License; commercial use has eligibility limits and requires license acceptance.",
+        license_url="https://huggingface.co/stabilityai/stable-audio-open-1.0",
     ),
     "whisper-tiny": ModelInfo(
         model_id="whisper-tiny",
@@ -231,6 +321,8 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.audio_analyzer",
         loader_fn="load_model",
         tags=["alignment", "transcription", "lyrics sync"],
+        commercial_use=COMMERCIAL_USE_ALLOWED,
+        commercial_use_note="MIT model license.",
     ),
     "musicgen-medium": ModelInfo(
         model_id="musicgen-medium",
@@ -244,6 +336,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.ace_step_engine",
         loader_fn="load_model",
         tags=["instrumental", "short clips", "sketching"],
+        commercial_use=COMMERCIAL_USE_NON_COMMERCIAL,
+        commercial_use_note="CC-BY-NC model weights are not cleared for commercial use.",
+        license_url="https://huggingface.co/facebook/musicgen-medium",
     ),
 }
 
@@ -365,6 +460,36 @@ class ModelManager(QObject):
 
     def get_model_info(self, model_id: str) -> Optional[ModelInfo]:
         return self._registry.get(model_id)
+
+    def get_model_license_metadata(self, model_id: str) -> dict[str, Any]:
+        info = self.get_model_info(model_id)
+        metadata = info.license_metadata() if info else {
+            "license": "unknown",
+            "license_url": "",
+            "commercial_use": COMMERCIAL_USE_UNKNOWN,
+            "commercial_use_label": COMMERCIAL_USE_LABELS[COMMERCIAL_USE_UNKNOWN],
+            "commercial_use_note": "",
+            "license_warning": "Commercial-use rights are unknown; review the model license before release.",
+            "requires_export_warning": True,
+            "gated": False,
+            "access": "Unknown",
+        }
+        manifest = self.get_download_manifest(model_id)
+        if manifest:
+            for key in (
+                "license",
+                "license_url",
+                "commercial_use",
+                "commercial_use_label",
+                "commercial_use_note",
+                "license_warning",
+                "requires_export_warning",
+                "gated",
+                "access",
+            ):
+                if key in manifest and manifest[key] not in ("", None):
+                    metadata[key] = manifest[key]
+        return metadata
 
     def get_status(self, model_id: str) -> ModelStatus:
         return self._status.get(model_id, ModelStatus.NOT_DOWNLOADED)
@@ -668,6 +793,7 @@ class ModelManager(QObject):
                     pass
 
         marker = cache_path / self.COMPLETE_MARKER
+        license_meta = info.license_metadata() if info else {}
         marker.write_text(json.dumps({
             "model_id": model_id,
             "timestamp": _time.time(),
@@ -677,7 +803,14 @@ class ModelManager(QObject):
             "revision": info.revision if info else "",
             "resolved_revision": resolved_revision or (info.revision if info else ""),
             "license": info.license if info else "unknown",
+            "license_url": license_meta.get("license_url", ""),
+            "commercial_use": license_meta.get("commercial_use", COMMERCIAL_USE_UNKNOWN),
+            "commercial_use_label": license_meta.get("commercial_use_label", COMMERCIAL_USE_LABELS[COMMERCIAL_USE_UNKNOWN]),
+            "commercial_use_note": license_meta.get("commercial_use_note", ""),
+            "license_warning": license_meta.get("license_warning", ""),
+            "requires_export_warning": license_meta.get("requires_export_warning", True),
             "gated": bool(info.gated) if info else False,
+            "access": license_meta.get("access", "Unknown"),
             "trusted_source": bool(info.trusted_source) if info else False,
             "trust_note": info.trust_note if info else "",
             "allow_patterns": info.allow_patterns if info else [],

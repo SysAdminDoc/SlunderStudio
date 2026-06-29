@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.14 — Song Forge View
+Slunder Studio v0.1.15 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
@@ -744,12 +744,19 @@ class SongForgeView(QWidget):
         )
         if path:
             try:
-                from core.audio_export import export_audio, ExportSettings
+                from core.audio_export import export_audio, get_export_license_warnings, ExportSettings
                 fmt = path.rsplit(".", 1)[-1].lower()
                 settings = ExportSettings(format=fmt)
+                license_warnings = get_export_license_warnings(self._current_audio_path)
                 export_audio(self._current_audio_path, path, settings)
                 if self._toast:
-                    self._toast.show_toast(f"Exported to {path}", "success")
+                    if license_warnings:
+                        self._toast.show_toast(
+                            f"Exported with license warning: {license_warnings[0]}",
+                            "warning",
+                        )
+                    else:
+                        self._toast.show_toast(f"Exported to {path}", "success")
             except Exception as e:
                 if self._toast:
                     self._toast.show_toast(f"Export failed: {e}", "error")

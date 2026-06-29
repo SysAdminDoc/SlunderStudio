@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.model_manager import ModelInfo, ModelManager, ModelCategory
+from core.model_manager import COMMERCIAL_USE_ALLOWED, ModelInfo, ModelManager, ModelCategory
 from core.voice_bank import VoiceProfile
 from engines.rvc_engine import RVCEngine
 
@@ -33,6 +33,9 @@ class ModelTrustTests(unittest.TestCase):
                         revision="abc123",
                         loader_module="engines.sfx_engine",
                         loader_fn="load_model",
+                        commercial_use=COMMERCIAL_USE_ALLOWED,
+                        commercial_use_note="Test license note",
+                        license_url="https://example.com/license",
                     )
                 }
                 cache_dir = mgr.get_cache_dir("test-model")
@@ -51,6 +54,10 @@ class ModelTrustTests(unittest.TestCase):
                 self.assertTrue(ok, reason)
                 manifest = mgr.get_download_manifest("test-model")
                 self.assertEqual(manifest["license"], "MIT")
+                self.assertEqual(manifest["license_url"], "https://example.com/license")
+                self.assertEqual(manifest["commercial_use"], "allowed")
+                self.assertEqual(manifest["commercial_use_label"], "Allowed")
+                self.assertFalse(manifest["requires_export_warning"])
                 self.assertEqual(manifest["revision"], "abc123")
                 self.assertEqual(manifest["resolved_revision"], "abc123resolved")
                 self.assertIn("weights.safetensors", manifest["file_hashes"])

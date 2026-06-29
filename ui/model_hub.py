@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.14 — Model Hub UI
+Slunder Studio v0.1.15 — Model Hub UI
 Grid view of all models with live download progress, speed tracking,
 partial download detection, and one-click download/delete.
 """
@@ -146,6 +146,25 @@ class ModelCard(QFrame):
         stats.addStretch()
         layout.addLayout(stats)
 
+        rights = QLabel(
+            f"License: {self.info.license}  |  Commercial: {self.info.commercial_use_label}  |  "
+            f"Access: {self.info.access_label}"
+        )
+        rights.setWordWrap(True)
+        rights.setStyleSheet(f"font-size: 11px; color: {Palette.SUBTEXT0};")
+        layout.addWidget(rights)
+        self._rights_label = rights
+
+        warning_text = self.info.license_warning
+        if warning_text:
+            warning = QLabel(warning_text)
+            warning.setWordWrap(True)
+            warning.setStyleSheet(f"font-size: 10px; color: {Palette.PEACH};")
+            layout.addWidget(warning)
+            self._license_warning = warning
+        else:
+            self._license_warning = None
+
         trust_text = (
             f"Revision {self.info.revision} - "
             f"{'trusted registry source' if self.info.trusted_source else 'untrusted source'}"
@@ -235,6 +254,7 @@ class ModelCard(QFrame):
             f"Model card {self.info.name}",
             named_controls=[
                 (self._status_badge, f"{self.info.name} status", "Current model installation and loading state."),
+                (self._rights_label, f"{self.info.name} license status", "Model license, access, and commercial-use status."),
                 (self._progress, f"{self.info.name} download progress", "Current download completion percentage."),
                 (self._cancel_btn, f"Cancel {self.info.name} download", "Cancels the active model download."),
                 (self._action_btn, f"{self.info.name} action", "Downloads, resumes, deletes, or shows model state."),

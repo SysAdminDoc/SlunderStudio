@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.14 — Project Management
+Slunder Studio v0.1.15 — Project Management
 Save, load, and manage music projects with auto-save, version history,
 and asset tracking across all modules.
 """
