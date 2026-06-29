@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.22 — MIDI Studio View
+Slunder Studio v0.1.23 — MIDI Studio View
 Main MIDI Studio page: text-to-MIDI generation, piano roll editor,
 per-track mixer, .mid import/export, FluidSynth rendering, and
 cross-module routing (Song Forge, Vocal Suite).
@@ -19,7 +19,9 @@ from ui.waveform_widget import WaveformWidget
 from core.midi_utils import (
     MidiData, TrackData, NoteData, load_midi, save_midi, get_program_name,
 )
-from engines.midi_llm_engine import MidiGenParams, MidiGenResult, generate_demo_midi
+from engines.midi_llm_engine import (
+    DRUM_GROOVE_NAMES, MidiGenParams, MidiGenResult, generate_demo_midi,
+)
 
 
 # ── Key options ────────────────────────────────────────────────────────────────
@@ -212,6 +214,19 @@ class MidiStudioView(QWidget):
         row4.addWidget(self._progression_combo)
         gen_layout.addLayout(row4)
 
+        # Row 5: Drum groove template
+        row5 = QHBoxLayout()
+        row5.setSpacing(6)
+        groove_l = QLabel("Groove:")
+        groove_l.setFixedWidth(48)
+        groove_l.setStyleSheet(param_style)
+        self._groove_combo = QComboBox()
+        self._groove_combo.addItems(DRUM_GROOVE_NAMES)
+        self._groove_combo.setStyleSheet(param_style)
+        row5.addWidget(groove_l)
+        row5.addWidget(self._groove_combo)
+        gen_layout.addLayout(row5)
+
         # Generate button
         self._gen_btn = QPushButton("Generate MIDI")
         self._gen_btn.setFixedHeight(36)
@@ -378,6 +393,7 @@ class MidiStudioView(QWidget):
             duration_bars=self._bars_spin.value(),
             instruments=instruments,
             chord_progression=self._progression_combo.currentText(),
+            drum_groove=self._groove_combo.currentText(),
         )
 
     def _on_generate(self):

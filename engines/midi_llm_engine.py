@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.22 — MIDI-LLM Engine
+Slunder Studio v0.1.23 — MIDI-LLM Engine
 Text-to-MIDI generation using fine-tuned language models that output MIDI token sequences.
 Supports prompt-based composition, continuation, and style-conditioned generation.
 """
@@ -44,6 +44,7 @@ class MidiGenParams:
     duration_bars: int = 16
     instruments: list[str] = field(default_factory=lambda: ["Piano"])
     chord_progression: str = "Auto"
+    drum_groove: str = "Auto"
     temperature: float = 0.85
     top_p: float = 0.92
     max_tokens: int = 4096
@@ -82,6 +83,7 @@ Rules:
 - Drum tracks use channel 9 (drum=true)
 - Time values are in seconds
 - Honor requested chord progressions by repeating one chord per bar unless the user asks otherwise
+- Honor requested drum groove templates with swing, ghost notes, and humanized velocities when drums are present
 - Generate musically coherent compositions"""
 
 
@@ -106,6 +108,15 @@ def build_generation_prompt(params: MidiGenParams) -> str:
         )
     else:
         parts.append("Chord Progression: choose a coherent progression for the style")
+    if wants_drum_track(params):
+        groove = normalize_drum_groove(params.drum_groove)
+        if groove:
+            parts.append(
+                f"Drum Groove: {groove} "
+                "(use matching kick/snare/hat placement, swing, ghost notes, and velocity humanize)"
+            )
+        else:
+            parts.append("Drum Groove: choose a coherent groove template for the style")
 
     if params.continuation_context:
         parts.append(f"\nContinue from this existing sequence:\n{params.continuation_context}")
@@ -141,6 +152,163 @@ MINOR_PROGRESSIONS = {
     "i-VI-III-VII": [0, 5, 2, 6],
     "ii-V-i": [1, 4, 0],
 }
+
+
+DRUM_KICK = 36
+DRUM_SNARE = 38
+DRUM_CLAP = 39
+DRUM_CLOSED_HAT = 42
+DRUM_OPEN_HAT = 46
+DRUM_LOW_CONGA = 64
+
+
+@dataclass(frozen=True)
+class DrumHit:
+    pitch: int
+    step: int
+    velocity: int
+    duration_steps: float = 0.75
+    probability: float = 1.0
+    ghost: bool = False
+
+
+@dataclass(frozen=True)
+class DrumGrooveTemplate:
+    name: str
+    description: str
+    hits: tuple[DrumHit, ...]
+    steps_per_bar: int = 16
+    swing: float = 0.0
+    velocity_humanize: int = 0
+    timing_humanize_ms: float = 0.0
+
+
+DRUM_GROOVE_TEMPLATES = {
+    "Straight Rock": DrumGrooveTemplate(
+        name="Straight Rock",
+        description="Backbeat rock groove with eighth-note hats and light snare ghosts.",
+        swing=0.0,
+        velocity_humanize=7,
+        timing_humanize_ms=5,
+        hits=tuple(
+            [DrumHit(DRUM_CLOSED_HAT, step, 78) for step in range(0, 16, 2)]
+            + [
+                DrumHit(DRUM_KICK, 0, 104),
+                DrumHit(DRUM_KICK, 8, 100),
+                DrumHit(DRUM_KICK, 10, 88, probability=0.65),
+                DrumHit(DRUM_SNARE, 4, 108),
+                DrumHit(DRUM_SNARE, 12, 110),
+                DrumHit(DRUM_SNARE, 7, 34, probability=0.6, ghost=True),
+                DrumHit(DRUM_SNARE, 15, 36, probability=0.6, ghost=True),
+            ]
+        ),
+    ),
+    "Hip-Hop Half-Time": DrumGrooveTemplate(
+        name="Hip-Hop Half-Time",
+        description="Laid-back half-time pocket with swung hats and snare ghosts.",
+        swing=0.18,
+        velocity_humanize=13,
+        timing_humanize_ms=8,
+        hits=tuple(
+            [DrumHit(DRUM_CLOSED_HAT, step, 70 if step % 4 else 82) for step in range(16)]
+            + [
+                DrumHit(DRUM_KICK, 0, 108),
+                DrumHit(DRUM_KICK, 6, 86),
+                DrumHit(DRUM_KICK, 10, 96),
+                DrumHit(DRUM_SNARE, 8, 112),
+                DrumHit(DRUM_SNARE, 7, 32, probability=0.65, ghost=True),
+                DrumHit(DRUM_SNARE, 14, 34, probability=0.55, ghost=True),
+            ]
+        ),
+    ),
+    "Trap Hats": DrumGrooveTemplate(
+        name="Trap Hats",
+        description="Trap groove with busy hats, backbeat clap, and syncopated kicks.",
+        swing=0.08,
+        velocity_humanize=18,
+        timing_humanize_ms=4,
+        hits=tuple(
+            [DrumHit(DRUM_CLOSED_HAT, step, 62 if step % 2 else 82) for step in range(16)]
+            + [
+                DrumHit(DRUM_KICK, 0, 112),
+                DrumHit(DRUM_KICK, 7, 94),
+                DrumHit(DRUM_KICK, 10, 106),
+                DrumHit(DRUM_KICK, 14, 88),
+                DrumHit(DRUM_SNARE, 8, 104),
+                DrumHit(DRUM_CLAP, 8, 96),
+                DrumHit(DRUM_OPEN_HAT, 6, 78, probability=0.75),
+                DrumHit(DRUM_OPEN_HAT, 14, 72, probability=0.65),
+                DrumHit(DRUM_SNARE, 15, 30, probability=0.55, ghost=True),
+            ]
+        ),
+    ),
+    "Swing Shuffle": DrumGrooveTemplate(
+        name="Swing Shuffle",
+        description="Triplet-feel shuffle with delayed offbeats and ghost snares.",
+        swing=0.42,
+        velocity_humanize=9,
+        timing_humanize_ms=6,
+        hits=tuple(
+            [DrumHit(DRUM_CLOSED_HAT, step, 74 if step % 4 else 88) for step in range(0, 16, 2)]
+            + [
+                DrumHit(DRUM_KICK, 0, 102),
+                DrumHit(DRUM_KICK, 8, 96),
+                DrumHit(DRUM_KICK, 10, 82, probability=0.7),
+                DrumHit(DRUM_SNARE, 4, 106),
+                DrumHit(DRUM_SNARE, 12, 108),
+                DrumHit(DRUM_SNARE, 3, 32, probability=0.8, ghost=True),
+                DrumHit(DRUM_SNARE, 7, 34, probability=0.8, ghost=True),
+                DrumHit(DRUM_SNARE, 11, 31, probability=0.8, ghost=True),
+                DrumHit(DRUM_SNARE, 15, 35, probability=0.8, ghost=True),
+            ]
+        ),
+    ),
+    "Four-on-the-Floor": DrumGrooveTemplate(
+        name="Four-on-the-Floor",
+        description="Dance groove with quarter kicks, backbeat claps, and open-hat lift.",
+        swing=0.0,
+        velocity_humanize=10,
+        timing_humanize_ms=3,
+        hits=tuple(
+            [DrumHit(DRUM_KICK, step, 112) for step in (0, 4, 8, 12)]
+            + [DrumHit(DRUM_CLOSED_HAT, step, 72) for step in range(0, 16, 2)]
+            + [
+                DrumHit(DRUM_SNARE, 4, 96),
+                DrumHit(DRUM_CLAP, 4, 100),
+                DrumHit(DRUM_SNARE, 12, 98),
+                DrumHit(DRUM_CLAP, 12, 102),
+                DrumHit(DRUM_OPEN_HAT, 2, 82),
+                DrumHit(DRUM_OPEN_HAT, 6, 82),
+                DrumHit(DRUM_OPEN_HAT, 10, 82),
+                DrumHit(DRUM_OPEN_HAT, 14, 82),
+            ]
+        ),
+    ),
+    "Latin Pop": DrumGrooveTemplate(
+        name="Latin Pop",
+        description="Syncopated pop groove with conga color and lighter backbeat.",
+        swing=0.06,
+        velocity_humanize=12,
+        timing_humanize_ms=7,
+        hits=tuple(
+            [DrumHit(DRUM_CLOSED_HAT, step, 70 if step % 4 else 82) for step in range(0, 16, 2)]
+            + [
+                DrumHit(DRUM_KICK, 0, 104),
+                DrumHit(DRUM_KICK, 6, 92),
+                DrumHit(DRUM_KICK, 10, 98),
+                DrumHit(DRUM_SNARE, 4, 92),
+                DrumHit(DRUM_CLAP, 12, 96),
+                DrumHit(DRUM_LOW_CONGA, 3, 74),
+                DrumHit(DRUM_LOW_CONGA, 7, 68),
+                DrumHit(DRUM_LOW_CONGA, 11, 72),
+                DrumHit(DRUM_LOW_CONGA, 15, 66),
+                DrumHit(DRUM_SNARE, 14, 34, probability=0.6, ghost=True),
+            ]
+        ),
+    ),
+}
+
+DRUM_GROOVE_NAMES = ["Auto", *DRUM_GROOVE_TEMPLATES.keys(), "None"]
 
 
 def normalize_chord_progression(value: str) -> str:
@@ -184,6 +352,115 @@ def select_chord_progression(params: MidiGenParams, *, is_minor: bool, rng) -> t
     candidates = MINOR_PROGRESSIONS if is_minor else MAJOR_PROGRESSIONS
     label = rng.choice(list(candidates.keys()))
     return label, list(candidates[label])
+
+
+def normalize_drum_groove(value: str) -> str:
+    normalized = (value or "").strip()
+    if not normalized or normalized.lower() == "auto":
+        return ""
+    if normalized.lower() in {"none", "no drums", "off"}:
+        return "None"
+    return normalized
+
+
+def wants_drum_track(params: MidiGenParams) -> bool:
+    groove = normalize_drum_groove(params.drum_groove)
+    if groove == "None":
+        return False
+    if groove:
+        return True
+    return any(
+        "drum" in instrument.lower() or "percussion" in instrument.lower()
+        for instrument in params.instruments
+    )
+
+
+def select_drum_groove(params: MidiGenParams, rng) -> Optional[DrumGrooveTemplate]:
+    if rng is None:
+        import random
+        rng = random
+
+    requested = normalize_drum_groove(params.drum_groove)
+    if requested == "None":
+        return None
+    if requested in DRUM_GROOVE_TEMPLATES:
+        return DRUM_GROOVE_TEMPLATES[requested]
+
+    style_text = " ".join([params.prompt, params.style, *params.instruments]).lower()
+    style_map = [
+        (("swing", "shuffle", "jazz", "blues"), "Swing Shuffle"),
+        (("trap",), "Trap Hats"),
+        (("hip-hop", "hip hop", "boom bap", "lo-fi", "lofi"), "Hip-Hop Half-Time"),
+        (("house", "techno", "edm", "dance", "electronic"), "Four-on-the-Floor"),
+        (("latin", "afro", "reggaeton", "dancehall"), "Latin Pop"),
+        (("rock", "metal", "punk", "grunge"), "Straight Rock"),
+    ]
+    for keywords, label in style_map:
+        if any(keyword in style_text for keyword in keywords):
+            return DRUM_GROOVE_TEMPLATES[label]
+
+    return DRUM_GROOVE_TEMPLATES[rng.choice(["Straight Rock", "Hip-Hop Half-Time", "Four-on-the-Floor"])]
+
+
+def generate_drum_track(params: MidiGenParams, rng=None) -> Optional[TrackData]:
+    """Generate a GM channel-9 drum track from the selected groove template."""
+    if not wants_drum_track(params):
+        return None
+
+    import random
+
+    rng = rng or (random.Random(params.seed) if params.seed is not None else random)
+    template = select_drum_groove(params, rng)
+    if template is None:
+        return None
+
+    beat_dur = 60.0 / params.tempo
+    bar_dur = beat_dur * params.time_signature[0]
+    bar_steps = max(1, params.time_signature[0] * 4)
+    step_dur = bar_dur / bar_steps
+    track = TrackData(
+        name=f"Drums - {template.name}",
+        program=0,
+        channel=9,
+        is_drum=True,
+    )
+
+    for bar in range(params.duration_bars):
+        bar_start = bar * bar_dur
+        for hit in template.hits:
+            step = int(round(hit.step * bar_steps / template.steps_per_bar))
+            if step >= bar_steps:
+                continue
+            if hit.probability < 1.0 and rng.random() > hit.probability:
+                continue
+
+            swing_delay = step_dur * template.swing if step % 4 == 2 else 0.0
+            timing_jitter = 0.0
+            if template.timing_humanize_ms:
+                timing_jitter = rng.uniform(
+                    -template.timing_humanize_ms / 1000.0,
+                    template.timing_humanize_ms / 1000.0,
+                )
+            start = max(bar_start, bar_start + step * step_dur + swing_delay + timing_jitter)
+            end = min(bar_start + bar_dur, start + max(0.02, step_dur * hit.duration_steps))
+
+            velocity = hit.velocity
+            if template.velocity_humanize:
+                velocity += rng.randint(-template.velocity_humanize, template.velocity_humanize)
+            if hit.ghost:
+                velocity = min(velocity, 46)
+            velocity = max(1, min(127, velocity))
+
+            track.notes.append(NoteData(
+                pitch=hit.pitch,
+                start=round(start, 6),
+                end=round(end, 6),
+                velocity=velocity,
+                channel=9,
+            ))
+
+    track.notes.sort(key=lambda note: (note.start, note.pitch, note.velocity))
+    return track
 
 
 # ── Token Parser ───────────────────────────────────────────────────────────────
@@ -617,6 +894,10 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
                     velocity=rng.randint(80, 100),
                 ))
     midi_data.tracks.append(bass)
+
+    drum_track = generate_drum_track(params, rng=rng)
+    if drum_track is not None:
+        midi_data.tracks.append(drum_track)
 
     midi_data.duration = total_dur
     return midi_data
