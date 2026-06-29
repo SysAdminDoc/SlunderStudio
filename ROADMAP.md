@@ -92,13 +92,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### P1
 
 ### P2
-- [ ] P2 - Produce signed, checksummed local distributables
-  Why: Build output exists, but releases need clean artifacts, checksums, smoke launch verification, and signing when a certificate is available.
-  Evidence: `build/build.py`, `SlunderStudio.spec`, PyInstaller runtime docs.
-  Touches: `build/build.py`, `SlunderStudio.spec`, `README.md`, `tests/`.
-  Acceptance: Build cleans stale artifacts, creates one-folder and optional onefile outputs, writes SHA256 checksums, smoke-launches the packaged app without spawning extra processes, and signs artifacts when a configured certificate exists.
-  Complexity: M
-
 ### P3
 - [ ] P3 - Add an i18n foundation for UI and lyric workflows
   Why: ACE-Step and GPT-SoVITS support multilingual use, and settings already include a default lyric language, but UI text is hardcoded English.

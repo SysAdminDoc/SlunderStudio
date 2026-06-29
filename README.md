@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.16-blue)
+![Version](https://img.shields.io/badge/version-0.1.17-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -129,7 +129,7 @@ py -3.12 build/build.py           # One-folder distribution
 py -3.12 build/build.py --onefile # Single .exe (Windows)
 ```
 
-Output lands in `dist/SlunderStudio/`.
+The build script removes stale `dist/` outputs before packaging, smoke-launches the Windows executable to verify only one app process starts, and writes `dist/SHA256SUMS.txt` for the distributable artifacts. The default build also creates a release ZIP beside `dist/SlunderStudio/`. To Authenticode-sign executables, install `signtool` and set either `SLUNDER_SIGN_CERT_SHA1` or `SLUNDER_SIGN_CERT_FILE` before building; `SLUNDER_SIGN_TIMESTAMP_URL` overrides the timestamp server when needed.
 
 ## Project Structure
 

@@ -14,12 +14,16 @@ import os
 import sys
 import subprocess
 import shutil
+import hashlib
+import time
+import zipfile
+from pathlib import Path
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.16"
+APP_VERSION = "0.1.17"
 ENTRY_POINT = "main.py"
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def require_pyinstaller():
@@ -35,11 +39,12 @@ def require_pyinstaller():
         sys.exit(2)
 
 
-def build(onefile: bool = False):
+def build(onefile: bool = False, smoke: bool = True):
     """Run the PyInstaller build."""
     require_pyinstaller()
 
     os.chdir(PROJECT_ROOT)
+    clean_artifacts()
 
     # Collect data files
     datas = [
@@ -68,6 +73,7 @@ def build(onefile: bool = False):
         "core.model_manager",
         "core.project",
         "core.settings",
+        "core.diagnostics",
         "core.voice_bank",
         "core.workers",
         "numpy",
@@ -123,17 +129,227 @@ def build(onefile: bool = False):
 
     result = subprocess.run(cmd)
 
-    if result.returncode == 0:
-        dist_path = os.path.join("dist", APP_NAME)
-        if onefile:
-            exe = os.path.join("dist", f"{APP_NAME}.exe")
-            print(f"\nBuild successful: {exe}")
-        else:
-            print(f"\nBuild successful: {dist_path}/")
-            print(f"Run: {os.path.join(dist_path, APP_NAME)}")
-    else:
+    if result.returncode != 0:
         print(f"\nBuild failed with exit code {result.returncode}")
         sys.exit(1)
+
+    exe_path = executable_path(onefile)
+    if not exe_path.is_file():
+        print(f"\nBuild failed: expected executable was not created: {exe_path}")
+        sys.exit(1)
+
+    sign_executables([exe_path])
+
+    if smoke:
+        smoke_launch(exe_path)
+    else:
+        print("Smoke launch skipped by --no-smoke.")
+
+    artifacts = [exe_path]
+    if not onefile:
+        artifacts.append(create_onedir_zip())
+
+    checksum_path = write_checksums(artifacts)
+    if onefile:
+        print(f"\nBuild successful: {exe_path}")
+    else:
+        print(f"\nBuild successful: {onefolder_dir()}/")
+        print(f"Run: {exe_path}")
+    print(f"Checksums: {checksum_path}")
+
+
+def clean_artifacts():
+    """Remove stale distributables before building."""
+    for path in [
+        onefolder_dir(),
+        build_dir(),
+        onefile_path(),
+        onedir_zip_path(),
+        checksum_path(),
+        spec_path(),
+    ]:
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+
+
+def dist_dir() -> Path:
+    return PROJECT_ROOT / "dist"
+
+
+def build_dir() -> Path:
+    return PROJECT_ROOT / "build" / APP_NAME
+
+
+def onefolder_dir() -> Path:
+    return dist_dir() / APP_NAME
+
+
+def onefile_path() -> Path:
+    return dist_dir() / f"{APP_NAME}.exe"
+
+
+def executable_path(onefile: bool) -> Path:
+    return onefile_path() if onefile else onefolder_dir() / f"{APP_NAME}.exe"
+
+
+def onedir_zip_path() -> Path:
+    platform_tag = "win64" if sys.platform == "win32" else sys.platform
+    return dist_dir() / f"{APP_NAME}-v{APP_VERSION}-{platform_tag}.zip"
+
+
+def checksum_path() -> Path:
+    return dist_dir() / "SHA256SUMS.txt"
+
+
+def spec_path() -> Path:
+    return PROJECT_ROOT / f"{APP_NAME}.spec"
+
+
+def create_onedir_zip() -> Path:
+    """Zip the one-folder distribution for release upload."""
+    source_dir = onefolder_dir()
+    target = onedir_zip_path()
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"One-folder distribution missing: {source_dir}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        for path in sorted(source_dir.rglob("*")):
+            if path.is_file():
+                bundle.write(path, path.relative_to(dist_dir()))
+    print(f"Packaged ZIP: {target}")
+    return target
+
+
+def write_checksums(artifacts: list[Path], target: Path | None = None) -> Path:
+    """Write SHA256 checksums for release artifacts."""
+    target = target or checksum_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for artifact in artifacts:
+        digest = sha256_file(artifact)
+        rel = artifact.relative_to(dist_dir()) if artifact.is_relative_to(dist_dir()) else artifact
+        lines.append(f"{digest}  {str(rel).replace(os.sep, '/')}")
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return target
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sign_executables(exe_paths: list[Path]) -> list[Path]:
+    """Authenticode-sign executables when signing configuration is present."""
+    if sys.platform != "win32":
+        print("Signing skipped: Authenticode signing is Windows-only.")
+        return []
+
+    signtool = os.environ.get("SLUNDER_SIGNTOOL") or shutil.which("signtool")
+    cert_sha1 = os.environ.get("SLUNDER_SIGN_CERT_SHA1", "").strip()
+    cert_file = os.environ.get("SLUNDER_SIGN_CERT_FILE", "").strip()
+    cert_password = os.environ.get("SLUNDER_SIGN_CERT_PASSWORD", "")
+    timestamp_url = os.environ.get("SLUNDER_SIGN_TIMESTAMP_URL", "http://timestamp.digicert.com")
+
+    if not signtool:
+        print("Signing skipped: signtool was not found.")
+        return []
+    if not cert_sha1 and not cert_file:
+        print("Signing skipped: set SLUNDER_SIGN_CERT_SHA1 or SLUNDER_SIGN_CERT_FILE to enable signing.")
+        return []
+
+    signed: list[Path] = []
+    for exe_path in exe_paths:
+        cmd = [
+            signtool,
+            "sign",
+            "/fd",
+            "SHA256",
+            "/tr",
+            timestamp_url,
+            "/td",
+            "SHA256",
+        ]
+        if cert_sha1:
+            cmd.extend(["/sha1", cert_sha1])
+        else:
+            cmd.extend(["/f", cert_file])
+            if cert_password:
+                cmd.extend(["/p", cert_password])
+        cmd.append(str(exe_path))
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(result.stdout)
+            print(result.stderr, file=sys.stderr)
+            raise RuntimeError(f"Signing failed for {exe_path}")
+        signed.append(exe_path)
+        print(f"Signed: {exe_path}")
+    return signed
+
+
+def smoke_launch(exe_path: Path, seconds: float | None = None):
+    """Launch the packaged app and verify it does not recursively spawn."""
+    if sys.platform != "win32":
+        print("Smoke launch skipped: process-count smoke is Windows-only.")
+        return
+
+    seconds = seconds if seconds is not None else float(os.environ.get("SLUNDER_BUILD_SMOKE_SECONDS", "8"))
+    before = set(process_ids_for_exe(exe_path))
+    if before:
+        raise RuntimeError(f"Smoke launch blocked: {exe_path} is already running ({sorted(before)})")
+
+    process = subprocess.Popen(
+        [str(exe_path)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    time.sleep(seconds)
+    ids = process_ids_for_exe(exe_path)
+    try:
+        if len(ids) != 1:
+            raise RuntimeError(f"Packaged smoke expected one {APP_NAME}.exe process, saw {len(ids)}: {ids}")
+        print(f"Packaged smoke ok: process_count=1 pid={ids[0]}")
+    finally:
+        terminate_process_tree(ids or [process.pid])
+
+
+def process_ids_for_exe(exe_path: Path) -> list[int]:
+    escaped_path = str(exe_path).replace("'", "''")
+    script = (
+        f"$exe = [System.IO.Path]::GetFullPath('{escaped_path}'); "
+        f"Get-CimInstance Win32_Process -Filter \"name = '{APP_NAME}.exe'\" | "
+        "Where-Object { $_.ExecutablePath -eq $exe } | "
+        "ForEach-Object { $_.ProcessId }"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Unable to inspect running {APP_NAME} processes: {result.stderr.strip()}")
+    ids: list[int] = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line.isdigit():
+            ids.append(int(line))
+    return ids
+
+
+def terminate_process_tree(process_ids: list[int]):
+    for pid in sorted(set(process_ids)):
+        subprocess.run(
+            ["taskkill", "/F", "/PID", str(pid), "/T"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
 
 
 def _create_version_file():
@@ -177,4 +393,5 @@ VSVersionInfo(
 
 if __name__ == "__main__":
     onefile = "--onefile" in sys.argv
-    build(onefile=onefile)
+    smoke = "--no-smoke" not in sys.argv
+    build(onefile=onefile, smoke=smoke)

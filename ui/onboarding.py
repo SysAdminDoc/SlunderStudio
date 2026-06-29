@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.16 — Onboarding Wizard
+Slunder Studio v0.1.17 — Onboarding Wizard
 First-run experience: welcome, system check, model download prompt,
 quick start guide, and preference setup.
 """
