@@ -92,13 +92,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### P1
 
 ### P2
-- [ ] P2 - Build an exportable diagnostics and health report
-  Why: Crash logs exist, but users need a single redacted report for model status, dependency versions, GPU/CPU, ffmpeg, config paths, and recent job failures.
-  Evidence: `main.py`, `core/model_manager.py`, `core/settings.py`, `core/audio_export.py`.
-  Touches: `core/diagnostics.py`, `ui/settings_view.py`, `ui/model_hub.py`, `main.py`, `tests/`.
-  Acceptance: Settings includes "Export Health Report" producing a redacted text/JSON bundle with dependency versions, app version, GPU, model statuses, ffmpeg availability, recent errors, and no HF tokens or user lyrics unless opted in.
-  Complexity: S
-
 - [ ] P2 - Produce signed, checksummed local distributables
   Why: Build output exists, but releases need clean artifacts, checksums, smoke launch verification, and signing when a certificate is available.
   Evidence: `build/build.py`, `SlunderStudio.spec`, PyInstaller runtime docs.

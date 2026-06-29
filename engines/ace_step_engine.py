@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.15 — ACE-Step Engine
+Slunder Studio v0.1.16 — ACE-Step Engine
 Native Python wrapper for ACE-Step inference (not Gradio).
 Supports: generate, batch, retake, repaint, extend.
 <4GB VRAM, 48kHz stereo, up to 4 min duration.

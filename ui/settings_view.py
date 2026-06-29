@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.15 — Settings View
+Slunder Studio v0.1.16 — Settings View
 Two-tier settings: Simple Mode (essentials) and Advanced Mode (full controls).
 All changes apply immediately with toast feedback.
 """
@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt
 
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
+from core.diagnostics import export_health_report
 from core.settings import Settings, APP_VERSION
 
 
@@ -92,6 +93,15 @@ class SettingsView(QWidget):
         bottom.addWidget(self._reset_btn)
 
         bottom.addStretch()
+
+        self._health_private_inputs = QCheckBox("Include private job inputs")
+        bottom.addWidget(self._health_private_inputs)
+
+        self._export_health_btn = QPushButton("Export Health Report")
+        self._export_health_btn.setObjectName("secondaryBtn")
+        self._export_health_btn.setFixedHeight(36)
+        self._export_health_btn.clicked.connect(self._export_health_report)
+        bottom.addWidget(self._export_health_btn)
 
         self._open_dir_btn = QPushButton("Open Config Folder")
         self._open_dir_btn.setObjectName("secondaryBtn")
@@ -487,6 +497,8 @@ class SettingsView(QWidget):
                 (self._max_cache, "Maximum cache size", "Controls cache cleanup threshold."),
                 (self._autosave_interval, "Auto-save interval", "Controls project auto-save frequency."),
                 (self._reset_btn, "Reset settings", "Resets all settings to defaults."),
+                (self._health_private_inputs, "Include private job inputs", "Includes job prompt and input fields in the health report."),
+                (self._export_health_btn, "Export health report", "Saves a redacted diagnostics bundle."),
                 (self._open_dir_btn, "Open config folder", "Opens the settings folder in the file manager."),
             ],
             tab_order=[
@@ -514,9 +526,32 @@ class SettingsView(QWidget):
                 self._max_cache,
                 self._autosave_interval,
                 self._reset_btn,
+                self._health_private_inputs,
+                self._export_health_btn,
                 self._open_dir_btn,
             ],
         )
+
+    def _export_health_report(self):
+        path, _selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Health Report",
+            "slunderstudio-health-report.zip",
+            "Health Report (*.zip)",
+        )
+        if not path:
+            return
+        try:
+            output = export_health_report(
+                path,
+                include_private=self._health_private_inputs.isChecked(),
+            )
+        except Exception as exc:
+            if self.toast_mgr:
+                self.toast_mgr.error(f"Health report export failed: {exc}")
+            return
+        if self.toast_mgr:
+            self.toast_mgr.success(f"Health report exported: {output.name}")
 
     def _open_config_dir(self):
         import subprocess, sys

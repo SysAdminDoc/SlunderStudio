@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.15 — Demucs Engine
+Slunder Studio v0.1.16 — Demucs Engine
 Audio stem separation using Demucs (htdemucs) for isolating
 vocals, drums, bass, and other instruments from mixed audio.
 """

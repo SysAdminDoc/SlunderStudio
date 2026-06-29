@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.15 — Lyrics Templates & Prompt Engineering
+Slunder Studio v0.1.16 — Lyrics Templates & Prompt Engineering
 30+ genre-specific prompt templates with structure tags matching ACE-Step v1.5 input format.
 Two-stage prompting: plan → generate.
 """
