@@ -90,13 +90,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### P0
 
 ### P1
-- [ ] P1 - Add settings and project schema migrations with repair
-  Why: Settings and project JSON contain versions but no migration or corruption-recovery path.
-  Evidence: `core/settings.py`, `core/project.py`.
-  Touches: `core/settings.py`, `core/project.py`, `ui/settings_view.py`, `ui/project_manager.py`, `tests/`.
-  Acceptance: Config and project files migrate forward through numbered schemas, create timestamped backups before write, show repair status on corrupt JSON, and include tests for old/corrupt files.
-  Complexity: M
-
 - [ ] P1 - Establish a PySide6 accessibility baseline
   Why: The app has many custom controls and dense creative workflows, but no systematic accessible names, descriptions, tab order, or non-color-only state checks.
   Evidence: `ui/*.py`, Qt for Python accessibility properties.

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.10 — Settings View
+Slunder Studio v0.1.11 — Settings View
 Two-tier settings: Simple Mode (essentials) and Advanced Mode (full controls).
 All changes apply immediately with toast feedback.
 """
@@ -65,6 +65,13 @@ class SettingsView(QWidget):
         version_label.setObjectName("caption")
         header.addWidget(version_label)
         layout.addLayout(header)
+
+        self._repair_label = QLabel("")
+        self._repair_label.setWordWrap(True)
+        self._repair_label.setStyleSheet(
+            f"color: {Palette.YELLOW}; font-size: 12px; padding: 4px 0;"
+        )
+        layout.addWidget(self._repair_label)
 
         # Tab widget for Simple / Advanced
         self._tabs = QTabWidget()
@@ -410,10 +417,12 @@ class SettingsView(QWidget):
         finally:
             for w in _widgets:
                 w.blockSignals(False)
+        self._update_repair_status()
 
     def _save(self, key: str, value):
         """Save a setting and show toast."""
         self._settings.set(key, value)
+        self._update_repair_status()
         # Toast for important changes only
         if self.toast_mgr and key in ("general.audio_format", "general.sample_rate", "lyrics.model_id"):
             self.toast_mgr.success(f"Setting updated")
@@ -427,8 +436,25 @@ class SettingsView(QWidget):
     def _reset_all(self):
         self._settings.reset_all()
         self._load_values()
+        self._update_repair_status()
         if self.toast_mgr:
             self.toast_mgr.warning("All settings reset to defaults")
+
+    def _update_repair_status(self):
+        status = self._settings.repair_status
+        state = status.get("status", "ok")
+        if state == "ok":
+            self._repair_label.setVisible(False)
+            self._repair_label.setText("")
+            return
+
+        messages = status.get("messages") or []
+        backups = status.get("backup_paths") or []
+        text = f"Config {state}: " + (" ".join(messages) if messages else "Review the config file.")
+        if backups:
+            text += f" Backup: {backups[-1]}"
+        self._repair_label.setText(text)
+        self._repair_label.setVisible(True)
 
     def _open_config_dir(self):
         import subprocess, sys

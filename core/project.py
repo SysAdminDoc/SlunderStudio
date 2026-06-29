@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.10 — Project Management
+Slunder Studio v0.1.11 — Project Management
 Save, load, and manage music projects with auto-save, version history,
 and asset tracking across all modules.
 """
@@ -17,8 +17,18 @@ from core.provenance import (
     read_provenance_sidecar,
     sidecar_path_for,
 )
-from core.settings import get_config_dir
+from core.settings import APP_VERSION, get_config_dir
 from core.trash import TrashEntry, TrashError, TrashManager
+
+PROJECT_SCHEMA_VERSION = 2
+
+
+@dataclass
+class ProjectRepairStatus:
+    """Persistence repair or migration status for project JSON."""
+    status: str = "ok"  # ok | migrated | repaired | error
+    messages: list[str] = field(default_factory=list)
+    backup_paths: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -52,6 +62,8 @@ class ProjectVersion:
 @dataclass
 class Project:
     """Complete project with all metadata and assets."""
+    schema_version: int = PROJECT_SCHEMA_VERSION
+    app_version: str = APP_VERSION
     id: str = ""
     name: str = "Untitled Project"
     description: str = ""
@@ -72,7 +84,8 @@ class Project:
             self.id = f"proj_{int(time.time() * 1000)}"
         if self.created_at == 0.0:
             self.created_at = time.time()
-        self.updated_at = time.time()
+        if self.updated_at == 0.0:
+            self.updated_at = time.time()
 
     @property
     def asset_count(self) -> int:
@@ -124,20 +137,31 @@ class ProjectManager:
         self._current: Optional[Project] = None
         self._index: dict[str, dict] = {}  # id -> {name, path, updated_at}
         self._trash = TrashManager()
+        self._repair_status: dict[str, ProjectRepairStatus] = {}
+        self._last_repair_status = ProjectRepairStatus()
         os.makedirs(self._projects_dir, exist_ok=True)
         self._load_index()
 
     def _load_index(self):
         if os.path.isfile(self._index_path):
             try:
-                with open(self._index_path) as f:
+                with open(self._index_path, encoding="utf-8") as f:
                     self._index = json.load(f)
-            except Exception:
+                if not isinstance(self._index, dict):
+                    raise json.JSONDecodeError("Project index root is not an object", "", 0)
+            except (json.JSONDecodeError, OSError) as exc:
+                backup = self._backup_file(Path(self._index_path), "corrupt")
+                self._last_repair_status = ProjectRepairStatus(
+                    status="repaired",
+                    messages=[f"Project index was unreadable and reset: {exc}"],
+                    backup_paths=[str(backup)] if backup else [],
+                )
                 self._index = {}
 
     def _save_index(self):
+        self._backup_file(Path(self._index_path), "pre-save")
         tmp = self._index_path + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self._index, f, indent=2)
         os.replace(tmp, self._index_path)
 
@@ -150,7 +174,7 @@ class ProjectManager:
         os.makedirs(os.path.join(project_dir, "assets"), exist_ok=True)
         os.makedirs(os.path.join(project_dir, "versions"), exist_ok=True)
 
-        self._save_project(project)
+        self._save_project(project, create_backup=False)
         self._index[project.id] = {
             "name": project.name,
             "path": project_dir,
@@ -161,6 +185,7 @@ class ProjectManager:
         return project
 
     def open(self, project_id: str) -> Optional[Project]:
+        self._last_repair_status = ProjectRepairStatus()
         if project_id not in self._index:
             return None
 
@@ -171,10 +196,21 @@ class ProjectManager:
             return None
 
         try:
-            with open(meta_path) as f:
+            with open(meta_path, encoding="utf-8") as f:
                 data = json.load(f)
+            data, migrated, messages = self._migrate_project_data(data, project_id)
+            if migrated:
+                backup = self._backup_file(Path(meta_path), "pre-migration")
+                self._last_repair_status = ProjectRepairStatus(
+                    status="migrated",
+                    messages=messages,
+                    backup_paths=[str(backup)] if backup else [],
+                )
+                self._repair_status[project_id] = self._last_repair_status
 
             project = Project(
+                schema_version=data.get("schema_version", PROJECT_SCHEMA_VERSION),
+                app_version=data.get("app_version", APP_VERSION),
                 id=data.get("id", project_id),
                 name=data.get("name", ""),
                 description=data.get("description", ""),
@@ -207,9 +243,18 @@ class ProjectManager:
                 }))
 
             self._current = project
+            if migrated:
+                self._save_project(project, create_backup=False)
             return project
 
-        except Exception:
+        except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
+            backup = self._backup_file(Path(meta_path), "corrupt")
+            self._last_repair_status = ProjectRepairStatus(
+                status="repaired",
+                messages=[f"Project JSON was unreadable and left closed: {exc}"],
+                backup_paths=[str(backup)] if backup else [],
+            )
+            self._repair_status[project_id] = self._last_repair_status
             return None
 
     def save(self, project: Optional[Project] = None) -> bool:
@@ -280,11 +325,15 @@ class ProjectManager:
         self._save_index()
         return True
 
-    def _save_project(self, project: Project):
+    def _save_project(self, project: Project, create_backup: bool = True):
         project_dir = os.path.join(self._projects_dir, project.id)
         os.makedirs(project_dir, exist_ok=True)
+        project.schema_version = PROJECT_SCHEMA_VERSION
+        project.app_version = APP_VERSION
 
         data = {
+            "schema_version": project.schema_version,
+            "app_version": project.app_version,
             "id": project.id,
             "name": project.name,
             "description": project.description,
@@ -302,9 +351,15 @@ class ProjectManager:
         }
 
         meta_path = os.path.join(project_dir, "project.json")
+        if create_backup:
+            backup = self._backup_file(Path(meta_path), "pre-save")
+            if backup:
+                status = self._repair_status.get(project.id, ProjectRepairStatus())
+                status.backup_paths.append(str(backup))
+                self._repair_status[project.id] = status
         # Write to temp file first, then rename for atomicity
         tmp_path = meta_path + ".tmp"
-        with open(tmp_path, "w") as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp_path, meta_path)
 
@@ -324,6 +379,81 @@ class ProjectManager:
     @property
     def project_count(self) -> int:
         return len(self._index)
+
+    @property
+    def last_repair_status(self) -> dict:
+        return self._status_to_dict(self._last_repair_status)
+
+    def repair_status(self, project_id: str) -> dict:
+        return self._status_to_dict(
+            self._repair_status.get(project_id, ProjectRepairStatus())
+        )
+
+    def _migrate_project_data(self, data: dict, project_id: str) -> tuple[dict, bool, list[str]]:
+        if not isinstance(data, dict):
+            raise json.JSONDecodeError("Project root is not an object", "", 0)
+
+        migrated = False
+        messages: list[str] = []
+        updated = dict(data)
+
+        try:
+            schema_version = int(updated.get("schema_version", 1) or 1)
+        except (TypeError, ValueError):
+            schema_version = 1
+
+        if schema_version < 2:
+            updated["schema_version"] = PROJECT_SCHEMA_VERSION
+            updated.setdefault("assets", [])
+            updated.setdefault("versions", [])
+            updated.setdefault("mixer_state", {})
+            updated.setdefault("lyrics_text", "")
+            updated.setdefault("notes", "")
+            messages.append("Migrated project schema from v1 to v2.")
+            migrated = True
+        elif schema_version > PROJECT_SCHEMA_VERSION:
+            messages.append(
+                f"Project schema v{schema_version} is newer than supported v{PROJECT_SCHEMA_VERSION}; preserved compatible keys."
+            )
+
+        if updated.get("schema_version") != PROJECT_SCHEMA_VERSION:
+            updated["schema_version"] = PROJECT_SCHEMA_VERSION
+            migrated = True
+        if updated.get("app_version") != APP_VERSION:
+            updated["app_version"] = APP_VERSION
+            messages.append(f"Updated project app version to {APP_VERSION}.")
+            migrated = True
+        if not updated.get("id"):
+            updated["id"] = project_id
+            messages.append("Restored missing project id from the project index.")
+            migrated = True
+
+        return updated, migrated, messages
+
+    def _backup_file(self, path: Path, reason: str) -> Optional[Path]:
+        if not path.exists():
+            return None
+        try:
+            backup_dir = path.parent / "backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            stamp = f"{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns() % 1_000_000_000:09d}"
+            backup_path = backup_dir / f"{path.name}.{stamp}.{reason}.bak"
+            shutil.copy2(path, backup_path)
+            return backup_path
+        except OSError as exc:
+            self._last_repair_status = ProjectRepairStatus(
+                status="error",
+                messages=[f"Backup failed for {path}: {exc}"],
+            )
+            return None
+
+    @staticmethod
+    def _status_to_dict(status: ProjectRepairStatus) -> dict:
+        return {
+            "status": status.status,
+            "messages": list(status.messages),
+            "backup_paths": list(status.backup_paths),
+        }
 
     # ── Version History ────────────────────────────────────────────────────────
 

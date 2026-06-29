@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.10 — Project Manager View
+Slunder Studio v0.1.11 — Project Manager View
 Project browser with create, open, delete, asset management,
 version history, and auto-save controls.
 """
@@ -456,9 +456,19 @@ class ProjectManagerView(QWidget):
     def _on_open_project(self, project_id: str):
         mgr = get_project_manager()
         project = mgr.open(project_id)
+        repair_text = self._repair_status_text(mgr.last_repair_status)
         if project:
             self._detail.load_project(project)
             self.project_opened.emit(project_id)
+            if repair_text:
+                self._count_label.setText(repair_text)
+                if self.toast_mgr:
+                    self.toast_mgr.warning(repair_text)
+        else:
+            if repair_text:
+                self._count_label.setText(repair_text)
+            if self.toast_mgr:
+                self.toast_mgr.error(repair_text or "Project could not be opened.")
 
     def _on_delete_project(self, project_id: str):
         mgr = get_project_manager()
@@ -486,6 +496,17 @@ class ProjectManagerView(QWidget):
                 self.toast_mgr.success("Project restored.")
         elif self.toast_mgr:
             self.toast_mgr.error("Project restore failed.")
+
+    def _repair_status_text(self, status: dict) -> str:
+        state = status.get("status", "ok")
+        if state == "ok":
+            return ""
+        messages = status.get("messages") or []
+        backups = status.get("backup_paths") or []
+        text = f"Project {state}: " + (" ".join(messages) if messages else "Review project files.")
+        if backups:
+            text += f" Backup: {backups[-1]}"
+        return text
 
     def _on_search(self, text: str):
         query = text.lower()

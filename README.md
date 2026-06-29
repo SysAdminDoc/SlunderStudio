@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.10-blue)
+![Version](https://img.shields.io/badge/version-0.1.11-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -50,7 +50,7 @@ Python 3.10+ required. Install core dependencies explicitly before launch; if an
 └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
 ```
 
-Every module can route audio to any other module. Generate a song in Song Forge, separate stems in Vocal Suite, add SFX, mix everything in the Mixer, and export a mastered track. Generated and exported assets write adjacent `.provenance.json` sidecars with app version, prompt/lyrics, seed, model revision/hash metadata, source paths, and render parameters so projects can be audited or reproduced. For songs over 2 minutes, Song Forge can render structured sections separately and stitch them with crossfades for more stable long-form arrangements. Seed Explorer renders nearby seed/CFG variations from the current lyrics and style prompt so you can compare takes before committing to a full arrangement. Reference Track analysis maps an audio fingerprint to ACE-Step tags for one-click style conditioning, Genre Fusion blends two template tag sets into weighted hybrid prompts, and Voice Cloning validates 10-30s GPT-SoVITS reference samples before saving reusable voice profiles.
+Every module can route audio to any other module. Generate a song in Song Forge, separate stems in Vocal Suite, add SFX, mix everything in the Mixer, and export a mastered track. Generated and exported assets write adjacent `.provenance.json` sidecars with app version, prompt/lyrics, seed, model revision/hash metadata, source paths, and render parameters so projects can be audited or reproduced. Settings and project files use versioned schemas with timestamped backups before migrations, repairs, and saves. For songs over 2 minutes, Song Forge can render structured sections separately and stitch them with crossfades for more stable long-form arrangements. Seed Explorer renders nearby seed/CFG variations from the current lyrics and style prompt so you can compare takes before committing to a full arrangement. Reference Track analysis maps an audio fingerprint to ACE-Step tags for one-click style conditioning, Genre Fusion blends two template tag sets into weighted hybrid prompts, and Voice Cloning validates 10-30s GPT-SoVITS reference samples before saving reusable voice profiles.
 
 ## Mastering Presets
 

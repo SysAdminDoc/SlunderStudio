@@ -1,19 +1,32 @@
 """
-Slunder Studio v0.1.10 — Settings System
+Slunder Studio v0.1.11 — Settings System
 JSON config in %APPDATA%/SlunderStudio with presets, reactive updates, and two-tier mode.
 """
 import json
 import os
 import copy
+import shutil
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.10"
+APP_VERSION = "0.1.11"
+SETTINGS_SCHEMA_VERSION = 2
+
+
+@dataclass
+class RepairStatus:
+    """Persistence repair or migration status for diagnostics."""
+    status: str = "ok"  # ok | migrated | repaired | error
+    messages: list[str] = field(default_factory=list)
+    backup_paths: list[str] = field(default_factory=list)
 
 # ── Default Configuration ──────────────────────────────────────────────────────
 
 DEFAULTS = {
+    "schema_version": SETTINGS_SCHEMA_VERSION,
     "version": APP_VERSION,
     "general": {
         "output_dir": "",
@@ -161,34 +174,76 @@ class Settings:
         self._data: dict = {}
         self._callbacks: list = []
         self._config_path = get_config_dir() / "config.json"
+        self._repair_status = RepairStatus()
         self.load()
 
     def load(self):
         """Load config from disk, merging with defaults for any missing keys."""
         self._data = copy.deepcopy(DEFAULTS)
+        self._repair_status = RepairStatus()
+        should_save = False
         if self._config_path.exists():
             try:
                 with open(self._config_path, "r", encoding="utf-8") as f:
                     saved = json.load(f)
+                saved, migrated, messages = self._migrate(saved)
+                if migrated:
+                    backup = self._backup_file(self._config_path, "pre-migration")
+                    self._repair_status.status = "migrated"
+                    self._repair_status.messages.extend(messages)
+                    if backup:
+                        self._repair_status.backup_paths.append(str(backup))
+                    should_save = True
                 self._deep_merge(self._data, saved)
-            except (json.JSONDecodeError, IOError):
-                pass  # corrupt file — use defaults
+            except (json.JSONDecodeError, IOError, OSError) as exc:
+                backup = self._backup_file(self._config_path, "corrupt")
+                self._repair_status.status = "repaired"
+                self._repair_status.messages.append(
+                    f"Config JSON was unreadable and defaults were restored: {exc}"
+                )
+                if backup:
+                    self._repair_status.backup_paths.append(str(backup))
+                should_save = True
 
         # Fill empty paths with platform defaults
         if not self._data["general"]["output_dir"]:
             self._data["general"]["output_dir"] = str(get_default_output_dir())
+            should_save = True
         if not self._data["model_hub"]["cache_dir"]:
             self._data["model_hub"]["cache_dir"] = str(get_default_cache_dir())
+            should_save = True
 
-    def save(self):
+        self._data["schema_version"] = SETTINGS_SCHEMA_VERSION
+        self._data["version"] = APP_VERSION
+        if should_save:
+            self.save(create_backup=False)
+
+    @property
+    def repair_status(self) -> dict:
+        """Return the last load/save migration or repair status."""
+        return {
+            "status": self._repair_status.status,
+            "messages": list(self._repair_status.messages),
+            "backup_paths": list(self._repair_status.backup_paths),
+        }
+
+    def save(self, create_backup: bool = True):
         """Persist current settings to disk (atomic write)."""
         try:
-            tmp = self._config_path + ".tmp"
+            self._data["schema_version"] = SETTINGS_SCHEMA_VERSION
+            self._data["version"] = APP_VERSION
+            self._config_path.parent.mkdir(parents=True, exist_ok=True)
+            if create_backup:
+                backup = self._backup_file(self._config_path, "pre-save")
+                if backup:
+                    self._repair_status.backup_paths.append(str(backup))
+            tmp = self._config_path.with_name(self._config_path.name + ".tmp")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self._data, f, indent=2, ensure_ascii=False)
             os.replace(tmp, self._config_path)
-        except (IOError, OSError):
-            pass  # silently fail — toast will inform user
+        except (IOError, OSError) as exc:
+            self._repair_status.status = "error"
+            self._repair_status.messages.append(f"Config save failed: {exc}")
 
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -305,6 +360,59 @@ class Settings:
                 self._deep_merge(base[key], value)
             else:
                 base[key] = value
+
+    def _migrate(self, saved: dict) -> tuple[dict, bool, list[str]]:
+        """Migrate settings data to the current schema."""
+        if not isinstance(saved, dict):
+            raise json.JSONDecodeError("Settings root is not an object", "", 0)
+
+        migrated = False
+        messages: list[str] = []
+        data = copy.deepcopy(saved)
+
+        try:
+            schema_version = int(data.get("schema_version", 1) or 1)
+        except (TypeError, ValueError):
+            schema_version = 1
+
+        if schema_version < 2:
+            data["schema_version"] = SETTINGS_SCHEMA_VERSION
+            data.setdefault("general", {})
+            data["general"].setdefault(
+                "trash_retention_days",
+                DEFAULTS["general"]["trash_retention_days"],
+            )
+            messages.append("Migrated settings schema from v1 to v2.")
+            migrated = True
+        elif schema_version > SETTINGS_SCHEMA_VERSION:
+            messages.append(
+                f"Settings schema v{schema_version} is newer than supported v{SETTINGS_SCHEMA_VERSION}; preserved compatible keys."
+            )
+
+        if data.get("schema_version") != SETTINGS_SCHEMA_VERSION:
+            data["schema_version"] = SETTINGS_SCHEMA_VERSION
+            migrated = True
+        if data.get("version") != APP_VERSION:
+            data["version"] = APP_VERSION
+            migrated = True
+            messages.append(f"Updated settings app version to {APP_VERSION}.")
+
+        return data, migrated, messages
+
+    def _backup_file(self, path: Path, reason: str) -> Optional[Path]:
+        """Create a timestamped backup beside the config file."""
+        if not path.exists():
+            return None
+        try:
+            backup_dir = path.parent / "backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            stamp = f"{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns() % 1_000_000_000:09d}"
+            backup_path = backup_dir / f"{path.name}.{stamp}.{reason}.bak"
+            shutil.copy2(path, backup_path)
+            return backup_path
+        except OSError as exc:
+            self._repair_status.messages.append(f"Backup failed for {path}: {exc}")
+            return None
 
     def _notify(self, key: str, new_value: Any, old_value: Any):
         """Fire all registered change callbacks."""
