@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.17 — Lyrics View
+Slunder Studio v0.1.18 — Lyrics View
 Full lyrics generation page with Quick/Guided/Pro modes, genre browser,
 history panel, streaming generation, and section regeneration.
 """
@@ -19,12 +19,17 @@ from PySide6.QtCore import Qt, Signal, Slot
 from ui.theme import Palette
 from ui.lyrics_editor import LyricsEditor
 from core.settings import Settings
+from core.i18n import (
+    language_code_from_label,
+    language_combo_items,
+    language_label,
+    tr,
+)
 from core.workers import InferenceWorker
 from core.lyrics_db import LyricsDB, LyricsEntry
 from engines.lyrics_templates import (
     GENRE_TEMPLATES, MOODS, STANDARD_STRUCTURES,
     get_genre_list, get_genre_categories, get_random_theme,
-    build_generation_prompt,
 )
 
 
@@ -97,13 +102,13 @@ class HistoryPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        header = QLabel("History")
+        header = QLabel(tr("lyrics.history.title"))
         header.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {Palette.TEXT};")
         layout.addWidget(header)
 
         # Search
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search history...")
+        self._search.setPlaceholderText(tr("lyrics.history.search_placeholder"))
         self._search.setFixedHeight(32)
         self._search.textChanged.connect(self._refresh)
         layout.addWidget(self._search)
@@ -112,7 +117,7 @@ class HistoryPanel(QWidget):
         filter_row = QHBoxLayout()
         filter_row.setSpacing(4)
 
-        self._all_btn = QPushButton("All")
+        self._all_btn = QPushButton(tr("lyrics.history.all"))
         self._all_btn.setObjectName("ghostBtn")
         self._all_btn.setCheckable(True)
         self._all_btn.setChecked(True)
@@ -120,7 +125,7 @@ class HistoryPanel(QWidget):
         self._all_btn.clicked.connect(lambda: self._set_filter("all"))
         filter_row.addWidget(self._all_btn)
 
-        self._fav_btn = QPushButton("\u2605 Favorites")
+        self._fav_btn = QPushButton(f"\u2605 {tr('lyrics.history.favorites')}")
         self._fav_btn.setObjectName("ghostBtn")
         self._fav_btn.setCheckable(True)
         self._fav_btn.setFixedHeight(26)
@@ -137,7 +142,7 @@ class HistoryPanel(QWidget):
         layout.addWidget(self._list, 1)
 
         # Count
-        self._count_label = QLabel("0 entries")
+        self._count_label = QLabel(tr("lyrics.history.entries_count", count=0))
         self._count_label.setObjectName("caption")
         layout.addWidget(self._count_label)
 
@@ -167,7 +172,7 @@ class HistoryPanel(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, entry)
             self._list.addItem(item)
 
-        self._count_label.setText(f"{len(entries)} entries")
+        self._count_label.setText(tr("lyrics.history.entries_count", count=len(entries)))
 
     def _on_selection(self, current, previous):
         if current:
@@ -220,7 +225,7 @@ class LyricsView(QWidget):
         left_layout.setContentsMargins(16, 16, 16, 16)
         left_layout.setSpacing(12)
 
-        title = QLabel("Lyrics Engine")
+        title = QLabel(tr("lyrics.title"))
         title.setObjectName("heading")
         left_layout.addWidget(title)
 
@@ -233,25 +238,22 @@ class LyricsView(QWidget):
         quick_layout.setContentsMargins(8, 12, 8, 8)
         quick_layout.setSpacing(12)
 
-        quick_label = QLabel("Describe your song in a sentence")
+        quick_label = QLabel(tr("lyrics.quick.label"))
         quick_label.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {Palette.SUBTEXT0};")
         quick_layout.addWidget(quick_label)
 
         self._quick_input = QTextEdit()
-        self._quick_input.setPlaceholderText(
-            "e.g., \"A melancholic synthwave track about driving alone at night\"\n\n"
-            "or \"Upbeat summer pop song about falling in love at a beach party\""
-        )
+        self._quick_input.setPlaceholderText(tr("lyrics.quick.placeholder"))
         self._quick_input.setMaximumHeight(120)
         quick_layout.addWidget(self._quick_input)
 
-        self._quick_generate = QPushButton("\U0001f3a4  Generate Lyrics")
+        self._quick_generate = QPushButton(f"\U0001f3a4  {tr('lyrics.actions.generate')}")
         self._quick_generate.setFixedHeight(40)
         self._quick_generate.clicked.connect(self._generate_quick)
         quick_layout.addWidget(self._quick_generate)
 
         quick_layout.addStretch()
-        self._mode_tabs.addTab(quick_tab, "Quick")
+        self._mode_tabs.addTab(quick_tab, tr("lyrics.quick.tab"))
 
         # ── Guided Mode Tab ──
         guided_tab = QWidget()
@@ -265,17 +267,17 @@ class LyricsView(QWidget):
         guided_layout.setSpacing(10)
 
         # Theme input
-        theme_label = QLabel("Theme / Topic")
+        theme_label = QLabel(tr("lyrics.guided.theme"))
         theme_label.setStyleSheet(f"font-weight: 600; color: {Palette.SUBTEXT0};")
         guided_layout.addWidget(theme_label)
 
         self._theme_input = QLineEdit()
-        self._theme_input.setPlaceholderText("What is the song about?")
+        self._theme_input.setPlaceholderText(tr("lyrics.guided.theme_placeholder"))
         self._theme_input.setFixedHeight(34)
         guided_layout.addWidget(self._theme_input)
 
         # Genre picker
-        genre_label = QLabel("Genre")
+        genre_label = QLabel(tr("lyrics.guided.genre"))
         genre_label.setStyleSheet(f"font-weight: 600; color: {Palette.SUBTEXT0};")
         guided_layout.addWidget(genre_label)
 
@@ -286,7 +288,7 @@ class LyricsView(QWidget):
         guided_layout.addWidget(self._genre_picker)
 
         # Mood
-        mood_label = QLabel("Mood")
+        mood_label = QLabel(tr("lyrics.guided.mood"))
         mood_label.setStyleSheet(f"font-weight: 600; color: {Palette.SUBTEXT0};")
         guided_layout.addWidget(mood_label)
 
@@ -298,7 +300,7 @@ class LyricsView(QWidget):
         guided_layout.addWidget(self._mood_combo)
 
         # Structure
-        struct_label = QLabel("Song Structure")
+        struct_label = QLabel(tr("lyrics.guided.structure"))
         struct_label.setStyleSheet(f"font-weight: 600; color: {Palette.SUBTEXT0};")
         guided_layout.addWidget(struct_label)
 
@@ -311,22 +313,22 @@ class LyricsView(QWidget):
         guided_layout.addWidget(self._structure_combo)
 
         # Language
-        lang_label = QLabel("Language")
+        lang_label = QLabel(tr("lyrics.guided.language"))
         lang_label.setStyleSheet(f"font-weight: 600; color: {Palette.SUBTEXT0};")
         guided_layout.addWidget(lang_label)
 
         self._lang_combo = QComboBox()
-        self._lang_combo.addItems([
-            "English", "Spanish", "French", "Portuguese", "German",
-            "Italian", "Japanese", "Korean", "Chinese (Mandarin)",
-            "Arabic", "Hindi", "Russian", "Dutch", "Swedish",
-            "Turkish", "Polish", "Thai", "Vietnamese", "Indonesian",
-        ])
+        self._lang_combo.addItems(language_combo_items())
+        selected_language = language_label(self._settings.get("lyrics.default_language", "en"))
+        selected_idx = self._lang_combo.findText(selected_language)
+        if selected_idx >= 0:
+            self._lang_combo.setCurrentIndex(selected_idx)
         self._lang_combo.setFixedHeight(34)
+        self._lang_combo.currentTextChanged.connect(self._on_language_changed)
         guided_layout.addWidget(self._lang_combo)
 
         # Generate button
-        self._guided_generate = QPushButton("\U0001f3a4  Generate Lyrics")
+        self._guided_generate = QPushButton(f"\U0001f3a4  {tr('lyrics.actions.generate')}")
         self._guided_generate.setFixedHeight(40)
         self._guided_generate.clicked.connect(self._generate_guided)
         guided_layout.addWidget(self._guided_generate)
@@ -337,7 +339,7 @@ class LyricsView(QWidget):
         guided_tab_layout = QVBoxLayout(guided_tab)
         guided_tab_layout.setContentsMargins(0, 0, 0, 0)
         guided_tab_layout.addWidget(guided_scroll)
-        self._mode_tabs.addTab(guided_tab, "Guided")
+        self._mode_tabs.addTab(guided_tab, tr("lyrics.guided.tab"))
 
         # ── Pro Mode Tab ──
         pro_tab = QWidget()
@@ -351,33 +353,33 @@ class LyricsView(QWidget):
         pro_layout.setSpacing(10)
 
         # System prompt editor
-        sys_label = QLabel("System Prompt")
+        sys_label = QLabel(tr("lyrics.pro.system_prompt"))
         sys_label.setStyleSheet(f"font-weight: 600; color: {Palette.SUBTEXT0};")
         pro_layout.addWidget(sys_label)
 
         self._system_prompt = QPlainTextEdit()
-        self._system_prompt.setPlaceholderText("Custom system prompt for the LLM...")
+        self._system_prompt.setPlaceholderText(tr("lyrics.pro.system_placeholder"))
         self._system_prompt.setMaximumHeight(150)
         self._system_prompt.setStyleSheet("font-family: monospace; font-size: 12px;")
         pro_layout.addWidget(self._system_prompt)
 
         # User prompt
-        user_label = QLabel("User Prompt")
+        user_label = QLabel(tr("lyrics.pro.user_prompt"))
         user_label.setStyleSheet(f"font-weight: 600; color: {Palette.SUBTEXT0};")
         pro_layout.addWidget(user_label)
 
         self._user_prompt = QPlainTextEdit()
-        self._user_prompt.setPlaceholderText("Your creative request to the LLM...")
+        self._user_prompt.setPlaceholderText(tr("lyrics.pro.user_placeholder"))
         self._user_prompt.setMaximumHeight(100)
         pro_layout.addWidget(self._user_prompt)
 
         # LLM Parameters
-        params_group = QGroupBox("LLM Parameters")
+        params_group = QGroupBox(tr("lyrics.pro.parameters"))
         params_layout = QVBoxLayout(params_group)
 
         # Temperature
         temp_row = QHBoxLayout()
-        temp_row.addWidget(QLabel("Temperature"))
+        temp_row.addWidget(QLabel(tr("lyrics.pro.temperature")))
         self._pro_temp = QDoubleSpinBox()
         self._pro_temp.setRange(0.1, 2.0)
         self._pro_temp.setSingleStep(0.05)
@@ -388,7 +390,7 @@ class LyricsView(QWidget):
 
         # Top P
         topp_row = QHBoxLayout()
-        topp_row.addWidget(QLabel("Top P"))
+        topp_row.addWidget(QLabel(tr("lyrics.pro.top_p")))
         self._pro_top_p = QDoubleSpinBox()
         self._pro_top_p.setRange(0.1, 1.0)
         self._pro_top_p.setSingleStep(0.05)
@@ -399,7 +401,7 @@ class LyricsView(QWidget):
 
         # Top K
         topk_row = QHBoxLayout()
-        topk_row.addWidget(QLabel("Top K"))
+        topk_row.addWidget(QLabel(tr("lyrics.pro.top_k")))
         self._pro_top_k = QSpinBox()
         self._pro_top_k.setRange(1, 200)
         self._pro_top_k.setValue(self._settings.get("lyrics.top_k", 50))
@@ -409,7 +411,7 @@ class LyricsView(QWidget):
 
         # Repeat penalty
         rep_row = QHBoxLayout()
-        rep_row.addWidget(QLabel("Repeat Penalty"))
+        rep_row.addWidget(QLabel(tr("lyrics.pro.repeat_penalty")))
         self._pro_repeat = QDoubleSpinBox()
         self._pro_repeat.setRange(1.0, 2.0)
         self._pro_repeat.setSingleStep(0.05)
@@ -420,7 +422,7 @@ class LyricsView(QWidget):
 
         # Max tokens
         tok_row = QHBoxLayout()
-        tok_row.addWidget(QLabel("Max Tokens"))
+        tok_row.addWidget(QLabel(tr("lyrics.pro.max_tokens")))
         self._pro_max_tokens = QSpinBox()
         self._pro_max_tokens.setRange(256, 8192)
         self._pro_max_tokens.setSingleStep(256)
@@ -432,7 +434,7 @@ class LyricsView(QWidget):
         pro_layout.addWidget(params_group)
 
         # Generate button
-        self._pro_generate = QPushButton("\U0001f3a4  Generate Lyrics")
+        self._pro_generate = QPushButton(f"\U0001f3a4  {tr('lyrics.actions.generate')}")
         self._pro_generate.setFixedHeight(40)
         self._pro_generate.clicked.connect(self._generate_pro)
         pro_layout.addWidget(self._pro_generate)
@@ -443,7 +445,7 @@ class LyricsView(QWidget):
         pro_tab_layout = QVBoxLayout(pro_tab)
         pro_tab_layout.setContentsMargins(0, 0, 0, 0)
         pro_tab_layout.addWidget(pro_scroll)
-        self._mode_tabs.addTab(pro_tab, "Pro")
+        self._mode_tabs.addTab(pro_tab, tr("lyrics.pro.tab"))
 
         left_layout.addWidget(self._mode_tabs, 1)
 
@@ -455,7 +457,7 @@ class LyricsView(QWidget):
         left_layout.addWidget(self._progress)
 
         # Cancel button (shown during generation)
-        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn = QPushButton(tr("lyrics.actions.cancel"))
         self._cancel_btn.setObjectName("dangerBtn")
         self._cancel_btn.setFixedHeight(34)
         self._cancel_btn.setVisible(False)
@@ -464,7 +466,7 @@ class LyricsView(QWidget):
 
         # Regenerate with new seed
         regen_row = QHBoxLayout()
-        self._regen_btn = QPushButton("\U0001f504 Regenerate")
+        self._regen_btn = QPushButton(f"\U0001f504 {tr('lyrics.actions.regenerate')}")
         self._regen_btn.setObjectName("secondaryBtn")
         self._regen_btn.setFixedHeight(34)
         self._regen_btn.setEnabled(False)
@@ -502,6 +504,12 @@ class LyricsView(QWidget):
     def _connect_signals(self):
         pass  # Signals connected inline in _build_ui
 
+    def _selected_language_code(self) -> str:
+        return language_code_from_label(self._lang_combo.currentText())
+
+    def _on_language_changed(self, label: str):
+        self._settings.set("lyrics.default_language", language_code_from_label(label))
+
     # ── Generation ─────────────────────────────────────────────────────────────
 
     def _generate_quick(self):
@@ -509,7 +517,7 @@ class LyricsView(QWidget):
         description = self._quick_input.toPlainText().strip()
         if not description:
             if self.toast_mgr:
-                self.toast_mgr.warning("Please describe your song first.")
+                self.toast_mgr.warning(tr("lyrics.messages.describe_song"))
             return
 
         from engines.lyrics_engine import generate_lyrics_quick
@@ -524,15 +532,13 @@ class LyricsView(QWidget):
         theme = self._theme_input.text().strip()
         if not theme:
             if self.toast_mgr:
-                self.toast_mgr.warning("Please enter a theme or topic.")
+                self.toast_mgr.warning(tr("lyrics.messages.enter_theme"))
             return
 
         genre_id = self._genre_picker.current_genre
         mood = self._mood_combo.currentData() or ""
         structure = self._structure_combo.currentData() or ""
-        language = self._lang_combo.currentText().split("(")[0].strip().lower()
-        if language == "english":
-            language = "en"
+        language = self._selected_language_code()
 
         from engines.lyrics_engine import generate_lyrics
         self._run_generation(
@@ -552,7 +558,7 @@ class LyricsView(QWidget):
 
         if not user:
             if self.toast_mgr:
-                self.toast_mgr.warning("Please enter a user prompt.")
+                self.toast_mgr.warning(tr("lyrics.messages.enter_user_prompt"))
             return
 
         if not system:
@@ -650,9 +656,9 @@ class LyricsView(QWidget):
             self._worker.cancel()
             self._set_generating(False)
             self._editor.stop_streaming()
-            self._editor.set_status("Generation cancelled", Palette.YELLOW)
+            self._editor.set_status(tr("lyrics.messages.cancelled"), Palette.YELLOW)
             if self.toast_mgr:
-                self.toast_mgr.warning("Generation cancelled")
+                self.toast_mgr.warning(tr("lyrics.messages.cancelled"))
 
     def _on_generation_complete(self, result: dict):
         """Handle completed lyrics generation."""
@@ -665,9 +671,9 @@ class LyricsView(QWidget):
 
         lyrics = result.get("lyrics", "")
         if not lyrics:
-            self._editor.set_status("No output generated", Palette.RED)
+            self._editor.set_status(tr("lyrics.messages.no_output"), Palette.RED)
             if self.toast_mgr:
-                self.toast_mgr.warning("Model produced empty output. Try a different prompt.")
+                self.toast_mgr.warning(tr("lyrics.messages.empty_output"))
             return
 
         # Save to history
@@ -685,9 +691,9 @@ class LyricsView(QWidget):
         self._history._refresh()
 
         self._regen_btn.setEnabled(True)
-        self._editor.set_status("Generation complete \u2022 Saved to history", Palette.GREEN)
+        self._editor.set_status(tr("lyrics.messages.complete"), Palette.GREEN)
         if self.toast_mgr:
-            self.toast_mgr.success("Lyrics generated!")
+            self.toast_mgr.success(tr("lyrics.messages.generated"))
 
     def _on_section_regenerated(self, result: dict):
         """Handle completed section regeneration."""
@@ -700,16 +706,16 @@ class LyricsView(QWidget):
             self._editor.replace_section(f"[{tag}]", new_content)
             self._editor.set_status(f"Regenerated [{tag}]", Palette.GREEN)
             if self.toast_mgr:
-                self.toast_mgr.success(f"[{tag}] regenerated!")
+                self.toast_mgr.success(tr("lyrics.messages.section_regenerated", tag=tag))
 
     def _on_generation_error(self, error_msg: str):
         """Handle generation error."""
         self._worker = None
         self._set_generating(False)
         self._editor.stop_streaming()
-        self._editor.set_status(f"Error: {error_msg}", Palette.RED)
+        self._editor.set_status(tr("lyrics.messages.error_status", error=error_msg), Palette.RED)
         if self.toast_mgr:
-            self.toast_mgr.error(f"Generation failed: {error_msg}")
+            self.toast_mgr.error(tr("lyrics.messages.failed", error=error_msg))
 
     def _on_generation_cancelled(self):
         self._worker = None
@@ -743,7 +749,11 @@ class LyricsView(QWidget):
         """Load a history entry into the editor."""
         self._editor.text = entry.lyrics
         self._editor.set_status(
-            f"Loaded from history: {entry.genre.upper()} \u2022 {entry.timestamp_str}",
+            tr(
+                "lyrics.messages.loaded_history",
+                genre=entry.genre.upper(),
+                timestamp=entry.timestamp_str,
+            ),
             Palette.BLUE,
         )
 

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.17 - Redacted diagnostics and health report export.
+Slunder Studio v0.1.18 - Redacted diagnostics and health report export.
 """
 from __future__ import annotations
 

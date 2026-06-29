@@ -20,7 +20,7 @@ import zipfile
 from pathlib import Path
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.17"
+APP_VERSION = "0.1.18"
 ENTRY_POINT = "main.py"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +48,7 @@ def build(onefile: bool = False, smoke: bool = True):
 
     # Collect data files
     datas = [
+        ("assets/locales", "assets/locales"),
         ("assets/templates", "assets/templates"),
     ]
 
@@ -160,14 +161,18 @@ def build(onefile: bool = False, smoke: bool = True):
 
 def clean_artifacts():
     """Remove stale distributables before building."""
-    for path in [
+    paths = [
         onefolder_dir(),
         build_dir(),
         onefile_path(),
         onedir_zip_path(),
         checksum_path(),
         spec_path(),
-    ]:
+    ]
+    if dist_dir().exists():
+        paths.extend(dist_dir().glob(f"{APP_NAME}-v*-*.zip"))
+
+    for path in sorted(set(paths), key=lambda item: str(item), reverse=True):
         if path.is_dir():
             shutil.rmtree(path)
         elif path.exists():

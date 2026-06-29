@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.17 — Lyrics Engine
+Slunder Studio v0.1.18 — Lyrics Engine
 Dual-backend LLM wrapper: llama-cpp-python (primary) or transformers (fallback).
 Supports streaming token output, model loading via Model Manager, and generation pipeline.
 
@@ -14,6 +14,7 @@ import time
 from typing import Optional, Callable, Generator
 from pathlib import Path
 
+from core.i18n import normalize_language_code
 from core.settings import Settings
 from core.model_manager import ModelManager, cleanup_gpu
 
@@ -401,6 +402,12 @@ class LyricsLLM:
 
 # -- High-Level Generation Functions -------------------------------------------
 
+def default_lyrics_language(settings: Settings | None = None) -> str:
+    """Return the normalized default lyrics language from settings."""
+    active_settings = settings or Settings()
+    return normalize_language_code(active_settings.get("lyrics.default_language", "en"))
+
+
 def generate_lyrics(
     prompt: str,
     genre_id: str = "pop",
@@ -419,6 +426,7 @@ def generate_lyrics(
     from engines.lyrics_templates import build_generation_prompt
 
     settings = Settings()
+    language = normalize_language_code(language or default_lyrics_language(settings))
     if model_id is None:
         model_id = settings.get("lyrics.model_id", "llama-3.1-8b-q4")
 
@@ -505,6 +513,7 @@ def generate_lyrics_quick(
 
     settings = Settings()
     model_id = kwargs.pop("model_id", settings.get("lyrics.model_id", "llama-3.1-8b-q4"))
+    language = normalize_language_code(kwargs.pop("language", default_lyrics_language(settings)))
     temperature = kwargs.pop("temperature", settings.get("lyrics.temperature", 0.8))
     top_p = kwargs.pop("top_p", settings.get("lyrics.top_p", 0.92))
     max_tokens = kwargs.pop("max_tokens", settings.get("lyrics.max_tokens", 2048))
@@ -527,7 +536,7 @@ def generate_lyrics_quick(
     if step_cb:
         step_cb("Writing lyrics...")
 
-    system_prompt, user_prompt = build_quick_prompt(description)
+    system_prompt, user_prompt = build_quick_prompt(description, language=language)
 
     lyrics = llm.generate(
         system_prompt=system_prompt,
@@ -544,7 +553,7 @@ def generate_lyrics_quick(
         "lyrics": lyrics.strip(),
         "genre": "auto",
         "mood": "",
-        "language": "en",
+        "language": language,
         "model_id": model_id,
         "backend": llm.backend,
         "generation_params": {

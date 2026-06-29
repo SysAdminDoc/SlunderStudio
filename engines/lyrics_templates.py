@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.17 — Lyrics Templates & Prompt Engineering
+Slunder Studio v0.1.18 — Lyrics Templates & Prompt Engineering
 30+ genre-specific prompt templates with structure tags matching ACE-Step v1.5 input format.
 Two-stage prompting: plan → generate.
 """
@@ -418,7 +418,7 @@ def build_generation_prompt(
     return system, user_msg
 
 
-def build_quick_prompt(description: str) -> tuple[str, str]:
+def build_quick_prompt(description: str, language: str = "en") -> tuple[str, str]:
     """
     Build prompts for Quick Mode — auto-detect genre and structure from a simple description.
     """
@@ -426,6 +426,8 @@ def build_quick_prompt(description: str) -> tuple[str, str]:
 
 The user will give a brief description. Infer the best genre, mood, and structure.
 Write complete, polished lyrics with structure tags. Be creative and original."""
+    if language != "en":
+        system += f"\n\nWRITE THE LYRICS IN: {language} (use natural phrasing, not translation)"
 
     user_msg = f"Write a song: {description}"
     return system, user_msg

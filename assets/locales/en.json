@@ -1,0 +1,163 @@
+{
+  "app": {
+    "window_title": "Slunder Studio v{version}",
+    "accessible_name": "Slunder Studio",
+    "accessible_description": "Offline local AI music generation workspace."
+  },
+  "nav": {
+    "lyrics": "Lyrics",
+    "song_forge": "Song Forge",
+    "midi_studio": "MIDI Studio",
+    "vocals": "Vocals",
+    "sfx": "SFX",
+    "mixer": "Mixer",
+    "ai_producer": "AI Producer",
+    "projects": "Projects",
+    "model_hub": "Model Hub",
+    "settings": "Settings",
+    "open": "Open {label}",
+    "switches": "Switches the main workspace to {label}."
+  },
+  "placeholder": {
+    "coming_soon": "Coming in {phase}"
+  },
+  "status": {
+    "gpu_detecting": "GPU: Detecting...",
+    "gpu_accessible_name": "GPU status",
+    "gpu_accessible_description": "Current GPU availability and device name.",
+    "vram_accessible_name": "VRAM usage",
+    "vram_accessible_description": "Current GPU memory usage."
+  },
+  "settings": {
+    "title": "Settings",
+    "version_label": "Slunder Studio v{version}",
+    "tabs": {
+      "simple": "Simple",
+      "advanced": "Advanced"
+    },
+    "output": {
+      "group": "Output",
+      "directory": "Output Directory",
+      "placeholder": "Select output directory...",
+      "browse": "Browse",
+      "format": "Default Audio Format",
+      "sample_rate": "Sample Rate",
+      "sample_rate_help": "44.1kHz for CD, 48kHz for modern production"
+    },
+    "gpu": {
+      "group": "GPU & Models",
+      "device_index": "GPU Device Index",
+      "device_index_help": "Usually 0 for single-GPU systems",
+      "offline_mode": "Offline Mode",
+      "disable_internet": "Disable internet for model hub",
+      "hf_token": "HuggingFace Token",
+      "hf_token_help": "Required for gated models (Stable Audio Open). Get yours at huggingface.co/settings/tokens"
+    },
+    "appearance": {
+      "group": "Appearance",
+      "experience_level": "Experience Level",
+      "experience_help": "Controls default UI complexity across all modules",
+      "default_lyrics_language": "Default Lyrics Language",
+      "default_lyrics_language_help": "Used by Quick lyrics generation and new voice-clone language metadata."
+    },
+    "lyrics": {
+      "group": "Lyrics Engine",
+      "model": "Lyrics Model",
+      "temperature": "Temperature",
+      "temperature_help": "Higher = more creative, lower = more predictable",
+      "top_p": "Top P",
+      "max_tokens": "Max Tokens"
+    },
+    "actions": {
+      "reset_defaults": "Reset All to Defaults",
+      "include_private_inputs": "Include private job inputs",
+      "export_health": "Export Health Report",
+      "open_config": "Open Config Folder"
+    },
+    "dialogs": {
+      "select_output_directory": "Select Output Directory",
+      "export_health": "Export Health Report"
+    },
+    "messages": {
+      "setting_updated": "Setting updated",
+      "reset": "All settings reset to defaults",
+      "health_export_failed": "Health report export failed: {error}",
+      "health_exported": "Health report exported: {filename}"
+    }
+  },
+  "lyrics": {
+    "title": "Lyrics Engine",
+    "quick": {
+      "tab": "Quick",
+      "label": "Describe your song in a sentence",
+      "placeholder": "e.g., \"A melancholic synthwave track about driving alone at night\"\n\nor \"Upbeat summer pop song about falling in love at a beach party\""
+    },
+    "guided": {
+      "tab": "Guided",
+      "theme": "Theme / Topic",
+      "theme_placeholder": "What is the song about?",
+      "genre": "Genre",
+      "mood": "Mood",
+      "structure": "Song Structure",
+      "language": "Language"
+    },
+    "pro": {
+      "tab": "Pro",
+      "system_prompt": "System Prompt",
+      "system_placeholder": "Custom system prompt for the LLM...",
+      "user_prompt": "User Prompt",
+      "user_placeholder": "Your creative request to the LLM...",
+      "parameters": "LLM Parameters",
+      "temperature": "Temperature",
+      "top_p": "Top P",
+      "top_k": "Top K",
+      "repeat_penalty": "Repeat Penalty",
+      "max_tokens": "Max Tokens"
+    },
+    "actions": {
+      "generate": "Generate Lyrics",
+      "cancel": "Cancel",
+      "regenerate": "Regenerate"
+    },
+    "history": {
+      "title": "History",
+      "search_placeholder": "Search history...",
+      "all": "All",
+      "favorites": "Favorites",
+      "entries_count": "{count} entries"
+    },
+    "messages": {
+      "describe_song": "Please describe your song first.",
+      "enter_theme": "Please enter a theme or topic.",
+      "enter_user_prompt": "Please enter a user prompt.",
+      "cancelled": "Generation cancelled",
+      "empty_output": "Model produced empty output. Try a different prompt.",
+      "complete": "Generation complete - Saved to history",
+      "generated": "Lyrics generated!",
+      "no_output": "No output generated",
+      "error_status": "Error: {error}",
+      "failed": "Generation failed: {error}",
+      "section_regenerated": "[{tag}] regenerated!",
+      "loaded_history": "Loaded from history: {genre} - {timestamp}"
+    }
+  },
+  "vocal": {
+    "tabs": {
+      "singing": "Singing Synthesis",
+      "conversion": "Voice Conversion",
+      "cloning": "Voice Cloning",
+      "stems": "Stem Separation"
+    },
+    "clone": {
+      "language_short": "Lang:"
+    },
+    "actions": {
+      "send_to_forge": "Send to Song Forge",
+      "send_to_mixer": "Send to Mixer",
+      "export_wav": "Export WAV"
+    },
+    "status": {
+      "select_tab": "Select a tab to begin"
+    }
+  }
+}

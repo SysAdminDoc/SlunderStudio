@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.17 — Vocal Suite View
+Slunder Studio v0.1.18 — Vocal Suite View
 Main Vocal Suite page combining singing synthesis (DiffSinger),
 voice conversion (RVC), voice cloning (GPT-SoVITS), stem separation (Demucs),
 and stem remix/export.
@@ -17,6 +17,15 @@ from ui.theme import ThemeEngine
 from ui.waveform_widget import WaveformWidget
 from ui.stem_mixer import StemMixer
 from ui.accessibility import install_accessibility
+from core.i18n import (
+    GPT_SOVITS_LANGUAGE_CODES,
+    language_code_from_label,
+    language_combo_items,
+    language_label,
+    normalize_language_code,
+    tr,
+)
+from core.settings import Settings
 from core.voice_bank import VOICE_OPERATION_CLONE, VOICE_OPERATION_CONVERSION, VoiceBank, VoiceProfile
 from core.workers import InferenceWorker
 
@@ -29,6 +38,7 @@ class VocalSuiteView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._settings = Settings()
         self._current_audio_path: Optional[str] = None
         self._clone_quality_report = None
         self._clone_worker: Optional[InferenceWorker] = None
@@ -65,16 +75,16 @@ class VocalSuiteView(QWidget):
         """)
 
         # Tab 1: Singing Synthesis (DiffSinger)
-        self._tabs.addTab(self._build_singing_tab(), "Singing Synthesis")
+        self._tabs.addTab(self._build_singing_tab(), tr("vocal.tabs.singing"))
 
         # Tab 2: Voice Conversion (RVC)
-        self._tabs.addTab(self._build_rvc_tab(), "Voice Conversion")
+        self._tabs.addTab(self._build_rvc_tab(), tr("vocal.tabs.conversion"))
 
         # Tab 3: Voice Cloning (GPT-SoVITS)
-        self._tabs.addTab(self._build_clone_tab(), "Voice Cloning")
+        self._tabs.addTab(self._build_clone_tab(), tr("vocal.tabs.cloning"))
 
         # Tab 4: Stem Separation (Demucs)
-        self._tabs.addTab(self._build_stems_tab(), "Stem Separation")
+        self._tabs.addTab(self._build_stems_tab(), tr("vocal.tabs.stems"))
 
         layout.addWidget(self._tabs, 1)
 
@@ -94,17 +104,17 @@ class VocalSuiteView(QWidget):
             QPushButton:disabled {{ color: {t['muted']}; }}
         """
 
-        self._to_forge_btn = QPushButton("Send to Song Forge")
+        self._to_forge_btn = QPushButton(tr("vocal.actions.send_to_forge"))
         self._to_forge_btn.setStyleSheet(btn_style)
         self._to_forge_btn.setEnabled(False)
         self._to_forge_btn.clicked.connect(self._on_send_to_forge)
 
-        self._to_mixer_btn = QPushButton("Send to Mixer")
+        self._to_mixer_btn = QPushButton(tr("vocal.actions.send_to_mixer"))
         self._to_mixer_btn.setStyleSheet(btn_style)
         self._to_mixer_btn.setEnabled(False)
         self._to_mixer_btn.clicked.connect(self._on_send_to_mixer)
 
-        self._export_btn = QPushButton("Export WAV")
+        self._export_btn = QPushButton(tr("vocal.actions.export_wav"))
         self._export_btn.setStyleSheet(f"""
             QPushButton {{
                 background: #238636; color: white; border: none;
@@ -118,7 +128,7 @@ class VocalSuiteView(QWidget):
         self._export_btn.clicked.connect(self._on_export)
 
         # Status
-        self._status = QLabel("Select a tab to begin")
+        self._status = QLabel(tr("vocal.status.select_tab"))
         self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
 
         action_bar.addWidget(self._status, 1)
@@ -659,11 +669,12 @@ class VocalSuiteView(QWidget):
 
         # Language
         lang_row = QHBoxLayout()
-        ll = QLabel("Lang:")
+        ll = QLabel(tr("vocal.clone.language_short"))
         ll.setFixedWidth(36)
         ll.setStyleSheet(param_style)
         self._clone_lang = QComboBox()
-        self._clone_lang.addItems(["English", "Chinese", "Japanese"])
+        self._clone_lang.addItems(language_combo_items(GPT_SOVITS_LANGUAGE_CODES))
+        self._set_clone_language(self._settings.get("lyrics.default_language", "en"))
         self._clone_lang.setStyleSheet(param_style)
         lang_row.addWidget(ll)
         lang_row.addWidget(self._clone_lang)
@@ -989,12 +1000,12 @@ class VocalSuiteView(QWidget):
         self._status.setText(f"GPT-SoVITS voice profile saved: {profile.name}")
 
     def _clone_language_code(self) -> str:
-        return {"English": "en", "Chinese": "zh", "Japanese": "ja"}.get(
-            self._clone_lang.currentText(), "en"
-        )
+        code = language_code_from_label(self._clone_lang.currentText())
+        return code if code in GPT_SOVITS_LANGUAGE_CODES else "en"
 
     def _set_clone_language(self, language: str):
-        target = {"en": "English", "zh": "Chinese", "ja": "Japanese"}.get(language, "")
+        code = normalize_language_code(language)
+        target = language_label(code if code in GPT_SOVITS_LANGUAGE_CODES else "en")
         if target:
             self._set_combo_text(self._clone_lang, target)
 

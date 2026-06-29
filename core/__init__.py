@@ -1,1 +1,1 @@
-# Slunder Studio v0.1.17 — Core Package
+# Slunder Studio v0.1.18 — Core Package

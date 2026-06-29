@@ -119,6 +119,7 @@ class AccessibilityBaselineTests(unittest.TestCase):
                             "_gpu_device",
                             "_offline_mode",
                             "_hf_token",
+                            "_default_language",
                             "_health_private_inputs",
                             "_export_health_btn",
                             "_reset_btn",

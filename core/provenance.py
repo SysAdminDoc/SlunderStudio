@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.17 - Generation provenance sidecars.
+Slunder Studio v0.1.18 - Generation provenance sidecars.
 Writes reproducibility metadata next to generated and exported artifacts.
 """
 from __future__ import annotations

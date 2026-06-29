@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.17 — Main Window
+Slunder Studio v0.1.18 — Main Window
 QMainWindow shell with animated sidebar navigation, stacked module views,
 global audio transport bar, VRAM status indicator, and drag-and-drop support.
 """
@@ -13,6 +13,7 @@ from PySide6.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent
 
 from core.settings import Settings, APP_VERSION
 from core.audio_engine import AudioEngine, format_time
+from core.i18n import tr
 from core.model_manager import ModelManager
 from ui.theme import Palette, build_stylesheet
 from ui.toast import ToastManager
@@ -44,8 +45,8 @@ class SidebarButton(QPushButton):
         self.setFont(QFont("Segoe UI", 12))
         set_accessible(
             self,
-            f"Open {label}",
-            f"Switches the main workspace to {label}.",
+            tr("nav.open", label=label),
+            tr("nav.switches", label=label),
         )
 
 
@@ -84,14 +85,14 @@ class Sidebar(QWidget):
         # Navigation buttons
         self._buttons: list[SidebarButton] = []
         nav_items = [
-            ("\U0001f3a4", "Lyrics"),
-            ("\U0001f3b6", "Song Forge"),
-            ("\U0001f3b9", "MIDI Studio"),
-            ("\U0001f399", "Vocals"),
-            ("\U0001f4a5", "SFX"),
-            ("\U0001f39b", "Mixer"),
-            ("\U0001f916", "AI Producer"),
-            ("\U0001f4c1", "Projects"),
+            ("\U0001f3a4", tr("nav.lyrics")),
+            ("\U0001f3b6", tr("nav.song_forge")),
+            ("\U0001f3b9", tr("nav.midi_studio")),
+            ("\U0001f399", tr("nav.vocals")),
+            ("\U0001f4a5", tr("nav.sfx")),
+            ("\U0001f39b", tr("nav.mixer")),
+            ("\U0001f916", tr("nav.ai_producer")),
+            ("\U0001f4c1", tr("nav.projects")),
         ]
 
         for i, (icon, label) in enumerate(nav_items):
@@ -111,8 +112,8 @@ class Sidebar(QWidget):
 
         # Bottom nav
         bottom_items = [
-            ("\U0001f4e6", "Model Hub"),
-            ("\u2699", "Settings"),
+            ("\U0001f4e6", tr("nav.model_hub")),
+            ("\u2699", tr("nav.settings")),
         ]
         for i, (icon, label) in enumerate(bottom_items):
             btn = SidebarButton(icon, label)
@@ -279,7 +280,7 @@ class PlaceholderPage(QWidget):
         desc_label.setWordWrap(True)
         layout.addWidget(desc_label)
 
-        phase_label = QLabel(f"Coming in {phase}")
+        phase_label = QLabel(tr("placeholder.coming_soon", phase=phase))
         phase_label.setObjectName("caption")
         phase_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         phase_label.setStyleSheet(f"font-size: 14px; color: {Palette.BLUE}; font-weight: 600;")
@@ -295,7 +296,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"Slunder Studio v{APP_VERSION}")
+        self.setWindowTitle(tr("app.window_title", version=APP_VERSION))
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
         self.setAcceptDrops(True)
@@ -343,16 +344,24 @@ class MainWindow(QMainWindow):
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
 
-        self._gpu_status_label = QLabel("GPU: Detecting...")
+        self._gpu_status_label = QLabel(tr("status.gpu_detecting"))
         self._gpu_status_label.setStyleSheet(f"font-size: 11px; color: {Palette.OVERLAY0};")
         self._status_bar.addPermanentWidget(self._gpu_status_label)
 
         self._vram_label = QLabel("")
         self._vram_label.setStyleSheet(f"font-size: 11px; color: {Palette.BLUE};")
         self._status_bar.addPermanentWidget(self._vram_label)
-        set_accessible(self, "Slunder Studio", "Offline local AI music generation workspace.")
-        set_accessible(self._gpu_status_label, "GPU status", "Current GPU availability and device name.")
-        set_accessible(self._vram_label, "VRAM usage", "Current GPU memory usage.")
+        set_accessible(self, tr("app.accessible_name"), tr("app.accessible_description"))
+        set_accessible(
+            self._gpu_status_label,
+            tr("status.gpu_accessible_name"),
+            tr("status.gpu_accessible_description"),
+        )
+        set_accessible(
+            self._vram_label,
+            tr("status.vram_accessible_name"),
+            tr("status.vram_accessible_description"),
+        )
 
     def _create_pages(self):
         """Create all module pages (placeholders for future phases)."""

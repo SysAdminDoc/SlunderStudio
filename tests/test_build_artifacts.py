@@ -35,6 +35,7 @@ class BuildArtifactTests(unittest.TestCase):
             for path in [
                 self.build_script.onefile_path(),
                 self.build_script.onedir_zip_path(),
+                root / "dist" / "SlunderStudio-v0.0.1-win64.zip",
                 self.build_script.checksum_path(),
                 self.build_script.spec_path(),
             ]:
@@ -47,6 +48,7 @@ class BuildArtifactTests(unittest.TestCase):
                 self.assertFalse(path.exists())
             self.assertFalse(self.build_script.onefile_path().exists())
             self.assertFalse(self.build_script.onedir_zip_path().exists())
+            self.assertFalse((root / "dist" / "SlunderStudio-v0.0.1-win64.zip").exists())
             self.assertFalse(self.build_script.checksum_path().exists())
             self.assertFalse(self.build_script.spec_path().exists())
 

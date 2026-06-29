@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.17 — Settings View
+Slunder Studio v0.1.18 — Settings View
 Two-tier settings: Simple Mode (essentials) and Advanced Mode (full controls).
 All changes apply immediately with toast feedback.
 """
@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
 from core.diagnostics import export_health_report
+from core.i18n import language_code_from_label, language_combo_items, language_label, tr
 from core.settings import Settings, APP_VERSION
 
 
@@ -59,12 +60,12 @@ class SettingsView(QWidget):
 
         # Title
         header = QHBoxLayout()
-        title = QLabel("Settings")
+        title = QLabel(tr("settings.title"))
         title.setObjectName("heading")
         header.addWidget(title)
         header.addStretch()
 
-        version_label = QLabel(f"Slunder Studio v{APP_VERSION}")
+        version_label = QLabel(tr("settings.version_label", version=APP_VERSION))
         version_label.setObjectName("caption")
         header.addWidget(version_label)
         layout.addLayout(header)
@@ -78,15 +79,15 @@ class SettingsView(QWidget):
 
         # Tab widget for Simple / Advanced
         self._tabs = QTabWidget()
-        self._tabs.addTab(self._build_simple_tab(), "Simple")
-        self._tabs.addTab(self._build_advanced_tab(), "Advanced")
+        self._tabs.addTab(self._build_simple_tab(), tr("settings.tabs.simple"))
+        self._tabs.addTab(self._build_advanced_tab(), tr("settings.tabs.advanced"))
         layout.addWidget(self._tabs, 1)
 
         # Bottom bar
         bottom = QHBoxLayout()
         bottom.setSpacing(12)
 
-        self._reset_btn = QPushButton("Reset All to Defaults")
+        self._reset_btn = QPushButton(tr("settings.actions.reset_defaults"))
         self._reset_btn.setObjectName("dangerBtn")
         self._reset_btn.setFixedHeight(36)
         self._reset_btn.clicked.connect(self._reset_all)
@@ -94,16 +95,16 @@ class SettingsView(QWidget):
 
         bottom.addStretch()
 
-        self._health_private_inputs = QCheckBox("Include private job inputs")
+        self._health_private_inputs = QCheckBox(tr("settings.actions.include_private_inputs"))
         bottom.addWidget(self._health_private_inputs)
 
-        self._export_health_btn = QPushButton("Export Health Report")
+        self._export_health_btn = QPushButton(tr("settings.actions.export_health"))
         self._export_health_btn.setObjectName("secondaryBtn")
         self._export_health_btn.setFixedHeight(36)
         self._export_health_btn.clicked.connect(self._export_health_report)
         bottom.addWidget(self._export_health_btn)
 
-        self._open_dir_btn = QPushButton("Open Config Folder")
+        self._open_dir_btn = QPushButton(tr("settings.actions.open_config"))
         self._open_dir_btn.setObjectName("secondaryBtn")
         self._open_dir_btn.setFixedHeight(36)
         self._open_dir_btn.clicked.connect(self._open_config_dir)
@@ -123,13 +124,13 @@ class SettingsView(QWidget):
         layout.setSpacing(20)
 
         # ── Output ──
-        output_group = QGroupBox("Output")
+        output_group = QGroupBox(tr("settings.output.group"))
         output_layout = QVBoxLayout(output_group)
 
         self._output_dir = QLineEdit()
-        self._output_dir.setPlaceholderText("Select output directory...")
+        self._output_dir.setPlaceholderText(tr("settings.output.placeholder"))
         self._output_dir.setReadOnly(True)
-        self._browse_output_btn = QPushButton("Browse")
+        self._browse_output_btn = QPushButton(tr("settings.output.browse"))
         self._browse_output_btn.setObjectName("secondaryBtn")
         self._browse_output_btn.setFixedWidth(80)
         self._browse_output_btn.setFixedHeight(34)
@@ -138,7 +139,7 @@ class SettingsView(QWidget):
         dir_row = QHBoxLayout()
         dir_row.addWidget(self._output_dir, 1)
         dir_row.addWidget(self._browse_output_btn)
-        output_layout.addLayout(SettingRow("Output Directory", QWidget()))
+        output_layout.addLayout(SettingRow(tr("settings.output.directory"), QWidget()))
         output_layout.addLayout(dir_row)
 
         self._format_combo = QComboBox()
@@ -146,19 +147,23 @@ class SettingsView(QWidget):
         self._format_combo.setFixedWidth(120)
         self._format_combo.currentTextChanged.connect(
             lambda v: self._save("general.audio_format", v.lower()))
-        output_layout.addLayout(SettingRow("Default Audio Format", self._format_combo))
+        output_layout.addLayout(SettingRow(tr("settings.output.format"), self._format_combo))
 
         self._sample_rate_combo = QComboBox()
         self._sample_rate_combo.addItems(["44100", "48000"])
         self._sample_rate_combo.setFixedWidth(120)
         self._sample_rate_combo.currentTextChanged.connect(
             lambda v: self._save("general.sample_rate", int(v)) if v else None)
-        output_layout.addLayout(SettingRow("Sample Rate", self._sample_rate_combo, "44.1kHz for CD, 48kHz for modern production"))
+        output_layout.addLayout(SettingRow(
+            tr("settings.output.sample_rate"),
+            self._sample_rate_combo,
+            tr("settings.output.sample_rate_help"),
+        ))
 
         layout.addWidget(output_group)
 
         # ── GPU & Models ──
-        gpu_group = QGroupBox("GPU & Models")
+        gpu_group = QGroupBox(tr("settings.gpu.group"))
         gpu_layout = QVBoxLayout(gpu_group)
 
         self._gpu_device = QSpinBox()
@@ -166,12 +171,16 @@ class SettingsView(QWidget):
         self._gpu_device.setFixedWidth(80)
         self._gpu_device.valueChanged.connect(
             lambda v: self._save("general.gpu_device", v))
-        gpu_layout.addLayout(SettingRow("GPU Device Index", self._gpu_device, "Usually 0 for single-GPU systems"))
+        gpu_layout.addLayout(SettingRow(
+            tr("settings.gpu.device_index"),
+            self._gpu_device,
+            tr("settings.gpu.device_index_help"),
+        ))
 
-        self._offline_mode = QCheckBox("Offline Mode")
+        self._offline_mode = QCheckBox(tr("settings.gpu.offline_mode"))
         self._offline_mode.toggled.connect(
             lambda v: self._save("model_hub.offline_mode", v))
-        gpu_layout.addLayout(SettingRow("Disable internet for model hub", self._offline_mode))
+        gpu_layout.addLayout(SettingRow(tr("settings.gpu.disable_internet"), self._offline_mode))
 
         self._hf_token = QLineEdit()
         self._hf_token.setPlaceholderText("hf_xxxxxxxxxxxxxxxxxxxx")
@@ -180,15 +189,15 @@ class SettingsView(QWidget):
         self._hf_token.editingFinished.connect(
             lambda: self._save("model_hub.hf_token", self._hf_token.text().strip()))
         gpu_layout.addLayout(SettingRow(
-            "HuggingFace Token",
+            tr("settings.gpu.hf_token"),
             self._hf_token,
-            "Required for gated models (Stable Audio Open). Get yours at huggingface.co/settings/tokens"
+            tr("settings.gpu.hf_token_help"),
         ))
 
         layout.addWidget(gpu_group)
 
         # ── Appearance ──
-        appearance_group = QGroupBox("Appearance")
+        appearance_group = QGroupBox(tr("settings.appearance.group"))
         appearance_layout = QVBoxLayout(appearance_group)
 
         self._experience_combo = QComboBox()
@@ -196,7 +205,22 @@ class SettingsView(QWidget):
         self._experience_combo.setFixedWidth(160)
         self._experience_combo.currentTextChanged.connect(
             lambda v: self._save("general.experience_level", v.lower()))
-        appearance_layout.addLayout(SettingRow("Experience Level", self._experience_combo, "Controls default UI complexity across all modules"))
+        appearance_layout.addLayout(SettingRow(
+            tr("settings.appearance.experience_level"),
+            self._experience_combo,
+            tr("settings.appearance.experience_help"),
+        ))
+
+        self._default_language = QComboBox()
+        self._default_language.addItems(language_combo_items())
+        self._default_language.setFixedWidth(200)
+        self._default_language.currentTextChanged.connect(
+            lambda v: self._save("lyrics.default_language", language_code_from_label(v)))
+        appearance_layout.addLayout(SettingRow(
+            tr("settings.appearance.default_lyrics_language"),
+            self._default_language,
+            tr("settings.appearance.default_lyrics_language_help"),
+        ))
 
         layout.addWidget(appearance_group)
 
@@ -216,7 +240,7 @@ class SettingsView(QWidget):
         layout.setSpacing(20)
 
         # ── Lyrics ──
-        lyrics_group = QGroupBox("Lyrics Engine")
+        lyrics_group = QGroupBox(tr("settings.lyrics.group"))
         lyrics_layout = QVBoxLayout(lyrics_group)
 
         self._lyrics_model = QComboBox()
@@ -226,7 +250,7 @@ class SettingsView(QWidget):
         self._lyrics_model.setFixedWidth(240)
         self._lyrics_model.currentIndexChanged.connect(
             lambda: self._save("lyrics.model_id", self._lyrics_model.currentData()))
-        lyrics_layout.addLayout(SettingRow("Lyrics Model", self._lyrics_model))
+        lyrics_layout.addLayout(SettingRow(tr("settings.lyrics.model"), self._lyrics_model))
 
         self._temperature = QDoubleSpinBox()
         self._temperature.setRange(0.1, 2.0)
@@ -234,7 +258,11 @@ class SettingsView(QWidget):
         self._temperature.setFixedWidth(100)
         self._temperature.valueChanged.connect(
             lambda v: self._save("lyrics.temperature", v))
-        lyrics_layout.addLayout(SettingRow("Temperature", self._temperature, "Higher = more creative, lower = more predictable"))
+        lyrics_layout.addLayout(SettingRow(
+            tr("settings.lyrics.temperature"),
+            self._temperature,
+            tr("settings.lyrics.temperature_help"),
+        ))
 
         self._top_p = QDoubleSpinBox()
         self._top_p.setRange(0.1, 1.0)
@@ -242,7 +270,7 @@ class SettingsView(QWidget):
         self._top_p.setFixedWidth(100)
         self._top_p.valueChanged.connect(
             lambda v: self._save("lyrics.top_p", v))
-        lyrics_layout.addLayout(SettingRow("Top P", self._top_p))
+        lyrics_layout.addLayout(SettingRow(tr("settings.lyrics.top_p"), self._top_p))
 
         self._max_tokens = QSpinBox()
         self._max_tokens.setRange(256, 8192)
@@ -250,7 +278,7 @@ class SettingsView(QWidget):
         self._max_tokens.setFixedWidth(120)
         self._max_tokens.valueChanged.connect(
             lambda v: self._save("lyrics.max_tokens", v))
-        lyrics_layout.addLayout(SettingRow("Max Tokens", self._max_tokens))
+        lyrics_layout.addLayout(SettingRow(tr("settings.lyrics.max_tokens"), self._max_tokens))
 
         layout.addWidget(lyrics_group)
 
@@ -368,6 +396,7 @@ class SettingsView(QWidget):
         _widgets = [
             self._format_combo, self._sample_rate_combo, self._gpu_device,
             self._offline_mode, self._hf_token, self._experience_combo,
+            self._default_language,
             self._lyrics_model, self._temperature, self._top_p,
             self._max_tokens, self._cfg_scale, self._inference_steps,
             self._batch_count, self._default_duration, self._default_bpm,
@@ -398,6 +427,11 @@ class SettingsView(QWidget):
             idx = self._experience_combo.findText(exp)
             if idx >= 0:
                 self._experience_combo.setCurrentIndex(idx)
+
+            language = language_label(s.get("lyrics.default_language", "en"))
+            idx = self._default_language.findText(language)
+            if idx >= 0:
+                self._default_language.setCurrentIndex(idx)
 
             # Advanced tab
             model_id = s.get("lyrics.model_id", "llama-3.1-8b-q4")
@@ -436,11 +470,16 @@ class SettingsView(QWidget):
         self._settings.set(key, value)
         self._update_repair_status()
         # Toast for important changes only
-        if self.toast_mgr and key in ("general.audio_format", "general.sample_rate", "lyrics.model_id"):
-            self.toast_mgr.success(f"Setting updated")
+        if self.toast_mgr and key in (
+            "general.audio_format",
+            "general.sample_rate",
+            "lyrics.default_language",
+            "lyrics.model_id",
+        ):
+            self.toast_mgr.success(tr("settings.messages.setting_updated"))
 
     def _browse_output_dir(self):
-        path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
+        path = QFileDialog.getExistingDirectory(self, tr("settings.dialogs.select_output_directory"))
         if path:
             self._output_dir.setText(path)
             self._save("general.output_dir", path)
@@ -450,7 +489,7 @@ class SettingsView(QWidget):
         self._load_values()
         self._update_repair_status()
         if self.toast_mgr:
-            self.toast_mgr.warning("All settings reset to defaults")
+            self.toast_mgr.warning(tr("settings.messages.reset"))
 
     def _update_repair_status(self):
         status = self._settings.repair_status
@@ -482,6 +521,7 @@ class SettingsView(QWidget):
                 (self._offline_mode, "Offline mode", "Disables internet access for Model Hub."),
                 (self._hf_token, "HuggingFace token", "Stores a token for gated model downloads."),
                 (self._experience_combo, "Experience level", "Controls default UI complexity."),
+                (self._default_language, "Default lyrics language", "Sets the default language metadata for lyrics and new voice profiles."),
                 (self._lyrics_model, "Lyrics model", "Selects the local lyrics model."),
                 (self._temperature, "Lyrics temperature", "Controls creative variation."),
                 (self._top_p, "Lyrics top-p", "Controls nucleus sampling."),
@@ -511,6 +551,7 @@ class SettingsView(QWidget):
                 self._offline_mode,
                 self._hf_token,
                 self._experience_combo,
+                self._default_language,
                 self._lyrics_model,
                 self._temperature,
                 self._top_p,
@@ -535,7 +576,7 @@ class SettingsView(QWidget):
     def _export_health_report(self):
         path, _selected_filter = QFileDialog.getSaveFileName(
             self,
-            "Export Health Report",
+            tr("settings.dialogs.export_health"),
             "slunderstudio-health-report.zip",
             "Health Report (*.zip)",
         )
@@ -548,10 +589,10 @@ class SettingsView(QWidget):
             )
         except Exception as exc:
             if self.toast_mgr:
-                self.toast_mgr.error(f"Health report export failed: {exc}")
+                self.toast_mgr.error(tr("settings.messages.health_export_failed", error=exc))
             return
         if self.toast_mgr:
-            self.toast_mgr.success(f"Health report exported: {output.name}")
+            self.toast_mgr.success(tr("settings.messages.health_exported", filename=output.name))
 
     def _open_config_dir(self):
         import subprocess, sys

@@ -93,9 +93,3 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 
 ### P2
 ### P3
-- [ ] P3 - Add an i18n foundation for UI and lyric workflows
-  Why: ACE-Step and GPT-SoVITS support multilingual use, and settings already include a default lyric language, but UI text is hardcoded English.
-  Evidence: `core/settings.py`, `ui/*.py`, ACE-Step multilingual lyrics, GPT-SoVITS language support.
-  Touches: `core/i18n.py`, `ui/*.py`, `assets/locales/`, `tests/`.
-  Acceptance: User-visible strings are routed through a locale catalog, English remains complete, lyric language settings feed prompt/profile metadata, and tests fail on missing keys in major views.
-  Complexity: L
