@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.11 — Audio Analyzer
+Slunder Studio v0.1.12 — Audio Analyzer
 Reference track analysis: BPM, key, energy envelope, spectral features,
 genre estimation, and song structure detection via librosa.
 """

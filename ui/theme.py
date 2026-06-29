@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.11 — Theme Engine
+Slunder Studio v0.1.12 — Theme Engine
 Catppuccin Mocha dark theme with glassmorphism, animations, accent color system,
 and full QComboBox ControlTemplate for proper dark rendering.
 """
@@ -130,6 +130,10 @@ QPushButton:disabled {{
     background-color: {p.SURFACE1};
     color: {p.OVERLAY0};
 }}
+QPushButton:focus {{
+    border: 2px solid {p.YELLOW};
+    padding: 6px 18px;
+}}
 QPushButton#secondaryBtn {{
     background-color: {p.SURFACE0};
     color: {p.TEXT};
@@ -169,7 +173,7 @@ QLineEdit, QTextEdit, QPlainTextEdit {{
     selection-color: {p.CRUST};
 }}
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{
-    border-color: {accent};
+    border: 2px solid {p.YELLOW};
 }}
 QLineEdit:disabled, QTextEdit:disabled {{
     background-color: {p.MANTLE};
@@ -184,7 +188,7 @@ QSpinBox, QDoubleSpinBox {{
     font-size: 13px;
 }}
 QSpinBox:focus, QDoubleSpinBox:focus {{
-    border-color: {accent};
+    border: 2px solid {p.YELLOW};
 }}
 QSpinBox::up-button, QSpinBox::down-button,
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
@@ -204,7 +208,7 @@ QComboBox {{
     min-height: 20px;
 }}
 QComboBox:focus {{
-    border-color: {accent};
+    border: 2px solid {p.YELLOW};
 }}
 QComboBox::drop-down {{
     subcontrol-origin: padding;
@@ -262,6 +266,10 @@ QSlider::handle:horizontal {{
 QSlider::handle:horizontal:hover {{
     background: {accent_hover};
 }}
+QSlider:focus {{
+    border: 1px solid {p.YELLOW};
+    border-radius: 4px;
+}}
 QSlider::sub-page:horizontal {{
     background: {accent};
     border-radius: 3px;
@@ -306,6 +314,10 @@ QTabBar::tab:hover {{
 QTabBar::tab:selected {{
     color: {accent};
     border-bottom-color: {accent};
+}}
+QTabBar::tab:focus {{
+    color: {p.YELLOW};
+    border: 2px solid {p.YELLOW};
 }}
 
 /* ── Group Box ──────────────────────────────────────────────────────────── */
@@ -545,6 +557,9 @@ QCheckBox {{
     spacing: 8px;
     font-size: 13px;
     color: {p.TEXT};
+}}
+QCheckBox:focus {{
+    color: {p.YELLOW};
 }}
 QCheckBox::indicator {{
     width: 18px;

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.11 — Main Window
+Slunder Studio v0.1.12 — Main Window
 QMainWindow shell with animated sidebar navigation, stacked module views,
 global audio transport bar, VRAM status indicator, and drag-and-drop support.
 """
@@ -16,6 +16,7 @@ from core.audio_engine import AudioEngine, format_time
 from core.model_manager import ModelManager
 from ui.theme import Palette, build_stylesheet
 from ui.toast import ToastManager
+from ui.accessibility import install_accessibility, set_accessible
 from ui.model_hub import ModelHubView
 from ui.settings_view import SettingsView
 from ui.lyrics_view import LyricsView
@@ -41,6 +42,11 @@ class SidebarButton(QPushButton):
         self.setFixedHeight(44)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFont(QFont("Segoe UI", 12))
+        set_accessible(
+            self,
+            f"Open {label}",
+            f"Switches the main workspace to {label}.",
+        )
 
 
 class Sidebar(QWidget):
@@ -118,6 +124,7 @@ class Sidebar(QWidget):
         # Select first button
         if self._buttons:
             self._buttons[0].setChecked(True)
+        install_accessibility(self, "Main navigation", tab_order=self._buttons)
 
     def _on_clicked(self, index: int):
         for i, btn in enumerate(self._buttons):
@@ -204,6 +211,24 @@ class TransportBar(QWidget):
         self._audio.playback_finished.connect(self._on_stopped)
 
         self._duration = 0.0
+        install_accessibility(
+            self,
+            "Global transport",
+            named_controls=[
+                (self._play_btn, "Play or pause audio", "Toggles playback for the loaded audio."),
+                (self._stop_btn, "Stop audio", "Stops playback and returns to the start."),
+                (self._seek_slider, "Audio position", "Scrubs through the loaded audio."),
+                (self._loop_btn, "Loop playback", "Toggles repeat playback for the current audio."),
+                (self._vol_slider, "Playback volume", "Adjusts global playback volume."),
+            ],
+            tab_order=[
+                self._play_btn,
+                self._stop_btn,
+                self._seek_slider,
+                self._loop_btn,
+                self._vol_slider,
+            ],
+        )
 
     def _toggle_play(self):
         self._audio.toggle_play()
@@ -325,6 +350,9 @@ class MainWindow(QMainWindow):
         self._vram_label = QLabel("")
         self._vram_label.setStyleSheet(f"font-size: 11px; color: {Palette.BLUE};")
         self._status_bar.addPermanentWidget(self._vram_label)
+        set_accessible(self, "Slunder Studio", "Offline local AI music generation workspace.")
+        set_accessible(self._gpu_status_label, "GPU status", "Current GPU availability and device name.")
+        set_accessible(self._vram_label, "VRAM usage", "Current GPU memory usage.")
 
     def _create_pages(self):
         """Create all module pages (placeholders for future phases)."""

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.11 — Vocal Suite View
+Slunder Studio v0.1.12 — Vocal Suite View
 Main Vocal Suite page combining singing synthesis (DiffSinger),
 voice conversion (RVC), voice cloning (GPT-SoVITS), stem separation (Demucs),
 and stem remix/export.
@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, Signal
 from ui.theme import ThemeEngine
 from ui.waveform_widget import WaveformWidget
 from ui.stem_mixer import StemMixer
+from ui.accessibility import install_accessibility
 from core.voice_bank import VoiceBank, VoiceProfile
 from core.workers import InferenceWorker
 
@@ -126,6 +127,78 @@ class VocalSuiteView(QWidget):
         action_bar.addWidget(self._export_btn)
         layout.addLayout(action_bar)
         self.refresh_voice_bank()
+        install_accessibility(
+            self,
+            "Vocal Suite",
+            named_controls=[
+                (self._tabs, "Vocal Suite mode", "Switches between singing synthesis, voice conversion, voice cloning, and stem separation."),
+                (self._sing_lyrics, "Singing lyrics", "Lyrics to synthesize with DiffSinger."),
+                (self._sing_voice, "DiffSinger voice", "Selects the singing voice model."),
+                (self._sing_tempo, "Singing tempo", "Sets the vocal synthesis tempo in beats per minute."),
+                (self._sing_key, "Singing key", "Sets the starting singing pitch."),
+                (self._sing_breathiness, "Singing breathiness", "Adjusts breathiness expression."),
+                (self._sing_tension, "Singing tension", "Adjusts vocal tension expression."),
+                (self._sing_vibrato, "Singing vibrato", "Adjusts vibrato expression."),
+                (self._sing_gender, "Singing gender", "Adjusts vocal formant character."),
+                (self._sing_gen_btn, "Synthesize vocals", "Starts DiffSinger vocal synthesis."),
+                (self._rvc_browse_btn, "Browse RVC input", "Selects input audio for voice conversion."),
+                (self._rvc_voice, "RVC voice", "Selects the target RVC voice model."),
+                (self._rvc_pitch, "RVC pitch shift", "Adjusts pitch shift in semitones."),
+                (self._rvc_f0, "RVC pitch detector", "Selects the F0 pitch extraction method."),
+                (self._rvc_index, "RVC index strength", "Adjusts retrieval index blend strength."),
+                (self._rvc_convert_btn, "Convert voice", "Starts RVC voice conversion."),
+                (self._clone_voice, "Voice clone profile", "Selects a saved GPT-SoVITS voice profile."),
+                (self._clone_profile_name, "Voice profile name", "Names a new voice profile."),
+                (self._clone_ref_btn, "Browse clone reference", "Selects reference audio for voice cloning."),
+                (self._clone_ref_text, "Reference transcript", "Transcript for the reference voice sample."),
+                (self._clone_save_profile_btn, "Save voice profile", "Saves a validated GPT-SoVITS reference profile."),
+                (self._clone_text, "Clone text", "Text to speak in the cloned voice."),
+                (self._clone_lang, "Clone language", "Selects the GPT-SoVITS language."),
+                (self._clone_speed, "Clone speed", "Adjusts cloned speech speed."),
+                (self._clone_temp, "Clone temperature", "Adjusts generation variation."),
+                (self._clone_gen_btn, "Clone voice", "Starts GPT-SoVITS voice cloning."),
+                (self._stem_browse_btn, "Browse stem input", "Selects audio for stem separation."),
+                (self._stem_model, "Stem separation model", "Selects the Demucs model."),
+                (self._stem_separate_btn, "Separate stems", "Starts stem separation."),
+                (self._to_forge_btn, "Send vocals to Song Forge", "Routes current vocal output to Song Forge."),
+                (self._to_mixer_btn, "Send vocals to Mixer", "Routes current vocal output to Mixer."),
+                (self._export_btn, "Export vocal audio", "Shows the current vocal output path."),
+            ],
+            tab_order=[
+                self._tabs,
+                self._sing_lyrics,
+                self._sing_voice,
+                self._sing_tempo,
+                self._sing_key,
+                self._sing_breathiness,
+                self._sing_tension,
+                self._sing_vibrato,
+                self._sing_gender,
+                self._sing_gen_btn,
+                self._rvc_browse_btn,
+                self._rvc_voice,
+                self._rvc_pitch,
+                self._rvc_f0,
+                self._rvc_index,
+                self._rvc_convert_btn,
+                self._clone_voice,
+                self._clone_profile_name,
+                self._clone_ref_btn,
+                self._clone_ref_text,
+                self._clone_save_profile_btn,
+                self._clone_text,
+                self._clone_lang,
+                self._clone_speed,
+                self._clone_temp,
+                self._clone_gen_btn,
+                self._stem_browse_btn,
+                self._stem_model,
+                self._stem_separate_btn,
+                self._to_forge_btn,
+                self._to_mixer_btn,
+                self._export_btn,
+            ],
+        )
 
     # ── Tab Builders ───────────────────────────────────────────────────────────
 

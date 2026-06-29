@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.11 — Toast Notification System
+Slunder Studio v0.1.12 — Toast Notification System
 Slide-in from bottom-right, auto-dismiss, no blocking dialogs.
 Supports success/error/warning/info types with color-coded borders.
 """

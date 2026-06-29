@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.11 — Song Forge View
+Slunder Studio v0.1.12 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
@@ -20,6 +20,7 @@ from ui.batch_view import BatchView
 from ui.seed_explorer import SeedExplorer
 from ui.mood_curve_editor import MoodCurveEditor
 from ui.reference_panel import ReferencePanel
+from ui.accessibility import install_accessibility
 
 
 class StyleTagBrowser(QWidget):
@@ -80,6 +81,22 @@ class StyleTagBrowser(QWidget):
         layout.addWidget(self._selected_label)
 
         self._refresh()
+        install_accessibility(
+            self,
+            "Style tag browser",
+            named_controls=[
+                (self._search, "Search style tags", "Filters the style tag list."),
+                (self._cat_combo, "Style tag category", "Filters tags by category."),
+                (self._fav_check, "Favorite style tags only", "Shows only favorite style tags."),
+                (self._tag_list, "Style tag results", "Selects one or more style tags."),
+            ],
+            tab_order=[
+                self._search,
+                self._cat_combo,
+                self._fav_check,
+                self._tag_list,
+            ],
+        )
 
     def _refresh(self):
         self._tag_list.clear()
@@ -429,6 +446,58 @@ class SongForgeView(QWidget):
         splitter.setStretchFactor(2, 0)
 
         layout.addWidget(splitter)
+        install_accessibility(
+            self,
+            "Song Forge",
+            named_controls=[
+                (self._mode_tabs, "Song Forge mode", "Switches between quick and advanced song generation controls."),
+                (self._quick_lyrics, "Quick lyrics", "Lyrics or structure tags for quick song generation."),
+                (self._quick_tags, "Quick style tags", "Comma-separated style prompt for quick generation."),
+                (self._adv_lyrics, "Advanced lyrics", "Lyrics with structure tags for advanced generation."),
+                (self._duration_spin, "Song duration", "Target generated song duration in seconds."),
+                (self._cfg_spin, "CFG scale", "Controls prompt adherence for generation."),
+                (self._steps_spin, "Inference steps", "Controls generation quality and speed."),
+                (self._seed_spin, "Generation seed", "Use random or fixed seed for repeatable generation."),
+                (self._batch_spin, "Batch count", "Number of variations to generate."),
+                (self._long_form_check, "Long-form stitching", "Renders long songs by sections and stitches them."),
+                (self._fusion_primary, "Primary genre", "First genre for fusion tags."),
+                (self._fusion_secondary, "Secondary genre", "Second genre for fusion tags."),
+                (self._fusion_slider, "Genre blend", "Balances primary and secondary genre tags."),
+                (self._fusion_apply_btn, "Apply genre fusion", "Copies blended genre tags into the prompt."),
+                (self._generate_btn, "Generate song", "Starts ACE-Step song generation."),
+                (self._cancel_btn, "Cancel generation", "Requests cancellation for the running generation."),
+                (self._play_btn, "Play generated song", "Plays the current generated output."),
+                (self._export_btn, "Export generated song", "Exports the current generated output."),
+                (self._to_vocals_btn, "Send generated song to vocals", "Routes generated audio to Vocal Suite."),
+                (self._sub_tabs, "Song Forge result tools", "Switches between batch results, seed explorer, and mood curve."),
+            ],
+            tab_order=[
+                self._mode_tabs,
+                self._quick_lyrics,
+                self._quick_tags,
+                self._adv_lyrics,
+                self._duration_spin,
+                self._cfg_spin,
+                self._steps_spin,
+                self._seed_spin,
+                self._batch_spin,
+                self._long_form_check,
+                self._fusion_primary,
+                self._fusion_secondary,
+                self._fusion_slider,
+                self._fusion_apply_btn,
+                self._tag_browser._search,
+                self._tag_browser._cat_combo,
+                self._tag_browser._fav_check,
+                self._tag_browser._tag_list,
+                self._generate_btn,
+                self._cancel_btn,
+                self._play_btn,
+                self._export_btn,
+                self._to_vocals_btn,
+                self._sub_tabs,
+            ],
+        )
 
     # ── Lyrics Injection ──────────────────────────────────────────────────────
 

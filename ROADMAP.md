@@ -90,13 +90,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### P0
 
 ### P1
-- [ ] P1 - Establish a PySide6 accessibility baseline
-  Why: The app has many custom controls and dense creative workflows, but no systematic accessible names, descriptions, tab order, or non-color-only state checks.
-  Evidence: `ui/*.py`, Qt for Python accessibility properties.
-  Touches: `ui/main_window.py`, `ui/song_forge_view.py`, `ui/vocal_suite_view.py`, `ui/model_hub.py`, `ui/settings_view.py`, `ui/theme.py`, `tests/`.
-  Acceptance: Primary controls expose accessible names/descriptions, tab traversal follows visual workflow order, focus rings are visible in dark/light themes, and a headless Qt test asserts baseline properties on major views.
-  Complexity: M
-
 - [ ] P1 - Make long jobs cancel-safe and crash-resumable
   Why: Worker cancellation is cooperative, but long model calls and downloads need durable job state so users can recover after cancel, crash, or restart.
   Evidence: `core/workers.py`, `engines/ace_step_engine.py`, `core/model_manager.py`, existing batch/download roadmap items.

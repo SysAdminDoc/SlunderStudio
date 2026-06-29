@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.11 — Settings View
+Slunder Studio v0.1.12 — Settings View
 Two-tier settings: Simple Mode (essentials) and Advanced Mode (full controls).
 All changes apply immediately with toast feedback.
 """
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ui.theme import Palette
+from ui.accessibility import install_accessibility
 from core.settings import Settings, APP_VERSION
 
 
@@ -48,6 +49,7 @@ class SettingsView(QWidget):
         self._settings = Settings()
         self._build_ui()
         self._load_values()
+        self._install_accessibility()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -83,19 +85,19 @@ class SettingsView(QWidget):
         bottom = QHBoxLayout()
         bottom.setSpacing(12)
 
-        reset_btn = QPushButton("Reset All to Defaults")
-        reset_btn.setObjectName("dangerBtn")
-        reset_btn.setFixedHeight(36)
-        reset_btn.clicked.connect(self._reset_all)
-        bottom.addWidget(reset_btn)
+        self._reset_btn = QPushButton("Reset All to Defaults")
+        self._reset_btn.setObjectName("dangerBtn")
+        self._reset_btn.setFixedHeight(36)
+        self._reset_btn.clicked.connect(self._reset_all)
+        bottom.addWidget(self._reset_btn)
 
         bottom.addStretch()
 
-        open_dir_btn = QPushButton("Open Config Folder")
-        open_dir_btn.setObjectName("secondaryBtn")
-        open_dir_btn.setFixedHeight(36)
-        open_dir_btn.clicked.connect(self._open_config_dir)
-        bottom.addWidget(open_dir_btn)
+        self._open_dir_btn = QPushButton("Open Config Folder")
+        self._open_dir_btn.setObjectName("secondaryBtn")
+        self._open_dir_btn.setFixedHeight(36)
+        self._open_dir_btn.clicked.connect(self._open_config_dir)
+        bottom.addWidget(self._open_dir_btn)
 
         layout.addLayout(bottom)
 
@@ -117,15 +119,15 @@ class SettingsView(QWidget):
         self._output_dir = QLineEdit()
         self._output_dir.setPlaceholderText("Select output directory...")
         self._output_dir.setReadOnly(True)
-        browse_btn = QPushButton("Browse")
-        browse_btn.setObjectName("secondaryBtn")
-        browse_btn.setFixedWidth(80)
-        browse_btn.setFixedHeight(34)
-        browse_btn.clicked.connect(self._browse_output_dir)
+        self._browse_output_btn = QPushButton("Browse")
+        self._browse_output_btn.setObjectName("secondaryBtn")
+        self._browse_output_btn.setFixedWidth(80)
+        self._browse_output_btn.setFixedHeight(34)
+        self._browse_output_btn.clicked.connect(self._browse_output_dir)
 
         dir_row = QHBoxLayout()
         dir_row.addWidget(self._output_dir, 1)
-        dir_row.addWidget(browse_btn)
+        dir_row.addWidget(self._browse_output_btn)
         output_layout.addLayout(SettingRow("Output Directory", QWidget()))
         output_layout.addLayout(dir_row)
 
@@ -455,6 +457,66 @@ class SettingsView(QWidget):
             text += f" Backup: {backups[-1]}"
         self._repair_label.setText(text)
         self._repair_label.setVisible(True)
+
+    def _install_accessibility(self):
+        install_accessibility(
+            self,
+            "Settings",
+            named_controls=[
+                (self._tabs, "Settings sections", "Switches between simple and advanced settings."),
+                (self._output_dir, "Output directory", "Current default render output directory."),
+                (self._browse_output_btn, "Browse output directory", "Chooses the default render output directory."),
+                (self._format_combo, "Default audio format", "Selects the default export format."),
+                (self._sample_rate_combo, "Sample rate", "Selects the default audio sample rate."),
+                (self._gpu_device, "GPU device index", "Selects the GPU device index."),
+                (self._offline_mode, "Offline mode", "Disables internet access for Model Hub."),
+                (self._hf_token, "HuggingFace token", "Stores a token for gated model downloads."),
+                (self._experience_combo, "Experience level", "Controls default UI complexity."),
+                (self._lyrics_model, "Lyrics model", "Selects the local lyrics model."),
+                (self._temperature, "Lyrics temperature", "Controls creative variation."),
+                (self._top_p, "Lyrics top-p", "Controls nucleus sampling."),
+                (self._max_tokens, "Max lyrics tokens", "Controls maximum lyrics generation length."),
+                (self._cfg_scale, "Song Forge CFG scale", "Controls prompt adherence."),
+                (self._inference_steps, "Song Forge inference steps", "Controls generation quality and speed."),
+                (self._batch_count, "Song Forge batch count", "Controls number of variations."),
+                (self._default_duration, "Default song duration", "Controls default generation duration."),
+                (self._default_bpm, "Default MIDI tempo", "Controls default MIDI BPM."),
+                (self._mastering_target, "Mastering target", "Selects the loudness target."),
+                (self._auto_eq, "Automatic mastering EQ", "Toggles automatic EQ during mastering."),
+                (self._auto_compress, "Automatic mastering compression", "Toggles automatic bus compression."),
+                (self._max_cache, "Maximum cache size", "Controls cache cleanup threshold."),
+                (self._autosave_interval, "Auto-save interval", "Controls project auto-save frequency."),
+                (self._reset_btn, "Reset settings", "Resets all settings to defaults."),
+                (self._open_dir_btn, "Open config folder", "Opens the settings folder in the file manager."),
+            ],
+            tab_order=[
+                self._tabs,
+                self._output_dir,
+                self._browse_output_btn,
+                self._format_combo,
+                self._sample_rate_combo,
+                self._gpu_device,
+                self._offline_mode,
+                self._hf_token,
+                self._experience_combo,
+                self._lyrics_model,
+                self._temperature,
+                self._top_p,
+                self._max_tokens,
+                self._cfg_scale,
+                self._inference_steps,
+                self._batch_count,
+                self._default_duration,
+                self._default_bpm,
+                self._mastering_target,
+                self._auto_eq,
+                self._auto_compress,
+                self._max_cache,
+                self._autosave_interval,
+                self._reset_btn,
+                self._open_dir_btn,
+            ],
+        )
 
     def _open_config_dir(self):
         import subprocess, sys

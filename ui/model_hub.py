@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.11 — Model Hub UI
+Slunder Studio v0.1.12 — Model Hub UI
 Grid view of all models with live download progress, speed tracking,
 partial download detection, and one-click download/delete.
 """
@@ -13,6 +13,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 
 from ui.theme import Palette
+from ui.accessibility import install_accessibility, set_accessible
 from core.model_manager import ModelManager, ModelInfo, ModelStatus, ModelCategory
 from core.settings import Settings
 from core.workers import DownloadWorker
@@ -228,6 +229,20 @@ class ModelCard(QFrame):
         self._action_btn.setFixedHeight(32)
         self._action_btn.clicked.connect(self._on_action)
         layout.addWidget(self._action_btn)
+        install_accessibility(
+            self,
+            f"Model card {self.info.name}",
+            named_controls=[
+                (self._status_badge, f"{self.info.name} status", "Current model installation and loading state."),
+                (self._progress, f"{self.info.name} download progress", "Current download completion percentage."),
+                (self._cancel_btn, f"Cancel {self.info.name} download", "Cancels the active model download."),
+                (self._action_btn, f"{self.info.name} action", "Downloads, resumes, deletes, or shows model state."),
+            ],
+            tab_order=[
+                self._action_btn,
+                self._cancel_btn,
+            ],
+        )
 
     def _on_action(self):
         mgr = ModelManager()
@@ -304,6 +319,11 @@ class ModelCard(QFrame):
 
     def _set_badge(self, text: str, color: str):
         self._status_badge.setText(text)
+        set_accessible(
+            self._status_badge,
+            f"{self.info.name} status {text}",
+            f"Model status is {text}.",
+        )
         self._status_badge.setStyleSheet(
             f"background: rgba({self._hex_to_rgba(color)},40); "
             f"color: {color}; padding: 2px 10px; border-radius: 11px; "
@@ -434,6 +454,23 @@ class ModelHubView(QWidget):
         self._grid_layout.setRowStretch(row + 1, 1)
         scroll.setWidget(self._grid_container)
         layout.addWidget(scroll, 1)
+        install_accessibility(
+            self,
+            "Model Hub",
+            named_controls=[
+                (self._search, "Search models", "Filters models by name or description."),
+                (self._category_filter, "Model category filter", "Filters models by engine category."),
+                (self._downloaded_only, "Downloaded models only", "Shows only installed or loaded models."),
+                (self._gpu_label, "Model Hub GPU status", "Shows GPU availability and active model."),
+                (self._disk_label, "Model disk usage", "Shows downloaded model storage usage."),
+            ],
+            tab_order=[
+                self._search,
+                self._category_filter,
+                self._downloaded_only,
+                *[card._action_btn for card in self._cards.values()],
+            ],
+        )
 
     def _connect_signals(self):
         self._mgr.status_changed.connect(self._on_status_changed)
