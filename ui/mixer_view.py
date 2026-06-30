@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.26 — Mixer View
+Slunder Studio v0.1.27 — Mixer View
 Multi-track mixer timeline with per-track volume/pan/effects,
 smart mastering presets, waveform overview, and final export.
 """
@@ -20,10 +20,13 @@ from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.mastering import (
     PRESETS,
     DynamicEQSuggestion,
+    LoudnessMatchResult,
     MasteringPreset,
     apply_dynamic_eq,
+    match_loudness_to_reference,
     master_audio,
     measure_lufs,
+    measure_short_term_lufs,
     suggest_dynamic_eq_curve,
 )
 
@@ -189,6 +192,10 @@ class MixerView(QWidget):
         self._strips: list[MixerTrackStrip] = []
         self._tracks: list[dict] = []  # {name, audio, sr}
         self._dynamic_eq_suggestions: dict[int, DynamicEQSuggestion] = {}
+        self._reference_audio: Optional[np.ndarray] = None
+        self._reference_sr: int = 44100
+        self._reference_name: str = ""
+        self._last_loudness_match: Optional[LoudnessMatchResult] = None
 
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(self)
@@ -288,6 +295,18 @@ class MixerView(QWidget):
         master_layout.addWidget(ll)
         master_layout.addWidget(self._lufs_spin)
 
+        self._ref_btn = QPushButton("Load Ref")
+        self._ref_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['background']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 4px;
+                padding: 5px 10px; font-size: 11px; font-weight: bold;
+            }}
+            QPushButton:hover {{ background: {t['surface_hover']}; }}
+        """)
+        self._ref_btn.clicked.connect(self._on_load_reference)
+        master_layout.addWidget(self._ref_btn)
+
         self._master_btn = QPushButton("Master + Export")
         self._master_btn.setStyleSheet(f"""
             QPushButton {{
@@ -305,6 +324,10 @@ class MixerView(QWidget):
         master_layout.addStretch()
 
         # LUFS meter display
+        self._reference_label = QLabel("Ref: none")
+        self._reference_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
+        master_layout.addWidget(self._reference_label)
+
         self._lufs_label = QLabel("")
         self._lufs_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
         master_layout.addWidget(self._lufs_label)
@@ -339,26 +362,80 @@ class MixerView(QWidget):
         self._master_btn.setEnabled(True)
         self._update_mix_state()
 
-    def add_track_from_file(self, file_path: str):
-        """Import an audio file as a track."""
+    def _read_audio_file(self, file_path: str) -> tuple[np.ndarray, int]:
         try:
+            import soundfile as sf
+            audio, sr = sf.read(file_path, dtype="float32", always_2d=True)
+        except Exception:
             import wave
-            name = os.path.splitext(os.path.basename(file_path))[0]
-
             with wave.open(file_path, "r") as wf:
                 sr = wf.getframerate()
                 channels = wf.getnchannels()
                 frames = wf.readframes(wf.getnframes())
                 audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-                if channels == 2:
-                    audio = audio.reshape(-1, 2)
-                else:
-                    audio = np.column_stack([audio, audio])
+                if channels > 1:
+                    audio = audio.reshape(-1, channels)
 
+        if audio.ndim == 1:
+            audio = np.column_stack([audio, audio])
+        elif audio.shape[1] == 1:
+            audio = np.column_stack([audio[:, 0], audio[:, 0]])
+        elif audio.shape[1] > 2:
+            audio = audio[:, :2]
+        return audio.astype(np.float32), int(sr)
+
+    def add_track_from_file(self, file_path: str):
+        """Import an audio file as a track."""
+        try:
+            name = os.path.splitext(os.path.basename(file_path))[0]
+            audio, sr = self._read_audio_file(file_path)
             self.add_track(name, audio, sr)
             self._status.setText(f"Added track: {name} ({len(audio) / sr:.1f}s)")
         except Exception as e:
             self._status.setText(f"Import error: {e}")
+
+    def set_reference_track(self, name: str, audio: np.ndarray, sr: int = 44100,
+                            path: str = ""):
+        """Set a loudness reference track for mastering."""
+        if audio.ndim == 1:
+            audio = np.column_stack([audio, audio])
+        elif audio.ndim == 2 and audio.shape[1] == 1:
+            audio = np.column_stack([audio[:, 0], audio[:, 0]])
+        elif audio.ndim == 2 and audio.shape[1] > 2:
+            audio = audio[:, :2]
+
+        self._reference_audio = audio.astype(np.float32)
+        self._reference_sr = int(sr)
+        self._reference_name = name or os.path.basename(path) or "Reference"
+        ref_lufs = measure_lufs(self._reference_audio, self._reference_sr)
+        profile = measure_short_term_lufs(self._reference_audio, self._reference_sr)
+        if ref_lufs > -60:
+            self._lufs_spin.setValue(max(self._lufs_spin.minimum(), min(self._lufs_spin.maximum(), ref_lufs)))
+
+        if profile:
+            low = min(point.lufs for point in profile)
+            high = max(point.lufs for point in profile)
+            self._reference_label.setText(
+                f"Ref: {self._reference_name} {ref_lufs:.1f} LUFS | ST {low:.1f}..{high:.1f}"
+            )
+        else:
+            self._reference_label.setText(f"Ref: {self._reference_name} {ref_lufs:.1f} LUFS")
+
+    def _on_load_reference(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Loudness Reference", "",
+            "Audio (*.wav *.flac *.mp3 *.ogg)"
+        )
+        if not path:
+            return
+
+        try:
+            audio, sr = self._read_audio_file(path)
+            name = os.path.splitext(os.path.basename(path))[0]
+            self.set_reference_track(name, audio, sr, path)
+            self._status.setText(f"Loaded loudness reference: {name}")
+        except Exception as e:
+            self._status.setText(f"Reference load error: {e}")
 
     def _on_import_track(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -507,16 +584,39 @@ class MixerView(QWidget):
                 self._status.setText(f"Mastering error: {result.error}")
                 return
 
+            if self._reference_audio is not None and result.audio is not None:
+                match = match_loudness_to_reference(
+                    result.audio,
+                    sr,
+                    self._reference_audio,
+                    self._reference_sr,
+                )
+                self._last_loudness_match = match
+                result.audio = match.audio
+                result.output_lufs = match.output_lufs
+                result.peak_db = match.peak_db
+            else:
+                self._last_loudness_match = None
+
             # Show in waveform
             if result.audio is not None:
                 mono = result.audio[:, 0] if result.audio.ndim == 2 else result.audio
-                self._master_waveform.load_audio(mono, sr)
+                self._master_waveform.set_audio(mono, sr)
 
-            self._lufs_label.setText(
-                f"In: {result.input_lufs:.1f} LUFS | "
-                f"Out: {result.output_lufs:.1f} LUFS | "
-                f"Peak: {result.peak_db:.1f} dB"
-            )
+            if self._last_loudness_match:
+                match = self._last_loudness_match
+                self._lufs_label.setText(
+                    f"In: {result.input_lufs:.1f} LUFS | "
+                    f"Ref: {match.reference_lufs:.1f} | "
+                    f"Out: {result.output_lufs:.1f} | "
+                    f"ST avg delta {match.average_short_term_delta_db:.1f} dB"
+                )
+            else:
+                self._lufs_label.setText(
+                    f"In: {result.input_lufs:.1f} LUFS | "
+                    f"Out: {result.output_lufs:.1f} LUFS | "
+                    f"Peak: {result.peak_db:.1f} dB"
+                )
 
             # Export dialog
             path, _ = QFileDialog.getSaveFileName(
@@ -538,11 +638,20 @@ class MixerView(QWidget):
                     f"{result.processing_time:.1f}s"
                 )
             else:
-                self._status.setText(
-                    f"Mastered ({preset_name}) | "
-                    f"{result.output_lufs:.1f} LUFS | "
-                    f"{result.processing_time:.1f}s"
-                )
+                if self._last_loudness_match:
+                    match = self._last_loudness_match
+                    self._status.setText(
+                        f"Mastered ({preset_name}) matched to {self._reference_name} | "
+                        f"{result.output_lufs:.1f} LUFS | "
+                        f"ST avg delta {match.average_short_term_delta_db:.1f} dB | "
+                        f"{result.processing_time:.1f}s"
+                    )
+                else:
+                    self._status.setText(
+                        f"Mastered ({preset_name}) | "
+                        f"{result.output_lufs:.1f} LUFS | "
+                        f"{result.processing_time:.1f}s"
+                    )
 
         except Exception as e:
             self._status.setText(f"Error: {e}")

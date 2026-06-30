@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.26 — Lyrics Engine
+Slunder Studio v0.1.27 — Lyrics Engine
 Dual-backend LLM wrapper: llama-cpp-python (primary) or transformers (fallback).
 Supports streaming token output, model loading via Model Manager, and generation pipeline.
 

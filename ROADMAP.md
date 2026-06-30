@@ -11,7 +11,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### MIDI & composition
 
 ### Mixing & mastering
-- Loudness match to reference track with short-term LUFS tracking
 - Reference LUFS targets beyond streaming presets (broadcast, podcast, cinema)
 - Mid/Side mastering controls surfaced in Mixer view
 

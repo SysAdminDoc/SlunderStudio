@@ -125,7 +125,7 @@ class DiagnosticsTests(unittest.TestCase):
         text = format_health_report_text({
             "schema_version": 1,
             "generated_at": "2026-06-29T00:00:00Z",
-            "app": {"version": "0.1.26", "platform": "test", "python": "3.12", "frozen": False},
+            "app": {"version": "0.1.27", "platform": "test", "python": "3.12", "frozen": False},
             "gpu": {"name": "No GPU detected", "free_gb": 0},
             "ffmpeg": {"available": False},
             "paths": {

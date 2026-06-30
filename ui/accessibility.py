@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.26 - PySide6 accessibility helpers.
+Slunder Studio v0.1.27 - PySide6 accessibility helpers.
 Applies screen-reader names, descriptions, focus rings, and tab order.
 """
 from __future__ import annotations

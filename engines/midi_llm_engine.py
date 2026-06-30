@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.26 — MIDI-LLM Engine
+Slunder Studio v0.1.27 — MIDI-LLM Engine
 Text-to-MIDI generation using fine-tuned language models that output MIDI token sequences.
 Supports prompt-based composition, continuation, and style-conditioned generation.
 """

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.26 — Piano Roll Widget
+Slunder Studio v0.1.27 — Piano Roll Widget
 QGraphicsView-based MIDI piano roll editor with note creation, editing,
 selection, quantization, and snap-to-grid.
 """

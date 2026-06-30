@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.26 — Smart Mastering
+Slunder Studio v0.1.27 — Smart Mastering
 Automated mastering chain: EQ, compression, stereo enhancement,
 limiting, and loudness normalization (LUFS targeting).
 """
@@ -112,6 +112,30 @@ class DynamicEQSuggestion:
     mid_ratio: float = 0.0
     presence_ratio: float = 0.0
     high_ratio: float = 0.0
+
+
+@dataclass(frozen=True)
+class ShortTermLoudnessPoint:
+    """Short-term loudness snapshot for a time window."""
+    time_sec: float
+    lufs: float
+
+
+@dataclass(frozen=True)
+class LoudnessMatchResult:
+    """Result from matching audio loudness to a reference profile."""
+    audio: np.ndarray
+    sample_rate: int
+    source_lufs: float
+    reference_lufs: float
+    output_lufs: float
+    gain_db: float
+    source_short_term: tuple[ShortTermLoudnessPoint, ...] = field(default_factory=tuple)
+    reference_short_term: tuple[ShortTermLoudnessPoint, ...] = field(default_factory=tuple)
+    output_short_term: tuple[ShortTermLoudnessPoint, ...] = field(default_factory=tuple)
+    average_short_term_delta_db: float = 0.0
+    max_short_term_delta_db: float = 0.0
+    peak_db: float = 0.0
 
 
 # ── DSP Functions ──────────────────────────────────────────────────────────────
@@ -294,6 +318,107 @@ def normalize_lufs(audio: np.ndarray, sr: int, target_lufs: float) -> np.ndarray
     diff = target_lufs - current
     gain = db_to_linear(diff)
     return audio * gain
+
+
+def _window_lufs(block: np.ndarray) -> float:
+    arr = np.asarray(block, dtype=np.float32)
+    if arr.ndim == 2:
+        power = np.mean(np.square(arr), axis=0)
+        mean_power = float(np.mean(power))
+    else:
+        mean_power = float(np.mean(np.square(arr)))
+    if mean_power <= 1e-12:
+        return -70.0
+    return float(-0.691 + 10.0 * np.log10(mean_power))
+
+
+def measure_short_term_lufs(audio: np.ndarray, sr: int,
+                            window_sec: float = 3.0,
+                            hop_sec: float = 1.0) -> tuple[ShortTermLoudnessPoint, ...]:
+    """Measure short-term LUFS windows for reference comparison."""
+    arr = np.asarray(audio, dtype=np.float32)
+    if arr.size == 0 or sr <= 0:
+        return tuple()
+
+    if arr.ndim == 1:
+        arr = np.column_stack([arr, arr])
+
+    window = max(1, int(window_sec * sr))
+    hop = max(1, int(hop_sec * sr))
+    total = len(arr)
+    if total == 0:
+        return tuple()
+
+    if total <= window:
+        return (ShortTermLoudnessPoint(time_sec=0.0, lufs=_window_lufs(arr)),)
+
+    starts = list(range(0, total - window + 1, hop))
+    final_start = total - window
+    if starts[-1] != final_start:
+        starts.append(final_start)
+
+    return tuple(
+        ShortTermLoudnessPoint(
+            time_sec=start / sr,
+            lufs=_window_lufs(arr[start:start + window]),
+        )
+        for start in starts
+    )
+
+
+def _profile_delta(output: tuple[ShortTermLoudnessPoint, ...],
+                   reference: tuple[ShortTermLoudnessPoint, ...]) -> tuple[float, float]:
+    pairs = [
+        abs(left.lufs - right.lufs)
+        for left, right in zip(output, reference)
+        if left.lufs > -60.0 and right.lufs > -60.0
+    ]
+    if not pairs:
+        return 0.0, 0.0
+    return float(np.mean(pairs)), float(np.max(pairs))
+
+
+def match_loudness_to_reference(audio: np.ndarray, sr: int,
+                                reference_audio: np.ndarray,
+                                reference_sr: Optional[int] = None,
+                                ceiling_db: float = -0.3) -> LoudnessMatchResult:
+    """Normalize audio to a reference track and retain short-term LUFS profiles."""
+    reference_sr = reference_sr or sr
+    source = np.asarray(audio, dtype=np.float32)
+    reference = np.asarray(reference_audio, dtype=np.float32)
+
+    source_lufs = measure_lufs(source, sr)
+    reference_lufs = measure_lufs(reference, reference_sr)
+    gain_db = 0.0 if source_lufs < -60.0 or reference_lufs < -60.0 else reference_lufs - source_lufs
+    matched = source * db_to_linear(gain_db)
+
+    ceiling = db_to_linear(ceiling_db)
+    peak = float(np.max(np.abs(matched))) if matched.size else 0.0
+    if peak > ceiling:
+        matched = matched * (ceiling / max(peak, 1e-10))
+
+    matched = np.clip(matched, -1.0, 1.0).astype(np.float32)
+    source_profile = measure_short_term_lufs(source, sr)
+    reference_profile = measure_short_term_lufs(reference, reference_sr)
+    output_profile = measure_short_term_lufs(matched, sr)
+    avg_delta, max_delta = _profile_delta(output_profile, reference_profile)
+    output_lufs = measure_lufs(matched, sr)
+    output_peak = linear_to_db(float(np.max(np.abs(matched))) if matched.size else 0.0)
+
+    return LoudnessMatchResult(
+        audio=matched,
+        sample_rate=sr,
+        source_lufs=source_lufs,
+        reference_lufs=reference_lufs,
+        output_lufs=output_lufs,
+        gain_db=gain_db,
+        source_short_term=source_profile,
+        reference_short_term=reference_profile,
+        output_short_term=output_profile,
+        average_short_term_delta_db=avg_delta,
+        max_short_term_delta_db=max_delta,
+        peak_db=output_peak,
+    )
 
 
 def _mono_float(audio: np.ndarray) -> np.ndarray:
