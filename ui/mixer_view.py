@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.27 — Mixer View
+Slunder Studio v0.1.28 — Mixer View
 Multi-track mixer timeline with per-track volume/pan/effects,
 smart mastering presets, waveform overview, and final export.
 """
@@ -18,6 +18,7 @@ import numpy as np
 from ui.theme import ThemeEngine
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.mastering import (
+    LUFS_TARGETS,
     PRESETS,
     DynamicEQSuggestion,
     LoudnessMatchResult,
@@ -196,6 +197,7 @@ class MixerView(QWidget):
         self._reference_sr: int = 44100
         self._reference_name: str = ""
         self._last_loudness_match: Optional[LoudnessMatchResult] = None
+        self._syncing_lufs_target = False
 
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(self)
@@ -279,10 +281,26 @@ class MixerView(QWidget):
         master_layout.addWidget(self._preset_combo)
 
         # Target LUFS
-        ll = QLabel("Target LUFS:")
+        tlufs = QLabel("Target:")
+        tlufs.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+        self._target_combo = QComboBox()
+        for target in LUFS_TARGETS.values():
+            self._target_combo.addItem(target.label, target.key)
+        self._target_combo.addItem("Custom", "custom")
+        self._target_combo.setCurrentIndex(0)
+        self._target_combo.setStyleSheet(f"""
+            QComboBox {{
+                background: {t['background']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 4px;
+                padding: 4px 10px; font-size: 11px; min-width: 160px;
+            }}
+        """)
+        self._target_combo.currentIndexChanged.connect(self._on_lufs_target_changed)
+
+        ll = QLabel("LUFS:")
         ll.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
         self._lufs_spin = QDoubleSpinBox()
-        self._lufs_spin.setRange(-24.0, -6.0)
+        self._lufs_spin.setRange(-30.0, -6.0)
         self._lufs_spin.setValue(-14.0)
         self._lufs_spin.setSuffix(" LUFS")
         self._lufs_spin.setStyleSheet(f"""
@@ -292,6 +310,9 @@ class MixerView(QWidget):
                 padding: 3px 6px; font-size: 11px;
             }}
         """)
+        self._lufs_spin.valueChanged.connect(self._on_lufs_spin_changed)
+        master_layout.addWidget(tlufs)
+        master_layout.addWidget(self._target_combo)
         master_layout.addWidget(ll)
         master_layout.addWidget(self._lufs_spin)
 
@@ -411,6 +432,7 @@ class MixerView(QWidget):
         profile = measure_short_term_lufs(self._reference_audio, self._reference_sr)
         if ref_lufs > -60:
             self._lufs_spin.setValue(max(self._lufs_spin.minimum(), min(self._lufs_spin.maximum(), ref_lufs)))
+            self._set_target_combo_key("custom")
 
         if profile:
             low = min(point.lufs for point in profile)
@@ -474,6 +496,31 @@ class MixerView(QWidget):
         has_tracks = len(self._strips) > 0
         self._master_btn.setEnabled(has_tracks)
         self._dynamic_eq_btn.setEnabled(has_tracks)
+
+    def _set_target_combo_key(self, key: str):
+        for idx in range(self._target_combo.count()):
+            if self._target_combo.itemData(idx) == key:
+                self._target_combo.setCurrentIndex(idx)
+                return
+
+    def _on_lufs_target_changed(self):
+        key = self._target_combo.currentData()
+        target = LUFS_TARGETS.get(key)
+        if target is None:
+            return
+        self._syncing_lufs_target = True
+        self._lufs_spin.setValue(target.lufs)
+        self._syncing_lufs_target = False
+        self._status.setText(f"Target loudness: {target.label}")
+
+    def _on_lufs_spin_changed(self, value: float):
+        if self._syncing_lufs_target:
+            return
+        for key, target in LUFS_TARGETS.items():
+            if abs(value - target.lufs) < 0.05:
+                self._set_target_combo_key(key)
+                return
+        self._set_target_combo_key("custom")
 
     def _on_suggest_dynamic_eq(self):
         if not self._tracks:

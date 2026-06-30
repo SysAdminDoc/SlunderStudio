@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.27 - Humming-to-melody extraction.
+Slunder Studio v0.1.28 - Humming-to-melody extraction.
 """
 from __future__ import annotations
 

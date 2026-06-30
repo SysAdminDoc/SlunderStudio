@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.27 — Song Forge View
+Slunder Studio v0.1.28 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """

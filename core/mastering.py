@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.27 — Smart Mastering
+Slunder Studio v0.1.28 — Smart Mastering
 Automated mastering chain: EQ, compression, stereo enhancement,
 limiting, and loudness normalization (LUFS targeting).
 """
@@ -37,6 +37,16 @@ class MasteringPreset:
     target_lufs: float = -14.0      # integrated loudness target
 
 
+@dataclass(frozen=True)
+class LoudnessTarget:
+    """Named delivery loudness target."""
+    key: str
+    label: str
+    lufs: float
+    category: str
+    description: str
+
+
 PRESETS = {
     "Balanced": MasteringPreset(name="Balanced"),
     "Loud / Radio": MasteringPreset(
@@ -72,6 +82,59 @@ PRESETS = {
     "Streaming (Spotify)": MasteringPreset(
         name="Streaming (Spotify)", target_lufs=-14.0,
         comp_threshold=-12, comp_ratio=3.0, limiter_ceiling=-1.0,
+    ),
+}
+
+
+LUFS_TARGETS = {
+    "streaming": LoudnessTarget(
+        key="streaming",
+        label="Streaming (-14 LUFS)",
+        lufs=-14.0,
+        category="streaming",
+        description="General music streaming normalization target.",
+    ),
+    "youtube": LoudnessTarget(
+        key="youtube",
+        label="YouTube (-13 LUFS)",
+        lufs=-13.0,
+        category="streaming",
+        description="Online video music delivery target.",
+    ),
+    "apple": LoudnessTarget(
+        key="apple",
+        label="Apple Music (-16 LUFS)",
+        lufs=-16.0,
+        category="streaming",
+        description="Apple Sound Check-style music target.",
+    ),
+    "podcast": LoudnessTarget(
+        key="podcast",
+        label="Podcast stereo (-16 LUFS)",
+        lufs=-16.0,
+        category="spoken-word",
+        description="Common stereo podcast delivery target.",
+    ),
+    "broadcast": LoudnessTarget(
+        key="broadcast",
+        label="Broadcast (-24 LUFS)",
+        lufs=-24.0,
+        category="broadcast",
+        description="ATSC A/85-style broadcast loudness target.",
+    ),
+    "cinema": LoudnessTarget(
+        key="cinema",
+        label="Cinema dialog (-27 LUFS)",
+        lufs=-27.0,
+        category="cinema",
+        description="Cinema/dialogue-oriented loudness target.",
+    ),
+    "cd": LoudnessTarget(
+        key="cd",
+        label="CD / loud master (-9 LUFS)",
+        lufs=-9.0,
+        category="physical",
+        description="Loud physical or club master target.",
     ),
 }
 

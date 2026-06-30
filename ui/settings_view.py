@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.27 — Settings View
+Slunder Studio v0.1.28 — Settings View
 Two-tier settings: Simple Mode (essentials) and Advanced Mode (full controls).
 All changes apply immediately with toast feedback.
 """
@@ -15,6 +15,7 @@ from ui.theme import Palette
 from ui.accessibility import install_accessibility
 from core.diagnostics import export_health_report
 from core.i18n import language_code_from_label, language_combo_items, language_label, tr
+from core.mastering import LUFS_TARGETS
 from core.settings import Settings, APP_VERSION
 
 
@@ -338,11 +339,8 @@ class SettingsView(QWidget):
         prod_layout = QVBoxLayout(prod_group)
 
         self._mastering_target = QComboBox()
-        self._mastering_target.addItem("Spotify (-14 LUFS)", "spotify")
-        self._mastering_target.addItem("YouTube (-13 LUFS)", "youtube")
-        self._mastering_target.addItem("Apple Music (-16 LUFS)", "apple")
-        self._mastering_target.addItem("CD (-9 LUFS)", "cd")
-        self._mastering_target.addItem("Broadcast (-24 LUFS)", "broadcast")
+        for target in LUFS_TARGETS.values():
+            self._mastering_target.addItem(target.label, target.key)
         self._mastering_target.setFixedWidth(220)
         self._mastering_target.currentIndexChanged.connect(
             lambda: self._save("production.mastering_target", self._mastering_target.currentData()))

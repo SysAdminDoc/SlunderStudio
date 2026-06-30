@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.27 — Lyrics Database
+Slunder Studio v0.1.28 — Lyrics Database
 SQLite storage for lyrics generation history, favorites, search, and version diffs.
 """
 import sqlite3

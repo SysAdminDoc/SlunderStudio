@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.27 — Waveform Widget
+Slunder Studio v0.1.28 — Waveform Widget
 pyqtgraph-based waveform and spectrogram display with playback cursor,
 selection regions, and zoom/pan.
 """

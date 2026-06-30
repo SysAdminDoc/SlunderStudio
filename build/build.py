@@ -20,7 +20,7 @@ import zipfile
 from pathlib import Path
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.27"
+APP_VERSION = "0.1.28"
 ENTRY_POINT = "main.py"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

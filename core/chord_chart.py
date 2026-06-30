@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.27 - MIDI chord chart export.
+Slunder Studio v0.1.28 - MIDI chord chart export.
 Infers bar-level chords from MIDI note content and writes ChordPro or CRD sheets.
 """
 from dataclasses import dataclass

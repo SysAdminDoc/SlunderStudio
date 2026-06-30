@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.27-blue)
+![Version](https://img.shields.io/badge/version-0.1.28-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -56,7 +56,7 @@ Settings can export a redacted health report ZIP with app/dependency versions, G
 
 Major app chrome and lyric controls use an English locale catalog, and Settings > Appearance > Default Lyrics Language feeds Quick lyrics prompts, Guided lyrics metadata, and new GPT-SoVITS voice profile language defaults where supported. MIDI Studio supports explicit chord-progression priors such as `I-V-vi-IV` and `ii-V-I` for text-to-MIDI prompts and fallback generation. MIDI Studio also includes selectable drum groove templates with swing timing, snare ghost notes, and velocity humanization for generated GM drum tracks, `.chordpro` and `.crd` chord chart export with optional pasted lyrics, and piano roll editing tools for quantize, swing, velocity humanize, and MIDI CC automation lanes. Vocal Suite includes a Lyric Melody tab that converts hummed audio into provenance-tracked MIDI, aligns pasted lyrics to detected notes, and can render a routed DiffSinger vocal when a model is loaded. The Auto-Tune tab writes routed, provenance-tracked WAV files with adjustable pitch correction toward the nearest semitone.
 
-Mixer can analyze each imported stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also load a reference track, match the final master to its integrated LUFS, and report short-term LUFS profile deltas for the match.
+Mixer can analyze each imported stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also load a reference track, match the final master to its integrated LUFS, report short-term LUFS profile deltas for the match, and target streaming, podcast, broadcast, cinema, or loud CD delivery levels.
 
 ## Mastering Presets
 
@@ -70,6 +70,18 @@ Mixer can analyze each imported stem, infer a stem role from the track name, and
 | Cinematic | -16.0 | Dynamic range, wide stereo, gentle compression |
 | Lo-Fi | -16.0 | Rolled-off highs, heavy compression, narrow |
 | Streaming (Spotify) | -14.0 | Optimized for streaming platform normalization |
+
+## Delivery LUFS Targets
+
+| Target | LUFS | Use |
+|--------|------|-----|
+| Streaming | -14.0 | General music streaming normalization |
+| YouTube | -13.0 | Online video music delivery |
+| Apple Music | -16.0 | Apple Sound Check-style music delivery |
+| Podcast stereo | -16.0 | Spoken-word stereo podcast delivery |
+| Broadcast | -24.0 | ATSC A/85-style broadcast delivery |
+| Cinema dialog | -27.0 | Dialogue-oriented cinema delivery |
+| CD / loud master | -9.0 | Loud physical or club master delivery |
 
 ## AI Models
 

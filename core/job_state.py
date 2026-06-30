@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.27 - Durable job state and recovery records.
+Slunder Studio v0.1.28 - Durable job state and recovery records.
 """
 from __future__ import annotations
 

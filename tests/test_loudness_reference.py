@@ -1,5 +1,7 @@
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -8,11 +10,14 @@ import numpy as np
 from PySide6.QtWidgets import QApplication
 
 from core.mastering import (
+    LUFS_TARGETS,
     match_loudness_to_reference,
     measure_lufs,
     measure_short_term_lufs,
 )
+from core.settings import Settings
 from ui.mixer_view import MixerView
+from ui.settings_view import SettingsView
 
 
 class LoudnessReferenceTests(unittest.TestCase):
@@ -65,6 +70,44 @@ class LoudnessReferenceTests(unittest.TestCase):
             self.assertIn("matched to Reference", view._status.text())
         finally:
             view.deleteLater()
+
+    def test_expanded_lufs_targets_are_available_in_mixer_and_settings(self):
+        self.assertEqual(-16.0, LUFS_TARGETS["podcast"].lufs)
+        self.assertEqual(-24.0, LUFS_TARGETS["broadcast"].lufs)
+        self.assertEqual(-27.0, LUFS_TARGETS["cinema"].lufs)
+
+        mixer = MixerView()
+        try:
+            labels = [mixer._target_combo.itemText(i) for i in range(mixer._target_combo.count())]
+            self.assertIn("Podcast stereo (-16 LUFS)", labels)
+            self.assertIn("Broadcast (-24 LUFS)", labels)
+            self.assertIn("Cinema dialog (-27 LUFS)", labels)
+
+            mixer._set_target_combo_key("cinema")
+            self.assertAlmostEqual(-27.0, mixer._lufs_spin.value(), places=2)
+            self.assertLessEqual(mixer._lufs_spin.minimum(), -27.0)
+        finally:
+            mixer.deleteLater()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            Settings._instance = None
+            with mock.patch("core.settings.get_config_dir", return_value=root / "config"), \
+                    mock.patch("core.settings.get_default_output_dir", return_value=root / "renders"), \
+                    mock.patch("core.settings.get_default_cache_dir", return_value=root / "models"), \
+                    mock.patch("core.settings.get_trash_dir", return_value=root / "trash"):
+                settings = SettingsView()
+                try:
+                    keys = [
+                        settings._mastering_target.itemData(i)
+                        for i in range(settings._mastering_target.count())
+                    ]
+                    self.assertIn("podcast", keys)
+                    self.assertIn("broadcast", keys)
+                    self.assertIn("cinema", keys)
+                finally:
+                    settings.deleteLater()
+                    Settings._instance = None
 
     def _tone(self, sr: int, frequency: float, gain: float, seconds: float) -> np.ndarray:
         t = np.arange(int(sr * seconds), dtype=np.float32) / sr
