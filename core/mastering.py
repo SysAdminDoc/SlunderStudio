@@ -1,16 +1,13 @@
 """
-Slunder Studio v0.1.25 — Smart Mastering
+Slunder Studio v0.1.26 — Smart Mastering
 Automated mastering chain: EQ, compression, stereo enhancement,
 limiting, and loudness normalization (LUFS targeting).
 """
-import os
 import time
 from typing import Optional, Callable
 from dataclasses import dataclass, field
 
 import numpy as np
-
-from core.settings import get_config_dir
 
 
 @dataclass
@@ -91,6 +88,30 @@ class MasteringResult:
     peak_db: float = 0.0
     preset_name: str = ""
     error: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class DynamicEQBand:
+    """Single suggested EQ move for a stem."""
+    frequency_hz: float
+    gain_db: float
+    q: float
+    reason: str
+
+
+@dataclass(frozen=True)
+class DynamicEQSuggestion:
+    """Stem-aware dynamic EQ recommendation."""
+    stem_name: str
+    stem_role: str
+    bands: tuple[DynamicEQBand, ...] = field(default_factory=tuple)
+    rms_db: float = -70.0
+    spectral_centroid_hz: float = 0.0
+    low_ratio: float = 0.0
+    low_mid_ratio: float = 0.0
+    mid_ratio: float = 0.0
+    presence_ratio: float = 0.0
+    high_ratio: float = 0.0
 
 
 # ── DSP Functions ──────────────────────────────────────────────────────────────
@@ -273,6 +294,202 @@ def normalize_lufs(audio: np.ndarray, sr: int, target_lufs: float) -> np.ndarray
     diff = target_lufs - current
     gain = db_to_linear(diff)
     return audio * gain
+
+
+def _mono_float(audio: np.ndarray) -> np.ndarray:
+    arr = np.asarray(audio, dtype=np.float32)
+    if arr.ndim == 2:
+        arr = np.mean(arr, axis=1)
+    return np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def _stem_role(name: str) -> str:
+    lower = name.lower()
+    if any(token in lower for token in ("vocal", "voice", "vox", "lead")):
+        return "vocal"
+    if any(token in lower for token in ("bass", "808", "sub")):
+        return "bass"
+    if any(token in lower for token in ("drum", "kick", "snare", "perc")):
+        return "drums"
+    if any(token in lower for token in ("guitar", "piano", "keys", "synth", "pad")):
+        return "instrument"
+    return "stem"
+
+
+def _band_ratio(freqs: np.ndarray, power: np.ndarray, low: float, high: float,
+                total: float) -> float:
+    mask = (freqs >= low) & (freqs < high)
+    if not np.any(mask) or total <= 0.0:
+        return 0.0
+    return float(np.sum(power[mask]) / total)
+
+
+def _add_band(bands: list[DynamicEQBand], frequency_hz: float, gain_db: float,
+              q: float, reason: str):
+    if abs(gain_db) < 0.1:
+        return
+    bands.append(
+        DynamicEQBand(
+            frequency_hz=float(frequency_hz),
+            gain_db=float(max(-6.0, min(6.0, gain_db))),
+            q=float(max(0.2, min(8.0, q))),
+            reason=reason,
+        )
+    )
+
+
+def _merge_nearby_bands(bands: list[DynamicEQBand]) -> tuple[DynamicEQBand, ...]:
+    merged: list[DynamicEQBand] = []
+    for band in sorted(bands, key=lambda item: item.frequency_hz):
+        if merged and abs(np.log2(max(band.frequency_hz, 1.0) / merged[-1].frequency_hz)) < 0.12:
+            previous = merged.pop()
+            gain = max(-6.0, min(6.0, previous.gain_db + band.gain_db))
+            reason = previous.reason if previous.reason == band.reason else f"{previous.reason}; {band.reason}"
+            merged.append(
+                DynamicEQBand(
+                    frequency_hz=(previous.frequency_hz + band.frequency_hz) / 2.0,
+                    gain_db=gain,
+                    q=max(previous.q, band.q),
+                    reason=reason,
+                )
+            )
+        else:
+            merged.append(band)
+    return tuple(merged[:6])
+
+
+def suggest_dynamic_eq_curve(audio: np.ndarray, sr: int,
+                             stem_name: str = "Stem") -> DynamicEQSuggestion:
+    """Build a deterministic stem-aware EQ recommendation from spectral balance."""
+    mono = _mono_float(audio)
+    if mono.size == 0 or sr <= 0:
+        return DynamicEQSuggestion(stem_name=stem_name, stem_role=_stem_role(stem_name))
+
+    max_samples = min(mono.size, int(sr * 60))
+    mono = mono[:max_samples]
+    rms = float(np.sqrt(np.mean(np.square(mono))) + 1e-12)
+    rms_db = linear_to_db(rms)
+
+    if mono.size < 16 or rms < 1e-8:
+        return DynamicEQSuggestion(
+            stem_name=stem_name,
+            stem_role=_stem_role(stem_name),
+            rms_db=rms_db,
+        )
+
+    window = np.hanning(mono.size).astype(np.float32)
+    spectrum = np.fft.rfft(mono * window)
+    power = np.square(np.abs(spectrum))
+    freqs = np.fft.rfftfreq(mono.size, 1.0 / sr)
+    audible = (freqs >= 20.0) & (freqs <= min(20000.0, sr / 2.0))
+    total = float(np.sum(power[audible]) + 1e-12)
+
+    low_ratio = _band_ratio(freqs, power, 20.0, 120.0, total)
+    low_mid_ratio = _band_ratio(freqs, power, 120.0, 500.0, total)
+    mid_ratio = _band_ratio(freqs, power, 500.0, 4000.0, total)
+    presence_ratio = _band_ratio(freqs, power, 4000.0, 9000.0, total)
+    high_ratio = _band_ratio(freqs, power, 9000.0, min(20000.0, sr / 2.0), total)
+    centroid = float(np.sum(freqs[audible] * power[audible]) / total)
+
+    role = _stem_role(stem_name)
+    bands: list[DynamicEQBand] = []
+
+    if low_ratio > 0.52 and role not in {"bass", "drums"}:
+        _add_band(bands, 95.0, -2.0, 0.7, "Tames low-end buildup")
+    if low_mid_ratio > 0.34:
+        _add_band(bands, 280.0, -1.4, 1.0, "Clears boxy low-mids")
+    if mid_ratio < 0.12 and role not in {"bass"}:
+        _add_band(bands, 2200.0, 1.1, 1.2, "Adds midrange definition")
+    if presence_ratio < 0.035 and role in {"vocal", "drums", "instrument"}:
+        _add_band(bands, 5200.0, 1.2, 1.3, "Restores presence")
+    if high_ratio > 0.28:
+        _add_band(bands, 9500.0, -1.2, 1.0, "Softens brittle highs")
+
+    if role == "vocal":
+        if low_ratio > 0.12:
+            _add_band(bands, 120.0, -1.8, 0.8, "Vocal cleanup below the melody range")
+        if low_mid_ratio > 0.18:
+            _add_band(bands, 350.0, -1.2, 1.2, "Reduces vocal mud")
+        _add_band(bands, 3200.0, 1.5, 1.4, "Improves vocal intelligibility")
+        if high_ratio < 0.08:
+            _add_band(bands, 12000.0, 0.8, 0.9, "Adds gentle vocal air")
+    elif role == "bass":
+        if low_ratio < 0.55:
+            _add_band(bands, 75.0, 1.4, 0.8, "Reinforces bass fundamental")
+        if low_mid_ratio > 0.28:
+            _add_band(bands, 260.0, -1.4, 1.1, "Controls bass mud")
+        _add_band(bands, 7000.0, -1.0, 0.9, "Leaves high-end space for vocals")
+    elif role == "drums":
+        _add_band(bands, 65.0, 1.0, 0.8, "Adds kick weight")
+        if low_mid_ratio > 0.24:
+            _add_band(bands, 240.0, -1.1, 1.1, "Reduces drum boxiness")
+        _add_band(bands, 5000.0, 1.2, 1.2, "Highlights drum attack")
+    elif role == "instrument":
+        if low_mid_ratio > 0.22:
+            _add_band(bands, 260.0, -1.0, 1.0, "Keeps instruments out of vocal low-mids")
+        _add_band(bands, 2400.0, 0.8, 1.0, "Adds instrument articulation")
+
+    return DynamicEQSuggestion(
+        stem_name=stem_name,
+        stem_role=role,
+        bands=_merge_nearby_bands(bands),
+        rms_db=rms_db,
+        spectral_centroid_hz=centroid,
+        low_ratio=low_ratio,
+        low_mid_ratio=low_mid_ratio,
+        mid_ratio=mid_ratio,
+        presence_ratio=presence_ratio,
+        high_ratio=high_ratio,
+    )
+
+
+def apply_dynamic_eq(audio: np.ndarray, sr: int,
+                     bands: tuple[DynamicEQBand, ...] | list[DynamicEQBand],
+                     strength: float = 1.0) -> np.ndarray:
+    """Apply suggested EQ bands using a smooth FFT gain curve."""
+    arr = np.asarray(audio, dtype=np.float32)
+    if arr.size == 0 or sr <= 0 or not bands:
+        return np.array(arr, copy=True)
+
+    strength = float(max(0.0, min(1.0, strength)))
+    if strength <= 0.0:
+        return np.array(arr, copy=True)
+
+    was_mono = arr.ndim == 1
+    work = arr[:, None] if was_mono else arr
+    output = np.zeros_like(work, dtype=np.float32)
+    freqs = np.fft.rfftfreq(work.shape[0], 1.0 / sr)
+    safe_freqs = np.maximum(freqs, 20.0)
+    gain_db_curve = np.zeros_like(freqs, dtype=np.float64)
+
+    for band in bands:
+        frequency = max(20.0, min(float(band.frequency_hz), sr / 2.0))
+        bandwidth_octaves = max(0.12, min(2.5, 1.0 / max(float(band.q), 0.2)))
+        distance = np.log2(safe_freqs / frequency)
+        influence = np.exp(-0.5 * np.square(distance / bandwidth_octaves))
+        gain_db_curve += float(band.gain_db) * strength * influence
+
+    gain_db_curve = np.clip(gain_db_curve, -9.0, 6.0)
+    linear_curve = db_to_linear(gain_db_curve)
+
+    for channel in range(work.shape[1]):
+        spectrum = np.fft.rfft(work[:, channel])
+        processed = np.fft.irfft(spectrum * linear_curve, n=work.shape[0])
+        output[:, channel] = processed.astype(np.float32)
+
+    peak = float(np.max(np.abs(output))) if output.size else 0.0
+    if peak > 1.0:
+        output /= peak
+
+    return output[:, 0] if was_mono else output
+
+
+def suggest_and_apply_dynamic_eq(audio: np.ndarray, sr: int,
+                                 stem_name: str = "Stem",
+                                 strength: float = 0.75) -> tuple[np.ndarray, DynamicEQSuggestion]:
+    """Suggest and apply a stem-aware EQ curve in one pass."""
+    suggestion = suggest_dynamic_eq_curve(audio, sr, stem_name)
+    return apply_dynamic_eq(audio, sr, suggestion.bands, strength), suggestion
 
 
 # ── Master Chain ───────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.25 — Mixer View
+Slunder Studio v0.1.26 — Mixer View
 Multi-track mixer timeline with per-track volume/pan/effects,
 smart mastering presets, waveform overview, and final export.
 """
@@ -17,7 +17,15 @@ import numpy as np
 
 from ui.theme import ThemeEngine
 from ui.waveform_widget import WaveformWidget, MiniWaveform
-from core.mastering import PRESETS, MasteringPreset, master_audio, measure_lufs
+from core.mastering import (
+    PRESETS,
+    DynamicEQSuggestion,
+    MasteringPreset,
+    apply_dynamic_eq,
+    master_audio,
+    measure_lufs,
+    suggest_dynamic_eq_curve,
+)
 
 
 # ── Mixer Track Strip ─────────────────────────────────────────────────────────
@@ -180,6 +188,7 @@ class MixerView(QWidget):
         super().__init__(parent)
         self._strips: list[MixerTrackStrip] = []
         self._tracks: list[dict] = []  # {name, audio, sr}
+        self._dynamic_eq_suggestions: dict[int, DynamicEQSuggestion] = {}
 
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(self)
@@ -202,8 +211,22 @@ class MixerView(QWidget):
         """)
         self._add_btn.clicked.connect(self._on_import_track)
 
+        self._dynamic_eq_btn = QPushButton("Suggest Dynamic EQ")
+        self._dynamic_eq_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['background']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 4px;
+                padding: 5px 12px; font-size: 11px; font-weight: bold;
+            }}
+            QPushButton:hover {{ background: {t['surface_hover']}; }}
+            QPushButton:disabled {{ color: #555; border-color: {t['border']}; }}
+        """)
+        self._dynamic_eq_btn.setEnabled(False)
+        self._dynamic_eq_btn.clicked.connect(self._on_suggest_dynamic_eq)
+
         tracks_header.addWidget(tl)
         tracks_header.addStretch()
+        tracks_header.addWidget(self._dynamic_eq_btn)
         tracks_header.addWidget(self._add_btn)
         layout.addLayout(tracks_header)
 
@@ -347,6 +370,8 @@ class MixerView(QWidget):
 
     def _on_remove_track(self, idx: int):
         if 0 <= idx < len(self._strips):
+            removed_idx = idx
+            old_suggestions = dict(self._dynamic_eq_suggestions)
             strip = self._strips[idx]
             self._strips_layout.removeWidget(strip)
             strip.deleteLater()
@@ -357,12 +382,62 @@ class MixerView(QWidget):
             for i, s in enumerate(self._strips):
                 s.track_idx = i
 
+            old_track_count = len(self._tracks) + 1
+            self._dynamic_eq_suggestions = {}
+            for new_idx, old_idx in enumerate(
+                old_idx for old_idx in range(old_track_count) if old_idx != removed_idx
+            ):
+                if old_idx in old_suggestions:
+                    self._dynamic_eq_suggestions[new_idx] = old_suggestions[old_idx]
             self._master_btn.setEnabled(len(self._strips) > 0)
             self._update_mix_state()
 
     def _update_mix_state(self):
         """Update master button state."""
-        self._master_btn.setEnabled(len(self._strips) > 0)
+        has_tracks = len(self._strips) > 0
+        self._master_btn.setEnabled(has_tracks)
+        self._dynamic_eq_btn.setEnabled(has_tracks)
+
+    def _on_suggest_dynamic_eq(self):
+        if not self._tracks:
+            self._status.setText("Import audio tracks before dynamic EQ")
+            return
+
+        self._dynamic_eq_btn.setEnabled(False)
+        self._status.setText("Suggesting dynamic EQ curves...")
+
+        summaries: list[str] = []
+        try:
+            for idx, track in enumerate(self._tracks):
+                audio = track["audio"]
+                sr = track["sr"]
+                name = track["name"]
+                suggestion = suggest_dynamic_eq_curve(audio, sr, name)
+                processed = apply_dynamic_eq(audio, sr, suggestion.bands, strength=0.75)
+                self._tracks[idx]["audio"] = processed
+                self._dynamic_eq_suggestions[idx] = suggestion
+
+                if idx < len(self._strips):
+                    strip = self._strips[idx]
+                    strip.audio = processed
+                    mono = processed[:, 0] if processed.ndim == 2 else processed
+                    strip._waveform.set_audio(mono, sr)
+
+                if suggestion.bands:
+                    first_moves = ", ".join(
+                        f"{band.frequency_hz:.0f}Hz {band.gain_db:+.1f}dB"
+                        for band in suggestion.bands[:3]
+                    )
+                    summaries.append(f"{name}: {first_moves}")
+                else:
+                    summaries.append(f"{name}: balanced")
+
+            self._status.setText("Dynamic EQ applied - " + " | ".join(summaries[:3]))
+            self._update_mix_state()
+        except Exception as e:
+            self._status.setText(f"Dynamic EQ error: {e}")
+        finally:
+            self._dynamic_eq_btn.setEnabled(len(self._strips) > 0)
 
     # ── Mixing ─────────────────────────────────────────────────────────────────
 
