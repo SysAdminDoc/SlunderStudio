@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Threading & Worker System
+Slunder Studio v0.1.29 — Threading & Worker System
 InferenceWorker base class, WorkflowQueue for multi-step pipelines,
 cancellation support, and progress aggregation.
 """
@@ -10,7 +10,7 @@ from collections import deque
 
 from PySide6.QtCore import QThread, Signal, QObject, QTimer
 
-from core.job_state import JobStore, extract_output_paths
+from core.job_state import JobLog, JobStore, extract_output_paths
 
 
 class CancelledJobError(RuntimeError):
@@ -60,6 +60,7 @@ class InferenceWorker(QThread):
         self._job_store = job_store or JobStore()
         self._job_record = None
         self.job_id = ""
+        self._job_log: Optional[JobLog] = None
         if job_kind:
             self._job_record = self._job_store.create(
                 job_kind,
@@ -68,10 +69,13 @@ class InferenceWorker(QThread):
                 metadata=job_metadata or {},
             )
             self.job_id = self._job_record.id
+            self._job_log = JobLog(self.job_id)
 
     def run(self):
         if self.job_id:
             self._job_store.mark_running(self.job_id, "Starting")
+        if self._job_log:
+            self._job_log.info(f"Job started: {self.job_id}")
         try:
             self._result = self.task_fn(
                 *self.args,
@@ -87,11 +91,15 @@ class InferenceWorker(QThread):
                 self._job_store.cleanup_outputs(output_paths)
                 if self.job_id:
                     self._job_store.mark_cancelled(self.job_id, outputs=outputs)
+                if self._job_log:
+                    self._job_log.warn("Cancelled; partial outputs cleaned.")
                 self.log.emit("Worker cancelled; partial outputs cleaned.")
                 self.cancelled.emit()
             else:
                 if self.job_id:
                     self._job_store.mark_completed(self.job_id, outputs=outputs)
+                if self._job_log:
+                    self._job_log.info(f"Completed with {len(output_paths)} output(s).")
                 self.finished.emit(self._result)
         except CancelledJobError as e:
             output_paths = extract_output_paths(e.outputs)
@@ -99,14 +107,21 @@ class InferenceWorker(QThread):
             self._job_store.cleanup_outputs(output_paths)
             if self.job_id:
                 self._job_store.mark_cancelled(self.job_id, outputs=outputs)
+            if self._job_log:
+                self._job_log.warn(f"CancelledJobError: {e}")
             self.log.emit(str(e))
             self.cancelled.emit()
         except Exception as e:
             tb = traceback.format_exc()
+            if self._job_log:
+                self._job_log.error(f"{type(e).__name__}: {e}")
             self.log.emit(f"Worker error:\n{tb}")
             if self.job_id:
                 self._job_store.mark_failed(self.job_id, f"{type(e).__name__}: {e}")
             self.error.emit(f"{type(e).__name__}: {e}")
+        finally:
+            if self._job_log:
+                self._job_log.save()
 
     def cancel(self):
         """Request cancellation. Task must check cancel_event.is_set() periodically."""
@@ -131,6 +146,8 @@ class InferenceWorker(QThread):
     def _emit_log(self, message: str):
         if self.job_id:
             self._job_store.update_message(self.job_id, message)
+        if self._job_log:
+            self._job_log.info(message)
         self.log.emit(message)
 
 

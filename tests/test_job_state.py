@@ -3,7 +3,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from core.job_state import JobStatus, JobStore
+from core.job_state import JobLog, JobStatus, JobStore
 from core.workers import DownloadWorker, InferenceWorker, CancelledJobError
 from engines.ace_step_engine import ACEStepEngine, GenerationParams, GenerationResult
 
@@ -117,6 +117,49 @@ class JobStateTests(unittest.TestCase):
             for path in rendered:
                 self.assertFalse(path.exists())
                 self.assertFalse(Path(str(path) + ".provenance.json").exists())
+
+
+    def test_job_log_persists_bounded_redacted_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = JobLog("test-job-123", root=Path(tmp))
+            log.set_device_info({"gpu": "RTX 3080", "vram_gb": 10.0})
+            log.set_model_info({"model_id": "ace-step-v1.5"})
+            log.add_redact_pattern("secret-lyrics")
+
+            log.info("Starting generation")
+            log.info("Using prompt: secret-lyrics about love")
+            log.warn("GPU memory low")
+            log.error("Generation failed: OOM")
+
+            saved = log.save()
+            self.assertTrue(saved.exists())
+
+            import json
+            data = json.loads(saved.read_text())
+            self.assertEqual(data["job_id"], "test-job-123")
+            self.assertEqual(data["device"]["gpu"], "RTX 3080")
+            self.assertEqual(data["model"]["model_id"], "ace-step-v1.5")
+            self.assertEqual(data["entry_count"], 4)
+            self.assertEqual(len(data["entries"]), 4)
+
+            prompt_entry = data["entries"][1]
+            self.assertNotIn("secret-lyrics", prompt_entry["m"])
+            self.assertIn("[REDACTED]", prompt_entry["m"])
+
+    def test_job_log_redacts_hf_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = JobLog("token-test", root=Path(tmp))
+            log.info("Token is hf_abcdefgh12345678")
+            summary = log.summary()
+            self.assertNotIn("hf_abcdefgh12345678", summary[0]["m"])
+            self.assertIn("[REDACTED_HF_TOKEN]", summary[0]["m"])
+
+    def test_job_log_respects_max_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = JobLog("big-job", root=Path(tmp))
+            for i in range(300):
+                log.info(f"Entry {i}")
+            self.assertLessEqual(log.entry_count, 200)
 
 
 if __name__ == "__main__":

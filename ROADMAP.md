@@ -76,14 +76,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 
 ## Research-Driven Additions
 
-### P2
-- [ ] P2 - Persist redacted per-job logs and artifact traces
-  Why: Health reports summarize failures, but long model/export jobs need bounded logs that explain device, model, inputs, output paths, and cleanup decisions after restart.
-  Evidence: `core/job_state.py`, `core/workers.py`, `core/diagnostics.py`, UVR/Stable Audio install-support issue patterns
-  Touches: `core/job_state.py`, `core/workers.py`, `core/diagnostics.py`, `ui/settings_view.py`, tests
-  Acceptance: Each generation/download/export job writes a bounded redacted log artifact; health reports include recent log summaries and paths; private prompts/lyrics remain opt-in only.
-  Complexity: M
-
 ### P3
 - [ ] P3 - Add ACE-Step cover and repaint generation modes
   Why: ACE-Step exposes cover/repaint workflows that fit Slunder's existing reference-track and local generation strengths once core reliability work is stable.

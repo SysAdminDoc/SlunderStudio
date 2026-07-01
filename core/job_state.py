@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 - Durable job state and recovery records.
+Slunder Studio v0.1.29 - Durable job state and recovery records.
 """
 from __future__ import annotations
 
@@ -273,6 +273,99 @@ class JobStore:
             self.path.replace(target)
         except OSError:
             pass
+
+
+MAX_LOG_ENTRIES = 200
+MAX_LOG_MESSAGE_LEN = 500
+
+
+@dataclass
+class JobLogEntry:
+    timestamp: float
+    level: str
+    message: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"t": self.timestamp, "l": self.level, "m": self.message}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "JobLogEntry":
+        return cls(
+            timestamp=data.get("t", 0.0),
+            level=data.get("l", "info"),
+            message=data.get("m", ""),
+        )
+
+
+class JobLog:
+    """Bounded redacted log artifact for a single job."""
+
+    def __init__(self, job_id: str, root: Optional[Path] = None):
+        self._job_id = job_id
+        self._root = Path(root) if root else get_config_dir() / "jobs" / "logs"
+        self._root.mkdir(parents=True, exist_ok=True)
+        self._path = self._root / f"{job_id}.log.json"
+        self._entries: list[JobLogEntry] = []
+        self._device_info: dict[str, Any] = {}
+        self._model_info: dict[str, Any] = {}
+        self._redact_patterns: list[str] = []
+
+    def set_device_info(self, info: dict[str, Any]) -> None:
+        self._device_info = dict(info)
+
+    def set_model_info(self, info: dict[str, Any]) -> None:
+        self._model_info = dict(info)
+
+    def add_redact_pattern(self, pattern: str) -> None:
+        if pattern and pattern not in self._redact_patterns:
+            self._redact_patterns.append(pattern)
+
+    def info(self, message: str) -> None:
+        self._append("info", message)
+
+    def warn(self, message: str) -> None:
+        self._append("warn", message)
+
+    def error(self, message: str) -> None:
+        self._append("error", message)
+
+    def _append(self, level: str, message: str) -> None:
+        redacted = self._redact(message[:MAX_LOG_MESSAGE_LEN])
+        self._entries.append(JobLogEntry(time.time(), level, redacted))
+        if len(self._entries) > MAX_LOG_ENTRIES:
+            self._entries = self._entries[-MAX_LOG_ENTRIES:]
+
+    def _redact(self, text: str) -> str:
+        import re
+        result = text
+        for pattern in self._redact_patterns:
+            if pattern:
+                result = result.replace(pattern, "[REDACTED]")
+        result = re.sub(r"hf_[A-Za-z0-9][A-Za-z0-9_-]{7,}", "[REDACTED_HF_TOKEN]", result)
+        return result
+
+    def save(self) -> Path:
+        payload = {
+            "job_id": self._job_id,
+            "device": self._device_info,
+            "model": self._model_info,
+            "entry_count": len(self._entries),
+            "entries": [e.to_dict() for e in self._entries],
+        }
+        self._path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return self._path
+
+    def summary(self, limit: int = 10) -> list[dict[str, Any]]:
+        recent = self._entries[-limit:]
+        return [e.to_dict() for e in recent]
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    @property
+    def entry_count(self) -> int:
+        return len(self._entries)
 
 
 OUTPUT_KEYS = {
