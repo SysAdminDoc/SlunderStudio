@@ -57,5 +57,59 @@ class DependencyDiagnosticsTests(unittest.TestCase):
         check_call.assert_not_called()
 
 
+    def test_requirements_lock_exists_and_is_parseable(self):
+        lock_path = Path(__file__).resolve().parents[1] / "requirements-lock.txt"
+        self.assertTrue(lock_path.is_file(), "requirements-lock.txt missing")
+
+        lines = lock_path.read_text(encoding="utf-8").strip().splitlines()
+        pinned = [
+            line.strip() for line in lines
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        self.assertTrue(len(pinned) > 0, "requirements-lock.txt has no pinned packages")
+
+        for line in pinned:
+            self.assertIn("==", line, f"Lock entry not pinned: {line}")
+
+    def test_requirements_lock_covers_core_requirements(self):
+        root = Path(__file__).resolve().parents[1]
+        req_path = root / "requirements.txt"
+        lock_path = root / "requirements-lock.txt"
+
+        def parse_names(path: Path) -> set[str]:
+            names = set()
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                name = line.split(">=")[0].split("==")[0].split("<")[0].split("[")[0].strip()
+                names.add(name.lower().replace("-", "_"))
+            return names
+
+        req_names = parse_names(req_path)
+        lock_names = parse_names(lock_path)
+
+        for name in req_names:
+            self.assertIn(
+                name, lock_names,
+                f"Core dependency '{name}' from requirements.txt missing from lock file",
+            )
+
+    def test_locked_core_packages_are_importable(self):
+        import_map = {
+            "pyside6": "PySide6",
+            "numpy": "numpy",
+            "sounddevice": "sounddevice",
+            "soundfile": "soundfile",
+            "huggingface_hub": "huggingface_hub",
+            "pyqtgraph": "pyqtgraph",
+            "librosa": "librosa",
+            "psutil": "psutil",
+        }
+        for pkg, module in import_map.items():
+            spec = importlib.util.find_spec(module)
+            self.assertIsNotNone(spec, f"Locked package {pkg} ({module}) is not importable")
+
+
 if __name__ == "__main__":
     unittest.main()

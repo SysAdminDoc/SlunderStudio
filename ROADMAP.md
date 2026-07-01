@@ -76,14 +76,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 
 ## Research-Driven Additions
 
-### P1
-- [ ] P1 - Add reproducible dependency constraints and local audit lane
-  Why: `requirements.txt` uses broad lower bounds; local pip-audit is clean today, but unconstrained builds can drift and break PyInstaller or audio/model dependencies.
-  Evidence: `requirements.txt`, `build/build.py`, local `pip-audit -r requirements.txt`, PyInstaller packaging output
-  Touches: `requirements.txt`, new constraints file, `build/build.py`, `tests/test_dependency_diagnostics.py`
-  Acceptance: The repo has a checked constraints/lock artifact generated from the supported Python version; setup/build commands can install from it; a local audit command reports no known vulnerabilities.
-  Complexity: M
-
 ### P2
 - [ ] P2 - Add generation quality scoring and ranked "Use Best" selection
   Why: Batch cards support starring, but there is no objective quality score and `Use Best` falls back to the first result.
