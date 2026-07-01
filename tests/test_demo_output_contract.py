@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 import wave
+from unittest.mock import patch
 
 import numpy as np
 
@@ -12,6 +13,7 @@ from engines.rvc_engine import (
     VoiceConvertParams,
 )
 from engines.sfx_engine import SFXEngine, SFXParams
+from engines.ai_producer import AIProducer, ProducerBrief, PipelineStage
 
 
 def _write_wav(path: str, duration: float = 12.0, sample_rate: int = 24000):
@@ -83,6 +85,61 @@ class DemoOutputContractTests(unittest.TestCase):
             self.assertFalse(result.is_success)
             self.assertFalse(result.can_route)
             self.assertEqual(result.output_kind, "error")
+
+
+    def test_ai_producer_stops_on_song_failure_without_demo_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            producer = AIProducer()
+            producer._output_dir = tmp
+
+            brief = ProducerBrief(
+                prompt="test song",
+                genre="pop",
+                duration_seconds=5.0,
+                demo_fallback=False,
+            )
+
+            with patch("engines.ai_producer.AIProducer._generate_lyrics",
+                        return_value={"lyrics": "[Verse 1]\ntest"}):
+                with patch("engines.ai_producer.AIProducer._select_style",
+                            return_value={"tags": ["pop"], "tempo": 120, "key": "C major"}):
+                    result = producer.produce(brief)
+
+            song_step = result.get_step(PipelineStage.SONG_GEN)
+            self.assertIsNotNone(song_step)
+            self.assertEqual(song_step.status, "failed")
+            self.assertIsNotNone(result.error)
+            self.assertIn("Song generation failed", result.error)
+            self.assertIsNone(result.final_audio_path)
+
+    def test_ai_producer_continues_with_demo_fallback_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            producer = AIProducer()
+            producer._output_dir = tmp
+
+            brief = ProducerBrief(
+                prompt="test song",
+                genre="pop",
+                duration_seconds=1.0,
+                demo_fallback=True,
+                include_sfx=False,
+                vocal_style="none",
+            )
+
+            with patch("engines.ai_producer.AIProducer._generate_lyrics",
+                        return_value={"lyrics": "[Verse 1]\ntest"}):
+                with patch("engines.ai_producer.AIProducer._select_style",
+                            return_value={"tags": ["pop"], "tempo": 120, "key": "C major"}):
+                    result = producer.produce(brief)
+
+            song_step = result.get_step(PipelineStage.SONG_GEN)
+            self.assertIsNotNone(song_step)
+            self.assertEqual(song_step.status, "complete")
+            self.assertTrue(song_step.output_data.get("fallback"))
+            self.assertTrue(song_step.output_data.get("demo"))
+
+            self.assertIsNotNone(result.song_audio_path)
+            self.assertIn("demo", os.path.basename(result.song_audio_path))
 
 
 if __name__ == "__main__":

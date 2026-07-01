@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — AI Producer View
+Slunder Studio v0.1.29 — AI Producer View
 One-prompt-to-full-song interface with creative brief input,
 live pipeline stage visualization, and final output preview.
 """
@@ -298,6 +298,18 @@ class AIProducerView(QWidget):
         row3.addWidget(self._sfx_check)
         ctrl.addLayout(row3)
 
+        row4 = QHBoxLayout()
+        self._demo_fallback_check = QCheckBox("Demo Fallback")
+        self._demo_fallback_check.setChecked(False)
+        self._demo_fallback_check.setToolTip(
+            "When enabled, a silent placeholder is used if song generation fails. "
+            "When disabled, the pipeline stops on failure."
+        )
+        self._demo_fallback_check.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        row4.addWidget(self._demo_fallback_check)
+        row4.addStretch()
+        ctrl.addLayout(row4)
+
         # PRODUCE button
         self._produce_btn = QPushButton("PRODUCE")
         self._produce_btn.setFixedHeight(44)
@@ -438,6 +450,7 @@ class AIProducerView(QWidget):
             vocal_style=vocal_map.get(self._vocals.currentText(), "none"),
             include_sfx=self._sfx_check.isChecked(),
             mastering_preset=self._master_preset.currentText(),
+            demo_fallback=self._demo_fallback_check.isChecked(),
         )
 
         # Reset indicators

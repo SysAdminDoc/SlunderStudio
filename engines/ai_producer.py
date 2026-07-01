@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — AI Producer Engine
+Slunder Studio v0.1.29 — AI Producer Engine
 One-prompt-to-full-song orchestrator. Decomposes a high-level creative brief
 into a multi-step pipeline: lyrics generation, style selection, song generation,
 vocal synthesis, SFX layering, and mastering — all automated.
@@ -44,6 +44,7 @@ class ProducerBrief:
     include_sfx: bool = True
     mastering_preset: str = "Balanced"
     seed: Optional[int] = None
+    demo_fallback: bool = False
 
 
 @dataclass
@@ -389,11 +390,16 @@ class AIProducer:
                 song_result["audio_path"] = audio_path
                 return song_result
             return {"audio_path": audio_path}
-        except Exception:
-            # Create a placeholder silence file
+        except Exception as exc:
+            if not brief.demo_fallback:
+                raise RuntimeError(
+                    f"Song generation failed: {exc}. "
+                    "Enable 'Demo Fallback' to continue with a silent placeholder."
+                ) from exc
+
             import wave
             ts = time.strftime("%Y%m%d_%H%M%S")
-            path = os.path.join(self._output_dir, f"song_{ts}.wav")
+            path = os.path.join(self._output_dir, f"song_demo_{ts}.wav")
             sr = 44100
             n = int(brief.duration_seconds * sr)
             silence = np.zeros((n, 2), dtype=np.int16)
@@ -412,10 +418,15 @@ class AIProducer:
                 parameters=asdict(brief),
                 export_format="wav",
                 output_kind="demo",
-                extra={"fallback": True, "reason": "song_generation_failed"},
+                extra={
+                    "fallback": True,
+                    "demo_fallback": True,
+                    "reason": "song_generation_failed",
+                    "original_error": str(exc),
+                },
             )
             result.song_audio_path = path
-            return {"audio_path": path, "fallback": True}
+            return {"audio_path": path, "fallback": True, "demo": True}
 
     def _add_vocals(self, plan: dict, result: ProducerResult,
                     brief: ProducerBrief) -> dict:

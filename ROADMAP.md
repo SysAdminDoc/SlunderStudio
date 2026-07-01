@@ -11,7 +11,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ### MIDI & composition
 
 ### Mixing & mastering
-- Mid/Side mastering controls surfaced in Mixer view
 
 ### Export & integration
 - `.dawproject` export (cross-DAW: Cubase, Studio One, Bitwig)
@@ -77,9 +76,54 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 
 ## Research-Driven Additions
 
-### P0
-
 ### P1
+- [ ] P1 - Extend accessibility contracts to Mixer, Batch, and Piano Roll custom controls
+  Why: The accessibility foundation covers major shell/views, but dense custom controls still need stable names, descriptions, focus order, and non-color-only states.
+  Evidence: `ui/accessibility.py`, `ui/mixer_view.py`, `ui/batch_view.py`, `ui/piano_roll.py`, `tests/test_accessibility_baseline.py`
+  Touches: `ui/mixer_view.py`, `ui/batch_view.py`, `ui/piano_roll.py`, `tests/test_accessibility_baseline.py`
+  Acceptance: Headless Qt tests verify accessible names/descriptions and tab order for mixer master controls, track strip actions, batch star/delete/use-best controls, and piano-roll edit/CC controls.
+  Complexity: M
+
+- [ ] P1 - Add DAWproject schema and package validation harness
+  Why: The existing DAWproject export item needs validation because the standard is XML/ZIP-based and live interop issues show schema/packaging details break DAW imports.
+  Evidence: `ROADMAP.md` `.dawproject` item, bitwig/dawproject `Project.xsd`, `MetaData.xsd`, issues #97 and #101
+  Touches: `core/audio_export.py`, `core/project.py`, future `core/dawproject.py`, `tests/test_dawproject_export.py`
+  Acceptance: A generated `.dawproject` archive contains `project.xml`, `metadata.xml`, and media files; tests validate XML against bundled schemas and assert required media references/parameter IDs are present.
+  Complexity: M
+
+- [ ] P1 - Add reproducible dependency constraints and local audit lane
+  Why: `requirements.txt` uses broad lower bounds; local pip-audit is clean today, but unconstrained builds can drift and break PyInstaller or audio/model dependencies.
+  Evidence: `requirements.txt`, `build/build.py`, local `pip-audit -r requirements.txt`, PyInstaller packaging output
+  Touches: `requirements.txt`, new constraints file, `build/build.py`, `tests/test_dependency_diagnostics.py`
+  Acceptance: The repo has a checked constraints/lock artifact generated from the supported Python version; setup/build commands can install from it; a local audit command reports no known vulnerabilities.
+  Complexity: M
 
 ### P2
+- [ ] P2 - Add generation quality scoring and ranked "Use Best" selection
+  Why: Batch cards support starring, but there is no objective quality score and `Use Best` falls back to the first result.
+  Evidence: `ui/batch_view.py`, `engines/audio_analyzer.py`, ACE-Step quality scoring reference
+  Touches: `ui/batch_view.py`, `engines/audio_analyzer.py`, `engines/ace_step_engine.py`, `tests/test_seed_explorer.py`
+  Acceptance: Batch/seed results display a deterministic score for silence, clipping, duration, loudness, and spectral balance; `Use Best` selects the highest score unless a user-starred result overrides it.
+  Complexity: M
+
+- [ ] P2 - Complete i18n key coverage and external language-pack loading
+  Why: The locale foundation exists, but new views can still add hard-coded English and ACE-Step-style multilingual users need language packs without code changes.
+  Evidence: `assets/locales/en.json`, `core/i18n.py`, ACE-Step multilingual docs
+  Touches: `core/i18n.py`, `assets/locales/en.json`, `ui/*`, `tests/test_i18n.py`
+  Acceptance: Tests fail on audited visible strings missing locale keys; Settings can load an external locale JSON from the config directory; missing keys fall back visibly and are reported in diagnostics.
+  Complexity: L
+
+- [ ] P2 - Persist redacted per-job logs and artifact traces
+  Why: Health reports summarize failures, but long model/export jobs need bounded logs that explain device, model, inputs, output paths, and cleanup decisions after restart.
+  Evidence: `core/job_state.py`, `core/workers.py`, `core/diagnostics.py`, UVR/Stable Audio install-support issue patterns
+  Touches: `core/job_state.py`, `core/workers.py`, `core/diagnostics.py`, `ui/settings_view.py`, tests
+  Acceptance: Each generation/download/export job writes a bounded redacted log artifact; health reports include recent log summaries and paths; private prompts/lyrics remain opt-in only.
+  Complexity: M
+
 ### P3
+- [ ] P3 - Add ACE-Step cover and repaint generation modes
+  Why: ACE-Step exposes cover/repaint workflows that fit Slunder's existing reference-track and local generation strengths once core reliability work is stable.
+  Evidence: ACE-Step README, `engines/ace_step_engine.py`, `ui/reference_panel.py`, Song Forge vocal-stem recovery
+  Touches: `engines/ace_step_engine.py`, `ui/song_forge_view.py`, `ui/reference_panel.py`, `core/provenance.py`, tests
+  Acceptance: Song Forge exposes separate modes for cover and local repaint/edit region; each mode records source audio, edit region, parameters, and model variant in provenance.
+  Complexity: L
