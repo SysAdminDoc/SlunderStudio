@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — DiffSinger Engine
+Slunder Studio v0.1.29 — DiffSinger Engine
 Singing voice synthesis from lyrics + MIDI using DiffSinger/ONNX models.
 Converts phoneme-aligned lyrics into natural singing audio.
 """
@@ -260,7 +260,8 @@ class DiffSingerEngine:
         # Common DiffSinger inputs
         if "tokens" in input_names:
             # Phoneme tokens (simplified mapping)
-            token_ids = [hash(p) % 256 for p in phonemes]
+            import hashlib as _hl
+            token_ids = [int.from_bytes(_hl.md5(p.encode()).digest()[:2], "big") % 256 for p in phonemes]
             inputs["tokens"] = np.array([token_ids], dtype=np.int64)
 
         if "durations" in input_names:

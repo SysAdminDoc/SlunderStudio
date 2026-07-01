@@ -259,10 +259,14 @@ class AIProducer:
                                    lambda: self._select_style(plan, brief),
                                    progress_callback)
 
-            # Stage 4: Song Generation
+            # Stage 4: Song Generation (must succeed to continue)
             step = self._run_stage(PipelineStage.SONG_GEN, result,
                                    lambda: self._generate_song(plan, result, brief),
                                    progress_callback)
+            if step.status == "failed":
+                result.stage = PipelineStage.FAILED
+                result.total_time = time.time() - t0
+                return result
 
             # Stage 5: Vocals (if requested)
             if brief.vocal_style and brief.vocal_style != "none":

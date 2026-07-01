@@ -484,11 +484,18 @@ class ACEStepEngine:
                 "Download the model first, then enable Offline Mode."
             )
 
+        prev_offline = os.environ.get("HF_HUB_OFFLINE")
         if mgr.is_offline:
             os.environ["HF_HUB_OFFLINE"] = "1"
 
-        self._pipeline = ACEStepPipeline(checkpoint_dir=checkpoint_dir)
-        self._model_loaded = True
+        try:
+            self._pipeline = ACEStepPipeline(checkpoint_dir=checkpoint_dir)
+            self._model_loaded = True
+        finally:
+            if prev_offline is None:
+                os.environ.pop("HF_HUB_OFFLINE", None)
+            elif prev_offline != os.environ.get("HF_HUB_OFFLINE"):
+                os.environ["HF_HUB_OFFLINE"] = prev_offline
 
     def unload(self):
         """Unload model and free GPU memory."""
@@ -779,11 +786,15 @@ class ACEStepEngine:
                 out_path = Path(save_dir) / f"output_{timestamp}.wav"
                 torchaudio.save(str(out_path), audio_data, 48000)
                 return out_path
-        except (ImportError, Exception):
+        except ImportError:
             pass
 
-        # Fallback: find most recent wav in save_dir
-        wavs = sorted(Path(save_dir).glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)
+        # Fallback: find most recent wav in save_dir created after generation started
+        cutoff = time.time() - 300
+        wavs = sorted(
+            (p for p in Path(save_dir).glob("*.wav") if p.stat().st_mtime > cutoff),
+            key=lambda p: p.stat().st_mtime, reverse=True,
+        )
         if wavs:
             return wavs[0]
 

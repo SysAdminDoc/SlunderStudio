@@ -316,8 +316,8 @@ class SFXEngine:
             progress_callback(0.2, "Generating demo SFX...")
 
         seed = params.seed if params.seed is not None else int(time.time()) % (2**31)
-        random.seed(seed)
-        np.random.seed(seed % (2**31))
+        rng = np.random.default_rng(seed)
+        py_rng = random.Random(seed)
 
         sr = params.sample_rate
         n_samples = int(params.duration * sr)
@@ -327,42 +327,34 @@ class SFXEngine:
 
         # Generate different textures based on prompt keywords
         if any(w in prompt_lower for w in ["rain", "water", "ocean", "river"]):
-            # Filtered noise for water sounds
-            noise = np.random.randn(n_samples) * 0.3
-            # Simple low-pass via running average
+            noise = rng.standard_normal(n_samples) * 0.3
             kernel = int(sr * 0.002)
             if kernel > 1:
                 noise = np.convolve(noise, np.ones(kernel) / kernel, mode="same")
             audio = noise * (1 + 0.3 * np.sin(2 * np.pi * 0.2 * t))
         elif any(w in prompt_lower for w in ["explosion", "boom", "hit", "impact"]):
-            # Impact: short burst + decay
-            audio = np.random.randn(n_samples) * np.exp(-t * 8) * 0.8
+            audio = rng.standard_normal(n_samples) * np.exp(-t * 8) * 0.8
             audio += 0.5 * np.sin(2 * np.pi * 40 * t) * np.exp(-t * 5)
         elif any(w in prompt_lower for w in ["beep", "chime", "bell", "click"]):
-            # Tonal beep
-            freq = random.choice([440, 880, 1320, 1760])
+            freq = py_rng.choice([440, 880, 1320, 1760])
             audio = np.sin(2 * np.pi * freq * t) * np.exp(-t * 4) * 0.6
         elif any(w in prompt_lower for w in ["wind", "air", "whoosh"]):
-            # Modulated noise
-            noise = np.random.randn(n_samples)
+            noise = rng.standard_normal(n_samples)
             mod = 0.5 + 0.5 * np.sin(2 * np.pi * 0.5 * t)
             kernel = int(sr * 0.005)
             if kernel > 1:
                 noise = np.convolve(noise, np.ones(kernel) / kernel, mode="same")
             audio = noise * mod * 0.4
         elif any(w in prompt_lower for w in ["engine", "motor", "hum", "drone"]):
-            # Harmonic drone
-            freq = random.uniform(60, 120)
+            freq = py_rng.uniform(60, 120)
             audio = np.zeros(n_samples)
             for h in range(1, 8):
                 amp = 0.3 / h
                 audio += amp * np.sin(2 * np.pi * freq * h * t)
             audio *= 0.5 + 0.1 * np.sin(2 * np.pi * 0.3 * t)
         else:
-            # Generic ambient texture
-            audio = np.random.randn(n_samples) * 0.2
-            # Add some tonal content
-            freq = random.uniform(200, 800)
+            audio = rng.standard_normal(n_samples) * 0.2
+            freq = py_rng.uniform(200, 800)
             audio += 0.15 * np.sin(2 * np.pi * freq * t) * np.exp(-t / params.duration)
 
         # Fade in/out
