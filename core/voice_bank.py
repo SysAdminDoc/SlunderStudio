@@ -1,10 +1,11 @@
 """
-Slunder Studio v0.1.28 — Voice Bank
+Slunder Studio v0.1.29 — Voice Bank
 Voice profile management for RVC and GPT-SoVITS models.
 Handles model discovery, metadata, favorites, and preset management.
 """
 import os
 import json
+import threading
 import time
 import hashlib
 from typing import Optional
@@ -183,11 +184,14 @@ class VoiceBank:
     """Manages voice profiles with persistence."""
 
     _instance: Optional["VoiceBank"] = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
@@ -204,7 +208,7 @@ class VoiceBank:
         """Load profiles from disk."""
         if os.path.isfile(self._db_path):
             try:
-                with open(self._db_path, "r") as f:
+                with open(self._db_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 for item in data.get("profiles", []):
                     profile = VoiceProfile(**{
@@ -212,14 +216,16 @@ class VoiceBank:
                         if k in VoiceProfile.__dataclass_fields__
                     })
                     self._profiles[profile.id] = profile
-            except Exception:
+            except (json.JSONDecodeError, OSError, TypeError):
                 pass
 
     def _save(self):
-        """Persist profiles to disk."""
+        """Persist profiles to disk with atomic write."""
         data = {"profiles": [asdict(p) for p in self._profiles.values()]}
-        with open(self._db_path, "w") as f:
-            json.dump(data, f, indent=2)
+        tmp = self._db_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, self._db_path)
 
     # ── CRUD ───────────────────────────────────────────────────────────────────
 

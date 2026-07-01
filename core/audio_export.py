@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Audio Export
+Slunder Studio v0.1.29 — Audio Export
 Multi-format audio export: WAV, FLAC, MP3, OGG.
 Uses soundfile for lossless, ffmpeg subprocess for lossy.
 """
@@ -195,20 +195,22 @@ def export_audio(
         temp_wav = output_path + ".tmp.wav"
         sf.write(temp_wav, audio, sr, subtype="PCM_16")
 
+        def _sanitize_meta(value: str) -> str:
+            return value.replace("\n", " ").replace("\r", " ").replace("\\", "\\\\").replace(";", ",")
+
         try:
             cmd = [ffmpeg, "-y", "-i", temp_wav]
 
-            # Add metadata
             if settings.title:
-                cmd += ["-metadata", f"title={settings.title}"]
+                cmd += ["-metadata", f"title={_sanitize_meta(settings.title)}"]
             if settings.artist:
-                cmd += ["-metadata", f"artist={settings.artist}"]
+                cmd += ["-metadata", f"artist={_sanitize_meta(settings.artist)}"]
             if settings.album:
-                cmd += ["-metadata", f"album={settings.album}"]
+                cmd += ["-metadata", f"album={_sanitize_meta(settings.album)}"]
             if settings.year:
-                cmd += ["-metadata", f"date={settings.year}"]
+                cmd += ["-metadata", f"date={_sanitize_meta(settings.year)}"]
             if settings.genre:
-                cmd += ["-metadata", f"genre={settings.genre}"]
+                cmd += ["-metadata", f"genre={_sanitize_meta(settings.genre)}"]
 
             if settings.format == "mp3":
                 cmd += ["-codec:a", "libmp3lame", "-b:a", f"{settings.mp3_bitrate}k"]
@@ -302,7 +304,13 @@ def trim_audio(
     """Trim audio to selection with optional fades."""
     import soundfile as sf
 
+    if end_sec <= start_sec:
+        raise ValueError(f"Invalid trim region: start {start_sec}s must be before end {end_sec}s")
+
     audio, sr = sf.read(source_path, dtype="float32")
+    duration = len(audio) / sr
+    start_sec = max(0.0, min(start_sec, duration))
+    end_sec = max(start_sec, min(end_sec, duration))
     start_sample = int(start_sec * sr)
     end_sample = int(end_sec * sr)
     trimmed = audio[start_sample:end_sample]

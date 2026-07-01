@@ -66,9 +66,8 @@ class JobRecord:
 class JobStore:
     """JSON-backed job ledger for restart recovery and cancellation cleanup."""
 
-    _lock = threading.RLock()
-
     def __init__(self, root: Optional[Path] = None):
+        self._lock = threading.RLock()
         self.root = Path(root) if root is not None else get_config_dir() / "jobs"
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "jobs.json"

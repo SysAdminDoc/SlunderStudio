@@ -6,6 +6,7 @@ import json
 import os
 import copy
 import shutil
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -161,11 +162,14 @@ class Settings:
     """
 
     _instance: Optional["Settings"] = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):

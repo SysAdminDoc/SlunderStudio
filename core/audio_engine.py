@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Audio Engine
+Slunder Studio v0.1.29 — Audio Engine
 sounddevice + soundfile playback with transport controls,
 seek, loop, and waveform data extraction for mini-display.
 """
@@ -50,11 +50,14 @@ class AudioEngine(QObject):
     waveform_ready = Signal(object)
 
     _instance: Optional["AudioEngine"] = None
+    _singleton_lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._singleton_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
@@ -192,21 +195,25 @@ class AudioEngine(QObject):
                     outdata[:] = 0
                     return
 
-                end = self._position + frames
-                remaining = len(self._audio_data) - self._position
+                audio_end = len(self._audio_data)
+                if self._loop_enabled and self._loop_end > 0:
+                    audio_end = min(audio_end, self._loop_end)
+
+                remaining = audio_end - self._position
 
                 if remaining <= 0:
                     if self._loop_enabled:
                         self._position = self._loop_start
-                        end = self._position + frames
+                        remaining = audio_end - self._position
                     else:
                         outdata[:] = 0
                         self._is_playing = False
-                        return
+                        raise _sd.CallbackStop()
 
-                if end > len(self._audio_data):
-                    # Partial fill at end
-                    available = len(self._audio_data) - self._position
+                end = self._position + frames
+
+                if end > audio_end:
+                    available = audio_end - self._position
                     chunk = self._audio_data[self._position:self._position + available]
                     outdata[:available] = chunk * self._volume
                     outdata[available:] = 0
@@ -214,7 +221,7 @@ class AudioEngine(QObject):
                     if self._loop_enabled:
                         self._position = self._loop_start
                     else:
-                        self._position = len(self._audio_data)
+                        self._position = audio_end
                 else:
                     outdata[:] = self._audio_data[self._position:end] * self._volume
                     self._position = end
@@ -317,7 +324,7 @@ class AudioEngine(QObject):
                 # MP3 requires pydub + ffmpeg
                 from pydub import AudioSegment
                 # Convert to 16-bit PCM for pydub
-                pcm = (data * 32767).astype(np.int16)
+                pcm = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
                 channels = pcm.shape[1] if pcm.ndim > 1 else 1
                 seg = AudioSegment(
                     pcm.tobytes(),

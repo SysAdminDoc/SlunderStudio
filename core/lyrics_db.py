@@ -1,9 +1,10 @@
 """
-Slunder Studio v0.1.28 — Lyrics Database
+Slunder Studio v0.1.29 — Lyrics Database
 SQLite storage for lyrics generation history, favorites, search, and version diffs.
 """
 import sqlite3
 import json
+import threading
 import time
 from typing import Optional
 from pathlib import Path
@@ -56,11 +57,14 @@ class LyricsDB:
     """SQLite database manager for lyrics history."""
 
     _instance: Optional["LyricsDB"] = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):

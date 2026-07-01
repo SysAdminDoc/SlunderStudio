@@ -1,12 +1,14 @@
 """
-Slunder Studio v0.1.28 — Project Management
+Slunder Studio v0.1.29 — Project Management
 Save, load, and manage music projects with auto-save, version history,
 and asset tracking across all modules.
 """
 import os
 import json
+import threading
 import time
 import shutil
+import uuid
 from typing import Optional
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -45,7 +47,7 @@ class ProjectAsset:
 
     def __post_init__(self):
         if not self.id:
-            self.id = f"asset_{int(time.time() * 1000)}"
+            self.id = f"asset_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
         if self.created_at == 0.0:
             self.created_at = time.time()
 
@@ -81,7 +83,7 @@ class Project:
 
     def __post_init__(self):
         if not self.id:
-            self.id = f"proj_{int(time.time() * 1000)}"
+            self.id = f"proj_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
         if self.created_at == 0.0:
             self.created_at = time.time()
         if self.updated_at == 0.0:
@@ -121,11 +123,14 @@ class ProjectManager:
     """Manages project persistence, auto-save, and version history."""
 
     _instance: Optional["ProjectManager"] = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
