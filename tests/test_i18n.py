@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -13,7 +14,10 @@ from core.i18n import (
     DEFAULT_LOCALE,
     REQUIRED_I18N_KEYS,
     available_locales,
+    clear_missing_key_log,
+    get_missing_key_log,
     language_code_from_label,
+    load_catalog,
     missing_keys,
     tr,
 )
@@ -114,6 +118,42 @@ class I18nTests(unittest.TestCase):
                 finally:
                     view.deleteLater()
 
+    def test_missing_key_returns_visible_bracket_marker(self):
+        clear_missing_key_log()
+        result = tr("nonexistent.key.xyz")
+        self.assertEqual(result, "[nonexistent.key.xyz]")
+        self.assertIn("nonexistent.key.xyz", get_missing_key_log())
+        clear_missing_key_log()
+
+    def test_external_locale_loads_from_config_dir(self):
+        load_catalog.cache_clear()
+        with tempfile.TemporaryDirectory() as tmp:
+            with self._patched_config(Path(tmp)):
+                ext_dir = Path(tmp) / "config" / "locales"
+                ext_dir.mkdir(parents=True)
+                test_locale = {"app": {"window_title": "Custom Title v{version}"}}
+                (ext_dir / "xx.json").write_text(json.dumps(test_locale), encoding="utf-8")
+
+                locales = available_locales()
+                self.assertIn("xx", locales)
+
+                result = tr("app.window_title", locale="xx", version="1.0")
+                self.assertEqual(result, "Custom Title v1.0")
+        load_catalog.cache_clear()
+
+    def test_external_locale_overrides_builtin(self):
+        load_catalog.cache_clear()
+        with tempfile.TemporaryDirectory() as tmp:
+            with self._patched_config(Path(tmp)):
+                ext_dir = Path(tmp) / "config" / "locales"
+                ext_dir.mkdir(parents=True)
+                override = {"nav": {"lyrics": "Letras"}}
+                (ext_dir / "en.json").write_text(json.dumps(override), encoding="utf-8")
+
+                result = tr("nav.lyrics", locale="en")
+                self.assertEqual(result, "Letras")
+        load_catalog.cache_clear()
+
     def _patched_config(self, root: Path):
         config_dir = root / "config"
         output_dir = root / "renders"
@@ -133,6 +173,7 @@ class I18nTests(unittest.TestCase):
         stack.enter_context(mock.patch("core.settings.get_trash_dir", return_value=trash_dir))
         stack.enter_context(mock.patch("core.lyrics_db.get_config_dir", return_value=config_dir))
         stack.enter_context(mock.patch("core.voice_bank.get_config_dir", return_value=config_dir))
+        stack.enter_context(mock.patch("core.i18n.get_config_dir", return_value=config_dir))
         return stack
 
 

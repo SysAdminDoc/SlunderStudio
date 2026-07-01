@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 - Locale catalog and language helpers.
+Slunder Studio v0.1.30 - Locale catalog and language helpers.
 """
 from __future__ import annotations
 
@@ -8,9 +8,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 
+from core.settings import get_config_dir
 
 DEFAULT_LOCALE = "en"
 LOCALE_DIR = Path(__file__).resolve().parents[1] / "assets" / "locales"
+
+_missing_key_log: list[str] = []
 
 LANGUAGE_OPTIONS: tuple[tuple[str, str], ...] = (
     ("en", "English"),
@@ -148,17 +151,29 @@ def normalize_locale(locale: str | None) -> str:
     return raw.split(".")[0] or DEFAULT_LOCALE
 
 
+def _external_locale_dir() -> Path:
+    return get_config_dir() / "locales"
+
+
 def available_locales() -> list[str]:
-    if not LOCALE_DIR.exists():
-        return [DEFAULT_LOCALE]
-    locales = sorted(path.stem for path in LOCALE_DIR.glob("*.json") if path.is_file())
-    return locales or [DEFAULT_LOCALE]
+    locales: set[str] = set()
+    for directory in (LOCALE_DIR, _external_locale_dir()):
+        if directory.exists():
+            locales.update(path.stem for path in directory.glob("*.json") if path.is_file())
+    return sorted(locales) or [DEFAULT_LOCALE]
 
 
 @lru_cache(maxsize=16)
 def load_catalog(locale: str = DEFAULT_LOCALE) -> dict:
     catalog_locale = normalize_locale(locale)
-    path = LOCALE_DIR / f"{catalog_locale}.json"
+    external = _external_locale_dir() / f"{catalog_locale}.json"
+    builtin = LOCALE_DIR / f"{catalog_locale}.json"
+
+    if external.exists():
+        with external.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    path = builtin
     if not path.exists() and catalog_locale != DEFAULT_LOCALE:
         path = LOCALE_DIR / f"{DEFAULT_LOCALE}.json"
     with path.open("r", encoding="utf-8") as handle:
@@ -190,9 +205,19 @@ def tr(key: str, locale: str = DEFAULT_LOCALE, **params) -> str:
     if value is None and normalize_locale(locale) != DEFAULT_LOCALE:
         value = _lookup(load_catalog(DEFAULT_LOCALE), key)
     if value is None:
-        return key
+        if key not in _missing_key_log:
+            _missing_key_log.append(key)
+        return f"[{key}]"
     text = str(value)
     return text.format(**params) if params else text
+
+
+def get_missing_key_log() -> list[str]:
+    return list(_missing_key_log)
+
+
+def clear_missing_key_log() -> None:
+    _missing_key_log.clear()
 
 
 def language_label(code: str | None) -> str:

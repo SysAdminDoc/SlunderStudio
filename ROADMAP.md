@@ -77,13 +77,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ## Research-Driven Additions
 
 ### P2
-- [ ] P2 - Complete i18n key coverage and external language-pack loading
-  Why: The locale foundation exists, but new views can still add hard-coded English and ACE-Step-style multilingual users need language packs without code changes.
-  Evidence: `assets/locales/en.json`, `core/i18n.py`, ACE-Step multilingual docs
-  Touches: `core/i18n.py`, `assets/locales/en.json`, `ui/*`, `tests/test_i18n.py`
-  Acceptance: Tests fail on audited visible strings missing locale keys; Settings can load an external locale JSON from the config directory; missing keys fall back visibly and are reported in diagnostics.
-  Complexity: L
-
 - [ ] P2 - Persist redacted per-job logs and artifact traces
   Why: Health reports summarize failures, but long model/export jobs need bounded logs that explain device, model, inputs, output paths, and cleanup decisions after restart.
   Evidence: `core/job_state.py`, `core/workers.py`, `core/diagnostics.py`, UVR/Stable Audio install-support issue patterns
