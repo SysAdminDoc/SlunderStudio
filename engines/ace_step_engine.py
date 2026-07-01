@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — ACE-Step Engine
+Slunder Studio v0.1.29 — ACE-Step Engine
 Native Python wrapper for ACE-Step inference (not Gradio).
 Supports: generate, batch, retake, repaint, extend.
 <4GB VRAM, 48kHz stereo, up to 4 min duration.
@@ -469,14 +469,24 @@ class ACEStepEngine:
             ensure("acestep", pip_name="ace-step")
             from acestep.pipeline_ace_step import ACEStepPipeline
 
+        from core.model_manager import ModelManager, OfflineModeError
+
+        mgr = ModelManager()
+
         if cache_dir:
             checkpoint_dir = cache_dir
         else:
-            from core.model_manager import ModelManager
-            mgr = ModelManager()
             checkpoint_dir = str(mgr.get_cache_dir("ace-step-v1.5"))
 
-        # ACEStepPipeline downloads from HuggingFace if checkpoint_dir is empty
+        if mgr.is_offline and not Path(checkpoint_dir).exists():
+            raise OfflineModeError(
+                "ACE-Step model not cached locally and Offline Mode is enabled. "
+                "Download the model first, then enable Offline Mode."
+            )
+
+        if mgr.is_offline:
+            os.environ["HF_HUB_OFFLINE"] = "1"
+
         self._pipeline = ACEStepPipeline(checkpoint_dir=checkpoint_dir)
         self._model_loaded = True
 

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Model Manager
+Slunder Studio v0.1.30 — Model Manager
 Central singleton managing model lifecycle: download, load, unload, and GPU memory.
 Enforces one-large-model-at-a-time GPU residency for 16GB VRAM budget.
 """
@@ -18,6 +18,11 @@ from PySide6.QtCore import QObject, Signal
 
 from core.settings import Settings, get_config_dir
 from core.trash import TrashEntry, TrashError, TrashManager
+
+
+class OfflineModeError(RuntimeError):
+    """Raised when a network operation is attempted while offline mode is enabled."""
+    pass
 
 # ── Model Registry ─────────────────────────────────────────────────────────────
 
@@ -501,6 +506,10 @@ class ModelManager(QObject):
         return [m for m in self._registry.values() if m.is_core]
 
     @property
+    def is_offline(self) -> bool:
+        return bool(self._settings.get("model_hub.offline_mode", False))
+
+    @property
     def current_model_id(self) -> Optional[str]:
         return self._current_model_id
 
@@ -607,6 +616,12 @@ class ModelManager(QObject):
         Download a model from HuggingFace Hub with real progress tracking.
         Writes a completion marker on success so partial downloads are detected.
         """
+        if self.is_offline:
+            raise OfflineModeError(
+                "Model downloads are disabled while Offline Mode is enabled. "
+                "Disable Offline Mode in Settings > GPU & Models to download models."
+            )
+
         info = self._registry.get(model_id)
         if info is None:
             raise ValueError(f"Unknown model: {model_id}")
@@ -762,6 +777,8 @@ class ModelManager(QObject):
     def _resolve_hf_revision(self, info: ModelInfo, token: Optional[str] = None) -> str:
         """Resolve a HuggingFace revision to a commit SHA when online."""
         if not info.source:
+            return info.revision
+        if self.is_offline:
             return info.revision
         try:
             from huggingface_hub import HfApi

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — SFX Engine
+Slunder Studio v0.1.29 — SFX Engine
 Text-to-SFX generation using Stable Audio Open for creating sound effects,
 ambient textures, and audio layers from text prompts.
 """
@@ -120,8 +120,18 @@ class SFXEngine:
                    progress_callback: Optional[Callable] = None):
         """Load Stable Audio Open model."""
         from core.deps import ensure
+        from core.model_manager import ModelManager, OfflineModeError
         ensure("torch")
         ensure("stable_audio_tools", pip_name="stable-audio-tools")
+
+        mgr = ModelManager()
+        if mgr.is_offline and not os.path.isdir(model_path):
+            raise OfflineModeError(
+                "Stable Audio Open model loading requires network access, "
+                "but Offline Mode is enabled. Download the model first, "
+                "then enable Offline Mode."
+            )
+
         try:
             import torch
             from stable_audio_tools import get_pretrained_model

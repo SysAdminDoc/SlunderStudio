@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Model Hub UI
+Slunder Studio v0.1.29 — Model Hub UI
 Grid view of all models with live download progress, speed tracking,
 partial download detection, and one-click download/delete.
 """
@@ -14,7 +14,7 @@ from PySide6.QtCore import QUrl
 
 from ui.theme import Palette
 from ui.accessibility import install_accessibility, set_accessible
-from core.model_manager import ModelManager, ModelInfo, ModelStatus, ModelCategory
+from core.model_manager import ModelManager, ModelInfo, ModelStatus, ModelCategory, OfflineModeError
 from core.settings import Settings
 from core.workers import DownloadWorker
 from core.job_state import JobStatus, JobStore
@@ -629,6 +629,14 @@ class ModelHubView(QWidget):
     def _start_download(self, model_id: str):
         """Start or resume downloading a model in a background thread."""
         if model_id in self._workers:
+            return
+
+        if self._mgr.is_offline:
+            if self.toast_mgr:
+                self.toast_mgr.error(
+                    "Downloads are disabled while Offline Mode is enabled. "
+                    "Disable it in Settings > GPU & Models."
+                )
             return
 
         info = self._mgr.get_model_info(model_id)

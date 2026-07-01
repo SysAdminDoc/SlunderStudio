@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.28-blue)
+![Version](https://img.shields.io/badge/version-0.1.30-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -31,7 +31,7 @@ Python 3.10+ required. Install core dependencies explicitly before launch; if an
 | Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, voice conversion, voice cloning, and vocal auto-tune pitch correction | DiffSinger, RVC v2, GPT-SoVITS, librosa |
 | Stem Separation | Isolate vocals, drums, bass, and other instruments | Demucs (htdemucs) |
 | SFX Generator | Text-to-sound-effect generation | Stable Audio Open |
-| Mixer | Multi-track mixing with stem-aware dynamic EQ suggestions, reference loudness matching, and smart mastering (8 presets) | Built-in DSP |
+| Mixer | Multi-track mixing with stem-aware dynamic EQ, Mid/Side trims, reference loudness matching, and smart mastering (8 presets) | Built-in DSP |
 | AI Producer | One prompt to full song — auto-chains all modules | Orchestrator |
 | Model Hub | Download, manage, and switch AI models | HuggingFace Hub |
 | Projects | Save/load projects with version history and asset tracking | — |
@@ -56,7 +56,7 @@ Settings can export a redacted health report ZIP with app/dependency versions, G
 
 Major app chrome and lyric controls use an English locale catalog, and Settings > Appearance > Default Lyrics Language feeds Quick lyrics prompts, Guided lyrics metadata, and new GPT-SoVITS voice profile language defaults where supported. MIDI Studio supports explicit chord-progression priors such as `I-V-vi-IV` and `ii-V-I` for text-to-MIDI prompts and fallback generation. MIDI Studio also includes selectable drum groove templates with swing timing, snare ghost notes, and velocity humanization for generated GM drum tracks, `.chordpro` and `.crd` chord chart export with optional pasted lyrics, and piano roll editing tools for quantize, swing, velocity humanize, and MIDI CC automation lanes. Vocal Suite includes a Lyric Melody tab that converts hummed audio into provenance-tracked MIDI, aligns pasted lyrics to detected notes, and can render a routed DiffSinger vocal when a model is loaded. The Auto-Tune tab writes routed, provenance-tracked WAV files with adjustable pitch correction toward the nearest semitone.
 
-Mixer can analyze each imported stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also load a reference track, match the final master to its integrated LUFS, report short-term LUFS profile deltas for the match, and target streaming, podcast, broadcast, cinema, or loud CD delivery levels.
+Mixer can analyze each imported stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also trim Mid and Side gain independently before limiting, load a reference track, match the final master to its integrated LUFS, report short-term LUFS profile deltas for the match, and target streaming, podcast, broadcast, cinema, or loud CD delivery levels.
 
 ## Mastering Presets
 
@@ -70,6 +70,8 @@ Mixer can analyze each imported stem, infer a stem role from the track name, and
 | Cinematic | -16.0 | Dynamic range, wide stereo, gentle compression |
 | Lo-Fi | -16.0 | Rolled-off highs, heavy compression, narrow |
 | Streaming (Spotify) | -14.0 | Optimized for streaming platform normalization |
+
+Mixer exposes Mid and Side trim controls from -6 dB to +6 dB. The mastering chain applies those trims after stereo-width processing and before limiting/LUFS normalization.
 
 ## Delivery LUFS Targets
 
@@ -97,6 +99,7 @@ Models are downloaded on-demand through the Model Hub. Nothing downloads until y
 | Stable Audio Open | ~3 GB | SFX Generator | Optional |
 
 All models run entirely on your local machine. No cloud APIs, no subscriptions, no data leaves your computer.
+When Offline Mode is enabled in Settings, all HuggingFace API calls and model downloads are blocked — models load from local cache only or fail with an explicit offline error.
 Model Hub cards show each model's license, gated/token status, and commercial-use status. Generated and exported provenance sidecars carry source model license policy forward, and Song Forge export warns when a source model is limited, non-commercial, or governed by model-specific terms.
 
 ## System Requirements

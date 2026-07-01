@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Lyrics Engine
+Slunder Studio v0.1.29 — Lyrics Engine
 Dual-backend LLM wrapper: llama-cpp-python (primary) or transformers (fallback).
 Supports streaming token output, model loading via Model Manager, and generation pipeline.
 
@@ -173,6 +173,10 @@ class LyricsLLM:
 
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
+        from core.model_manager import ModelManager
+
+        mgr = ModelManager()
+        local_only = mgr.is_offline
 
         # Map GGUF model IDs to equivalent HuggingFace models
         hf_model = _TRANSFORMERS_MODELS.get(model_id, _TRANSFORMERS_DEFAULT)
@@ -187,13 +191,14 @@ class LyricsLLM:
             dtype = torch.float32
 
         self._tokenizer = AutoTokenizer.from_pretrained(
-            hf_model, trust_remote_code=True,
+            hf_model, trust_remote_code=True, local_files_only=local_only,
         )
         self._model = AutoModelForCausalLM.from_pretrained(
             hf_model,
             torch_dtype=dtype,
             device_map=device,
             trust_remote_code=True,
+            local_files_only=local_only,
         )
 
         self._backend = "transformers"

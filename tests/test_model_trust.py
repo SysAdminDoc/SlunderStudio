@@ -2,8 +2,15 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
-from core.model_manager import COMMERCIAL_USE_ALLOWED, ModelInfo, ModelManager, ModelCategory
+from core.model_manager import (
+    COMMERCIAL_USE_ALLOWED,
+    ModelInfo,
+    ModelManager,
+    ModelCategory,
+    OfflineModeError,
+)
 from core.voice_bank import VoiceProfile
 from engines.rvc_engine import RVCEngine
 
@@ -92,6 +99,48 @@ class ModelTrustTests(unittest.TestCase):
                 engine.load_model(profile, device="cpu")
 
             self.assertIn("unsafe local checkpoint", str(ctx.exception))
+
+
+    def test_offline_mode_blocks_download_model(self):
+        mgr = ModelManager()
+        old_settings = mgr._settings
+
+        try:
+            mgr._settings = type(
+                "SettingsStub",
+                (),
+                {
+                    "get": lambda _self, key, default=None: (
+                        True if key == "model_hub.offline_mode" else default
+                    )
+                },
+            )()
+
+            with self.assertRaises(OfflineModeError) as ctx:
+                mgr.download_model("ace-step-v1.5")
+
+            self.assertIn("Offline Mode", str(ctx.exception))
+        finally:
+            mgr._settings = old_settings
+
+    @patch("core.model_manager.ModelManager.is_offline", new_callable=lambda: property(lambda self: True))
+    def test_offline_mode_skips_hf_revision_resolution(self, _):
+        mgr = ModelManager()
+        info = mgr.get_model_info("ace-step-v1.5")
+        self.assertIsNotNone(info)
+
+        with patch("huggingface_hub.HfApi") as mock_api:
+            result = mgr._resolve_hf_revision(info)
+            mock_api.assert_not_called()
+            self.assertEqual(result, info.revision)
+
+    @patch("core.model_manager.ModelManager.is_offline", new_callable=lambda: property(lambda self: True))
+    def test_offline_mode_snapshot_download_not_called(self, _):
+        mgr = ModelManager()
+        with patch("huggingface_hub.snapshot_download") as mock_sd:
+            with self.assertRaises(OfflineModeError):
+                mgr.download_model("ace-step-v1.5")
+            mock_sd.assert_not_called()
 
 
 if __name__ == "__main__":

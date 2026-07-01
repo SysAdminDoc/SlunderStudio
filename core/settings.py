@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Settings System
+Slunder Studio v0.1.29 — Settings System
 JSON config in %APPDATA%/SlunderStudio with presets, reactive updates, and two-tier mode.
 """
 import json
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.28"
+APP_VERSION = "0.1.30"
 SETTINGS_SCHEMA_VERSION = 2
 
 
