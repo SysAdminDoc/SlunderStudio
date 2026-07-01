@@ -77,13 +77,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ## Research-Driven Additions
 
 ### P1
-- [ ] P1 - Add DAWproject schema and package validation harness
-  Why: The existing DAWproject export item needs validation because the standard is XML/ZIP-based and live interop issues show schema/packaging details break DAW imports.
-  Evidence: `ROADMAP.md` `.dawproject` item, bitwig/dawproject `Project.xsd`, `MetaData.xsd`, issues #97 and #101
-  Touches: `core/audio_export.py`, `core/project.py`, future `core/dawproject.py`, `tests/test_dawproject_export.py`
-  Acceptance: A generated `.dawproject` archive contains `project.xml`, `metadata.xml`, and media files; tests validate XML against bundled schemas and assert required media references/parameter IDs are present.
-  Complexity: M
-
 - [ ] P1 - Add reproducible dependency constraints and local audit lane
   Why: `requirements.txt` uses broad lower bounds; local pip-audit is clean today, but unconstrained builds can drift and break PyInstaller or audio/model dependencies.
   Evidence: `requirements.txt`, `build/build.py`, local `pip-audit -r requirements.txt`, PyInstaller packaging output
