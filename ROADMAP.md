@@ -76,10 +76,3 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 
 ## Research-Driven Additions
 
-### P3
-- [ ] P3 - Add ACE-Step cover and repaint generation modes
-  Why: ACE-Step exposes cover/repaint workflows that fit Slunder's existing reference-track and local generation strengths once core reliability work is stable.
-  Evidence: ACE-Step README, `engines/ace_step_engine.py`, `ui/reference_panel.py`, Song Forge vocal-stem recovery
-  Touches: `engines/ace_step_engine.py`, `ui/song_forge_view.py`, `ui/reference_panel.py`, `core/provenance.py`, tests
-  Acceptance: Song Forge exposes separate modes for cover and local repaint/edit region; each mode records source audio, edit region, parameters, and model variant in provenance.
-  Complexity: L

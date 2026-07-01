@@ -1154,6 +1154,140 @@ def generate_seed_grid(
     return {"results": results, "count": len(results)}
 
 
+def generate_cover(
+    source_audio_path: str,
+    style_tags: str = "",
+    lyrics: str = "",
+    duration: float = 0.0,
+    seed: int = -1,
+    cfg_scale: float = 15.0,
+    infer_steps: int = 60,
+    progress_cb: Callable = None,
+    step_cb: Callable = None,
+    log_cb: Callable = None,
+    cancel_event: threading.Event = None,
+    **kwargs,
+) -> dict:
+    """Generate a cover: re-render a source track with new style tags."""
+    if not source_audio_path or not os.path.isfile(source_audio_path):
+        raise FileNotFoundError(f"Source audio not found: {source_audio_path}")
+
+    if step_cb:
+        step_cb("Loading ACE-Step for cover...")
+
+    from core.model_manager import ModelManager
+    mgr = ModelManager()
+    engine = ACEStepEngine()
+
+    def _loader():
+        engine.load()
+        return engine
+
+    mgr.load_model("ace-step-v1.5", loader_fn=_loader)
+
+    if cancel_event and cancel_event.is_set():
+        return {"cancelled": True}
+
+    if step_cb:
+        step_cb("Generating cover...")
+
+    import soundfile as sf
+    info = sf.info(source_audio_path)
+    actual_duration = duration or info.duration
+
+    params = GenerationParams(
+        lyrics=lyrics,
+        style_tags=style_tags,
+        duration=actual_duration,
+        seed=seed,
+        cfg_scale=cfg_scale,
+        infer_steps=infer_steps,
+        source_audio_path=source_audio_path,
+    )
+
+    result = engine.generate(params, progress_cb=progress_cb, cancel_event=cancel_event)
+
+    return {
+        "audio_path": result.audio_path,
+        "provenance_path": result.provenance_path,
+        "seed": result.seed,
+        "duration": result.duration,
+        "generation_time": result.generation_time,
+        "mode": "cover",
+        "source_audio_path": source_audio_path,
+    }
+
+
+def generate_repaint(
+    source_audio_path: str,
+    start_sec: float,
+    end_sec: float,
+    style_tags: str = "",
+    lyrics: str = "",
+    seed: int = -1,
+    cfg_scale: float = 15.0,
+    infer_steps: int = 60,
+    progress_cb: Callable = None,
+    step_cb: Callable = None,
+    log_cb: Callable = None,
+    cancel_event: threading.Event = None,
+    **kwargs,
+) -> dict:
+    """Repaint: regenerate a region of a source track while keeping the rest."""
+    if not source_audio_path or not os.path.isfile(source_audio_path):
+        raise FileNotFoundError(f"Source audio not found: {source_audio_path}")
+    if end_sec <= start_sec:
+        raise ValueError(f"Invalid repaint region: {start_sec}s to {end_sec}s")
+
+    if step_cb:
+        step_cb("Loading ACE-Step for repaint...")
+
+    from core.model_manager import ModelManager
+    mgr = ModelManager()
+    engine = ACEStepEngine()
+
+    def _loader():
+        engine.load()
+        return engine
+
+    mgr.load_model("ace-step-v1.5", loader_fn=_loader)
+
+    if cancel_event and cancel_event.is_set():
+        return {"cancelled": True}
+
+    if step_cb:
+        step_cb(f"Repainting {start_sec:.1f}s – {end_sec:.1f}s...")
+
+    import soundfile as sf
+    info = sf.info(source_audio_path)
+
+    params = GenerationParams(
+        lyrics=lyrics,
+        style_tags=style_tags,
+        duration=info.duration,
+        seed=seed,
+        cfg_scale=cfg_scale,
+        infer_steps=infer_steps,
+        source_audio_path=source_audio_path,
+        repaint_start=start_sec,
+        repaint_end=end_sec,
+    )
+
+    result = engine.generate(params, progress_cb=progress_cb, cancel_event=cancel_event)
+
+    return {
+        "audio_path": result.audio_path,
+        "provenance_path": result.provenance_path,
+        "seed": result.seed,
+        "duration": result.duration,
+        "generation_time": result.generation_time,
+        "mode": "repaint",
+        "source_audio_path": source_audio_path,
+        "repaint_start": start_sec,
+        "repaint_end": end_sec,
+    }
+
+
 def load_model(cache_dir: str = None, **kwargs) -> ACEStepEngine:
     """Loader function for ModelManager registry."""
     engine = ACEStepEngine()

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Song Forge View
+Slunder Studio v0.1.29 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
@@ -321,6 +321,52 @@ class SongForgeView(QWidget):
         fg.addWidget(self._fusion_apply_btn, 2, 0, 1, 4)
 
         al.addWidget(fusion)
+
+        cover_group = QGroupBox("Cover / Repaint")
+        cover_group.setStyleSheet(
+            "QGroupBox { color: #A6ADC8; border: 1px solid #313244; border-radius: 6px; "
+            "margin-top: 8px; padding-top: 14px; }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 10px; }"
+        )
+        cg = QGridLayout(cover_group)
+        cg.setSpacing(6)
+
+        cg.addWidget(QLabel("Mode:"), 0, 0)
+        self._cover_mode_combo = QComboBox()
+        self._cover_mode_combo.addItems(["Normal", "Cover", "Repaint"])
+        self._cover_mode_combo.currentTextChanged.connect(self._on_cover_mode_changed)
+        cg.addWidget(self._cover_mode_combo, 0, 1)
+
+        cg.addWidget(QLabel("Source:"), 1, 0)
+        self._cover_source_label = QLabel("No file selected")
+        self._cover_source_label.setStyleSheet("color: #6C7086; font-size: 11px;")
+        cg.addWidget(self._cover_source_label, 1, 1, 1, 2)
+
+        self._cover_browse_btn = QPushButton("Browse")
+        self._cover_browse_btn.setFixedHeight(26)
+        self._cover_browse_btn.clicked.connect(self._on_browse_cover_source)
+        cg.addWidget(self._cover_browse_btn, 1, 3)
+
+        cg.addWidget(QLabel("Start (s):"), 2, 0)
+        self._repaint_start_spin = QDoubleSpinBox()
+        self._repaint_start_spin.setRange(0.0, 600.0)
+        self._repaint_start_spin.setValue(0.0)
+        self._repaint_start_spin.setSuffix("s")
+        self._repaint_start_spin.setEnabled(False)
+        cg.addWidget(self._repaint_start_spin, 2, 1)
+
+        cg.addWidget(QLabel("End (s):"), 2, 2)
+        self._repaint_end_spin = QDoubleSpinBox()
+        self._repaint_end_spin.setRange(0.0, 600.0)
+        self._repaint_end_spin.setValue(30.0)
+        self._repaint_end_spin.setSuffix("s")
+        self._repaint_end_spin.setEnabled(False)
+        cg.addWidget(self._repaint_end_spin, 2, 3)
+
+        self._cover_source_path = ""
+
+        al.addWidget(cover_group)
+
         adv_scroll.setWidget(adv_inner)
 
         adv_layout = QVBoxLayout(adv_page)
@@ -540,6 +586,20 @@ class SongForgeView(QWidget):
             if not existing:
                 self._quick_tags.setText(tags)
 
+    def _on_cover_mode_changed(self, mode: str):
+        is_repaint = mode == "Repaint"
+        self._repaint_start_spin.setEnabled(is_repaint)
+        self._repaint_end_spin.setEnabled(is_repaint)
+
+    def _on_browse_cover_source(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Source Audio", "", "Audio Files (*.wav *.flac *.mp3 *.ogg)"
+        )
+        if path:
+            self._cover_source_path = path
+            from pathlib import Path as P
+            self._cover_source_label.setText(P(path).name)
+
     def _on_fusion_weight_changed(self, value: int):
         self._fusion_weight_label.setText(f"{100 - value}/{value}")
 
@@ -594,7 +654,48 @@ class SongForgeView(QWidget):
             "style_tags": tags[:240],
         }
 
-        if batch_count > 1:
+        cover_mode = self._cover_mode_combo.currentText() if self._mode_tabs.currentIndex() == 1 else "Normal"
+        is_cover = cover_mode == "Cover" and self._cover_source_path
+        is_repaint = cover_mode == "Repaint" and self._cover_source_path
+
+        if is_cover:
+            from engines.ace_step_engine import generate_cover
+            job_inputs["mode"] = "cover"
+            job_inputs["source_audio_path"] = self._cover_source_path
+            self._worker = InferenceWorker(
+                generate_cover,
+                source_audio_path=self._cover_source_path,
+                style_tags=tags,
+                lyrics=lyrics,
+                duration=duration,
+                seed=seed,
+                cfg_scale=cfg,
+                infer_steps=steps,
+                job_kind="song_generation",
+                job_label="Song Forge cover",
+                job_inputs=job_inputs,
+            )
+        elif is_repaint:
+            from engines.ace_step_engine import generate_repaint
+            job_inputs["mode"] = "repaint"
+            job_inputs["source_audio_path"] = self._cover_source_path
+            job_inputs["repaint_start"] = self._repaint_start_spin.value()
+            job_inputs["repaint_end"] = self._repaint_end_spin.value()
+            self._worker = InferenceWorker(
+                generate_repaint,
+                source_audio_path=self._cover_source_path,
+                start_sec=self._repaint_start_spin.value(),
+                end_sec=self._repaint_end_spin.value(),
+                style_tags=tags,
+                lyrics=lyrics,
+                seed=seed,
+                cfg_scale=cfg,
+                infer_steps=steps,
+                job_kind="song_generation",
+                job_label="Song Forge repaint",
+                job_inputs=job_inputs,
+            )
+        elif batch_count > 1:
             from engines.ace_step_engine import generate_song_batch
             self._worker = InferenceWorker(
                 generate_song_batch,
