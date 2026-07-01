@@ -77,13 +77,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ## Research-Driven Additions
 
 ### P2
-- [ ] P2 - Add generation quality scoring and ranked "Use Best" selection
-  Why: Batch cards support starring, but there is no objective quality score and `Use Best` falls back to the first result.
-  Evidence: `ui/batch_view.py`, `engines/audio_analyzer.py`, ACE-Step quality scoring reference
-  Touches: `ui/batch_view.py`, `engines/audio_analyzer.py`, `engines/ace_step_engine.py`, `tests/test_seed_explorer.py`
-  Acceptance: Batch/seed results display a deterministic score for silence, clipping, duration, loudness, and spectral balance; `Use Best` selects the highest score unless a user-starred result overrides it.
-  Complexity: M
-
 - [ ] P2 - Complete i18n key coverage and external language-pack loading
   Why: The locale foundation exists, but new views can still add hard-coded English and ACE-Step-style multilingual users need language packs without code changes.
   Evidence: `assets/locales/en.json`, `core/i18n.py`, ACE-Step multilingual docs

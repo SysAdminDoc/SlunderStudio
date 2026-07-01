@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Audio Analyzer
+Slunder Studio v0.1.29 — Audio Analyzer
 Reference track analysis: BPM, key, energy envelope, spectral features,
 genre estimation, and song structure detection via librosa.
 """
@@ -399,6 +399,111 @@ def analyze_track(
         progress_cb(100)
 
     return analysis
+
+
+# ── Generation Quality Scoring ────────────────────────────────────────────────
+
+
+@dataclass
+class QualityScore:
+    """Deterministic quality score for a generated audio file."""
+    total: float = 0.0
+    silence: float = 0.0
+    clipping: float = 0.0
+    duration: float = 0.0
+    loudness: float = 0.0
+    spectral_balance: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "total": round(self.total, 2),
+            "silence": round(self.silence, 2),
+            "clipping": round(self.clipping, 2),
+            "duration": round(self.duration, 2),
+            "loudness": round(self.loudness, 2),
+            "spectral_balance": round(self.spectral_balance, 2),
+        }
+
+
+def score_generation_quality(
+    audio_path: str,
+    expected_duration: float = 0.0,
+) -> QualityScore:
+    """
+    Score the quality of a generated audio file on a 0-100 scale.
+    Components: silence (20), clipping (20), duration (20), loudness (20),
+    spectral balance (20).
+    """
+    import soundfile as sf
+
+    score = QualityScore()
+
+    try:
+        audio, sr = sf.read(audio_path, dtype="float32")
+    except Exception:
+        return score
+
+    if audio.ndim == 2:
+        mono = np.mean(audio, axis=1)
+    else:
+        mono = audio
+
+    if len(mono) == 0:
+        return score
+
+    actual_duration = len(mono) / sr
+
+    rms = np.sqrt(np.mean(mono ** 2))
+    peak = np.max(np.abs(mono))
+
+    silent_frames = np.sum(np.abs(mono) < 1e-5)
+    silence_ratio = silent_frames / len(mono)
+    score.silence = max(0.0, 20.0 * (1.0 - silence_ratio * 2.0))
+
+    clip_frames = np.sum(np.abs(mono) >= 0.999)
+    clip_ratio = clip_frames / len(mono)
+    score.clipping = max(0.0, 20.0 * (1.0 - clip_ratio * 50.0))
+
+    if expected_duration > 0:
+        ratio = actual_duration / expected_duration
+        deviation = abs(1.0 - ratio)
+        score.duration = max(0.0, 20.0 * (1.0 - deviation * 2.0))
+    else:
+        score.duration = 20.0 if actual_duration > 1.0 else 5.0
+
+    if rms < 1e-6:
+        score.loudness = 0.0
+    else:
+        rms_db = 20.0 * np.log10(rms + 1e-10)
+        if -30.0 <= rms_db <= -6.0:
+            score.loudness = 20.0
+        elif rms_db < -30.0:
+            score.loudness = max(0.0, 20.0 * (1.0 - (-30.0 - rms_db) / 30.0))
+        else:
+            score.loudness = max(0.0, 20.0 * (1.0 - (rms_db + 6.0) / 6.0))
+
+    try:
+        n_fft = min(2048, len(mono))
+        if n_fft >= 64:
+            spectrum = np.abs(np.fft.rfft(mono[:n_fft]))
+            if spectrum.sum() > 0:
+                freqs = np.fft.rfftfreq(n_fft, d=1.0 / sr)
+                centroid = np.sum(freqs * spectrum) / np.sum(spectrum)
+                if 500.0 <= centroid <= 4000.0:
+                    score.spectral_balance = 20.0
+                elif centroid < 500.0:
+                    score.spectral_balance = max(0.0, 20.0 * centroid / 500.0)
+                else:
+                    score.spectral_balance = max(0.0, 20.0 * (1.0 - (centroid - 4000.0) / 4000.0))
+            else:
+                score.spectral_balance = 0.0
+        else:
+            score.spectral_balance = 10.0
+    except Exception:
+        score.spectral_balance = 10.0
+
+    score.total = score.silence + score.clipping + score.duration + score.loudness + score.spectral_balance
+    return score
 
 
 # ── Reference Library ──────────────────────────────────────────────────────────

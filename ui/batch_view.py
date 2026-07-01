@@ -1,8 +1,10 @@
 """
-Slunder Studio v0.1.29 — Batch View
+Slunder Studio v0.1.30 — Batch View
 Grid display for batch-generated song variations.
 Mini waveform cards with one-click playback, star/rank, delete, and "Best of" refinement.
 """
+import os
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel,
     QFrame, QScrollArea, QSpinBox,
@@ -26,6 +28,7 @@ class BatchCard(QFrame):
         self._audio_path = ""
         self._seed = 0
         self._gen_time = 0.0
+        self._quality_score = 0.0
         self._is_starred = False
         self._is_playing = False
 
@@ -82,6 +85,10 @@ class BatchCard(QFrame):
         info.addWidget(self._seed_label)
 
         info.addStretch()
+
+        self._score_label = QLabel("")
+        self._score_label.setStyleSheet("color: #A6E3A1; font-size: 10px; font-weight: bold;")
+        info.addWidget(self._score_label)
 
         self._time_label = QLabel("")
         self._time_label.setStyleSheet("color: #6C7086; font-size: 10px;")
@@ -154,6 +161,20 @@ class BatchCard(QFrame):
     @property
     def is_starred(self) -> bool:
         return self._is_starred
+
+    @property
+    def quality_score(self) -> float:
+        return self._quality_score
+
+    def set_quality_score(self, score: float):
+        self._quality_score = score
+        self._score_label.setText(f"Q:{score:.0f}")
+        if score >= 70:
+            self._score_label.setStyleSheet("color: #A6E3A1; font-size: 10px; font-weight: bold;")
+        elif score >= 40:
+            self._score_label.setStyleSheet("color: #F9E2AF; font-size: 10px; font-weight: bold;")
+        else:
+            self._score_label.setStyleSheet("color: #F38BA8; font-size: 10px; font-weight: bold;")
 
     @property
     def index(self) -> int:
@@ -260,6 +281,14 @@ class BatchView(QWidget):
         card.star_toggled.connect(self._on_star_toggled)
         card.delete_requested.connect(self._on_delete)
 
+        if audio_path and os.path.isfile(audio_path):
+            try:
+                from engines.audio_analyzer import score_generation_quality
+                quality = score_generation_quality(audio_path)
+                card.set_quality_score(quality.total)
+            except Exception:
+                pass
+
         row = idx // 2
         col = idx % 2
         self._grid_layout.addWidget(card, row, col)
@@ -312,13 +341,15 @@ class BatchView(QWidget):
                 self._use_best_btn.setEnabled(False)
 
     def _use_best(self):
-        """Use the first starred result, or the first result."""
+        """Use the first starred result, or the highest quality-scored result."""
         for card in self._cards:
             if card.is_starred and card.audio_path:
                 self.use_result.emit(card.audio_path)
                 return
-        if self._cards and self._cards[0].audio_path:
-            self.use_result.emit(self._cards[0].audio_path)
+        scored = [c for c in self._cards if c.audio_path]
+        if scored:
+            best = max(scored, key=lambda c: c.quality_score)
+            self.use_result.emit(best.audio_path)
 
     def get_starred(self) -> list[dict]:
         return [
