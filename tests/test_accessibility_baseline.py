@@ -11,8 +11,11 @@ from PySide6.QtWidgets import QApplication
 
 from core.project import ProjectManager
 from core.settings import Settings
+from ui.batch_view import BatchCard, BatchView
 from ui.main_window import Sidebar, TransportBar
+from ui.mixer_view import MixerTrackStrip, MixerView
 from ui.model_hub import ModelHubView
+from ui.piano_roll import CCAutomationLane, PianoRollWidget
 from ui.settings_view import SettingsView
 from ui.song_forge_view import SongForgeView
 from ui.theme import build_stylesheet
@@ -145,6 +148,83 @@ class AccessibilityBaselineTests(unittest.TestCase):
                 finally:
                     for view, _attrs in views:
                         view.deleteLater()
+
+    def test_mixer_view_exposes_accessible_controls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_dir = root / "config"
+            config_dir.mkdir()
+            with self._patched_config(config_dir, root):
+                view = MixerView()
+                try:
+                    self.assert_accessible(view)
+                    for attr in [
+                        "_add_btn", "_dynamic_eq_btn", "_preset_combo",
+                        "_target_combo", "_lufs_spin", "_mid_gain_spin",
+                        "_side_gain_spin", "_ref_btn", "_master_btn",
+                    ]:
+                        self.assert_accessible(getattr(view, attr))
+                finally:
+                    view.deleteLater()
+
+    def test_mixer_track_strip_controls_have_accessible_names(self):
+        strip = MixerTrackStrip(0, "Drums")
+        try:
+            self.assert_accessible(strip)
+            for attr in ["_vol_slider", "_pan_slider", "_mute_btn", "_solo_btn", "_remove_btn"]:
+                self.assert_accessible(getattr(strip, attr))
+            self.assertIn("Drums", strip._vol_slider.accessibleName())
+        finally:
+            strip.deleteLater()
+
+    def test_batch_view_exposes_accessible_controls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_dir = root / "config"
+            config_dir.mkdir()
+            with self._patched_config(config_dir, root):
+                view = BatchView()
+                try:
+                    self.assert_accessible(view)
+                    self.assert_accessible(view._use_best_btn)
+                    self.assert_accessible(view._clear_btn)
+                finally:
+                    view.deleteLater()
+
+    def test_batch_card_controls_have_accessible_names(self):
+        card = BatchCard(2)
+        try:
+            self.assert_accessible(card)
+            self.assert_accessible(card._star_btn)
+            self.assert_accessible(card._delete_btn)
+            self.assertIn("3", card._star_btn.accessibleName())
+        finally:
+            card.deleteLater()
+
+    def test_piano_roll_exposes_accessible_controls(self):
+        widget = PianoRollWidget()
+        try:
+            self.assert_accessible(widget)
+            for attr in [
+                "_snap_combo", "_velocity_spin", "_swing_spin", "_humanize_spin",
+                "_quantize_btn", "_swing_btn", "_humanize_btn",
+                "_select_all_btn", "_delete_btn",
+            ]:
+                self.assert_accessible(getattr(widget, attr))
+        finally:
+            widget.deleteLater()
+
+    def test_cc_automation_lane_controls_have_accessible_names(self):
+        lane = CCAutomationLane()
+        try:
+            self.assert_accessible(lane)
+            for attr in [
+                "_controller_combo", "_beat_spin", "_value_spin",
+                "_add_cc_btn", "_clear_lane_btn", "_table",
+            ]:
+                self.assert_accessible(getattr(lane, attr))
+        finally:
+            lane.deleteLater()
 
     def test_tab_order_matches_primary_workflow(self):
         with tempfile.TemporaryDirectory() as tmp:

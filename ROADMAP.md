@@ -77,13 +77,6 @@ Roadmap for Slunder Studio - an offline local-first AI music generation suite (A
 ## Research-Driven Additions
 
 ### P1
-- [ ] P1 - Extend accessibility contracts to Mixer, Batch, and Piano Roll custom controls
-  Why: The accessibility foundation covers major shell/views, but dense custom controls still need stable names, descriptions, focus order, and non-color-only states.
-  Evidence: `ui/accessibility.py`, `ui/mixer_view.py`, `ui/batch_view.py`, `ui/piano_roll.py`, `tests/test_accessibility_baseline.py`
-  Touches: `ui/mixer_view.py`, `ui/batch_view.py`, `ui/piano_roll.py`, `tests/test_accessibility_baseline.py`
-  Acceptance: Headless Qt tests verify accessible names/descriptions and tab order for mixer master controls, track strip actions, batch star/delete/use-best controls, and piano-roll edit/CC controls.
-  Complexity: M
-
 - [ ] P1 - Add DAWproject schema and package validation harness
   Why: The existing DAWproject export item needs validation because the standard is XML/ZIP-based and live interop issues show schema/packaging details break DAW imports.
   Evidence: `ROADMAP.md` `.dawproject` item, bitwig/dawproject `Project.xsd`, `MetaData.xsd`, issues #97 and #101

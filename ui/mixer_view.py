@@ -1,10 +1,11 @@
 """
-Slunder Studio v0.1.28 — Mixer View
+Slunder Studio v0.1.29 — Mixer View
 Multi-track mixer timeline with per-track volume/pan/effects,
 smart mastering presets, waveform overview, and final export.
 """
 import os
 import time
+from dataclasses import replace
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
@@ -15,6 +16,7 @@ from PySide6.QtCore import Qt, Signal
 
 import numpy as np
 
+from ui.accessibility import install_accessibility
 from ui.theme import ThemeEngine
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.mastering import (
@@ -154,6 +156,19 @@ class MixerTrackStrip(QFrame):
         layout.addWidget(self._mute_btn)
         layout.addWidget(self._solo_btn)
         layout.addWidget(self._remove_btn)
+
+        install_accessibility(
+            self,
+            f"Track {name}",
+            named_controls=[
+                (self._vol_slider, f"Track {name} volume", "Adjusts track volume from 0% to 150%."),
+                (self._pan_slider, f"Track {name} pan", "Adjusts stereo pan from full left to full right."),
+                (self._mute_btn, f"Mute track {name}", "Toggles muting of this track."),
+                (self._solo_btn, f"Solo track {name}", "Solos this track, silencing all others."),
+                (self._remove_btn, f"Remove track {name}", "Removes this track from the mixer."),
+            ],
+            tab_order=[self._vol_slider, self._pan_slider, self._mute_btn, self._solo_btn, self._remove_btn],
+        )
 
     def _on_vol(self, val):
         self._volume = val / 100.0
@@ -316,6 +331,36 @@ class MixerView(QWidget):
         master_layout.addWidget(ll)
         master_layout.addWidget(self._lufs_spin)
 
+        ms_style = f"""
+            QDoubleSpinBox {{
+                background: {t['background']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 3px;
+                padding: 3px 6px; font-size: 11px;
+            }}
+        """
+        mid_label = QLabel("Mid:")
+        mid_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+        self._mid_gain_spin = QDoubleSpinBox()
+        self._mid_gain_spin.setRange(-6.0, 6.0)
+        self._mid_gain_spin.setSingleStep(0.5)
+        self._mid_gain_spin.setSuffix(" dB")
+        self._mid_gain_spin.setFixedWidth(78)
+        self._mid_gain_spin.setStyleSheet(ms_style)
+
+        side_label = QLabel("Side:")
+        side_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+        self._side_gain_spin = QDoubleSpinBox()
+        self._side_gain_spin.setRange(-6.0, 6.0)
+        self._side_gain_spin.setSingleStep(0.5)
+        self._side_gain_spin.setSuffix(" dB")
+        self._side_gain_spin.setFixedWidth(78)
+        self._side_gain_spin.setStyleSheet(ms_style)
+
+        master_layout.addWidget(mid_label)
+        master_layout.addWidget(self._mid_gain_spin)
+        master_layout.addWidget(side_label)
+        master_layout.addWidget(self._side_gain_spin)
+
         self._ref_btn = QPushButton("Load Ref")
         self._ref_btn.setStyleSheet(f"""
             QPushButton {{
@@ -363,6 +408,28 @@ class MixerView(QWidget):
         self._status = QLabel("Import audio tracks to begin mixing")
         self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
         layout.addWidget(self._status)
+
+        install_accessibility(
+            self,
+            "Mixer",
+            named_controls=[
+                (self._add_btn, "Import track", "Opens file dialog to import an audio track."),
+                (self._dynamic_eq_btn, "Suggest dynamic EQ", "Analyzes tracks and suggests per-band dynamic EQ curves."),
+                (self._preset_combo, "Mastering preset", "Selects a mastering preset profile."),
+                (self._target_combo, "LUFS delivery target", "Selects a loudness target standard."),
+                (self._lufs_spin, "Target LUFS", "Sets the target loudness in LUFS."),
+                (self._mid_gain_spin, "Mid gain trim", "Adjusts mid-channel gain in dB."),
+                (self._side_gain_spin, "Side gain trim", "Adjusts side-channel gain in dB."),
+                (self._ref_btn, "Load reference track", "Loads a loudness reference track for mastering comparison."),
+                (self._master_btn, "Master and export", "Masters the mix and opens export dialog."),
+            ],
+            tab_order=[
+                self._add_btn, self._dynamic_eq_btn,
+                self._preset_combo, self._target_combo, self._lufs_spin,
+                self._mid_gain_spin, self._side_gain_spin,
+                self._ref_btn, self._master_btn,
+            ],
+        )
 
     # ── Track Management ───────────────────────────────────────────────────────
 
@@ -616,10 +683,12 @@ class MixerView(QWidget):
 
         # Get preset
         preset_name = self._preset_combo.currentText()
-        preset = PRESETS.get(preset_name, PRESETS["Balanced"])
+        preset = replace(PRESETS.get(preset_name, PRESETS["Balanced"]))
 
         # Override target LUFS
         preset.target_lufs = self._lufs_spin.value()
+        preset.ms_mid_gain_db = self._mid_gain_spin.value()
+        preset.ms_side_gain_db = self._side_gain_spin.value()
 
         self._master_btn.setEnabled(False)
         self._status.setText("Mastering...")

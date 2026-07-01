@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Batch View
+Slunder Studio v0.1.29 — Batch View
 Grid display for batch-generated song variations.
 Mini waveform cards with one-click playback, star/rank, delete, and "Best of" refinement.
 """
@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, Qt
 
+from ui.accessibility import install_accessibility
 from ui.waveform_widget import MiniWaveform
 from core.job_state import JobStatus, JobStore
 
@@ -87,6 +88,16 @@ class BatchCard(QFrame):
         info.addWidget(self._time_label)
 
         layout.addLayout(info)
+
+        install_accessibility(
+            self,
+            f"Variation {self._index + 1}",
+            named_controls=[
+                (self._star_btn, f"Star variation {self._index + 1}", "Toggles star rating on this variation."),
+                (self._delete_btn, f"Delete variation {self._index + 1}", "Removes this variation from the batch."),
+            ],
+            tab_order=[self._star_btn, self._delete_btn],
+        )
 
     def _update_style(self):
         if self._is_playing:
@@ -226,6 +237,16 @@ class BatchView(QWidget):
         self._empty_label.setAlignment(Qt.AlignCenter)
         self._empty_label.setStyleSheet("color: #6C7086; font-size: 12px; padding: 40px;")
         self._grid_layout.addWidget(self._empty_label, 0, 0, 1, 2)
+
+        install_accessibility(
+            self,
+            "Batch Results",
+            named_controls=[
+                (self._use_best_btn, "Use best variation", "Selects the first starred or first variation for use."),
+                (self._clear_btn, "Clear all variations", "Removes all batch result cards."),
+            ],
+            tab_order=[self._use_best_btn, self._clear_btn],
+        )
 
     def add_result(self, audio_path: str, seed: int, gen_time: float = 0.0):
         """Add a new batch result card."""

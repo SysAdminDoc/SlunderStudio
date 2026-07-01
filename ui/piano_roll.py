@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Piano Roll Widget
+Slunder Studio v0.1.29 — Piano Roll Widget
 QGraphicsView-based MIDI piano roll editor with note creation, editing,
 selection, quantization, and snap-to-grid.
 """
@@ -16,6 +16,7 @@ from PySide6.QtGui import (
 )
 
 from core.midi_utils import CCEvent, NoteData, TrackData, get_pitch_range
+from ui.accessibility import install_accessibility
 from ui.theme import ThemeEngine
 
 
@@ -488,6 +489,23 @@ class CCAutomationLane(QWidget):
         """)
         layout.addWidget(self._table)
 
+        install_accessibility(
+            self,
+            "CC Automation",
+            named_controls=[
+                (self._controller_combo, "CC controller", "Selects which MIDI CC lane to edit."),
+                (self._beat_spin, "CC beat position", "Sets the beat position for a new CC event."),
+                (self._value_spin, "CC value", "Sets the value for a new CC event (0-127)."),
+                (self._add_cc_btn, "Add CC event", "Inserts a CC event at the specified beat and value."),
+                (self._clear_lane_btn, "Clear CC lane", "Removes all events for the selected CC controller."),
+                (self._table, "CC events table", "Shows all CC events for the selected controller."),
+            ],
+            tab_order=[
+                self._controller_combo, self._beat_spin, self._value_spin,
+                self._add_cc_btn, self._clear_lane_btn, self._table,
+            ],
+        )
+
     def load_track(self, track: TrackData, tempo: float):
         self._track = track
         self._tempo = tempo
@@ -641,6 +659,27 @@ class PianoRollWidget(QWidget):
         self._automation_lane = CCAutomationLane()
         self._automation_lane.cc_changed.connect(self.notes_changed.emit)
         layout.addWidget(self._automation_lane)
+
+        install_accessibility(
+            self,
+            "Piano Roll",
+            named_controls=[
+                (self._snap_combo, "Snap grid", "Sets the note snap resolution."),
+                (self._velocity_spin, "Default velocity", "Sets the velocity for newly placed notes."),
+                (self._swing_spin, "Swing amount", "Sets the swing percentage for groove quantization."),
+                (self._humanize_spin, "Humanize range", "Sets the velocity randomization range."),
+                (self._quantize_btn, "Quantize notes", "Snaps all notes to the current grid."),
+                (self._swing_btn, "Apply swing", "Applies swing groove to note timing."),
+                (self._humanize_btn, "Humanize velocity", "Randomizes note velocities for a natural feel."),
+                (self._select_all_btn, "Select all notes", "Selects every note in the piano roll."),
+                (self._delete_btn, "Delete selected notes", "Removes all selected notes."),
+            ],
+            tab_order=[
+                self._snap_combo, self._velocity_spin, self._swing_spin, self._humanize_spin,
+                self._quantize_btn, self._swing_btn, self._humanize_btn,
+                self._select_all_btn, self._delete_btn,
+            ],
+        )
 
     def load_track(self, track: TrackData, tempo: float = 120.0, bars: int = 16):
         self._scene.load_track(track, tempo, bars)
