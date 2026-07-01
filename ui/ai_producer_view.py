@@ -20,6 +20,7 @@ from engines.ai_producer import (
     GENRE_DEFAULTS, MOOD_TAGS, produce_song,
 )
 from core.mastering import PRESETS
+from core.workers import InferenceWorker
 
 
 # ── Stage Card ─────────────────────────────────────────────────────────────────
@@ -165,6 +166,7 @@ class AIProducerView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._result: Optional[ProducerResult] = None
+        self._worker: Optional[InferenceWorker] = None
         self._stage_indicators: dict[PipelineStage, StageIndicator] = {}
 
         t = ThemeEngine.get_colors()
@@ -462,14 +464,28 @@ class AIProducerView(QWidget):
         self._produce_btn.setEnabled(False)
         self._output_info.setText("Producing...")
 
-        try:
-            result = produce_song(brief, self._on_progress)
-            self._result = result
-            self._display_result(result)
-        except Exception as e:
-            self._output_info.setText(f"Error: {e}")
-        finally:
-            self._produce_btn.setEnabled(True)
+        def _run_produce(brief=brief, **kwargs):
+            return produce_song(brief)
+
+        self._worker = InferenceWorker(
+            _run_produce,
+            job_kind="ai_producer",
+            job_label="AI Producer pipeline",
+        )
+        self._worker.finished.connect(self._on_produce_finished)
+        self._worker.error.connect(self._on_produce_error)
+        self._worker.start()
+
+    def _on_produce_finished(self, result):
+        self._result = result
+        self._display_result(result)
+        self._produce_btn.setEnabled(True)
+        self._worker = None
+
+    def _on_produce_error(self, error_msg):
+        self._output_info.setText(f"Error: {error_msg}")
+        self._produce_btn.setEnabled(True)
+        self._worker = None
 
     def _on_progress(self, progress: float, message: str):
         """Update progress from pipeline."""

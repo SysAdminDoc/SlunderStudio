@@ -740,13 +740,12 @@ class MixerView(QWidget):
                 "WAV (*.wav);;FLAC (*.flac)"
             )
             if path and result.audio is not None:
-                import wave
-                int_audio = (result.audio * 32767).clip(-32768, 32767).astype(np.int16)
-                with wave.open(path, "w") as wf:
-                    wf.setnchannels(2)
-                    wf.setsampwidth(2)
-                    wf.setframerate(sr)
-                    wf.writeframes(int_audio.tobytes())
+                import soundfile as sf
+                ext = os.path.splitext(path)[1].lower()
+                if ext == ".flac":
+                    sf.write(path, result.audio, sr, subtype="PCM_16")
+                else:
+                    sf.write(path, result.audio, sr, subtype="PCM_16")
 
                 self._status.setText(
                     f"Exported: {path} | "

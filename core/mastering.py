@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Smart Mastering
+Slunder Studio v0.1.29 — Smart Mastering
 Automated mastering chain: EQ, compression, stereo enhancement,
 limiting, and loudness normalization (LUFS targeting).
 """
@@ -33,6 +33,8 @@ class MasteringPreset:
     limiter_release: float = 50.0   # ms
     # Stereo
     stereo_width: float = 1.0       # 0.0 (mono) to 2.0 (extra wide)
+    ms_mid_gain_db: float = 0.0     # Mid channel trim
+    ms_side_gain_db: float = 0.0    # Side channel trim
     # Loudness
     target_lufs: float = -14.0      # integrated loudness target
 
@@ -311,6 +313,9 @@ def apply_compression(audio: np.ndarray, sr: int,
     """Simple compressor with attack/release envelope."""
     threshold = db_to_linear(threshold_db)
     makeup = db_to_linear(makeup_db)
+    attack_ms = max(attack_ms, 0.01)
+    release_ms = max(release_ms, 0.01)
+    sr = max(sr, 1)
     attack_coeff = np.exp(-1.0 / (attack_ms * 0.001 * sr))
     release_coeff = np.exp(-1.0 / (release_ms * 0.001 * sr))
 
@@ -369,6 +374,25 @@ def apply_stereo_width(audio: np.ndarray, width: float) -> np.ndarray:
     side *= width
 
     output = np.column_stack([mid + side, mid - side])
+    return output
+
+
+def apply_mid_side_gain(audio: np.ndarray,
+                        mid_gain_db: float = 0.0,
+                        side_gain_db: float = 0.0) -> np.ndarray:
+    """Apply explicit Mid/Side gain trims to stereo audio."""
+    if audio.ndim != 2 or audio.shape[1] != 2:
+        return audio
+    if abs(mid_gain_db) < 0.01 and abs(side_gain_db) < 0.01:
+        return audio
+
+    mid = (audio[:, 0] + audio[:, 1]) * 0.5 * db_to_linear(mid_gain_db)
+    side = (audio[:, 0] - audio[:, 1]) * 0.5 * db_to_linear(side_gain_db)
+    output = np.column_stack([mid + side, mid - side]).astype(np.float32)
+
+    peak = float(np.max(np.abs(output))) if output.size else 0.0
+    if peak > 1.0:
+        output /= peak
     return output
 
 
@@ -722,6 +746,11 @@ def master_audio(audio: np.ndarray, sr: int,
 
         # Stereo width
         processed = apply_stereo_width(processed, preset.stereo_width)
+        processed = apply_mid_side_gain(
+            processed,
+            preset.ms_mid_gain_db,
+            preset.ms_side_gain_db,
+        )
 
         if progress_callback:
             progress_callback(0.7, "Applying limiter...")
