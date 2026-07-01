@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Reference Panel
+Slunder Studio v0.1.29 — Reference Panel
 Reference track analysis UI: drag-drop audio, view analysis results,
 "Match This" one-click generation, and reference library management.
 """
@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
+from ui.theme import Palette
 from ui.waveform_widget import WaveformWidget
 
 
@@ -19,18 +20,18 @@ class AnalysisCard(QFrame):
     def __init__(self, label: str, value: str = "", parent=None):
         super().__init__(parent)
         self.setStyleSheet(
-            "QFrame { background: #1E1E2E; border: 1px solid #313244; border-radius: 6px; padding: 8px; }"
+            f"QFrame {{ background: {Palette.BASE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; padding: 8px; }}"
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(2)
 
         self._label = QLabel(label)
-        self._label.setStyleSheet("color: #A6ADC8; font-size: 10px; font-weight: bold;")
+        self._label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 10px; font-weight: bold;")
         layout.addWidget(self._label)
 
         self._value = QLabel(value)
-        self._value.setStyleSheet("color: #CDD6F4; font-size: 14px; font-weight: bold;")
+        self._value.setStyleSheet(f"color: {Palette.TEXT}; font-size: 14px; font-weight: bold;")
         layout.addWidget(self._value)
 
     def set_value(self, value: str):
@@ -59,7 +60,7 @@ class ReferencePanel(QWidget):
         # Header
         header = QHBoxLayout()
         title = QLabel("Reference Track")
-        title.setStyleSheet("color: #CDD6F4; font-weight: bold; font-size: 13px;")
+        title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 13px;")
         header.addWidget(title)
         header.addStretch()
 
@@ -76,8 +77,8 @@ class ReferencePanel(QWidget):
         self._drop_zone.setAlignment(Qt.AlignCenter)
         self._drop_zone.setFixedHeight(60)
         self._drop_zone.setStyleSheet(
-            "QLabel { background: #181825; border: 2px dashed #45475A; border-radius: 8px; "
-            "color: #6C7086; font-size: 12px; }"
+            f"QLabel {{ background: {Palette.MANTLE}; border: 2px dashed {Palette.SURFACE1}; border-radius: 8px; "
+            f"color: {Palette.OVERLAY0}; font-size: 12px; }}"
         )
         layout.addWidget(self._drop_zone)
 
@@ -100,9 +101,9 @@ class ReferencePanel(QWidget):
         # Metrics grid
         self._metrics_group = QGroupBox("Analysis")
         self._metrics_group.setStyleSheet(
-            "QGroupBox { color: #A6ADC8; border: 1px solid #313244; border-radius: 6px; "
-            "margin-top: 8px; padding-top: 14px; font-size: 11px; }"
-            "QGroupBox::title { subcontrol-origin: margin; left: 10px; }"
+            f"QGroupBox {{ color: {Palette.SUBTEXT0}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
+            f"margin-top: 8px; padding-top: 14px; font-size: 11px; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; }}"
         )
         metrics_grid = QGridLayout(self._metrics_group)
         metrics_grid.setSpacing(6)
@@ -127,20 +128,20 @@ class ReferencePanel(QWidget):
         # Suggested tags
         self._tags_label = QLabel("")
         self._tags_label.setWordWrap(True)
-        self._tags_label.setStyleSheet("color: #94E2D5; font-size: 11px; padding: 4px;")
+        self._tags_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 11px; padding: 4px;")
         self._tags_label.hide()
         self._results_layout.addWidget(self._tags_label)
 
         self._clap_label = QLabel("")
         self._clap_label.setWordWrap(True)
-        self._clap_label.setStyleSheet("color: #89B4FA; font-size: 11px; padding: 4px;")
+        self._clap_label.setStyleSheet(f"color: {Palette.BLUE}; font-size: 11px; padding: 4px;")
         self._clap_label.hide()
         self._results_layout.addWidget(self._clap_label)
 
         # Sections
         self._sections_label = QLabel("")
         self._sections_label.setWordWrap(True)
-        self._sections_label.setStyleSheet("color: #A6ADC8; font-size: 11px; padding: 4px;")
+        self._sections_label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px; padding: 4px;")
         self._sections_label.hide()
         self._results_layout.addWidget(self._sections_label)
 
@@ -192,8 +193,8 @@ class ReferencePanel(QWidget):
         from pathlib import Path
         self._drop_zone.setText(f"Analyzing: {Path(file_path).name}...")
         self._drop_zone.setStyleSheet(
-            "QLabel { background: #181825; border: 2px solid #89B4FA; border-radius: 8px; "
-            "color: #89B4FA; font-size: 12px; }"
+            f"QLabel {{ background: {Palette.MANTLE}; border: 2px solid {Palette.BLUE}; border-radius: 8px; "
+            f"color: {Palette.BLUE}; font-size: 12px; }}"
         )
 
         # Run analysis (would use InferenceWorker in production)
@@ -216,8 +217,8 @@ class ReferencePanel(QWidget):
         # Update drop zone
         self._drop_zone.setText(filename)
         self._drop_zone.setStyleSheet(
-            "QLabel { background: #181825; border: 2px solid #A6E3A1; border-radius: 8px; "
-            "color: #A6E3A1; font-size: 12px; font-weight: bold; }"
+            f"QLabel {{ background: {Palette.MANTLE}; border: 2px solid {Palette.GREEN}; border-radius: 8px; "
+            f"color: {Palette.GREEN}; font-size: 12px; font-weight: bold; }}"
         )
 
         # Show waveform
@@ -282,8 +283,8 @@ class ReferencePanel(QWidget):
         self._analysis = None
         self._drop_zone.setText("Drop an audio file here\nor click Browse")
         self._drop_zone.setStyleSheet(
-            "QLabel { background: #181825; border: 2px dashed #45475A; border-radius: 8px; "
-            "color: #6C7086; font-size: 12px; }"
+            f"QLabel {{ background: {Palette.MANTLE}; border: 2px dashed {Palette.SURFACE1}; border-radius: 8px; "
+            f"color: {Palette.OVERLAY0}; font-size: 12px; }}"
         )
         self._waveform.hide()
         self._metrics_group.hide()

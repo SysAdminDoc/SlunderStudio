@@ -17,7 +17,7 @@ from PySide6.QtGui import (
 
 from core.midi_utils import CCEvent, NoteData, TrackData, get_pitch_range
 from ui.accessibility import install_accessibility
-from ui.theme import ThemeEngine
+from ui.theme import Palette, ThemeEngine
 
 
 # ── Constants ──────────────────────────────────────────────────────────────────
@@ -222,7 +222,7 @@ class PianoRollScene(QGraphicsScene):
             # C note labels
             if pitch % 12 == 0:
                 label = self.addText(f"C{pitch // 12 - 1}")
-                label.setDefaultTextColor(QColor("#8b949e"))
+                label.setDefaultTextColor(QColor(Palette.SUBTEXT0))
                 label.setPos(-42, y - 2)
                 label.setZValue(20)
                 # Brighter horizontal line at C
@@ -241,7 +241,7 @@ class PianoRollScene(QGraphicsScene):
             if is_bar:
                 bar_num = beat // bar_beats + 1
                 label = self.addText(str(bar_num))
-                label.setDefaultTextColor(QColor("#58a6ff"))
+                label.setDefaultTextColor(QColor(Palette.BLUE))
                 label.setPos(x + 3, -18)
                 label.setZValue(20)
 

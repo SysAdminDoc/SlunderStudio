@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Waveform Widget
+Slunder Studio v0.1.29 — Waveform Widget
 pyqtgraph-based waveform and spectrogram display with playback cursor,
 selection regions, and zoom/pan.
 """
@@ -10,6 +10,8 @@ from PySide6.QtCore import Signal, Qt, QTimer
 from PySide6.QtGui import QColor
 
 import numpy as np
+
+from ui.theme import Palette
 
 try:
     import pyqtgraph as pg
@@ -53,7 +55,7 @@ class WaveformWidget(QWidget):
 
         if not HAS_PYQTGRAPH:
             lbl = QLabel("Waveform display unavailable — restart to retry")
-            lbl.setStyleSheet("color: #F38BA8; padding: 20px;")
+            lbl.setStyleSheet(f"color: {Palette.RED}; padding: 20px;")
             lbl.setAlignment(Qt.AlignCenter)
             layout.addWidget(lbl)
             return
@@ -76,7 +78,7 @@ class WaveformWidget(QWidget):
             self._spectro_btn.clicked.connect(lambda: self._set_mode("spectrogram"))
 
             self._info_label = QLabel("")
-            self._info_label.setStyleSheet("color: #A6ADC8; font-size: 11px;")
+            self._info_label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px;")
 
             ctrl.addWidget(self._waveform_btn)
             ctrl.addWidget(self._spectro_btn)
@@ -89,18 +91,18 @@ class WaveformWidget(QWidget):
 
         # Waveform view
         self._waveform_plot = pg.PlotWidget()
-        self._waveform_plot.setBackground("#181825")
+        self._waveform_plot.setBackground(Palette.MANTLE)
         self._waveform_plot.setMouseEnabled(x=True, y=False)
         self._waveform_plot.showGrid(x=True, y=False, alpha=0.15)
-        self._waveform_plot.getAxis("bottom").setPen(pg.mkPen("#6C7086"))
-        self._waveform_plot.getAxis("left").setPen(pg.mkPen("#6C7086"))
-        self._waveform_plot.getAxis("bottom").setTextPen(pg.mkPen("#A6ADC8"))
-        self._waveform_plot.getAxis("left").setTextPen(pg.mkPen("#A6ADC8"))
-        self._waveform_curve = self._waveform_plot.plot(pen=pg.mkPen("#89B4FA", width=1))
+        self._waveform_plot.getAxis("bottom").setPen(pg.mkPen(Palette.OVERLAY0))
+        self._waveform_plot.getAxis("left").setPen(pg.mkPen(Palette.OVERLAY0))
+        self._waveform_plot.getAxis("bottom").setTextPen(pg.mkPen(Palette.SUBTEXT0))
+        self._waveform_plot.getAxis("left").setTextPen(pg.mkPen(Palette.SUBTEXT0))
+        self._waveform_curve = self._waveform_plot.plot(pen=pg.mkPen(Palette.BLUE, width=1))
 
         # Playback cursor line
         self._cursor_line = pg.InfiniteLine(
-            pos=0, angle=90, pen=pg.mkPen("#F38BA8", width=2),
+            pos=0, angle=90, pen=pg.mkPen(Palette.RED, width=2),
             movable=False,
         )
         self._waveform_plot.addItem(self._cursor_line)
@@ -113,16 +115,16 @@ class WaveformWidget(QWidget):
 
         # Spectrogram view
         self._spectro_plot = pg.PlotWidget()
-        self._spectro_plot.setBackground("#181825")
-        self._spectro_plot.getAxis("bottom").setPen(pg.mkPen("#6C7086"))
-        self._spectro_plot.getAxis("left").setPen(pg.mkPen("#6C7086"))
-        self._spectro_plot.getAxis("bottom").setTextPen(pg.mkPen("#A6ADC8"))
-        self._spectro_plot.getAxis("left").setTextPen(pg.mkPen("#A6ADC8"))
+        self._spectro_plot.setBackground(Palette.MANTLE)
+        self._spectro_plot.getAxis("bottom").setPen(pg.mkPen(Palette.OVERLAY0))
+        self._spectro_plot.getAxis("left").setPen(pg.mkPen(Palette.OVERLAY0))
+        self._spectro_plot.getAxis("bottom").setTextPen(pg.mkPen(Palette.SUBTEXT0))
+        self._spectro_plot.getAxis("left").setTextPen(pg.mkPen(Palette.SUBTEXT0))
         self._spectro_item = pg.ImageItem()
         self._spectro_plot.addItem(self._spectro_item)
 
         self._spectro_cursor = pg.InfiniteLine(
-            pos=0, angle=90, pen=pg.mkPen("#F38BA8", width=2),
+            pos=0, angle=90, pen=pg.mkPen(Palette.RED, width=2),
             movable=False,
         )
         self._spectro_plot.addItem(self._spectro_cursor)
@@ -199,10 +201,10 @@ class WaveformWidget(QWidget):
             cmap = pg.ColorMap(
                 pos=[0.0, 0.33, 0.66, 1.0],
                 color=[
-                    QColor("#11111B"),
+                    QColor(Palette.CRUST),
                     QColor("#1E1E6E"),
-                    QColor("#89B4FA"),
-                    QColor("#F9E2AF"),
+                    QColor(Palette.BLUE),
+                    QColor(Palette.YELLOW),
                 ],
             )
             lut = cmap.getLookupTable(nPts=256)

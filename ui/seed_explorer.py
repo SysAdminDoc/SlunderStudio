@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Seed Interpolation Explorer
+Slunder Studio v0.1.29 — Seed Interpolation Explorer
 2D grid where each cell represents a generation with varying parameters.
 Progressive generation, click to play, star favorites, zoom into regions.
 """
@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, Qt
 
+from ui.theme import Palette
 from ui.waveform_widget import MiniWaveform
 
 
@@ -47,7 +48,7 @@ class SeedCell(QFrame):
         info = QHBoxLayout()
         info.setSpacing(2)
         self._seed_label = QLabel("")
-        self._seed_label.setStyleSheet("color: #6C7086; font-size: 9px;")
+        self._seed_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 9px;")
         info.addWidget(self._seed_label)
 
         info.addStretch()
@@ -55,8 +56,8 @@ class SeedCell(QFrame):
         self._star_btn = QPushButton("")
         self._star_btn.setFixedSize(20, 20)
         self._star_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; color: #6C7086; font-size: 14px; }"
-            "QPushButton:hover { color: #F9E2AF; }"
+            f"QPushButton {{ background: transparent; border: none; color: {Palette.OVERLAY0}; font-size: 14px; }}"
+            f"QPushButton:hover {{ color: {Palette.YELLOW}; }}"
         )
         self._star_btn.setText("\u2606")  # empty star
         self._star_btn.clicked.connect(self._toggle_star)
@@ -67,16 +68,16 @@ class SeedCell(QFrame):
 
         self._status_label = QLabel("")
         self._status_label.setAlignment(Qt.AlignCenter)
-        self._status_label.setStyleSheet("color: #6C7086; font-size: 10px;")
+        self._status_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 10px;")
         layout.addWidget(self._status_label)
 
     def _update_style(self, state: str):
         styles = {
-            "idle": "QFrame { background: #1E1E2E; border: 1px solid #313244; border-radius: 6px; }",
-            "generating": "QFrame { background: #1E1E2E; border: 2px solid #89B4FA; border-radius: 6px; }",
-            "done": "QFrame { background: #1E1E2E; border: 1px solid #45475A; border-radius: 6px; }",
-            "starred": "QFrame { background: #1E1E2E; border: 2px solid #F9E2AF; border-radius: 6px; }",
-            "playing": "QFrame { background: #1E1E2E; border: 2px solid #A6E3A1; border-radius: 6px; }",
+            "idle": f"QFrame {{ background: {Palette.BASE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; }}",
+            "generating": f"QFrame {{ background: {Palette.BASE}; border: 2px solid {Palette.BLUE}; border-radius: 6px; }}",
+            "done": f"QFrame {{ background: {Palette.BASE}; border: 1px solid {Palette.SURFACE1}; border-radius: 6px; }}",
+            "starred": f"QFrame {{ background: {Palette.BASE}; border: 2px solid {Palette.YELLOW}; border-radius: 6px; }}",
+            "playing": f"QFrame {{ background: {Palette.BASE}; border: 2px solid {Palette.GREEN}; border-radius: 6px; }}",
         }
         self.setStyleSheet(styles.get(state, styles["idle"]))
 
@@ -104,7 +105,7 @@ class SeedCell(QFrame):
     def set_failed(self, error: str = ""):
         self._is_generating = False
         self._status_label.setText("Failed")
-        self._status_label.setStyleSheet("color: #F38BA8; font-size: 10px;")
+        self._status_label.setStyleSheet(f"color: {Palette.RED}; font-size: 10px;")
         self._update_style("idle")
 
     def _on_click(self):
@@ -117,9 +118,9 @@ class SeedCell(QFrame):
         self._is_starred = not self._is_starred
         self._star_btn.setText("\u2605" if self._is_starred else "\u2606")
         self._star_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; "
-            f"color: {'#F9E2AF' if self._is_starred else '#6C7086'}; font-size: 14px; }}"
-            "QPushButton:hover { color: #F9E2AF; }"
+            f"QPushButton {{ background: transparent; border: none; "
+            f"color: {Palette.YELLOW if self._is_starred else Palette.OVERLAY0}; font-size: 14px; }}"
+            f" QPushButton:hover {{ color: {Palette.YELLOW}; }}"
         )
         self._update_style("starred" if self._is_starred else "done")
         self.star_toggled.emit(self.row, self.col, self._is_starred)
@@ -171,7 +172,7 @@ class SeedExplorer(QWidget):
         ctrl.setSpacing(8)
 
         lbl = QLabel("Seed Explorer")
-        lbl.setStyleSheet("color: #CDD6F4; font-weight: bold; font-size: 13px;")
+        lbl.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 13px;")
         ctrl.addWidget(lbl)
 
         ctrl.addWidget(QLabel("Grid:"))
@@ -241,7 +242,7 @@ class SeedExplorer(QWidget):
         axis_layout = QHBoxLayout()
         axis_layout.addSpacing(30)
         self._x_label = QLabel("Seed -->")
-        self._x_label.setStyleSheet("color: #89B4FA; font-size: 10px;")
+        self._x_label.setStyleSheet(f"color: {Palette.BLUE}; font-size: 10px;")
         axis_layout.addWidget(self._x_label)
         axis_layout.addStretch()
         layout.addLayout(axis_layout)
@@ -257,7 +258,7 @@ class SeedExplorer(QWidget):
 
         # Y-axis label
         y_label = QLabel("CFG\n||\nV")
-        y_label.setStyleSheet("color: #F9E2AF; font-size: 10px;")
+        y_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 10px;")
         y_label.setAlignment(Qt.AlignCenter)
         self._grid_layout.addWidget(y_label, 0, 0, self._grid_size, 1)
 
@@ -266,7 +267,7 @@ class SeedExplorer(QWidget):
 
         # Info bar
         self._info = QLabel("Configure grid parameters and click Explore to generate variations")
-        self._info.setStyleSheet("color: #6C7086; font-size: 11px;")
+        self._info.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
         layout.addWidget(self._info)
 
         self._rebuild_grid(1)  # Start with 3x3

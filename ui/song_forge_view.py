@@ -21,6 +21,7 @@ from ui.seed_explorer import SeedExplorer
 from ui.mood_curve_editor import MoodCurveEditor
 from ui.reference_panel import ReferencePanel
 from ui.accessibility import install_accessibility
+from ui.theme import Palette
 
 
 class StyleTagBrowser(QWidget):
@@ -56,7 +57,7 @@ class StyleTagBrowser(QWidget):
         cat_row.addWidget(self._cat_combo)
 
         self._fav_check = QCheckBox("Favorites")
-        self._fav_check.setStyleSheet("color: #F9E2AF;")
+        self._fav_check.setStyleSheet(f"color: {Palette.YELLOW};")
         self._fav_check.toggled.connect(self._refresh)
         cat_row.addWidget(self._fav_check)
 
@@ -65,10 +66,10 @@ class StyleTagBrowser(QWidget):
         # Tag list
         self._tag_list = QListWidget()
         self._tag_list.setStyleSheet(
-            "QListWidget { background: #181825; border: 1px solid #313244; border-radius: 4px; }"
-            "QListWidget::item { padding: 3px 6px; color: #CDD6F4; }"
-            "QListWidget::item:selected { background: #313244; color: #89B4FA; }"
-            "QListWidget::item:hover { background: #1E1E2E; }"
+            f"QListWidget {{ background: {Palette.MANTLE}; border: 1px solid {Palette.SURFACE0}; border-radius: 4px; }}"
+            f"QListWidget::item {{ padding: 3px 6px; color: {Palette.TEXT}; }}"
+            f"QListWidget::item:selected {{ background: {Palette.SURFACE0}; color: {Palette.BLUE}; }}"
+            f"QListWidget::item:hover {{ background: {Palette.BASE}; }}"
         )
         self._tag_list.setSelectionMode(QListWidget.MultiSelection)
         self._tag_list.itemSelectionChanged.connect(self._on_selection_changed)
@@ -77,7 +78,7 @@ class StyleTagBrowser(QWidget):
         # Selected tags display
         self._selected_label = QLabel("No tags selected")
         self._selected_label.setWordWrap(True)
-        self._selected_label.setStyleSheet("color: #94E2D5; font-size: 11px; padding: 4px;")
+        self._selected_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 11px; padding: 4px;")
         layout.addWidget(self._selected_label)
 
         self._refresh()
@@ -193,8 +194,8 @@ class SongForgeView(QWidget):
             "Use [Verse], [Chorus], [Bridge] structure tags."
         )
         self._quick_lyrics.setStyleSheet(
-            "QTextEdit { background: #181825; border: 1px solid #313244; border-radius: 6px; "
-            "color: #CDD6F4; font-size: 13px; padding: 8px; }"
+            f"QTextEdit {{ background: {Palette.MANTLE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
+            f"color: {Palette.TEXT}; font-size: 13px; padding: 8px; }}"
         )
         ql.addWidget(self._quick_lyrics)
 
@@ -220,17 +221,17 @@ class SongForgeView(QWidget):
         self._adv_lyrics.setPlaceholderText("Lyrics with structure tags...")
         self._adv_lyrics.setMinimumHeight(120)
         self._adv_lyrics.setStyleSheet(
-            "QTextEdit { background: #181825; border: 1px solid #313244; border-radius: 6px; "
-            "color: #CDD6F4; font-size: 12px; padding: 6px; }"
+            f"QTextEdit {{ background: {Palette.MANTLE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
+            f"color: {Palette.TEXT}; font-size: 12px; padding: 6px; }}"
         )
         al.addWidget(self._adv_lyrics)
 
         # Parameters grid
         params = QGroupBox("Generation Parameters")
         params.setStyleSheet(
-            "QGroupBox { color: #A6ADC8; border: 1px solid #313244; border-radius: 6px; "
-            "margin-top: 8px; padding-top: 14px; }"
-            "QGroupBox::title { subcontrol-origin: margin; left: 10px; }"
+            f"QGroupBox {{ color: {Palette.SUBTEXT0}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
+            f"margin-top: 8px; padding-top: 14px; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; }}"
         )
         pg = QGridLayout(params)
         pg.setSpacing(6)
@@ -280,9 +281,9 @@ class SongForgeView(QWidget):
         # Genre fusion presets
         fusion = QGroupBox("Genre Fusion")
         fusion.setStyleSheet(
-            "QGroupBox { color: #A6ADC8; border: 1px solid #313244; border-radius: 6px; "
-            "margin-top: 8px; padding-top: 14px; }"
-            "QGroupBox::title { subcontrol-origin: margin; left: 10px; }"
+            f"QGroupBox {{ color: {Palette.SUBTEXT0}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
+            f"margin-top: 8px; padding-top: 14px; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; }}"
         )
         fg = QGridLayout(fusion)
         fg.setSpacing(6)
@@ -311,7 +312,7 @@ class SongForgeView(QWidget):
         fg.addWidget(self._fusion_slider, 1, 1, 1, 2)
 
         self._fusion_weight_label = QLabel("50/50")
-        self._fusion_weight_label.setStyleSheet("color: #94E2D5; font-size: 11px;")
+        self._fusion_weight_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 11px;")
         fg.addWidget(self._fusion_weight_label, 1, 3)
 
         self._fusion_apply_btn = QPushButton("Apply Fusion")
@@ -324,9 +325,9 @@ class SongForgeView(QWidget):
 
         cover_group = QGroupBox("Cover / Repaint")
         cover_group.setStyleSheet(
-            "QGroupBox { color: #A6ADC8; border: 1px solid #313244; border-radius: 6px; "
-            "margin-top: 8px; padding-top: 14px; }"
-            "QGroupBox::title { subcontrol-origin: margin; left: 10px; }"
+            f"QGroupBox {{ color: {Palette.SUBTEXT0}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
+            f"margin-top: 8px; padding-top: 14px; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; }}"
         )
         cg = QGridLayout(cover_group)
         cg.setSpacing(6)
@@ -339,7 +340,7 @@ class SongForgeView(QWidget):
 
         cg.addWidget(QLabel("Source:"), 1, 0)
         self._cover_source_label = QLabel("No file selected")
-        self._cover_source_label.setStyleSheet("color: #6C7086; font-size: 11px;")
+        self._cover_source_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
         cg.addWidget(self._cover_source_label, 1, 1, 1, 2)
 
         self._cover_browse_btn = QPushButton("Browse")
@@ -408,7 +409,7 @@ class SongForgeView(QWidget):
         left_layout.addWidget(self._progress)
 
         self._status = QLabel("")
-        self._status.setStyleSheet("color: #6C7086; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
         left_layout.addWidget(self._status)
 
         splitter.addWidget(left)
@@ -461,7 +462,7 @@ class SongForgeView(QWidget):
         out_row.addStretch()
 
         self._output_info = QLabel("")
-        self._output_info.setStyleSheet("color: #A6ADC8; font-size: 11px;")
+        self._output_info.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px;")
         out_row.addWidget(self._output_info)
 
         center_layout.addLayout(out_row)
@@ -807,7 +808,7 @@ class SongForgeView(QWidget):
         self._reset_ui()
         self._batch_view.refresh_recoverable_jobs()
         self._status.setText(f"Error: {error_msg[:100]}")
-        self._status.setStyleSheet("color: #F38BA8; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 11px;")
         if self._toast:
             self._toast.show_toast(f"Generation failed: {error_msg[:80]}", "error")
 
@@ -822,7 +823,7 @@ class SongForgeView(QWidget):
         self._progress.hide()
         if clear_worker:
             self._worker = None
-        self._status.setStyleSheet("color: #6C7086; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
 
     def _load_output(
         self,
@@ -1041,7 +1042,7 @@ class SongForgeView(QWidget):
             )
         self._seed_explore_params = []
         self._status.setText(f"Seed exploration error: {error_msg[:100]}")
-        self._status.setStyleSheet("color: #F38BA8; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 11px;")
         if self._toast:
             self._toast.show_toast(f"Seed exploration failed: {error_msg[:80]}", "error")
 

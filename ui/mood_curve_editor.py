@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Mood/Energy Curve Editor
+Slunder Studio v0.1.29 — Mood/Energy Curve Editor
 Visual curve editor for drawing song energy arcs.
 Draggable control points with Bezier interpolation.
 Preset curves and reference overlay.
@@ -12,6 +12,8 @@ from PySide6.QtCore import Signal, Qt, QPointF, QRectF
 from PySide6.QtGui import QPainterPath, QPen, QBrush, QColor, QLinearGradient
 
 import numpy as np
+
+from ui.theme import Palette
 
 # ── Preset Curves ──────────────────────────────────────────────────────────────
 
@@ -36,8 +38,8 @@ class DraggablePoint(QGraphicsEllipseItem):
         self.setPos(x, y)
         self.setFlag(QGraphicsEllipseItem.ItemIsMovable, True)
         self.setFlag(QGraphicsEllipseItem.ItemSendsGeometryChanges, True)
-        self.setBrush(QBrush(QColor("#89B4FA")))
-        self.setPen(QPen(QColor("#CDD6F4"), 1.5))
+        self.setBrush(QBrush(QColor(Palette.BLUE)))
+        self.setPen(QPen(QColor(Palette.TEXT), 1.5))
         self.setZValue(10)
         self.setCursor(Qt.SizeAllCursor)
         self._index = index
@@ -95,7 +97,7 @@ class MoodCurveEditor(QWidget):
         ctrl.setSpacing(6)
 
         lbl = QLabel("Energy Curve")
-        lbl.setStyleSheet("color: #CDD6F4; font-weight: bold; font-size: 12px;")
+        lbl.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 12px;")
         ctrl.addWidget(lbl)
 
         self._preset_combo = QComboBox()
@@ -114,7 +116,7 @@ class MoodCurveEditor(QWidget):
         ctrl.addStretch()
 
         self._energy_label = QLabel("")
-        self._energy_label.setStyleSheet("color: #A6ADC8; font-size: 11px;")
+        self._energy_label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px;")
         ctrl.addWidget(self._energy_label)
 
         layout.addLayout(ctrl)
@@ -126,7 +128,7 @@ class MoodCurveEditor(QWidget):
         self._view = QGraphicsView(self._scene)
         self._view.setRenderHint(self._view.renderHints())
         self._view.setStyleSheet(
-            "QGraphicsView { background: #181825; border: 1px solid #313244; border-radius: 6px; }"
+            f"QGraphicsView {{ background: {Palette.MANTLE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; }}"
         )
         self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -139,7 +141,7 @@ class MoodCurveEditor(QWidget):
 
     def _draw_grid(self):
         """Draw background grid lines."""
-        pen = QPen(QColor("#313244"), 1, Qt.DotLine)
+        pen = QPen(QColor(Palette.SURFACE0), 1, Qt.DotLine)
         # Horizontal lines (energy levels)
         for i in range(1, 4):
             y = i * self.SCENE_H / 4
@@ -215,7 +217,7 @@ class MoodCurveEditor(QWidget):
 
         # Draw curve line
         self._curve_path = self._scene.addPath(
-            path, QPen(QColor("#89B4FA"), 2.5, Qt.SolidLine)
+            path, QPen(QColor(Palette.BLUE), 2.5, Qt.SolidLine)
         )
         self._curve_path.setZValue(5)
 
@@ -244,7 +246,7 @@ class MoodCurveEditor(QWidget):
                 path.lineTo(x, y)
 
         self._reference_path = self._scene.addPath(
-            path, QPen(QColor("#F9E2AF"), 1.5, Qt.DashLine)
+            path, QPen(QColor(Palette.YELLOW), 1.5, Qt.DashLine)
         )
         self._reference_path.setZValue(3)
 

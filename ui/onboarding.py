@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Onboarding Wizard
+Slunder Studio v0.1.29 — Onboarding Wizard
 First-run experience: welcome, system check, model download prompt,
 quick start guide, and preference setup.
 """
@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 
 from core.settings import APP_VERSION
-from ui.theme import ThemeEngine
+from ui.theme import Palette, ThemeEngine
 
 
 # ── System Check ───────────────────────────────────────────────────────────────
@@ -94,14 +94,6 @@ class WelcomePage(QWidget):
         logo = QLabel("SLUNDER STUDIO")
         logo.setAlignment(Qt.AlignCenter)
         logo.setFont(QFont("Segoe UI", 28, QFont.Bold))
-        logo.setStyleSheet(f"""
-            color: transparent;
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 {t['accent']}, stop:0.5 #a371f7, stop:1 #f38ba8);
-            -webkit-background-clip: text;
-            background-clip: text;
-        """)
-        # Fallback for non-webkit
         logo.setStyleSheet(f"color: {t['accent']}; font-size: 28px; font-weight: bold;")
         layout.addWidget(logo)
 
@@ -184,8 +176,8 @@ class SystemCheckPage(QWidget):
             icon.setFixedWidth(24)
             icon.setAlignment(Qt.AlignCenter)
             icon.setStyleSheet(
-                f"color: #238636; font-weight: bold; font-size: 11px;"
-                if ok else f"color: #d29922; font-weight: bold; font-size: 11px;"
+                f"color: {Palette.GREEN}; font-weight: bold; font-size: 11px;"
+                if ok else f"color: {Palette.YELLOW}; font-weight: bold; font-size: 11px;"
             )
             name = QLabel(f"{label}:")
             name.setFixedWidth(110)
@@ -257,7 +249,7 @@ class ModelGuidePage(QWidget):
             tag.setFixedWidth(30)
             tag.setAlignment(Qt.AlignCenter)
             tag.setStyleSheet(
-                f"color: white; background: #238636; border-radius: 3px; "
+                f"color: white; background: {Palette.GREEN}; border-radius: 3px; "
                 f"font-size: 8px; font-weight: bold; padding: 2px;"
                 if recommended else
                 f"color: {t['text_secondary']}; background: {t['border']}; "

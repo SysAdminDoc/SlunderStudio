@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — MIDI Mixer Widget
+Slunder Studio v0.1.29 — MIDI Mixer Widget
 Per-track mixer with volume, pan, mute/solo, program selector, and master controls.
 """
 from typing import Optional
@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 from core.midi_utils import MidiData, TrackData, GM_PROGRAMS, get_program_name
-from ui.theme import ThemeEngine
+from ui.theme import Palette, ThemeEngine
 
 
 # ── Track Strip ────────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ class TrackStrip(QFrame):
         t = ThemeEngine.get_colors()
         if active:
             return f"""
-                QPushButton {{ background: #da3633; color: white; border: none;
+                QPushButton {{ background: {Palette.RED}; color: white; border: none;
                     border-radius: 3px; font-weight: bold; font-size: 10px; }}
             """
         return f"""
@@ -203,7 +203,7 @@ class TrackStrip(QFrame):
         t = ThemeEngine.get_colors()
         if active:
             return f"""
-                QPushButton {{ background: #d29922; color: white; border: none;
+                QPushButton {{ background: {Palette.YELLOW}; color: white; border: none;
                     border-radius: 3px; font-weight: bold; font-size: 10px; }}
             """
         return self._mute_style(False)
