@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — MIDI Studio View
+Slunder Studio v0.1.29 — MIDI Studio View
 Main MIDI Studio page: text-to-MIDI generation, piano roll editor,
 per-track mixer, .mid import/export, FluidSynth rendering, and
 cross-module routing (Song Forge, Vocal Suite).
@@ -249,13 +249,12 @@ class MidiStudioView(QWidget):
         self._gen_btn.setFixedHeight(36)
         self._gen_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {t.get('accent', '#58a6ff')}, stop:1 #a371f7);
-                color: white; border: none; border-radius: 6px;
+                background: {t.get('accent', '#9b8cff')};
+                color: {t.get('background', '#07111b')}; border: none; border-radius: 5px;
                 font-weight: bold; font-size: 13px;
             }}
             QPushButton:hover {{ background: {t.get('accent_hover', '#79c0ff')}; }}
-            QPushButton:disabled {{ background: {t.get('border', '#1e2733')}; color: #555; }}
+            QPushButton:disabled {{ background: {t.get('border', '#1e2733')}; color: {t.get('muted', '#8795a5')}; }}
         """)
         self._gen_btn.clicked.connect(self._on_generate)
         gen_layout.addWidget(self._gen_btn)

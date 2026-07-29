@@ -166,21 +166,32 @@ class SongForgeView(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(10)
 
-        # Main splitter: left controls | center output | right reference
+        # Two-pane studio: creation canvas | render session
         splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
 
         # ── Left Panel: Input Controls ────────────────────────────────────────
-        left = QWidget()
+        left = QFrame()
+        left.setObjectName("studioSurface")
+        left.setMinimumWidth(380)
         left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(6)
+        left_layout.setContentsMargins(0, 0, 18, 0)
+        left_layout.setSpacing(8)
+
+        creation_eyebrow = QLabel("CREATION CANVAS")
+        creation_eyebrow.setObjectName("pageEyebrow")
+        left_layout.addWidget(creation_eyebrow)
+        creation_title = QLabel("Lyrics & direction")
+        creation_title.setObjectName("subheading")
+        left_layout.addWidget(creation_title)
 
         # Mode tabs
         self._mode_tabs = QTabWidget()
-        self._mode_tabs.setFixedHeight(340)
+        self._mode_tabs.setMinimumHeight(250)
+        self._mode_tabs.setMaximumHeight(360)
 
         # Quick Mode
         quick_page = QWidget()
@@ -193,10 +204,7 @@ class SongForgeView(QWidget):
             "Paste lyrics from Lyrics Engine or type directly...\n"
             "Use [Verse], [Chorus], [Bridge] structure tags."
         )
-        self._quick_lyrics.setStyleSheet(
-            f"QTextEdit {{ background: {Palette.MANTLE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
-            f"color: {Palette.TEXT}; font-size: 13px; padding: 8px; }}"
-        )
+        self._quick_lyrics.setObjectName("primaryEditor")
         ql.addWidget(self._quick_lyrics)
 
         ql.addWidget(QLabel("Style Tags"))
@@ -220,19 +228,11 @@ class SongForgeView(QWidget):
         self._adv_lyrics = QTextEdit()
         self._adv_lyrics.setPlaceholderText("Lyrics with structure tags...")
         self._adv_lyrics.setMinimumHeight(120)
-        self._adv_lyrics.setStyleSheet(
-            f"QTextEdit {{ background: {Palette.MANTLE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
-            f"color: {Palette.TEXT}; font-size: 12px; padding: 6px; }}"
-        )
+        self._adv_lyrics.setObjectName("primaryEditor")
         al.addWidget(self._adv_lyrics)
 
         # Parameters grid
         params = QGroupBox("Generation Parameters")
-        params.setStyleSheet(
-            f"QGroupBox {{ color: {Palette.SUBTEXT0}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
-            f"margin-top: 8px; padding-top: 14px; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; }}"
-        )
         pg = QGridLayout(params)
         pg.setSpacing(6)
 
@@ -280,11 +280,6 @@ class SongForgeView(QWidget):
 
         # Genre fusion presets
         fusion = QGroupBox("Genre Fusion")
-        fusion.setStyleSheet(
-            f"QGroupBox {{ color: {Palette.SUBTEXT0}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
-            f"margin-top: 8px; padding-top: 14px; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; }}"
-        )
         fg = QGridLayout(fusion)
         fg.setSpacing(6)
 
@@ -324,11 +319,6 @@ class SongForgeView(QWidget):
         al.addWidget(fusion)
 
         cover_group = QGroupBox("Cover / Repaint")
-        cover_group.setStyleSheet(
-            f"QGroupBox {{ color: {Palette.SUBTEXT0}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
-            f"margin-top: 8px; padding-top: 14px; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; }}"
-        )
         cg = QGridLayout(cover_group)
         cg.setSpacing(6)
 
@@ -379,7 +369,11 @@ class SongForgeView(QWidget):
         left_layout.addWidget(self._mode_tabs)
 
         # Style Tag Browser
+        style_eyebrow = QLabel("STYLE LIBRARY")
+        style_eyebrow.setObjectName("pageEyebrow")
+        left_layout.addWidget(style_eyebrow)
         self._tag_browser = StyleTagBrowser()
+        self._tag_browser.setMaximumHeight(120)
         self._tag_browser.tags_changed.connect(self._on_tags_changed)
         left_layout.addWidget(self._tag_browser, 1)
 
@@ -387,13 +381,14 @@ class SongForgeView(QWidget):
         gen_row = QHBoxLayout()
         gen_row.setSpacing(6)
 
-        self._generate_btn = QPushButton("Generate")
-        self._generate_btn.setFixedHeight(36)
+        self._generate_btn = QPushButton("\u2726  Generate song")
+        self._generate_btn.setObjectName("primaryAction")
+        self._generate_btn.setFixedHeight(46)
         self._generate_btn.clicked.connect(self._on_generate)
         gen_row.addWidget(self._generate_btn)
 
         self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setFixedHeight(36)
+        self._cancel_btn.setFixedHeight(46)
         self._cancel_btn.setProperty("class", "danger")
         self._cancel_btn.clicked.connect(self._on_cancel)
         self._cancel_btn.hide()
@@ -414,15 +409,34 @@ class SongForgeView(QWidget):
 
         splitter.addWidget(left)
 
-        # ── Center Panel: Output & Sub-views ──────────────────────────────────
-        center = QWidget()
+        # ── Session Panel: Output, variations, and reference ──────────────────
+        center = QFrame()
+        center.setObjectName("sessionPanel")
+        center.setMinimumWidth(450)
         center_layout = QVBoxLayout(center)
-        center_layout.setContentsMargins(0, 0, 0, 0)
-        center_layout.setSpacing(6)
+        center_layout.setContentsMargins(18, 0, 0, 0)
+        center_layout.setSpacing(8)
+
+        session_header = QHBoxLayout()
+        session_heading = QVBoxLayout()
+        session_heading.setContentsMargins(0, 0, 0, 0)
+        session_heading.setSpacing(1)
+        session_eyebrow = QLabel("RENDER SESSION")
+        session_eyebrow.setObjectName("pageEyebrow")
+        session_heading.addWidget(session_eyebrow)
+        session_title = QLabel("Output & variations")
+        session_title.setObjectName("subheading")
+        session_heading.addWidget(session_title)
+        session_header.addLayout(session_heading)
+        session_header.addStretch()
+        self._session_state = QLabel("\u25cf  Ready")
+        self._session_state.setObjectName("localStatus")
+        session_header.addWidget(self._session_state)
+        center_layout.addLayout(session_header)
 
         # Waveform
         self._waveform = WaveformWidget()
-        self._waveform.setFixedHeight(150)
+        self._waveform.setFixedHeight(132)
         center_layout.addWidget(self._waveform)
 
         # Output toolbar
@@ -443,7 +457,7 @@ class SongForgeView(QWidget):
         self._export_btn.clicked.connect(self._on_export)
         out_row.addWidget(self._export_btn)
 
-        self._to_vocals_btn = QPushButton("Send Song to Vocals")
+        self._to_vocals_btn = QPushButton("Song \u2192 Vocals")
         self._to_vocals_btn.setFixedHeight(28)
         self._to_vocals_btn.setProperty("class", "secondary")
         self._to_vocals_btn.setEnabled(False)
@@ -452,7 +466,7 @@ class SongForgeView(QWidget):
         )
         out_row.addWidget(self._to_vocals_btn)
 
-        self._to_vocal_stem_btn = QPushButton("Send Vocal Stem")
+        self._to_vocal_stem_btn = QPushButton("Stem \u2192 Vocals")
         self._to_vocal_stem_btn.setFixedHeight(28)
         self._to_vocal_stem_btn.setProperty("class", "secondary")
         self._to_vocal_stem_btn.setEnabled(False)
@@ -483,22 +497,19 @@ class SongForgeView(QWidget):
         self._mood_curve = MoodCurveEditor()
         self._sub_tabs.addTab(self._mood_curve, "Mood Curve")
 
+        self._ref_panel = ReferencePanel()
+        self._ref_panel.match_requested.connect(self._on_reference_match)
+        self._ref_panel.tags_extracted.connect(self._on_reference_tags)
+        self._sub_tabs.addTab(self._ref_panel, "Reference")
+
         center_layout.addWidget(self._sub_tabs, 1)
 
         splitter.addWidget(center)
 
-        # ── Right Panel: Reference ────────────────────────────────────────────
-        self._ref_panel = ReferencePanel()
-        self._ref_panel.setMaximumWidth(300)
-        self._ref_panel.match_requested.connect(self._on_reference_match)
-        self._ref_panel.tags_extracted.connect(self._on_reference_tags)
-        splitter.addWidget(self._ref_panel)
-
         # Splitter sizes
-        splitter.setSizes([360, 500, 280])
-        splitter.setStretchFactor(0, 0)
+        splitter.setSizes([500, 720])
+        splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
-        splitter.setStretchFactor(2, 0)
 
         layout.addWidget(splitter)
         install_accessibility(
@@ -526,6 +537,7 @@ class SongForgeView(QWidget):
                 (self._to_vocals_btn, "Send generated song to vocals", "Routes generated audio to Vocal Suite."),
                 (self._to_vocal_stem_btn, "Send recovered vocal stem", "Routes the recovered vocals-only Song Forge stem to Vocal Suite."),
                 (self._sub_tabs, "Song Forge result tools", "Switches between batch results, seed explorer, and mood curve."),
+                (self._session_state, "Song Forge session state", "Reports generation readiness and result state."),
             ],
             tab_order=[
                 self._mode_tabs,
@@ -631,6 +643,7 @@ class SongForgeView(QWidget):
         self._progress.setValue(0)
         self._progress.show()
         self._status.setText("Starting generation...")
+        self._set_session_state("Rendering locally", Palette.BLUE)
 
         # Determine batch count
         batch_count = 1
@@ -748,6 +761,7 @@ class SongForgeView(QWidget):
         self._reset_ui(clear_worker=False)
         self._batch_view.refresh_recoverable_jobs()
         self._status.setText("Cancelled")
+        self._set_session_state("Generation cancelled", Palette.YELLOW)
 
     def _on_progress(self, pct: int):
         self._progress.setValue(pct)
@@ -809,6 +823,7 @@ class SongForgeView(QWidget):
         self._batch_view.refresh_recoverable_jobs()
         self._status.setText(f"Error: {error_msg[:100]}")
         self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 11px;")
+        self._set_session_state("Generation failed", Palette.RED)
         if self._toast:
             self._toast.show_toast(f"Generation failed: {error_msg[:80]}", "error")
 
@@ -824,6 +839,10 @@ class SongForgeView(QWidget):
         if clear_worker:
             self._worker = None
         self._status.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
+        if self._current_audio_path:
+            self._set_session_state("Render ready", Palette.GREEN)
+        else:
+            self._set_session_state("Ready", Palette.TEAL)
 
     def _load_output(
         self,
@@ -837,6 +856,7 @@ class SongForgeView(QWidget):
             return
         self._current_audio_path = audio_path
         self._current_vocal_stem_path = vocal_stem_path or ""
+        self._set_session_state("Render ready", Palette.GREEN)
         try:
             self._waveform.load_file(audio_path)
         except Exception:
@@ -855,6 +875,14 @@ class SongForgeView(QWidget):
         elif vocal_stem_error:
             info += " | vocals: unavailable"
         self._output_info.setText(info)
+
+    def _set_session_state(self, text: str, color: str):
+        self._session_state.setText(f"\u25cf  {text}")
+        self._session_state.setStyleSheet(
+            f"color: {color}; background: {Palette.SURFACE0}; "
+            f"border: 1px solid {Palette.SURFACE1}; border-radius: 10px; "
+            "padding: 4px 9px; font-size: 10px; font-weight: 700;"
+        )
 
     def _format_vocal_recovery_status(self, result: dict) -> str:
         if result.get("vocal_stem_path"):
@@ -957,6 +985,7 @@ class SongForgeView(QWidget):
         self._progress.show()
         self._sub_tabs.setCurrentWidget(self._seed_explorer)
         self._status.setText("Starting seed exploration...")
+        self._set_session_state("Exploring seed grid", Palette.BLUE)
 
         from engines.ace_step_engine import generate_seed_grid
         self._worker = InferenceWorker(
@@ -1043,6 +1072,7 @@ class SongForgeView(QWidget):
         self._seed_explore_params = []
         self._status.setText(f"Seed exploration error: {error_msg[:100]}")
         self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 11px;")
+        self._set_session_state("Seed exploration failed", Palette.RED)
         if self._toast:
             self._toast.show_toast(f"Seed exploration failed: {error_msg[:80]}", "error")
 

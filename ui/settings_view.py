@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Settings View
+Slunder Studio v0.1.29 — Settings View
 Two-tier settings: Simple Mode (essentials) and Advanced Mode (full controls).
 All changes apply immediately with toast feedback.
 """
@@ -59,11 +59,8 @@ class SettingsView(QWidget):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(16)
 
-        # Title
+        # Version context
         header = QHBoxLayout()
-        title = QLabel(tr("settings.title"))
-        title.setObjectName("heading")
-        header.addWidget(title)
         header.addStretch()
 
         version_label = QLabel(tr("settings.version_label", version=APP_VERSION))

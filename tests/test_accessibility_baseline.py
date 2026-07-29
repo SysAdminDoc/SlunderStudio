@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication
 from core.project import ProjectManager
 from core.settings import Settings
 from ui.batch_view import BatchCard, BatchView
-from ui.main_window import Sidebar, TransportBar
+from ui.main_window import PAGE_META, Sidebar, TransportBar
 from ui.mixer_view import MixerTrackStrip, MixerView
 from ui.model_hub import ModelHubView
 from ui.piano_roll import CCAutomationLane, PianoRollWidget
@@ -43,11 +43,19 @@ class AccessibilityBaselineTests(unittest.TestCase):
         ]:
             self.assertIn(selector, stylesheet)
         self.assertIn("#f9e2af", stylesheet.lower())
+        for shell_selector in [
+            "QFrame#commandBar",
+            "QFrame#workspaceHeader",
+            "QFrame#sessionPanel",
+            "QPushButton#primaryAction",
+        ]:
+            self.assertIn(shell_selector, stylesheet)
 
     def test_main_shell_navigation_and_transport_have_accessible_names(self):
         sidebar = Sidebar()
         transport = TransportBar()
         try:
+            self.assertEqual(len(PAGE_META), len(sidebar._buttons))
             for button in sidebar._buttons:
                 self.assert_accessible(button)
             for widget in [
@@ -63,6 +71,17 @@ class AccessibilityBaselineTests(unittest.TestCase):
         finally:
             sidebar.deleteLater()
             transport.deleteLater()
+
+    def test_song_forge_session_keeps_reference_and_primary_action_visible(self):
+        view = SongForgeView()
+        try:
+            self.assertGreaterEqual(view._sub_tabs.indexOf(view._ref_panel), 0)
+            self.assertIn("Generate song", view._generate_btn.text())
+            self.assertEqual(view._generate_btn.objectName(), "primaryAction")
+            self.assertIn("Ready", view._session_state.text())
+            self.assert_accessible(view._session_state)
+        finally:
+            view.deleteLater()
 
     def test_major_views_expose_accessible_controls(self):
         with tempfile.TemporaryDirectory() as tmp:

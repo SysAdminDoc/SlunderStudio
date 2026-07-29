@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — SFX Generator View
+Slunder Studio v0.1.29 — SFX Generator View
 Text-to-SFX generation with preset categories, batch generation,
 waveform preview, and drag-to-mixer support.
 """
@@ -255,13 +255,12 @@ class SFXView(QWidget):
         self._gen_btn.setFixedHeight(36)
         self._gen_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #fab387, stop:1 #f9e2af);
-                color: #1e1e2e; border: none; border-radius: 6px;
+                background: {t['accent']};
+                color: {t['background']}; border: none; border-radius: 5px;
                 font-weight: bold; font-size: 13px;
             }}
-            QPushButton:hover {{ opacity: 0.9; }}
-            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
+            QPushButton:hover {{ background: {t['accent_hover']}; }}
+            QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
         self._gen_btn.clicked.connect(self._on_generate)
         ctrl_layout.addWidget(self._gen_btn)

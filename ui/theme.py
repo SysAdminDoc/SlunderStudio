@@ -1,40 +1,40 @@
 """
-Slunder Studio v0.1.28 — Theme Engine
-Catppuccin Mocha dark theme with glassmorphism, animations, accent color system,
-and full QComboBox ControlTemplate for proper dark rendering.
+Slunder Studio v0.1.30 — Theme Engine
+Ink-and-signal desktop theme with an accessible focus system, restrained surfaces,
+and complete native Qt control styling.
 """
 from PySide6.QtWidgets import QWidget, QGraphicsOpacityEffect
 from PySide6.QtCore import QPropertyAnimation, QEasingCurve, QRect, Property
 from PySide6.QtGui import QPainter, QColor, QLinearGradient
 
-# ── Catppuccin Mocha Palette ───────────────────────────────────────────────────
+# ── Ink-and-signal palette ─────────────────────────────────────────────────────
 
 class Palette:
-    """Catppuccin Mocha color tokens."""
-    CRUST    = "#11111b"
-    MANTLE   = "#181825"
-    BASE     = "#1e1e2e"
-    SURFACE0 = "#313244"
-    SURFACE1 = "#45475a"
-    SURFACE2 = "#585b70"
-    OVERLAY0 = "#6c7086"
-    OVERLAY1 = "#7f849c"
-    SUBTEXT0 = "#a6adc8"
-    SUBTEXT1 = "#bac2de"
-    TEXT     = "#cdd6f4"
-    BLUE     = "#89b4fa"
-    TEAL     = "#94e2d5"
-    GREEN    = "#a6e3a1"
+    """Low-glare studio colors with high-contrast text and signal accents."""
+    CRUST    = "#07111b"
+    MANTLE   = "#0a1724"
+    BASE     = "#0e1c2a"
+    SURFACE0 = "#142638"
+    SURFACE1 = "#263a4d"
+    SURFACE2 = "#3b5064"
+    OVERLAY0 = "#8795a5"
+    OVERLAY1 = "#9ba8b7"
+    SUBTEXT0 = "#aeb9c5"
+    SUBTEXT1 = "#c5ced8"
+    TEXT     = "#f1f4f8"
+    BLUE     = "#9b8cff"
+    TEAL     = "#58d6ca"
+    GREEN    = "#72df9d"
     YELLOW   = "#f9e2af"
-    PEACH    = "#fab387"
-    RED      = "#f38ba8"
-    MAUVE    = "#cba6f7"
-    PINK     = "#f5c2e7"
-    SAPPHIRE = "#74c7ec"
-    SKY      = "#89dceb"
-    LAVENDER = "#b4befe"
-    FLAMINGO = "#f2cdcd"
-    ROSEWATER = "#f5e0dc"
+    PEACH    = "#f0aa78"
+    RED      = "#ff8396"
+    MAUVE    = "#b69cff"
+    PINK     = "#e7a8d8"
+    SAPPHIRE = "#aa9dff"
+    SKY      = "#75cfee"
+    LAVENDER = "#c0b7ff"
+    FLAMINGO = "#eebfcb"
+    ROSEWATER = "#f2d6d8"
 
 
 class ThemeEngine:
@@ -71,8 +71,7 @@ def build_stylesheet(accent: str = Palette.BLUE) -> str:
     return f"""
 /* ── Global ─────────────────────────────────────────────────────────────── */
 * {{
-    font-family: "Segoe UI", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
-    outline: none;
+    font-family: "Segoe UI Variable Text", "Segoe UI", "Inter", Arial, sans-serif;
 }}
 QMainWindow, QWidget {{
     background-color: {p.BASE};
@@ -86,18 +85,38 @@ QMainWindow::separator {{
 
 /* ── Sidebar ────────────────────────────────────────────────────────────── */
 QWidget#sidebar {{
-    background-color: {p.MANTLE};
+    background-color: {p.CRUST};
     border-right: 1px solid {p.SURFACE1};
+}}
+QLabel#brand {{
+    color: {p.TEXT};
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}}
+QLabel#brandMark {{
+    background-color: {accent};
+    color: {p.CRUST};
+    border-radius: 7px;
+    font-size: 15px;
+    font-weight: 900;
+}}
+QLabel#navSection {{
+    color: {p.OVERLAY0};
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 12px 10px 5px 10px;
 }}
 QPushButton#sidebarBtn {{
     background: transparent;
-    color: {p.OVERLAY0};
+    color: {p.SUBTEXT0};
     border: none;
-    border-radius: 8px;
-    padding: 10px 14px;
+    border-radius: 6px;
+    padding: 9px 11px;
     text-align: left;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
 }}
 QPushButton#sidebarBtn:hover {{
     background-color: {p.SURFACE0};
@@ -105,9 +124,69 @@ QPushButton#sidebarBtn:hover {{
 }}
 QPushButton#sidebarBtn:checked {{
     background-color: {p.SURFACE0};
+    color: {p.TEXT};
+    border-left: 2px solid {accent};
+    padding-left: 9px;
+}}
+QPushButton#sidebarBtn:focus {{
+    border: 2px solid {p.YELLOW};
+    padding: 7px 9px;
+}}
+
+/* ── Studio shell ──────────────────────────────────────────────────────── */
+QFrame#commandBar {{
+    background-color: {p.CRUST};
+    border-bottom: 1px solid {p.SURFACE1};
+}}
+QFrame#workspaceHeader {{
+    background-color: {p.MANTLE};
+    border-bottom: 1px solid {p.SURFACE1};
+}}
+QLabel#pageEyebrow {{
     color: {accent};
-    border-left: 3px solid {accent};
-    border-radius: 0px 8px 8px 0px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}}
+QLabel#pageTitle {{
+    color: {p.TEXT};
+    font-size: 26px;
+    font-weight: 750;
+}}
+QLabel#pageSubtitle {{
+    color: {p.SUBTEXT0};
+    font-size: 12px;
+}}
+QLabel#projectName {{
+    color: {p.TEXT};
+    font-size: 12px;
+    font-weight: 650;
+}}
+QLabel#commandMeta {{
+    color: {p.SUBTEXT0};
+    font-size: 11px;
+}}
+QLabel#localStatus {{
+    background-color: {p.SURFACE0};
+    color: {p.TEAL};
+    border: 1px solid {p.SURFACE1};
+    border-radius: 10px;
+    padding: 4px 9px;
+    font-size: 10px;
+    font-weight: 700;
+}}
+QLabel#computeStatus {{
+    color: {p.GREEN};
+    font-size: 11px;
+    font-weight: 650;
+}}
+QFrame#studioSurface {{
+    background-color: {p.BASE};
+    border: none;
+}}
+QFrame#sessionPanel {{
+    background-color: {p.MANTLE};
+    border-left: 1px solid {p.SURFACE1};
 }}
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
@@ -115,10 +194,11 @@ QPushButton {{
     background-color: {accent};
     color: {p.CRUST};
     border: none;
-    padding: 8px 20px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 13px;
+    padding: 8px 16px;
+    border-radius: 5px;
+    font-weight: 700;
+    font-size: 12px;
+    min-height: 18px;
 }}
 QPushButton:hover {{
     background-color: {accent_hover};
@@ -127,47 +207,58 @@ QPushButton:pressed {{
     background-color: {accent_press};
 }}
 QPushButton:disabled {{
-    background-color: {p.SURFACE1};
+    background-color: {p.SURFACE0};
     color: {p.OVERLAY0};
 }}
 QPushButton:focus {{
     border: 2px solid {p.YELLOW};
-    padding: 6px 18px;
+    padding: 6px 14px;
 }}
-QPushButton#secondaryBtn {{
+QPushButton#secondaryBtn,
+QPushButton[class="secondary"] {{
     background-color: {p.SURFACE0};
     color: {p.TEXT};
     border: 1px solid {p.SURFACE1};
 }}
-QPushButton#secondaryBtn:hover {{
+QPushButton#secondaryBtn:hover,
+QPushButton[class="secondary"]:hover {{
     background-color: {p.SURFACE1};
     border-color: {p.SURFACE2};
 }}
-QPushButton#dangerBtn {{
+QPushButton#dangerBtn,
+QPushButton[class="danger"] {{
     background-color: {p.RED};
     color: {p.CRUST};
 }}
-QPushButton#dangerBtn:hover {{
-    background-color: #e6667a;
+QPushButton#dangerBtn:hover,
+QPushButton[class="danger"]:hover {{
+    background-color: #ff9bad;
 }}
-QPushButton#ghostBtn {{
+QPushButton#ghostBtn,
+QPushButton[class="ghost"] {{
     background: transparent;
     color: {p.SUBTEXT0};
     border: none;
     padding: 6px 12px;
 }}
-QPushButton#ghostBtn:hover {{
+QPushButton#ghostBtn:hover,
+QPushButton[class="ghost"]:hover {{
     color: {p.TEXT};
     background-color: {p.SURFACE0};
+}}
+QPushButton#primaryAction {{
+    font-size: 14px;
+    min-height: 30px;
+    padding: 10px 18px;
 }}
 
 /* ── Inputs ─────────────────────────────────────────────────────────────── */
 QLineEdit, QTextEdit, QPlainTextEdit {{
-    background-color: {p.SURFACE0};
+    background-color: {p.CRUST};
     color: {p.TEXT};
     border: 1px solid {p.SURFACE1};
-    border-radius: 6px;
-    padding: 8px 12px;
+    border-radius: 5px;
+    padding: 8px 10px;
     font-size: 13px;
     selection-background-color: {accent};
     selection-color: {p.CRUST};
@@ -179,13 +270,28 @@ QLineEdit:disabled, QTextEdit:disabled {{
     background-color: {p.MANTLE};
     color: {p.OVERLAY0};
 }}
+QTextEdit#primaryEditor {{
+    background-color: {p.CRUST};
+    border: 1px solid {p.SURFACE1};
+    border-radius: 5px;
+    padding: 10px;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 12px;
+}}
+QScrollArea {{
+    background: transparent;
+    border: none;
+}}
+QScrollArea > QWidget > QWidget {{
+    background: transparent;
+}}
 QSpinBox, QDoubleSpinBox {{
-    background-color: {p.SURFACE0};
+    background-color: {p.CRUST};
     color: {p.TEXT};
     border: 1px solid {p.SURFACE1};
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 13px;
+    border-radius: 5px;
+    padding: 6px 9px;
+    font-size: 12px;
 }}
 QSpinBox:focus, QDoubleSpinBox:focus {{
     border: 2px solid {p.YELLOW};
@@ -199,12 +305,12 @@ QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
 
 /* ── ComboBox (Full ControlTemplate for dark mode) ──────────────────────── */
 QComboBox {{
-    background-color: {p.SURFACE0};
+    background-color: {p.CRUST};
     color: {p.TEXT};
     border: 1px solid {p.SURFACE1};
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-size: 13px;
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 12px;
     min-height: 20px;
 }}
 QComboBox:focus {{
@@ -231,7 +337,7 @@ QComboBox::down-arrow:hover {{
     border-top-color: {p.TEXT};
 }}
 QComboBox QAbstractItemView {{
-    background-color: {p.SURFACE0};
+    background-color: {p.MANTLE};
     color: {p.TEXT};
     border: 1px solid {p.SURFACE1};
     border-radius: 4px;
@@ -287,32 +393,31 @@ QProgressBar {{
     min-height: 18px;
 }}
 QProgressBar::chunk {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {accent}, stop:1 {p.MAUVE});
+    background: {accent};
     border-radius: 6px;
 }}
 
 /* ── Tabs ───────────────────────────────────────────────────────────────── */
 QTabWidget::pane {{
-    border: 1px solid {p.SURFACE1};
-    border-radius: 0 0 8px 8px;
-    background: {p.BASE};
-    padding: 8px;
+    border: none;
+    border-top: 1px solid {p.SURFACE1};
+    background: transparent;
+    padding: 10px 0 0 0;
 }}
 QTabBar::tab {{
     background: transparent;
-    color: {p.OVERLAY0};
-    padding: 10px 20px;
+    color: {p.SUBTEXT0};
+    padding: 9px 14px;
     border-bottom: 2px solid transparent;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 650;
 }}
 QTabBar::tab:hover {{
     color: {p.TEXT};
-    background-color: {p.SURFACE0};
+    background-color: transparent;
 }}
 QTabBar::tab:selected {{
-    color: {accent};
+    color: {p.TEXT};
     border-bottom-color: {accent};
 }}
 QTabBar::tab:focus {{
@@ -322,19 +427,21 @@ QTabBar::tab:focus {{
 
 /* ── Group Box ──────────────────────────────────────────────────────────── */
 QGroupBox {{
-    border: 1px solid {p.SURFACE1};
-    border-radius: 10px;
-    margin-top: 16px;
-    padding: 16px 12px 12px 12px;
-    font-weight: 600;
-    font-size: 13px;
+    background: transparent;
+    border: none;
+    border-top: 1px solid {p.SURFACE1};
+    border-radius: 0;
+    margin-top: 18px;
+    padding: 18px 0 0 0;
+    font-weight: 700;
+    font-size: 12px;
     color: {p.TEXT};
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
-    left: 14px;
-    padding: 0 6px;
-    color: {p.SUBTEXT0};
+    left: 0;
+    padding: 0 8px 0 0;
+    color: {p.TEXT};
 }}
 
 /* ── Scrollbars (branded thin) ──────────────────────────────────────────── */
@@ -384,11 +491,11 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
 
 /* ── Tables / Lists / Trees ─────────────────────────────────────────────── */
 QTableWidget, QTreeWidget, QListWidget {{
-    background-color: {p.BASE};
+    background-color: {p.CRUST};
     alternate-background-color: {p.MANTLE};
     color: {p.TEXT};
     border: 1px solid {p.SURFACE1};
-    border-radius: 6px;
+    border-radius: 5px;
     gridline-color: {p.SURFACE0};
     font-size: 13px;
 }}
@@ -431,12 +538,13 @@ QStatusBar::item {{
 
 /* ── Labels ─────────────────────────────────────────────────────────────── */
 QLabel {{
+    background: transparent;
     color: {p.TEXT};
     font-size: 13px;
 }}
 QLabel#heading {{
-    font-size: 20px;
-    font-weight: 700;
+    font-size: 24px;
+    font-weight: 750;
     color: {p.TEXT};
 }}
 QLabel#subheading {{
@@ -446,11 +554,16 @@ QLabel#subheading {{
 }}
 QLabel#caption {{
     font-size: 11px;
-    color: {p.OVERLAY0};
+    color: {p.SUBTEXT0};
 }}
 QLabel#accentLabel {{
     color: {accent};
     font-weight: 600;
+}}
+QFrame#commandSeparator {{
+    background: {p.SURFACE1};
+    border: none;
+    max-width: 1px;
 }}
 
 /* ── Splitter ───────────────────────────────────────────────────────────── */
@@ -466,18 +579,18 @@ QSplitter::handle:vertical {{
 
 /* ── Transport Bar ──────────────────────────────────────────────────────── */
 QWidget#transportBar {{
-    background-color: {p.MANTLE};
+    background-color: {p.CRUST};
     border-top: 1px solid {p.SURFACE1};
 }}
 QPushButton#transportBtn {{
     background: transparent;
     color: {p.SUBTEXT0};
-    border: none;
-    border-radius: 20px;
-    padding: 8px;
-    font-size: 16px;
-    min-width: 40px;
-    min-height: 40px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 6px;
+    font-size: 14px;
+    min-width: 32px;
+    min-height: 32px;
 }}
 QPushButton#transportBtn:hover {{
     background-color: {p.SURFACE0};
@@ -486,45 +599,69 @@ QPushButton#transportBtn:hover {{
 QPushButton#transportBtn:checked {{
     color: {accent};
 }}
+QPushButton#transportPrimary {{
+    background: {accent};
+    color: {p.CRUST};
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    min-width: 38px;
+    min-height: 34px;
+}}
+QLabel#transportTitle {{
+    color: {p.TEXT};
+    font-size: 11px;
+    font-weight: 700;
+}}
+QLabel#transportMeta {{
+    color: {p.OVERLAY0};
+    font-size: 10px;
+}}
+QLabel#transportTime {{
+    color: {p.TEXT};
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 13px;
+    font-weight: 650;
+}}
 
-/* ── Cards (glassmorphism containers) ───────────────────────────────────── */
+/* ── Legacy cards: solid, quiet surfaces ────────────────────────────────── */
 QFrame#card {{
-    background-color: rgba(49, 50, 68, 180);
-    border: 1px solid {p.SURFACE1};
-    border-radius: 12px;
+    background-color: {p.MANTLE};
+    border: 1px solid {p.SURFACE0};
+    border-radius: 7px;
     padding: 16px;
 }}
 QFrame#card:hover {{
     border-color: {p.SURFACE2};
 }}
 QFrame#accentCard {{
-    background-color: rgba(137, 180, 250, 20);
-    border: 1px solid rgba(137, 180, 250, 60);
-    border-radius: 12px;
+    background-color: {p.SURFACE0};
+    border: 1px solid {accent};
+    border-radius: 7px;
     padding: 16px;
 }}
 
 /* ── Toast Notifications ────────────────────────────────────────────────── */
 QFrame#toast {{
-    background-color: {p.SURFACE0};
+    background-color: {p.MANTLE};
     border: 1px solid {p.SURFACE1};
     border-radius: 10px;
     padding: 12px 16px;
 }}
 QFrame#toastSuccess {{
-    background-color: {p.SURFACE0};
+    background-color: {p.MANTLE};
     border: 1px solid {p.GREEN};
     border-radius: 10px;
     padding: 12px 16px;
 }}
 QFrame#toastError {{
-    background-color: {p.SURFACE0};
+    background-color: {p.MANTLE};
     border: 1px solid {p.RED};
     border-radius: 10px;
     padding: 12px 16px;
 }}
 QFrame#toastWarning {{
-    background-color: {p.SURFACE0};
+    background-color: {p.MANTLE};
     border: 1px solid {p.YELLOW};
     border-radius: 10px;
     padding: 12px 16px;

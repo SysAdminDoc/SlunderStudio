@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Project Manager View
+Slunder Studio v0.1.29 — Project Manager View
 Project browser with create, open, delete, asset management,
 version history, and auto-save controls.
 """
@@ -360,13 +360,13 @@ class ProjectManagerView(QWidget):
         left.setSpacing(8)
 
         header = QHBoxLayout()
-        title = QLabel("Projects")
+        title = QLabel("Project library")
         title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 16px;")
 
         self._new_btn = QPushButton("+ New Project")
         self._new_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {t['accent']}; color: white; border: none;
+                background: {t['accent']}; color: {t['background']}; border: none;
                 border-radius: 5px; padding: 6px 14px;
                 font-weight: bold; font-size: 12px;
             }}

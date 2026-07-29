@@ -21,6 +21,10 @@ class BuildArtifactTests(unittest.TestCase):
     def setUp(self):
         self.build_script = load_build_script()
 
+    def test_numpy_private_exception_module_is_bundled(self):
+        source = Path(self.build_script.__file__).read_text(encoding="utf-8")
+        self.assertIn('"numpy._core._exceptions"', source)
+
     def test_clean_artifacts_removes_stale_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

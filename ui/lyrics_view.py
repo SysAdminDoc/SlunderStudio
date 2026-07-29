@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Lyrics View
+Slunder Studio v0.1.29 — Lyrics View
 Full lyrics generation page with Quick/Guided/Pro modes, genre browser,
 history panel, streaming generation, and section regeneration.
 """
@@ -224,10 +224,6 @@ class LyricsView(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(16, 16, 16, 16)
         left_layout.setSpacing(12)
-
-        title = QLabel(tr("lyrics.title"))
-        title.setObjectName("heading")
-        left_layout.addWidget(title)
 
         # Mode tabs
         self._mode_tabs = QTabWidget()

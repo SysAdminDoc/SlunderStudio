@@ -1,7 +1,7 @@
 """
-Slunder Studio v0.1.28 — Main Window
-QMainWindow shell with animated sidebar navigation, stacked module views,
-global audio transport bar, VRAM status indicator, and drag-and-drop support.
+Slunder Studio v0.1.30 — Main Window
+Studio-shell navigation, contextual workspace header, global transport,
+compute status, and drag-and-drop routing.
 """
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -30,6 +30,20 @@ from ui.project_manager import ProjectManagerView
 from ui.ai_producer_view import AIProducerView
 
 
+PAGE_META = (
+    ("CREATE", "Lyrics Engine", "Write, structure and revise lyrics with a local model."),
+    ("CREATE", "Song Forge", "Turn lyrics and direction into a finished local render."),
+    ("CREATE", "MIDI Studio", "Compose, arrange and humanize MIDI performances."),
+    ("CREATE", "Vocal Suite", "Synthesize, convert, tune and separate vocal performances."),
+    ("CREATE", "Sound Forge", "Generate production-ready sound effects from text."),
+    ("FINISH", "Mix Console", "Balance tracks, shape stereo space and prepare a master."),
+    ("FINISH", "AI Producer", "Orchestrate a complete local production from one brief."),
+    ("LIBRARY", "Projects", "Manage sessions, assets, versions and provenance."),
+    ("SYSTEM", "Model Hub", "Install and manage the local models behind each workflow."),
+    ("SYSTEM", "Settings", "Control storage, compute, appearance and diagnostics."),
+)
+
+
 # ── Sidebar Navigation ────────────────────────────────────────────────────────
 
 class SidebarButton(QPushButton):
@@ -39,10 +53,10 @@ class SidebarButton(QPushButton):
         super().__init__(parent)
         self.setObjectName("sidebarBtn")
         self.setCheckable(True)
-        self.setText(f"  {icon_text}  {label}")
-        self.setFixedHeight(44)
+        self.setText(f"{icon_text}   {label}")
+        self.setFixedHeight(38)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFont(QFont("Segoe UI", 12))
+        self.setFont(QFont("Segoe UI", 10))
         set_accessible(
             self,
             tr("nav.open", label=label),
@@ -58,44 +72,46 @@ class Sidebar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("sidebar")
-        self.setFixedWidth(220)
+        self.setFixedWidth(196)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 16, 8, 16)
-        layout.setSpacing(4)
+        layout.setContentsMargins(8, 12, 8, 10)
+        layout.setSpacing(2)
 
-        # Logo/title
-        logo = QLabel("  \U0001f3b5  SLUNDER")
-        logo.setStyleSheet(f"""
-            font-size: 18px;
-            font-weight: 800;
-            color: {Palette.BLUE};
-            padding: 8px 4px 16px 4px;
-            letter-spacing: 2px;
-        """)
-        layout.addWidget(logo)
-
-        # Separator
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"background-color: {Palette.SURFACE1}; max-height: 1px;")
-        layout.addWidget(sep)
-        layout.addSpacing(8)
+        brand_row = QHBoxLayout()
+        brand_row.setContentsMargins(4, 0, 4, 10)
+        brand_row.setSpacing(9)
+        brand_mark = QLabel("S")
+        brand_mark.setObjectName("brandMark")
+        brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_mark.setFixedSize(30, 30)
+        brand_row.addWidget(brand_mark)
+        brand = QLabel("SLUNDER STUDIO")
+        brand.setObjectName("brand")
+        brand_row.addWidget(brand, 1)
+        layout.addLayout(brand_row)
 
         # Navigation buttons
         self._buttons: list[SidebarButton] = []
         nav_items = [
-            ("\U0001f3a4", tr("nav.lyrics")),
-            ("\U0001f3b6", tr("nav.song_forge")),
-            ("\U0001f3b9", tr("nav.midi_studio")),
-            ("\U0001f399", tr("nav.vocals")),
-            ("\U0001f4a5", tr("nav.sfx")),
-            ("\U0001f39b", tr("nav.mixer")),
-            ("\U0001f916", tr("nav.ai_producer")),
-            ("\U0001f4c1", tr("nav.projects")),
+            ("\u00b6", tr("nav.lyrics")),
+            ("\u2726", tr("nav.song_forge")),
+            ("\u266c", tr("nav.midi_studio")),
+            ("\u25c9", tr("nav.vocals")),
+            ("\u2248", tr("nav.sfx")),
+            ("\u2301", tr("nav.mixer")),
+            ("\u25c7", tr("nav.ai_producer")),
+            ("\u25a3", tr("nav.projects")),
         ]
 
+        current_section = ""
         for i, (icon, label) in enumerate(nav_items):
+            section = PAGE_META[i][0]
+            if section != current_section:
+                section_label = QLabel(section)
+                section_label.setObjectName("navSection")
+                layout.addWidget(section_label)
+                current_section = section
             btn = SidebarButton(icon, label)
             btn.clicked.connect(lambda checked, idx=i: self._on_clicked(idx))
             self._buttons.append(btn)
@@ -103,16 +119,25 @@ class Sidebar(QWidget):
 
         layout.addStretch()
 
-        # Bottom section — separator
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet(f"background-color: {Palette.SURFACE1}; max-height: 1px;")
-        layout.addWidget(sep2)
-        layout.addSpacing(4)
+        engine_frame = QFrame()
+        engine_frame.setObjectName("card")
+        engine_layout = QVBoxLayout(engine_frame)
+        engine_layout.setContentsMargins(10, 8, 10, 8)
+        engine_layout.setSpacing(2)
+        engine_status = QLabel("\u25cf  LOCAL ENGINE")
+        engine_status.setObjectName("computeStatus")
+        engine_layout.addWidget(engine_status)
+        engine_note = QLabel("Private by default")
+        engine_note.setObjectName("transportMeta")
+        engine_layout.addWidget(engine_note)
+        layout.addWidget(engine_frame)
 
         # Bottom nav
+        system_label = QLabel("SYSTEM")
+        system_label.setObjectName("navSection")
+        layout.addWidget(system_label)
         bottom_items = [
-            ("\U0001f4e6", tr("nav.model_hub")),
+            ("\u2b21", tr("nav.model_hub")),
             ("\u2699", tr("nav.settings")),
         ]
         for i, (icon, label) in enumerate(bottom_items):
@@ -135,6 +160,8 @@ class Sidebar(QWidget):
     def select_page(self, index: int):
         """Programmatically select a page."""
         self._on_clicked(index)
+        if 0 <= index < len(self._buttons):
+            self._buttons[index].setFocus(Qt.FocusReason.OtherFocusReason)
 
 
 # ── Transport Bar ──────────────────────────────────────────────────────────────
@@ -149,30 +176,37 @@ class TransportBar(QWidget):
         self._audio = AudioEngine()
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 8, 16, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(14, 8, 16, 8)
+        layout.setSpacing(10)
+
+        track_meta = QVBoxLayout()
+        track_meta.setContentsMargins(0, 0, 12, 0)
+        track_meta.setSpacing(1)
+        self._track_title = QLabel("GLOBAL OUTPUT")
+        self._track_title.setObjectName("transportTitle")
+        track_meta.addWidget(self._track_title)
+        self._track_detail = QLabel("No audio loaded")
+        self._track_detail.setObjectName("transportMeta")
+        track_meta.addWidget(self._track_detail)
+        layout.addLayout(track_meta)
 
         # Transport buttons
         self._play_btn = QPushButton("\u25B6")
-        self._play_btn.setObjectName("transportBtn")
-        self._play_btn.setFixedSize(40, 40)
+        self._play_btn.setObjectName("transportPrimary")
+        self._play_btn.setFixedSize(40, 36)
         self._play_btn.clicked.connect(self._toggle_play)
         layout.addWidget(self._play_btn)
 
         self._stop_btn = QPushButton("\u25A0")
         self._stop_btn.setObjectName("transportBtn")
-        self._stop_btn.setFixedSize(40, 40)
+        self._stop_btn.setFixedSize(36, 36)
         self._stop_btn.clicked.connect(self._audio.stop)
         layout.addWidget(self._stop_btn)
 
         # Time display
         self._time_label = QLabel("0:00 / 0:00")
-        self._time_label.setStyleSheet(f"""
-            font-family: "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
-            font-size: 13px;
-            color: {Palette.SUBTEXT0};
-            min-width: 100px;
-        """)
+        self._time_label.setObjectName("transportTime")
+        self._time_label.setMinimumWidth(96)
         layout.addWidget(self._time_label)
 
         # Seek slider
@@ -184,16 +218,16 @@ class TransportBar(QWidget):
         layout.addWidget(self._seek_slider, 1)
 
         # Loop toggle
-        self._loop_btn = QPushButton("\U0001f501")
+        self._loop_btn = QPushButton("\u21bb")
         self._loop_btn.setObjectName("transportBtn")
         self._loop_btn.setCheckable(True)
-        self._loop_btn.setFixedSize(40, 40)
+        self._loop_btn.setFixedSize(36, 36)
         self._loop_btn.toggled.connect(lambda v: self._audio.set_loop(v))
         layout.addWidget(self._loop_btn)
 
         # Volume
-        vol_icon = QLabel("\U0001f50a")
-        vol_icon.setStyleSheet(f"font-size: 14px; color: {Palette.SUBTEXT0};")
+        vol_icon = QLabel("VOL")
+        vol_icon.setObjectName("transportMeta")
         layout.addWidget(vol_icon)
 
         self._vol_slider = QSlider(Qt.Orientation.Horizontal)
@@ -246,6 +280,7 @@ class TransportBar(QWidget):
     def _on_duration(self, dur: float):
         self._duration = dur
         self._time_label.setText(f"0:00 / {format_time(dur)}")
+        self._track_detail.setText(format_time(dur))
 
     def _on_stopped(self):
         self._play_btn.setText("\u25B6")
@@ -297,8 +332,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(tr("app.window_title", version=APP_VERSION))
-        self.setMinimumSize(1200, 800)
-        self.resize(1400, 900)
+        self.setMinimumSize(1100, 720)
+        self.resize(1440, 900)
         self.setAcceptDrops(True)
 
         self._settings = Settings()
@@ -319,7 +354,7 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Content area (sidebar + stacked pages)
+        # Content area (navigation + studio workspace)
         content = QHBoxLayout()
         content.setContentsMargins(0, 0, 0, 0)
         content.setSpacing(0)
@@ -329,10 +364,19 @@ class MainWindow(QMainWindow):
         self._sidebar.page_selected.connect(self._on_page_selected)
         content.addWidget(self._sidebar)
 
-        # Stacked pages
+        workspace = QFrame()
+        workspace.setObjectName("studioSurface")
+        workspace_layout = QVBoxLayout(workspace)
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(0)
+
+        workspace_layout.addWidget(self._build_command_bar())
+        workspace_layout.addWidget(self._build_workspace_header())
+
         self._pages = QStackedWidget()
         self._create_pages()
-        content.addWidget(self._pages, 1)
+        workspace_layout.addWidget(self._pages, 1)
+        content.addWidget(workspace, 1)
 
         main_layout.addLayout(content, 1)
 
@@ -351,6 +395,8 @@ class MainWindow(QMainWindow):
         self._vram_label = QLabel("")
         self._vram_label.setStyleSheet(f"font-size: 11px; color: {Palette.BLUE};")
         self._status_bar.addPermanentWidget(self._vram_label)
+        self._status_bar.hide()
+        self._on_page_selected(0)
         set_accessible(self, tr("app.accessible_name"), tr("app.accessible_description"))
         set_accessible(
             self._gpu_status_label,
@@ -362,6 +408,91 @@ class MainWindow(QMainWindow):
             tr("status.vram_accessible_name"),
             tr("status.vram_accessible_description"),
         )
+
+    def _build_command_bar(self) -> QFrame:
+        bar = QFrame()
+        bar.setObjectName("commandBar")
+        bar.setFixedHeight(52)
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(20, 0, 18, 0)
+        layout.setSpacing(12)
+
+        project_icon = QLabel("\u25a3")
+        project_icon.setObjectName("commandMeta")
+        layout.addWidget(project_icon)
+
+        project_stack = QVBoxLayout()
+        project_stack.setSpacing(0)
+        project_stack.setContentsMargins(0, 0, 0, 0)
+        project_hint = QLabel("ACTIVE PROJECT")
+        project_hint.setObjectName("commandMeta")
+        project_stack.addWidget(project_hint)
+        self._project_label = QLabel("No project open")
+        self._project_label.setObjectName("projectName")
+        project_stack.addWidget(self._project_label)
+        layout.addLayout(project_stack)
+
+        separator = QFrame()
+        separator.setObjectName("commandSeparator")
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFixedHeight(24)
+        layout.addWidget(separator)
+
+        interval = int(self._settings.get("general.auto_save_interval", 60) or 60)
+        autosave = QLabel(f"Autosave interval  \u00b7  {interval}s")
+        autosave.setObjectName("commandMeta")
+        layout.addWidget(autosave)
+
+        layout.addStretch()
+
+        self._compute_status_label = QLabel("Checking compute")
+        self._compute_status_label.setObjectName("computeStatus")
+        layout.addWidget(self._compute_status_label)
+
+        offline = bool(self._settings.get("model_hub.offline_mode", False))
+        self._local_status_label = QLabel(
+            "\u25cf  Offline mode" if offline else "\u25cf  Local processing"
+        )
+        self._local_status_label.setObjectName("localStatus")
+        layout.addWidget(self._local_status_label)
+
+        set_accessible(
+            bar,
+            "Workspace command bar",
+            "Shows the active project, autosave interval, compute state, and privacy mode.",
+        )
+        set_accessible(
+            self._compute_status_label,
+            "Compute status",
+            "Reports whether generation is using a GPU or CPU.",
+        )
+        set_accessible(
+            self._local_status_label,
+            "Processing privacy status",
+            "Reports local processing or strict offline mode.",
+        )
+        return bar
+
+    def _build_workspace_header(self) -> QFrame:
+        header = QFrame()
+        header.setObjectName("workspaceHeader")
+        header.setFixedHeight(78)
+        layout = QVBoxLayout(header)
+        layout.setContentsMargins(24, 8, 24, 8)
+        layout.setSpacing(1)
+
+        self._page_eyebrow = QLabel("")
+        self._page_eyebrow.setObjectName("pageEyebrow")
+        layout.addWidget(self._page_eyebrow)
+
+        self._page_title = QLabel("")
+        self._page_title.setObjectName("pageTitle")
+        layout.addWidget(self._page_title)
+
+        self._page_subtitle = QLabel("")
+        self._page_subtitle.setObjectName("pageSubtitle")
+        layout.addWidget(self._page_subtitle)
+        return header
 
     def _create_pages(self):
         """Create all module pages (placeholders for future phases)."""
@@ -402,6 +533,7 @@ class MainWindow(QMainWindow):
 
         # Page 7: Projects (Phase 6)
         self._project_mgr_view = ProjectManagerView(toast_mgr=self.toast_mgr)
+        self._project_mgr_view.project_opened.connect(self._on_project_opened)
         self._pages.addWidget(self._project_mgr_view)
 
         # Page 8: Model Hub (built now)
@@ -416,6 +548,16 @@ class MainWindow(QMainWindow):
         """Switch to the selected page."""
         if 0 <= index < self._pages.count():
             self._pages.setCurrentIndex(index)
+            eyebrow, title, subtitle = PAGE_META[index]
+            self._page_eyebrow.setText(eyebrow)
+            self._page_title.setText(title)
+            self._page_subtitle.setText(subtitle)
+
+    def _on_project_opened(self, _project_id: str):
+        from core.project import get_project_manager
+
+        project = get_project_manager().current
+        self._project_label.setText(project.name if project else "No project open")
 
     # ── GPU Monitoring ─────────────────────────────────────────────────────────
 
@@ -437,6 +579,10 @@ class MainWindow(QMainWindow):
             color = Palette.GREEN if pct < 60 else (Palette.YELLOW if pct < 85 else Palette.RED)
             self._vram_label.setText(f"VRAM: {used:.1f} / {total:.1f} GB ({pct:.0f}%)")
             self._vram_label.setStyleSheet(f"font-size: 11px; color: {color};")
+            self._compute_status_label.setText(
+                f"\u25cf  {gpu['name']}  \u00b7  {used:.1f}/{total:.1f} GB"
+            )
+            self._compute_status_label.setStyleSheet(f"color: {color};")
 
             current = gpu.get("current_model_name")
             if current:
@@ -446,6 +592,8 @@ class MainWindow(QMainWindow):
         else:
             self._gpu_status_label.setText("\u26a0 No GPU")
             self._vram_label.setText("")
+            self._compute_status_label.setText("\u25cf  CPU mode")
+            self._compute_status_label.setStyleSheet(f"color: {Palette.TEAL};")
             self._status_bar.showMessage("CUDA not available — running on CPU", 0)
 
     # ── Drag and Drop ──────────────────────────────────────────────────────────

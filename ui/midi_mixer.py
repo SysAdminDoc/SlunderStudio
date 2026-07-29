@@ -188,7 +188,7 @@ class TrackStrip(QFrame):
         t = ThemeEngine.get_colors()
         if active:
             return f"""
-                QPushButton {{ background: {Palette.RED}; color: white; border: none;
+                QPushButton {{ background: {Palette.RED}; color: {Palette.CRUST}; border: none;
                     border-radius: 3px; font-weight: bold; font-size: 10px; }}
             """
         return f"""
@@ -203,7 +203,7 @@ class TrackStrip(QFrame):
         t = ThemeEngine.get_colors()
         if active:
             return f"""
-                QPushButton {{ background: {Palette.YELLOW}; color: white; border: none;
+                QPushButton {{ background: {Palette.YELLOW}; color: {Palette.CRUST}; border: none;
                     border-radius: 3px; font-weight: bold; font-size: 10px; }}
             """
         return self._mute_style(False)
@@ -243,7 +243,7 @@ class MidiMixer(QWidget):
         self._add_track_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t.get('accent', '#58a6ff')};
-                color: white; border: none; border-radius: 4px;
+                color: {t.get('background', '#07111b')}; border: none; border-radius: 4px;
                 padding: 4px 10px; font-size: 11px; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t.get('accent_hover', '#79c0ff')}; }}

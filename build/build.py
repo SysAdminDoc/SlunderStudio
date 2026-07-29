@@ -81,6 +81,7 @@ def build(onefile: bool = False, smoke: bool = True):
         "core.voice_bank",
         "core.workers",
         "numpy",
+        "numpy._core._exceptions",
         "sounddevice",
         "soundfile",
     ]

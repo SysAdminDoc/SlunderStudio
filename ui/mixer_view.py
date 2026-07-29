@@ -227,7 +227,7 @@ class MixerView(QWidget):
         self._add_btn = QPushButton("+ Import Track")
         self._add_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {t['accent']}; color: white; border: none;
+                background: {t['accent']}; color: {t['background']}; border: none;
                 border-radius: 4px; padding: 5px 12px;
                 font-size: 11px; font-weight: bold;
             }}

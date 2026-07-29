@@ -392,10 +392,6 @@ class ModelHubView(QWidget):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(16)
 
-        title = QLabel("Model Hub")
-        title.setObjectName("heading")
-        layout.addWidget(title)
-
         subtitle = QLabel(
             "Download and manage AI models. "
             "Only one large model is loaded at a time to fit within your GPU memory."

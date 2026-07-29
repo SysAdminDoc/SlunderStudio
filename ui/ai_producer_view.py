@@ -57,7 +57,7 @@ class StageIndicator(QFrame):
         self._status = "pending"
 
         t = ThemeEngine.get_colors()
-        self.setFixedHeight(40)
+        self.setFixedHeight(34)
         self._base_style = f"""
             StageIndicator {{
                 background: {t['surface']};
@@ -68,13 +68,13 @@ class StageIndicator(QFrame):
         self.setStyleSheet(self._base_style)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(7, 3, 7, 3)
+        layout.setSpacing(7)
 
         # Step number
         num = STAGE_ICONS.get(stage, "??")
         self._num_label = QLabel(num)
-        self._num_label.setFixedSize(24, 24)
+        self._num_label.setFixedSize(22, 22)
         self._num_label.setAlignment(Qt.AlignCenter)
         self._num_label.setStyleSheet(f"""
             background: {t['border']};
@@ -111,7 +111,7 @@ class StageIndicator(QFrame):
             """)
             self._num_label.setStyleSheet(f"""
                 background: {t['accent']};
-                color: white; border-radius: 12px;
+                color: {t['background']}; border-radius: 12px;
                 font-size: 10px; font-weight: bold;
             """)
             self._name_label.setStyleSheet(f"color: {t['text']}; font-size: 11px; font-weight: bold;")
@@ -144,18 +144,18 @@ class StageIndicator(QFrame):
         elif status == "failed":
             self.setStyleSheet(f"""
                 StageIndicator {{
-                    background: #f38ba815;
-                    border: 1px solid #f38ba8;
+                    background: {t['surface']};
+                    border: 1px solid {t['error']};
                     border-radius: 6px;
                 }}
             """)
             self._num_label.setStyleSheet(f"""
-                background: #f38ba8;
-                color: white; border-radius: 12px;
+                background: {t['error']};
+                color: {t['background']}; border-radius: 12px;
                 font-size: 10px; font-weight: bold;
             """)
             self._status_label.setText("Failed")
-            self._status_label.setStyleSheet("color: #f38ba8; font-size: 10px;")
+            self._status_label.setStyleSheet(f"color: {t['error']}; font-size: 10px;")
 
 
 # ── AI Producer View ───────────────────────────────────────────────────────────
@@ -172,27 +172,27 @@ class AIProducerView(QWidget):
         t = ThemeEngine.get_colors()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
         # ── Left: Creative Brief ───────────────────────────────────────────
         left = QVBoxLayout()
         left.setSpacing(8)
 
-        # Title
+        # Creative brief header
         title_frame = QFrame()
         title_frame.setStyleSheet(f"""
             QFrame {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {t['accent']}22, stop:1 #a371f722);
-                border: 1px solid {t['accent']}44;
-                border-radius: 10px;
+                background: {t['surface']};
+                border: none;
+                border-bottom: 1px solid {t['border']};
+                border-radius: 0;
             }}
         """)
         title_layout = QVBoxLayout(title_frame)
         title_layout.setContentsMargins(16, 12, 16, 12)
-        title_label = QLabel("AI Producer")
-        title_label.setStyleSheet(f"color: {t['text']}; font-size: 18px; font-weight: bold; border: none;")
-        subtitle = QLabel("One prompt to full song. Describe your vision.")
+        title_label = QLabel("Production brief")
+        title_label.setStyleSheet(f"color: {t['text']}; font-size: 16px; font-weight: bold; border: none;")
+        subtitle = QLabel("Describe the song, then review each local pipeline stage.")
         subtitle.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
         title_layout.addWidget(title_label)
         title_layout.addWidget(subtitle)
@@ -214,6 +214,7 @@ class AIProducerView(QWidget):
             "e.g. 'A dreamy lo-fi hip-hop track about rainy nights in Tokyo, "
             "with mellow piano chords and vinyl crackle'"
         )
+        self._prompt.setMinimumHeight(56)
         self._prompt.setMaximumHeight(80)
         self._prompt.setStyleSheet(f"""
             QTextEdit {{
@@ -314,17 +315,17 @@ class AIProducerView(QWidget):
 
         # PRODUCE button
         self._produce_btn = QPushButton("PRODUCE")
+        self._produce_btn.setObjectName("primaryAction")
         self._produce_btn.setFixedHeight(44)
         self._produce_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {t['accent']}, stop:0.5 #a371f7, stop:1 #f38ba8);
-                color: white; border: none; border-radius: 8px;
-                font-weight: bold; font-size: 16px;
-                letter-spacing: 2px;
+                background: {t['accent']};
+                color: {t['background']}; border: none; border-radius: 5px;
+                font-weight: bold; font-size: 14px;
+                letter-spacing: 1px;
             }}
-            QPushButton:hover {{ opacity: 0.9; }}
-            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
+            QPushButton:hover {{ background: {t['accent_hover']}; }}
+            QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
         self._produce_btn.clicked.connect(self._on_produce)
         ctrl.addWidget(self._produce_btn)
@@ -343,8 +344,7 @@ class AIProducerView(QWidget):
                 border: none; border-radius: 3px;
             }}
             QProgressBar::chunk {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {t['accent']}, stop:1 #a371f7);
+                background: {t['accent']};
                 border-radius: 3px;
             }}
         """)

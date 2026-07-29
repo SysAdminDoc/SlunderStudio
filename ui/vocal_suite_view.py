@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Vocal Suite View
+Slunder Studio v0.1.29 — Vocal Suite View
 Main Vocal Suite page combining singing synthesis (DiffSinger),
 voice conversion (RVC), voice cloning (GPT-SoVITS), stem separation (Demucs),
 and stem remix/export.
@@ -356,12 +356,11 @@ class VocalSuiteView(QWidget):
         self._sing_gen_btn.setFixedHeight(34)
         self._sing_gen_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #f38ba8, stop:1 #cba6f7);
-                color: white; border: none; border-radius: 6px;
+                background: {t['accent']};
+                color: {t['background']}; border: none; border-radius: 5px;
                 font-weight: bold; font-size: 12px;
             }}
-            QPushButton:hover {{ opacity: 0.9; }}
+            QPushButton:hover {{ background: {t['accent_hover']}; }}
         """)
         self._sing_gen_btn.clicked.connect(self._on_sing_generate)
         ctrl_layout.addWidget(self._sing_gen_btn)
@@ -468,12 +467,11 @@ class VocalSuiteView(QWidget):
         self._melody_generate_btn.setEnabled(False)
         self._melody_generate_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {t['accent']}, stop:1 #a371f7);
-                color: white; border: none; border-radius: 6px;
+                background: {t['accent']};
+                color: {t['background']}; border: none; border-radius: 5px;
                 font-weight: bold; font-size: 12px;
             }}
-            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
+            QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
         self._melody_generate_btn.clicked.connect(self._on_melody_generate)
         ctrl_layout.addWidget(self._melody_generate_btn)
@@ -625,9 +623,8 @@ class VocalSuiteView(QWidget):
         self._rvc_convert_btn.setFixedHeight(34)
         self._rvc_convert_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {t['accent']}, stop:1 #a371f7);
-                color: white; border: none; border-radius: 6px;
+                background: {t['accent']};
+                color: {t['background']}; border: none; border-radius: 5px;
                 font-weight: bold; font-size: 12px;
             }}
         """)
@@ -798,7 +795,7 @@ class VocalSuiteView(QWidget):
                 border: 1px solid {t['border']}; border-radius: 4px;
                 font-weight: bold; font-size: 11px;
             }}
-            QPushButton:hover {{ background: {t['accent']}; color: white; }}
+            QPushButton:hover {{ background: {t['accent']}; color: {t['background']}; }}
             QPushButton:disabled {{ color: {t['muted']}; }}
         """)
         self._clone_save_profile_btn.clicked.connect(self._on_clone_save_profile)
@@ -855,9 +852,8 @@ class VocalSuiteView(QWidget):
         self._clone_gen_btn.setFixedHeight(34)
         self._clone_gen_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #cba6f7, stop:1 #f5c2e7);
-                color: white; border: none; border-radius: 6px;
+                background: {t['accent']};
+                color: {t['background']}; border: none; border-radius: 5px;
                 font-weight: bold; font-size: 12px;
             }}
         """)
@@ -951,12 +947,11 @@ class VocalSuiteView(QWidget):
         self._autotune_apply_btn.setEnabled(False)
         self._autotune_apply_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {t['accent']}, stop:1 #f38ba8);
-                color: white; border: none; border-radius: 6px;
+                background: {t['accent']};
+                color: {t['background']}; border: none; border-radius: 5px;
                 font-weight: bold; font-size: 12px;
             }}
-            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
+            QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
         self._autotune_apply_btn.clicked.connect(self._on_autotune_apply)
         ctrl_layout.addWidget(self._autotune_apply_btn)
@@ -1005,7 +1000,7 @@ class VocalSuiteView(QWidget):
         self._stem_browse_btn = QPushButton("Browse Audio")
         self._stem_browse_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {t['accent']}; color: white; border: none;
+                background: {t['accent']}; color: {t['background']}; border: none;
                 border-radius: 5px; padding: 8px 16px;
                 font-weight: bold; font-size: 11px;
             }}
