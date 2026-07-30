@@ -89,7 +89,7 @@ class MixerTrackStrip(QFrame):
         self._waveform = MiniWaveform()
         if audio is not None:
             mono = audio[:, 0] if audio.ndim == 2 else audio
-            self._waveform.set_audio(mono, sr)
+            self._waveform.load_audio(mono, sr)
         self._waveform.setFixedWidth(160)
         layout.addWidget(self._waveform)
 
@@ -637,7 +637,7 @@ class MixerView(QWidget):
                     strip = self._strips[idx]
                     strip.audio = processed
                     mono = processed[:, 0] if processed.ndim == 2 else processed
-                    strip._waveform.set_audio(mono, sr)
+                    strip._waveform.load_audio(mono, sr)
 
                 if suggestion.bands:
                     first_moves = ", ".join(
@@ -753,7 +753,7 @@ class MixerView(QWidget):
             # Show in waveform
             if result.audio is not None:
                 mono = result.audio[:, 0] if result.audio.ndim == 2 else result.audio
-                self._master_waveform.set_audio(mono, sr)
+                self._master_waveform.load_audio(mono, sr)
 
             if self._last_loudness_match:
                 match = self._last_loudness_match

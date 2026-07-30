@@ -160,7 +160,7 @@ class StemStrip(QFrame):
         self._waveform = MiniWaveform()
         if audio is not None:
             mono = audio[:, 0] if audio.ndim == 2 else audio
-            self._waveform.set_audio(mono, sample_rate)
+            self._waveform.load_audio(mono, sample_rate)
         layout.addWidget(self._waveform, 1)
 
     def _on_mute(self):

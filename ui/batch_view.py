@@ -128,7 +128,7 @@ class BatchCard(QFrame):
             self._time_label.setText(f"{gen_time:.1f}s")
 
         try:
-            self._waveform.load_file(audio_path)
+            self._waveform.load_audio(audio_path)
         except Exception:
             pass
 

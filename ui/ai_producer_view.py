@@ -692,7 +692,7 @@ class AIProducerView(QWidget):
 
         # Load waveform
         if result.can_export:
-            self._waveform.load_file(result.final_audio_path)
+            self._waveform.load_audio(result.final_audio_path)
             self._export_btn.setEnabled(True)
             self._export_btn.setText(
                 "Export Demo" if result.is_demo else "Export Final Song"

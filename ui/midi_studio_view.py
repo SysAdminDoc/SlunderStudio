@@ -574,10 +574,8 @@ class MidiStudioView(QWidget):
             self._current_audio_path = output_path
 
             # Load into waveform view
-            import numpy as np
             if audio is not None and len(audio) > 0:
-                mono = audio[:, 0] if audio.ndim == 2 else audio
-                self._waveform.load_audio(mono, 44100)
+                self._waveform.load_audio(audio, 44100)
                 self._tabs.setCurrentIndex(1)  # Switch to rendered audio tab
 
             self._to_forge_btn.setEnabled(True)

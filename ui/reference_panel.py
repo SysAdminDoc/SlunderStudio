@@ -223,7 +223,7 @@ class ReferencePanel(QWidget):
 
         # Show waveform
         try:
-            self._waveform.load_file(analysis.file_path)
+            self._waveform.load_audio(analysis.file_path)
             self._waveform.show()
         except Exception:
             pass

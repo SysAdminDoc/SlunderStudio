@@ -929,7 +929,7 @@ class SongForgeView(QWidget):
         self._current_vocal_stem_path = vocal_stem_path or ""
         self._set_session_state("Render ready", Palette.GREEN)
         try:
-            self._waveform.load_file(audio_path)
+            self._waveform.load_audio(audio_path)
         except Exception:
             pass
 

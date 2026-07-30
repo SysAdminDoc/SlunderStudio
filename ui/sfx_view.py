@@ -53,7 +53,7 @@ class SFXCard(QFrame):
         if result.audio is not None:
             import numpy as np
             mono = result.audio[:, 0] if result.audio.ndim == 2 else result.audio
-            self._waveform.set_audio(mono, result.sample_rate)
+            self._waveform.load_audio(mono, result.sample_rate)
         self._waveform.setFixedWidth(120)
         layout.addWidget(self._waveform)
 
@@ -399,7 +399,7 @@ class SFXView(QWidget):
                 if i == 0 and result.audio is not None:
                     import numpy as np
                     mono = result.audio[:, 0] if result.audio.ndim == 2 else result.audio
-                    self._main_waveform.set_audio(mono, result.sample_rate)
+                    self._main_waveform.load_audio(mono, result.sample_rate)
 
             if success_count:
                 suffix = f" ({demo_count} demo)" if demo_count else ""

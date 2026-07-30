@@ -1569,12 +1569,7 @@ class VocalSuiteView(QWidget):
 
     def _load_waveform_preview(self, wf_widget: WaveformWidget, path: str):
         """Load audio file into waveform widget for preview."""
-        try:
-            import librosa
-            audio, sr = librosa.load(path, sr=44100, mono=True, duration=120)
-            wf_widget.load_audio(audio, sr)
-        except ImportError:
-            pass
+        wf_widget.load_audio(path)
 
     # ── External API ───────────────────────────────────────────────────────────
 

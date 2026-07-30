@@ -98,7 +98,7 @@ class SeedCell(QFrame):
 
         # Load waveform
         try:
-            self._waveform.load_file(audio_path)
+            self._waveform.load_audio(audio_path)
         except Exception:
             pass
 

@@ -7,9 +7,10 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QStackedWidget,
 )
 from PySide6.QtCore import Signal, Qt, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QTransform
 
 import numpy as np
+from pathlib import Path
 
 from ui.theme import Palette
 
@@ -45,6 +46,7 @@ class WaveformWidget(QWidget):
         self._playback_pos = 0.0  # seconds
         self._show_controls = show_controls
         self._mode = "waveform"  # waveform or spectrogram
+        self._last_error = ""
 
         self._setup_ui()
 
@@ -141,27 +143,120 @@ class WaveformWidget(QWidget):
             self._waveform_btn.setEnabled(mode != "waveform")
             self._spectro_btn.setEnabled(mode != "spectrogram")
 
-    def load_file(self, file_path: str):
-        """Load audio from file and display waveform."""
+    def load_audio(
+        self,
+        source: str | Path | np.ndarray,
+        sample_rate: int | None = None,
+    ) -> bool:
+        """Load a file or mono/stereo array and replace the displayed audio.
+
+        File sources keep their encoded sample rate and therefore must not pass
+        ``sample_rate``. Array sources require a positive ``sample_rate``.
+        Arrays may be mono, frames-by-channels, or channels-by-frames. Invalid
+        input clears any previous waveform, records ``last_error``, and returns
+        ``False`` instead of leaving a stale preview visible.
+        """
+        self.clear()
         try:
-            import soundfile as sf
-            data, sr = sf.read(file_path, dtype="float32")
-            self.set_audio(data, sr)
-        except Exception as e:
-            if self._show_controls:
-                self._info_label.setText(f"Error: {e}")
+            if isinstance(source, (str, Path)):
+                if sample_rate is not None:
+                    raise ValueError(
+                        "sample_rate is only valid when loading an audio array"
+                    )
+                path = Path(source)
+                if not path.is_file():
+                    raise FileNotFoundError(f"Audio file not found: {path}")
+                import soundfile as sf
 
-    def set_audio(self, audio: np.ndarray, sample_rate: int = 48000):
-        """Set audio data and update display."""
-        if not HAS_PYQTGRAPH:
-            return
+                audio, resolved_rate = sf.read(str(path), dtype="float32")
+            else:
+                if sample_rate is None:
+                    raise ValueError("sample_rate is required for audio arrays")
+                audio = source
+                resolved_rate = sample_rate
 
+            resolved_rate = self._validate_sample_rate(resolved_rate)
+            normalized = self._normalize_audio(audio)
+            if not HAS_PYQTGRAPH:
+                raise RuntimeError("Waveform display is unavailable")
+            self._display_audio(normalized, resolved_rate)
+            return True
+        except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            self._last_error = str(exc)
+            self._set_info(f"Error: {exc}")
+            return False
+
+    def load_file(self, file_path: str | Path) -> bool:
+        """Compatibility wrapper; use :meth:`load_audio` for new callers."""
+        return self.load_audio(file_path)
+
+    def set_audio(self, audio: np.ndarray, sample_rate: int = 48000) -> bool:
+        """Compatibility wrapper; use :meth:`load_audio` for new callers."""
+        return self.load_audio(audio, sample_rate)
+
+    @staticmethod
+    def _validate_sample_rate(sample_rate: object) -> int:
+        if isinstance(sample_rate, bool):
+            raise ValueError("sample_rate must be a positive integer")
+        try:
+            numeric = float(sample_rate)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("sample_rate must be a positive integer") from exc
+        if not np.isfinite(numeric) or numeric <= 0 or not numeric.is_integer():
+            raise ValueError("sample_rate must be a positive integer")
+        return int(numeric)
+
+    @staticmethod
+    def _normalize_audio(audio: object) -> np.ndarray:
+        data = np.asarray(audio)
+        if data.ndim not in {1, 2}:
+            raise ValueError("audio must be a mono or multi-channel array")
+        if data.size == 0:
+            raise ValueError("audio array is empty")
+        if np.issubdtype(data.dtype, np.complexfloating):
+            raise ValueError("complex audio arrays are not supported")
+        if np.issubdtype(data.dtype, np.bool_):
+            raise ValueError("boolean audio arrays are not supported")
+
+        if data.ndim == 2:
+            rows, columns = data.shape
+            if columns in {1, 2}:
+                pass
+            elif rows in {1, 2}:
+                data = data.T
+            elif columns <= 8:
+                pass
+            elif rows <= 8:
+                data = data.T
+            else:
+                raise ValueError(
+                    "audio channel layout is ambiguous; use frames-by-channels "
+                    "or channels-by-frames with at most 8 channels"
+                )
+
+        if np.issubdtype(data.dtype, np.unsignedinteger):
+            info = np.iinfo(data.dtype)
+            midpoint = (info.max + 1) / 2.0
+            data = (data.astype(np.float32) - midpoint) / midpoint
+        elif np.issubdtype(data.dtype, np.signedinteger):
+            info = np.iinfo(data.dtype)
+            scale = float(max(abs(info.min), info.max))
+            data = data.astype(np.float32) / scale
+        else:
+            data = data.astype(np.float32, copy=False)
+
+        if not np.isfinite(data).all():
+            raise ValueError("audio contains non-finite samples")
+        return np.ascontiguousarray(data)
+
+    def _display_audio(self, audio: np.ndarray, sample_rate: int) -> None:
         self._audio_data = audio
         self._sample_rate = sample_rate
+        self._last_error = ""
 
         # Convert to mono for display
         if audio.ndim == 2:
-            mono = audio.mean(axis=1)
+            mono = audio.mean(axis=1, dtype=np.float32)
         else:
             mono = audio
 
@@ -170,12 +265,13 @@ class WaveformWidget(QWidget):
         # Downsample for display (max 10000 points)
         max_points = 10000
         if len(mono) > max_points:
-            step = len(mono) // max_points
+            step = int(np.ceil(len(mono) / max_points))
             display = mono[::step]
         else:
+            step = 1
             display = mono
 
-        time_axis = np.linspace(0, self._duration, len(display))
+        time_axis = np.arange(len(display), dtype=np.float64) * step / sample_rate
 
         self._waveform_curve.setData(time_axis, display)
         self._waveform_plot.setXRange(0, self._duration)
@@ -187,14 +283,31 @@ class WaveformWidget(QWidget):
         if self._show_controls:
             dur_str = f"{self._duration:.1f}s"
             sr_str = f"{sample_rate/1000:.1f}kHz"
-            ch_str = "stereo" if audio.ndim == 2 else "mono"
+            channels = audio.shape[1] if audio.ndim == 2 else 1
+            ch_str = (
+                "mono" if channels == 1
+                else "stereo" if channels == 2
+                else f"{channels} ch"
+            )
             self._info_label.setText(f"{dur_str} | {sr_str} | {ch_str}")
 
     def _update_spectrogram(self, mono: np.ndarray, sr: int):
         """Compute and display mel spectrogram."""
         try:
+            if len(mono) < 32:
+                self._spectro_item.clear()
+                return
             import librosa
-            S = librosa.feature.melspectrogram(y=mono, sr=sr, n_mels=64, fmax=8000)
+
+            n_fft = 1 << min(11, len(mono).bit_length() - 1)
+            S = librosa.feature.melspectrogram(
+                y=mono,
+                sr=sr,
+                n_fft=n_fft,
+                hop_length=max(1, n_fft // 4),
+                n_mels=min(64, n_fft // 2),
+                fmax=min(8000, sr / 2),
+            )
             S_dB = librosa.power_to_db(S, ref=np.max)
 
             # Custom colormap: dark blue -> blue -> cyan -> yellow
@@ -212,12 +325,14 @@ class WaveformWidget(QWidget):
             self._spectro_item.setLookupTable(lut)
 
             # Scale to time axis
-            tr = self._spectro_item.transform()
             self._spectro_item.setTransform(
-                tr.scale(self._duration / S_dB.shape[1], sr / (2 * S_dB.shape[0]))
+                QTransform().scale(
+                    self._duration / S_dB.shape[1],
+                    sr / (2 * S_dB.shape[0]),
+                )
             )
-        except ImportError:
-            pass  # librosa not available
+        except Exception:
+            self._spectro_item.clear()
 
     def set_playback_position(self, seconds: float):
         """Update playback cursor position."""
@@ -249,16 +364,20 @@ class WaveformWidget(QWidget):
 
     def clear(self):
         """Clear display."""
-        if not HAS_PYQTGRAPH:
-            return
-        self._waveform_curve.setData([], [])
-        self._spectro_item.clear()
-        self._cursor_line.hide()
-        self._spectro_cursor.hide()
+        if HAS_PYQTGRAPH:
+            self._waveform_curve.setData([], [])
+            self._spectro_item.clear()
+            self._spectro_item.setTransform(QTransform())
+            self._cursor_line.hide()
+            self._spectro_cursor.hide()
         self._audio_data = None
         self._duration = 0.0
-        if self._show_controls:
-            self._info_label.setText("")
+        self._last_error = ""
+        self._set_info("")
+
+    def _set_info(self, text: str) -> None:
+        if self._show_controls and hasattr(self, "_info_label"):
+            self._info_label.setText(text)
 
     @property
     def duration(self) -> float:
@@ -267,6 +386,10 @@ class WaveformWidget(QWidget):
     @property
     def has_audio(self) -> bool:
         return self._audio_data is not None
+
+    @property
+    def last_error(self) -> str:
+        return self._last_error
 
 
 class MiniWaveform(QWidget):
@@ -283,10 +406,17 @@ class MiniWaveform(QWidget):
         layout.addWidget(self._waveform)
 
     def set_audio(self, audio: np.ndarray, sample_rate: int = 48000):
-        self._waveform.set_audio(audio, sample_rate)
+        return self._waveform.load_audio(audio, sample_rate)
 
     def load_file(self, file_path: str):
-        self._waveform.load_file(file_path)
+        return self._waveform.load_audio(file_path)
+
+    def load_audio(
+        self,
+        source: str | Path | np.ndarray,
+        sample_rate: int | None = None,
+    ) -> bool:
+        return self._waveform.load_audio(source, sample_rate)
 
     def set_playback_position(self, seconds: float):
         self._waveform.set_playback_position(seconds)
