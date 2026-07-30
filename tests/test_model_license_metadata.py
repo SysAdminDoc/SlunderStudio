@@ -15,9 +15,10 @@ from core.model_manager import (
     BUILTIN_MODELS,
     COMMERCIAL_USE_LIMITED,
     COMMERCIAL_USE_NON_COMMERCIAL,
+    ModelStatus,
 )
 from core.provenance import read_provenance_sidecar, write_provenance_sidecar
-from ui.model_hub import ModelCard
+from ui.model_hub import ExecutableModelConsentDialog, ModelCard
 
 
 def _write_wav(path: Path, duration: float = 0.1, sample_rate: int = 24000):
@@ -52,7 +53,25 @@ class ModelLicenseMetadataTests(unittest.TestCase):
             self.assertIn("Gated / token required", card._rights_label.text())
             self.assertIsNotNone(card._license_warning)
             self.assertIn("Commercial use is limited", card._license_warning.text())
+            self.assertIn("Pinned", card._trust_label.text())
         finally:
+            card.deleteLater()
+
+    def test_executable_model_consent_dialog_requires_acknowledgement(self):
+        app = QApplication.instance() or QApplication([])
+        info = BUILTIN_MODELS["musicgen-medium"]
+        dialog = ExecutableModelConsentDialog(info)
+        card = ModelCard(info)
+        try:
+            self.assertFalse(dialog._approve.isEnabled())
+            dialog._ack.setChecked(True)
+            self.assertTrue(dialog._approve.isEnabled())
+
+            card.update_status(ModelStatus.DOWNLOADED)
+            self.assertFalse(card._consent_btn.isHidden())
+            self.assertIn(info.revision, dialog._details.text())
+        finally:
+            dialog.deleteLater()
             card.deleteLater()
 
     def test_provenance_sidecar_contains_model_license_policy(self):

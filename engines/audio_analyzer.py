@@ -557,7 +557,7 @@ class ReferenceLibrary:
 _whisper_model = None
 
 
-def load_model(cache_dir: str = None, **kwargs):
+def load_model(cache_dir: str = None, model_path: str = None, **kwargs):
     """Load Whisper model for transcription/alignment. Called by ModelManager._dynamic_load()."""
     global _whisper_model
     from core.deps import ensure
@@ -566,15 +566,16 @@ def load_model(cache_dir: str = None, **kwargs):
 
     import whisper
 
-    model_size = "tiny"
-    download_root = None
-    if cache_dir:
-        from pathlib import Path
-        local = Path(cache_dir) / "whisper-tiny"
-        if local.exists():
-            download_root = str(local)
+    from core.model_manager import ModelSecurityError
+    local = Path(model_path or cache_dir or "")
+    checkpoint = local / "tiny.pt"
+    if not local.is_absolute() or not checkpoint.is_file():
+        raise ModelSecurityError(
+            "Whisper loading will not download executable model data during inference. "
+            "A verified local tiny.pt checkpoint is required."
+        )
 
-    _whisper_model = whisper.load_model(model_size, download_root=download_root)
+    _whisper_model = whisper.load_model("tiny", download_root=str(local))
     return _whisper_model
 
 

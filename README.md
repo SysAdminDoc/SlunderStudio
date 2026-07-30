@@ -101,6 +101,7 @@ Models are downloaded on-demand through the Model Hub. Nothing downloads until y
 All models run entirely on your local machine. No cloud APIs, no subscriptions, no data leaves your computer.
 When Offline Mode is enabled in Settings, all HuggingFace API calls and model downloads are blocked — models load from local cache only or fail with an explicit offline error.
 Model Hub cards show each model's license, gated/token status, and commercial-use status. Generated and exported provenance sidecars carry source model license policy forward, and Song Forge export warns when a source model is limited, non-commercial, or governed by model-specific terms.
+Built-in Hugging Face downloads use reviewed immutable commit revisions and hash every cached file before loading. Remote model code is disabled by default; models that declare custom code or pickle-backed weights require an explicit Model Hub warning and consent scoped to that exact revision.
 
 ## System Requirements
 

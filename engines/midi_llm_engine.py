@@ -609,18 +609,45 @@ class MidiLLMEngine:
     def is_loaded(self) -> bool:
         return self.model is not None
 
-    def load_model(self, model_path: str, device: str = "cuda",
-                   progress_callback: Optional[Callable] = None):
-        """Load MIDI-LLM model from local path or HuggingFace ID."""
+    def load_model(
+        self,
+        model_path: str,
+        device: str = "cuda",
+        progress_callback: Optional[Callable] = None,
+        *,
+        local_files_only: bool = True,
+        trust_remote_code: bool = False,
+        prefer_safetensors: bool = True,
+        execution_consent: bool = False,
+    ):
+        """Load MIDI-LLM from a verified local snapshot."""
         try:
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
+            from core.model_manager import ModelSecurityError
+
+            local_path = Path(model_path)
+            if not local_files_only or not local_path.is_absolute() or not local_path.is_dir():
+                raise ModelSecurityError(
+                    "MIDI-LLM loading accepts only an absolute verified local snapshot; "
+                    "remote repository IDs are disabled."
+                )
+            if trust_remote_code and not execution_consent:
+                raise ModelSecurityError(
+                    "Executable model code requires explicit consent for the pinned revision."
+                )
+            if not prefer_safetensors and not execution_consent:
+                raise ModelSecurityError(
+                    "Pickle-backed model weights require explicit consent for the pinned revision."
+                )
 
             if progress_callback:
                 progress_callback(0.1, "Loading tokenizer...")
 
             self.tokenizer = AutoTokenizer.from_pretrained(
-                model_path, trust_remote_code=True
+                str(local_path),
+                trust_remote_code=trust_remote_code,
+                local_files_only=True,
             )
 
             if progress_callback:
@@ -628,10 +655,12 @@ class MidiLLMEngine:
 
             dtype = torch.float16 if device == "cuda" else torch.float32
             self.model = AutoModelForCausalLM.from_pretrained(
-                model_path,
+                str(local_path),
                 torch_dtype=dtype,
                 device_map=device if device == "cuda" else None,
-                trust_remote_code=True,
+                trust_remote_code=trust_remote_code,
+                local_files_only=True,
+                use_safetensors=prefer_safetensors,
             )
 
             if device == "cpu":
@@ -958,7 +987,13 @@ def generate_midi(params: MidiGenParams,
         )
 
 
-def load_model(cache_dir: str = None, model_id: str = None, source: str = None, **kwargs) -> MidiLLMEngine:
+def load_model(
+    cache_dir: str = None,
+    model_path: str = None,
+    model_id: str = None,
+    source: str = None,
+    **kwargs,
+) -> MidiLLMEngine:
     """Load MIDI LLM model. Called by ModelManager._dynamic_load()."""
     from core.deps import ensure
     ensure("torch")
@@ -966,13 +1001,17 @@ def load_model(cache_dir: str = None, model_id: str = None, source: str = None, 
 
     engine = get_engine()
 
-    # Determine model path: check cache first, then use HF source
-    model_path = source or "slseanwu/MIDI-LLM_Llama-3.2-1B"
-    if cache_dir and model_id:
-        from pathlib import Path
-        local = Path(cache_dir) / model_id
-        if local.exists():
-            model_path = str(local)
+    local = Path(model_path or cache_dir or "")
+    if not local.is_absolute() or not local.is_dir():
+        raise RuntimeError(
+            "Verified MIDI-LLM cache is unavailable; download the pinned model in Model Hub."
+        )
 
-    engine.load_model(model_path)
+    engine.load_model(
+        str(local),
+        local_files_only=bool(kwargs.get("local_files_only", True)),
+        trust_remote_code=bool(kwargs.get("trust_remote_code", False)),
+        prefer_safetensors=bool(kwargs.get("prefer_safetensors", True)),
+        execution_consent=bool(kwargs.get("execution_consent", False)),
+    )
     return engine

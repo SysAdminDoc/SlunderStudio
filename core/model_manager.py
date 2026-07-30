@@ -24,6 +24,26 @@ class OfflineModeError(RuntimeError):
     """Raised when a network operation is attempted while offline mode is enabled."""
     pass
 
+
+class ModelSecurityError(RuntimeError):
+    """Raised when model provenance or executable-content policy is not satisfied."""
+    pass
+
+
+EXECUTABLE_MODEL_WARNING = (
+    "This model revision contains executable repository code or pickle-backed "
+    "weights. Loading it can execute code with your user permissions. Review "
+    "the pinned source and revision before granting consent."
+)
+EXECUTABLE_EXTENSIONS = {".py", ".pyc", ".pyd", ".so", ".dll", ".dylib"}
+PICKLE_WEIGHT_EXTENSIONS = {".bin", ".pt", ".pth", ".ckpt", ".pkl", ".pickle"}
+SAFER_WEIGHT_EXTENSIONS = {".safetensors", ".gguf", ".onnx"}
+
+
+def is_commit_sha(value: str) -> bool:
+    return len(value or "") == 40 and all(char in "0123456789abcdefABCDEF" for char in value)
+
+
 # ── Model Registry ─────────────────────────────────────────────────────────────
 
 class ModelCategory(str, Enum):
@@ -80,11 +100,13 @@ class ModelInfo:
     tags: list[str] = field(default_factory=list)
     allow_patterns: list[str] = field(default_factory=list)  # HF download filter
     ignore_patterns: list[str] = field(default_factory=list)
-    revision: str = "main"
+    revision: str = ""
     pip_managed: bool = False  # True = model managed by pip package, not HF download
     gated: bool = False  # True = requires HF login + license acceptance
     trusted_source: bool = True
     trust_note: str = "Built-in registry source"
+    requires_remote_code: bool = False
+    allows_unsafe_weights: bool = False
     commercial_use: str = COMMERCIAL_USE_UNKNOWN
     commercial_use_note: str = ""
     license_url: str = ""
@@ -141,6 +163,23 @@ def hash_file_sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _serialization_summary(file_hashes: dict[str, str]) -> str:
+    suffixes = {Path(path).suffix.lower() for path in file_hashes}
+    safer = suffixes & SAFER_WEIGHT_EXTENSIONS
+    unsafe = suffixes & PICKLE_WEIGHT_EXTENSIONS
+    if safer and unsafe:
+        return "mixed"
+    if ".safetensors" in safer:
+        return "safetensors"
+    if ".gguf" in safer:
+        return "gguf"
+    if ".onnx" in safer:
+        return "onnx"
+    if unsafe:
+        return "pickle"
+    return "unknown"
+
+
 # ── Built-in Model Registry ───────────────────────────────────────────────────
 
 BUILTIN_MODELS: dict[str, ModelInfo] = {
@@ -157,6 +196,7 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         is_core=True,
         tags=["song", "vocals", "instrumental", "music generation"],
+        revision="82cd0d7b6322bd28cd4e830fe675ddb6180ce36c",
         commercial_use=COMMERCIAL_USE_ALLOWED,
         commercial_use_note="Apache 2.0 model weights; generated output rights still depend on prompts and inputs.",
         license_url="https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
@@ -175,6 +215,7 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         is_core=True,
         tags=["lyrics", "text", "creative writing", "LLM"],
         allow_patterns=["Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"],
+        revision="bf5b95e96dac0462e2a09145ec66cae9a3f12067",
         commercial_use=COMMERCIAL_USE_TERMS,
         commercial_use_note="Meta Llama Community License allows commercial use subject to model terms and policy.",
         license_url="https://www.llama.com/llama3_1/license/",
@@ -192,6 +233,7 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         tags=["lyrics", "text", "fast", "LLM"],
         allow_patterns=["Llama-3.2-3B-Instruct-Q4_K_M.gguf"],
+        revision="5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
         commercial_use=COMMERCIAL_USE_TERMS,
         commercial_use_note="Meta Llama Community License allows commercial use subject to model terms and policy.",
         license_url="https://www.llama.com/llama3_2/license/",
@@ -209,6 +251,7 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         tags=["lyrics", "multilingual", "premium", "LLM"],
         allow_patterns=["Qwen2.5-14B-Instruct-Q4_K_M.gguf"],
+        revision="05244aa5d871c661c80082a15d3bce44714d068d",
         commercial_use=COMMERCIAL_USE_ALLOWED,
         commercial_use_note="Apache 2.0 model license.",
         license_url="https://huggingface.co/Qwen/Qwen2.5-14B-Instruct",
@@ -226,6 +269,8 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         is_core=True,
         tags=["MIDI", "composition", "multitrack", "instrumental"],
+        revision="8b82ab9ec144348900e9ea4623b123e0b12f60b3",
+        ignore_patterns=["*.bin", "*.pt", "*.pth", "*.ckpt", "*.pkl", "*.pickle"],
         commercial_use=COMMERCIAL_USE_TERMS,
         commercial_use_note="Derived from Llama 3.2; commercial use is governed by Meta Llama terms.",
         license_url="https://www.llama.com/llama3_2/license/",
@@ -260,6 +305,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         tags=["voice conversion", "AI cover", "timbre"],
         allow_patterns=["hubert_base.pt", "rmvpe.pt", "pretrained_v2/*"],
+        revision="5836e9ea8ad6b7852f906acfa440e65a36e72396",
+        allows_unsafe_weights=True,
+        trust_note="Pinned upstream revision; pickle-backed weights require per-revision consent.",
         commercial_use=COMMERCIAL_USE_ALLOWED,
         commercial_use_note="MIT engine; individual voice profiles require separate consent metadata.",
         license_url="https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
@@ -276,6 +324,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.rvc_engine",
         loader_fn="load_model",
         tags=["voice cloning", "TTS", "zero-shot"],
+        revision="336b2ec4e8d4ac74740798dd40af44e74659ecaf",
+        allows_unsafe_weights=True,
+        trust_note="Pinned upstream revision; pickle-backed weights require per-revision consent.",
         commercial_use=COMMERCIAL_USE_ALLOWED,
         commercial_use_note="MIT engine; individual voice profiles require separate consent metadata.",
         license_url="https://github.com/RVC-Boss/GPT-SoVITS",
@@ -310,6 +361,8 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         tags=["SFX", "sound effects", "ambient", "foley"],
         gated=True,
+        revision="f21265c1e2710b3bd2386596943f0007f55f802e",
+        ignore_patterns=["*.bin", "*.pt", "*.pth", "*.ckpt", "*.pkl", "*.pickle"],
         commercial_use=COMMERCIAL_USE_LIMITED,
         commercial_use_note="Stability Community License; commercial use has eligibility limits and requires license acceptance.",
         license_url="https://huggingface.co/stabilityai/stable-audio-open-1.0",
@@ -326,6 +379,8 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.audio_analyzer",
         loader_fn="load_model",
         tags=["alignment", "transcription", "lyrics sync"],
+        revision="169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
+        ignore_patterns=["*.bin"],
         commercial_use=COMMERCIAL_USE_ALLOWED,
         commercial_use_note="MIT model license.",
     ),
@@ -341,6 +396,9 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.ace_step_engine",
         loader_fn="load_model",
         tags=["instrumental", "short clips", "sketching"],
+        revision="d3bd7b00761b78ad7a8a05145ee31e7832e9916c",
+        allows_unsafe_weights=True,
+        trust_note="Pinned upstream revision; pickle-backed weights require per-revision consent.",
         commercial_use=COMMERCIAL_USE_NON_COMMERCIAL,
         commercial_use_note="CC-BY-NC model weights are not cleared for commercial use.",
         license_url="https://huggingface.co/facebook/musicgen-medium",
@@ -525,6 +583,11 @@ class ModelManager(QObject):
         If loader_fn is provided, uses it. Otherwise looks up registry loader.
         Returns the loaded model object.
         """
+        info = self._registry.get(model_id)
+        if info is None:
+            raise ValueError(f"Unknown model: {model_id}")
+        self.require_verified_model(model_id)
+
         if self._current_model_id == model_id and self._current_model is not None:
             return self._current_model
 
@@ -539,9 +602,6 @@ class ModelManager(QObject):
                 model = loader_fn()
             else:
                 # Dynamic import from registry
-                info = self._registry.get(model_id)
-                if info is None:
-                    raise ValueError(f"Unknown model: {model_id}")
                 model = self._dynamic_load(info)
 
             self._current_model = model
@@ -587,16 +647,119 @@ class ModelManager(QObject):
             self._emit_gpu_status()
 
     def _dynamic_load(self, info: ModelInfo) -> Any:
-        """Dynamically import and call a model's loader function."""
+        """Load a verified local model while denying loader-initiated network access."""
         import importlib
         module = importlib.import_module(info.loader_module)
         loader = getattr(module, info.loader_fn)
-        cache_dir = self._settings.get("model_hub.cache_dir")
-        return loader(
-            cache_dir=cache_dir,
-            model_id=info.model_id,
-            source=info.source,
+        model_path = self.get_cache_dir(info.model_id)
+        previous_offline = {
+            key: os.environ.get(key)
+            for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+        }
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        try:
+            return loader(
+                cache_dir=str(model_path),
+                model_path=str(model_path),
+                model_id=info.model_id,
+                source=info.source,
+                revision=info.revision,
+                local_files_only=True,
+                trust_remote_code=info.requires_remote_code,
+                prefer_safetensors=not info.allows_unsafe_weights,
+                execution_consent=bool(
+                    info.requires_remote_code or info.allows_unsafe_weights
+                ),
+            )
+        finally:
+            for key, value in previous_offline.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    def require_verified_model(self, model_id: str) -> dict[str, Any]:
+        """Return a verified manifest or fail before model code can execute."""
+        info = self._registry.get(model_id)
+        if info is None:
+            raise ModelSecurityError(f"Unknown model: {model_id}")
+        if info.pip_managed:
+            return {
+                "model_id": model_id,
+                "pip_managed": True,
+                "revision": "package-managed",
+            }
+        self._validate_registry_revision(info)
+        ok, reason = self.verify_download(model_id, full_hash=True)
+        if not ok:
+            raise ModelSecurityError(
+                f"{info.name} cannot load because its local cache is unverified: {reason}"
+            )
+        if info.requires_remote_code or info.allows_unsafe_weights:
+            if not self.has_executable_model_consent(model_id):
+                raise ModelSecurityError(
+                    f"{info.name} requires explicit consent for revision "
+                    f"{info.revision}. {EXECUTABLE_MODEL_WARNING}"
+                )
+        return self.get_download_manifest(model_id)
+
+    def approve_executable_model(
+        self,
+        model_id: str,
+        revision: str,
+        *,
+        acknowledged: bool,
+    ) -> None:
+        """Persist explicit consent for one exact executable model revision."""
+        info = self._registry.get(model_id)
+        if info is None:
+            raise ModelSecurityError(f"Unknown model: {model_id}")
+        if revision != info.revision:
+            raise ModelSecurityError(
+                f"Consent revision mismatch for {model_id}: expected {info.revision}"
+            )
+        if not (info.requires_remote_code or info.allows_unsafe_weights):
+            raise ModelSecurityError(f"{info.name} does not require executable-model consent")
+        if not acknowledged:
+            raise ModelSecurityError(EXECUTABLE_MODEL_WARNING)
+        consents = dict(self._settings.get("model_hub.execution_consents", {}) or {})
+        consents[self._execution_consent_key(info)] = {
+            "approved": True,
+            "source": info.source,
+            "revision": info.revision,
+            "approved_at": time.time(),
+            "warning": EXECUTABLE_MODEL_WARNING,
+        }
+        self._settings.set("model_hub.execution_consents", consents)
+
+    def has_executable_model_consent(self, model_id: str) -> bool:
+        """Return whether the current exact source revision has recorded consent."""
+        info = self._registry.get(model_id)
+        if info is None or not (info.requires_remote_code or info.allows_unsafe_weights):
+            return False
+        consents = self._settings.get("model_hub.execution_consents", {}) or {}
+        consent = (
+            consents.get(self._execution_consent_key(info), {})
+            if isinstance(consents, dict)
+            else {}
         )
+        return bool(
+            consent.get("approved") is True
+            and consent.get("source") == info.source
+            and consent.get("revision") == info.revision
+        )
+
+    @staticmethod
+    def _execution_consent_key(info: ModelInfo) -> str:
+        return f"{info.model_id}@{info.revision}"
+
+    @staticmethod
+    def _validate_registry_revision(info: ModelInfo) -> None:
+        if info.source and not info.pip_managed and not is_commit_sha(info.revision):
+            raise ModelSecurityError(
+                f"{info.name} must use an immutable 40-character commit revision"
+            )
 
     # ── Download Management ────────────────────────────────────────────────────
 
@@ -625,6 +788,7 @@ class ModelManager(QObject):
         info = self._registry.get(model_id)
         if info is None:
             raise ValueError(f"Unknown model: {model_id}")
+        self._validate_registry_revision(info)
 
         # Pip-managed models (Demucs, DiffSinger) handle their own downloads
         if info.pip_managed:
@@ -778,6 +942,8 @@ class ModelManager(QObject):
         """Resolve a HuggingFace revision to a commit SHA when online."""
         if not info.source:
             return info.revision
+        if is_commit_sha(info.revision):
+            return info.revision
         if self.is_offline:
             return info.revision
         try:
@@ -811,6 +977,7 @@ class ModelManager(QObject):
 
         marker = cache_path / self.COMPLETE_MARKER
         license_meta = info.license_metadata() if info else {}
+        serialization = _serialization_summary(file_hashes)
         marker.write_text(json.dumps({
             "model_id": model_id,
             "timestamp": _time.time(),
@@ -830,6 +997,12 @@ class ModelManager(QObject):
             "access": license_meta.get("access", "Unknown"),
             "trusted_source": bool(info.trusted_source) if info else False,
             "trust_note": info.trust_note if info else "",
+            "requires_remote_code": bool(info.requires_remote_code) if info else False,
+            "allows_unsafe_weights": bool(info.allows_unsafe_weights) if info else False,
+            "execution_consent_required": bool(
+                info and (info.requires_remote_code or info.allows_unsafe_weights)
+            ),
+            "serialization": serialization,
             "allow_patterns": info.allow_patterns if info else [],
             "ignore_patterns": info.ignore_patterns if info else [],
             "resolved_path": resolved_path,
@@ -846,7 +1019,7 @@ class ModelManager(QObject):
         except Exception:
             return {}
 
-    def verify_download(self, model_id: str) -> tuple[bool, str]:
+    def verify_download(self, model_id: str, *, full_hash: bool = True) -> tuple[bool, str]:
         """
         Verify a download is complete. Returns (ok, reason).
         Checks for completion marker and basic file count sanity.
@@ -856,6 +1029,10 @@ class ModelManager(QObject):
             return False, "Unknown model"
         if info.pip_managed:
             return True, "pip managed"
+        try:
+            self._validate_registry_revision(info)
+        except ModelSecurityError as exc:
+            return False, str(exc)
 
         cache_path = self.get_cache_dir(model_id)
         marker = cache_path / self.COMPLETE_MARKER
@@ -868,21 +1045,51 @@ class ModelManager(QObject):
 
         try:
             meta = json.loads(marker.read_text())
+            if meta.get("model_id") != model_id:
+                return False, "Manifest model ID mismatch"
+            if meta.get("source") != info.source:
+                return False, "Manifest source mismatch"
+            if meta.get("revision") != info.revision:
+                return False, "Manifest revision mismatch"
+            if meta.get("resolved_revision") != info.revision:
+                return False, "Manifest resolved revision mismatch"
             expected_files = meta.get("file_count", 0)
-            actual_files = sum(
-                1 for f in cache_path.rglob("*")
+            actual_paths = {
+                str(f.relative_to(cache_path)).replace("\\", "/")
+                for f in cache_path.rglob("*")
                 if f.is_file() and f.name != self.COMPLETE_MARKER
-            )
-            if actual_files < expected_files:
-                return False, f"Missing files ({actual_files}/{expected_files})"
+            }
+            actual_files = len(actual_paths)
+            if actual_files != expected_files:
+                return False, f"File count mismatch ({actual_files}/{expected_files})"
             file_hashes = meta.get("file_hashes", {})
+            if not isinstance(file_hashes, dict) or set(file_hashes) != actual_paths:
+                return False, "Manifest does not hash every cached file"
+
+            executable_files = sorted(
+                path for path in actual_paths if Path(path).suffix.lower() in EXECUTABLE_EXTENSIONS
+            )
+            if executable_files and not info.requires_remote_code:
+                return False, f"Undeclared executable model code: {executable_files[0]}"
+            unsafe_weights = sorted(
+                path for path in actual_paths if Path(path).suffix.lower() in PICKLE_WEIGHT_EXTENSIONS
+            )
+            if unsafe_weights and not info.allows_unsafe_weights:
+                return False, f"Unsafe weight format is not approved: {unsafe_weights[0]}"
+
             for rel_path, expected_hash in file_hashes.items():
                 path = cache_path / rel_path
+                if path.is_symlink():
+                    return False, f"Symlinked model file is not allowed: {rel_path}"
+                resolved = path.resolve(strict=False)
+                if not resolved.is_relative_to(cache_path.resolve(strict=False)):
+                    return False, f"Model path escapes cache: {rel_path}"
                 if not path.is_file():
                     return False, f"Missing hashed file: {rel_path}"
-                actual_hash = hash_file_sha256(path)
-                if actual_hash != expected_hash:
-                    return False, f"Hash mismatch: {rel_path}"
+                if full_hash:
+                    actual_hash = hash_file_sha256(path)
+                    if actual_hash != expected_hash:
+                        return False, f"Hash mismatch: {rel_path}"
             return True, "OK"
         except Exception as e:
             return False, f"Marker corrupted: {e}"
@@ -916,21 +1123,8 @@ class ModelManager(QObject):
         if info and info.pip_managed:
             return True
 
-        cache_path = self.get_cache_dir(model_id)
-
-        # Must have completion marker — bare files without it = partial download
-        marker = cache_path / self.COMPLETE_MARKER
-        if marker.exists():
-            return True
-
-        # Also check HuggingFace default cache (for models downloaded outside Slunder)
-        if info and info.source:
-            hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
-            model_dir = hf_cache / f"models--{info.source.replace('/', '--')}"
-            # HF cache uses refs/main as its own completion signal
-            if model_dir.exists() and (model_dir / "refs" / "main").exists():
-                return True
-        return False
+        ok, _reason = self.verify_download(model_id, full_hash=False)
+        return ok
 
     def has_partial_download(self, model_id: str) -> bool:
         """Check if there are leftover files from an incomplete download."""

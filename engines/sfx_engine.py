@@ -118,18 +118,16 @@ class SFXEngine:
     def load_model(self, model_path: str = "stabilityai/stable-audio-open-1.0",
                    device: str = "cuda",
                    progress_callback: Optional[Callable] = None):
-        """Load Stable Audio Open model."""
+        """Load Stable Audio Open from a verified local snapshot."""
         from core.deps import ensure
-        from core.model_manager import ModelManager, OfflineModeError
+        from core.model_manager import ModelSecurityError
         ensure("torch")
         ensure("stable_audio_tools", pip_name="stable-audio-tools")
 
-        mgr = ModelManager()
-        if mgr.is_offline and not os.path.isdir(model_path):
-            raise OfflineModeError(
-                "Stable Audio Open model loading requires network access, "
-                "but Offline Mode is enabled. Download the model first, "
-                "then enable Offline Mode."
+        if not os.path.isabs(model_path) or not os.path.isdir(model_path):
+            raise ModelSecurityError(
+                "Stable Audio Open loading accepts only a verified local snapshot. "
+                "Download the pinned revision in Model Hub first."
             )
 
         try:
@@ -437,12 +435,17 @@ def generate_sfx(params: SFXParams,
     return engine.generate(params, progress_callback)
 
 
-def load_model(cache_dir: str = None, source: str = None, **kwargs) -> SFXEngine:
+def load_model(
+    cache_dir: str = None,
+    model_path: str = None,
+    source: str = None,
+    **kwargs,
+) -> SFXEngine:
     """Load Stable Audio Open model. Called by ModelManager._dynamic_load()."""
     from core.deps import ensure
     ensure("torch")
     ensure("stable_audio_tools")
     engine = get_sfx_engine()
-    model_path = source or "stabilityai/stable-audio-open-1.0"
-    engine.load_model(model_path)
+    local_path = model_path or cache_dir or ""
+    engine.load_model(local_path)
     return engine

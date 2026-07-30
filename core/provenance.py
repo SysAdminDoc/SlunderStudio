@@ -101,6 +101,10 @@ def collect_model_metadata(
         "requires_export_warning": False,
         "file_hash_count": 0,
         "trusted_source": None,
+        "requires_remote_code": False,
+        "allows_unsafe_weights": False,
+        "execution_consent_required": False,
+        "serialization": "",
         "gated": None,
         "access": "",
     }
@@ -126,6 +130,11 @@ def collect_model_metadata(
                 "license_warning": license_meta.get("license_warning", ""),
                 "requires_export_warning": license_meta.get("requires_export_warning", False),
                 "trusted_source": info.trusted_source,
+                "requires_remote_code": info.requires_remote_code,
+                "allows_unsafe_weights": info.allows_unsafe_weights,
+                "execution_consent_required": (
+                    info.requires_remote_code or info.allows_unsafe_weights
+                ),
                 "gated": info.gated,
                 "access": license_meta.get("access", ""),
             })
@@ -151,6 +160,7 @@ def collect_model_metadata(
                 "file_hash_count": len(file_hashes),
                 "total_bytes": manifest.get("total_bytes", 0),
                 "access": metadata["access"] or manifest.get("access", ""),
+                "serialization": manifest.get("serialization", ""),
             })
     except Exception:
         pass

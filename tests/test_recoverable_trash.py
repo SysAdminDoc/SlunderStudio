@@ -128,6 +128,7 @@ class RecoverableTrashTests(unittest.TestCase):
                         disk_gb=0.001,
                         license="MIT",
                         source="example/model",
+                        revision="f" * 40,
                         loader_module="engines.sfx_engine",
                         loader_fn="load_model",
                     )
@@ -138,7 +139,11 @@ class RecoverableTrashTests(unittest.TestCase):
                 cache_dir = mgr.get_cache_dir("trash-model")
                 cache_dir.mkdir(parents=True)
                 (cache_dir / "weights.safetensors").write_bytes(b"weights")
-                mgr._write_complete_marker("trash-model", cache_dir)
+                mgr._write_complete_marker(
+                    "trash-model",
+                    cache_dir,
+                    resolved_revision="f" * 40,
+                )
 
                 entry = mgr.delete_model_cache("trash-model")
 

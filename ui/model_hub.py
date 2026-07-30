@@ -14,7 +14,15 @@ from PySide6.QtCore import QUrl
 
 from ui.theme import Palette
 from ui.accessibility import install_accessibility, set_accessible
-from core.model_manager import ModelManager, ModelInfo, ModelStatus, ModelCategory, OfflineModeError
+from core.model_manager import (
+    EXECUTABLE_MODEL_WARNING,
+    ModelCategory,
+    ModelInfo,
+    ModelManager,
+    ModelSecurityError,
+    ModelStatus,
+    OfflineModeError,
+)
 from core.settings import Settings
 from core.workers import DownloadWorker
 from core.job_state import JobStatus, JobStore
@@ -83,12 +91,82 @@ class HFTokenDialog(QDialog):
             self._token_input.setStyleSheet(f"border: 1px solid {Palette.RED};")
 
 
+class ExecutableModelConsentDialog(QDialog):
+    """Explicit review gate for one pinned custom-code or pickle revision."""
+
+    def __init__(self, info: ModelInfo, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Review Executable Model")
+        self.setMinimumWidth(560)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
+
+        title = QLabel(f"Review {info.name} before loading")
+        title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {Palette.TEXT};")
+        layout.addWidget(title)
+
+        warning = QLabel(EXECUTABLE_MODEL_WARNING)
+        warning.setWordWrap(True)
+        warning.setStyleSheet(f"color: {Palette.YELLOW};")
+        layout.addWidget(warning)
+
+        details = QLabel(
+            f"Source: {info.source}\n"
+            f"Pinned revision: {info.revision}\n"
+            f"Remote code: {'yes' if info.requires_remote_code else 'no'}\n"
+            f"Pickle-backed weights: {'yes' if info.allows_unsafe_weights else 'no'}"
+        )
+        details.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        details.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-family: Consolas;")
+        layout.addWidget(details)
+        self._details = details
+
+        self._ack = QCheckBox(
+            "I reviewed this exact source and revision and accept the execution risk."
+        )
+        layout.addWidget(self._ack)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        buttons.addWidget(cancel)
+        self._approve = QPushButton("Allow this revision")
+        self._approve.setObjectName("danger")
+        self._approve.setEnabled(False)
+        self._approve.clicked.connect(self.accept)
+        self._ack.toggled.connect(self._approve.setEnabled)
+        buttons.addWidget(self._approve)
+        layout.addLayout(buttons)
+
+        install_accessibility(
+            self,
+            f"Executable model review for {info.name}",
+            named_controls=[
+                (
+                    self._ack,
+                    "Acknowledge executable model risk",
+                    "Confirms review of the exact model source and pinned revision.",
+                ),
+                (
+                    self._approve,
+                    f"Allow {info.name} revision",
+                    "Stores consent for only the displayed pinned revision.",
+                ),
+            ],
+            tab_order=[self._ack, cancel, self._approve],
+        )
+
+
 class ModelCard(QFrame):
     """A single model card with integrated download panel."""
 
     download_requested = Signal(str)
     cancel_requested = Signal(str)
     delete_requested = Signal(str)
+    consent_requested = Signal(str)
 
     def __init__(self, info: ModelInfo, parent=None):
         super().__init__(parent)
@@ -166,13 +244,14 @@ class ModelCard(QFrame):
             self._license_warning = None
 
         trust_text = (
-            f"Revision {self.info.revision} - "
-            f"{'trusted registry source' if self.info.trusted_source else 'untrusted source'}"
+            f"Pinned {self.info.revision[:12]} - hashed local cache - "
+            f"{'reviewed registry source' if self.info.trusted_source else 'untrusted source'}"
         )
         trust = QLabel(trust_text)
         trust.setWordWrap(True)
         trust.setStyleSheet(f"font-size: 10px; color: {Palette.SUBTEXT0};")
         layout.addWidget(trust)
+        self._trust_label = trust
 
         # -- Download panel (hidden by default, expands inline) --
         self._dl_panel = QFrame()
@@ -249,6 +328,13 @@ class ModelCard(QFrame):
         self._action_btn.setFixedHeight(32)
         self._action_btn.clicked.connect(self._on_action)
         layout.addWidget(self._action_btn)
+
+        self._consent_btn = QPushButton("Review executable model")
+        self._consent_btn.setVisible(False)
+        self._consent_btn.clicked.connect(
+            lambda: self.consent_requested.emit(self.model_id)
+        )
+        layout.addWidget(self._consent_btn)
         install_accessibility(
             self,
             f"Model card {self.info.name}",
@@ -258,9 +344,15 @@ class ModelCard(QFrame):
                 (self._progress, f"{self.info.name} download progress", "Current download completion percentage."),
                 (self._cancel_btn, f"Cancel {self.info.name} download", "Cancels the active model download."),
                 (self._action_btn, f"{self.info.name} action", "Downloads, resumes, deletes, or shows model state."),
+                (
+                    self._consent_btn,
+                    f"Review {self.info.name} executable model",
+                    "Reviews and approves only the displayed pinned model revision.",
+                ),
             ],
             tab_order=[
                 self._action_btn,
+                self._consent_btn,
                 self._cancel_btn,
             ],
         )
@@ -281,6 +373,7 @@ class ModelCard(QFrame):
 
         # Pip-managed models
         if getattr(self.info, "pip_managed", False):
+            self._consent_btn.setVisible(False)
             self._set_badge("Auto-managed", Palette.GREEN)
             btn.setText("Installed with engine")
             btn.setEnabled(False)
@@ -337,6 +430,23 @@ class ModelCard(QFrame):
             btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
+
+        requires_consent = bool(
+            self.info.requires_remote_code or self.info.allows_unsafe_weights
+        )
+        consent_visible = requires_consent and status in {
+            ModelStatus.DOWNLOADED,
+            ModelStatus.LOADED,
+        }
+        self._consent_btn.setVisible(consent_visible)
+        if consent_visible:
+            approved = ModelManager().has_executable_model_consent(self.model_id)
+            self._consent_btn.setText(
+                f"Approved for {self.info.revision[:12]}"
+                if approved
+                else "Review executable model"
+            )
+            self._consent_btn.setEnabled(not approved)
 
     def _set_badge(self, text: str, color: str):
         self._status_badge.setText(text)
@@ -472,6 +582,7 @@ class ModelHubView(QWidget):
             card.download_requested.connect(self._start_download)
             card.cancel_requested.connect(self._cancel_download)
             card.delete_requested.connect(self._delete_model)
+            card.consent_requested.connect(self._review_execution_consent)
             self._cards[model_id] = card
             self._grid_layout.addWidget(card, row, col)
             col += 1
@@ -760,3 +871,26 @@ class ModelHubView(QWidget):
         elif self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
             self.toast_mgr.error(f"Failed to restore {info.name}.")
+
+    def _review_execution_consent(self, model_id: str):
+        info = self._mgr.get_model_info(model_id)
+        if info is None:
+            return
+        dialog = ExecutableModelConsentDialog(info, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            self._mgr.approve_executable_model(
+                model_id,
+                info.revision,
+                acknowledged=dialog._ack.isChecked(),
+            )
+        except ModelSecurityError as exc:
+            if self.toast_mgr:
+                self.toast_mgr.error(str(exc))
+            return
+        self._cards[model_id].update_status(self._mgr.get_status(model_id))
+        if self.toast_mgr:
+            self.toast_mgr.warning(
+                f"{info.name} execution approved only for revision {info.revision[:12]}."
+            )

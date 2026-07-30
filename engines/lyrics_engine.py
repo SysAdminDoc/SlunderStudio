@@ -1,12 +1,7 @@
 """
 Slunder Studio v0.1.29 — Lyrics Engine
-Dual-backend LLM wrapper: llama-cpp-python (primary) or transformers (fallback).
+Verified local GGUF inference through llama-cpp-python.
 Supports streaming token output, model loading via Model Manager, and generation pipeline.
-
-Backend selection:
-  - llama-cpp-python: Fast, low VRAM, loads GGUF files. Needs C++ compiler to install.
-  - transformers: Pure Python, no compiler needed. Uses standard HuggingFace models.
-    Fallback when llama-cpp-python can't install (e.g. Python 3.14, no Visual Studio).
 """
 import os
 import threading
@@ -36,16 +31,6 @@ GGUF_FILENAMES = {
     ],
 }
 
-# Ungated HuggingFace models for transformers fallback backend
-# Matched by capability/size to the GGUF models they replace
-_TRANSFORMERS_MODELS = {
-    "llama-3.1-8b-q4": "Qwen/Qwen2.5-7B-Instruct",
-    "llama-3.2-3b-q4": "Qwen/Qwen2.5-3B-Instruct",
-    "qwen-2.5-14b-q4": "Qwen/Qwen2.5-14B-Instruct",
-}
-_TRANSFORMERS_DEFAULT = "Qwen/Qwen2.5-3B-Instruct"
-
-
 def _find_gguf_file(model_id: str) -> Optional[str]:
     """Find the GGUF file path for a model. Searches cache directory."""
     mgr = ModelManager()
@@ -60,14 +45,6 @@ def _find_gguf_file(model_id: str) -> Optional[str]:
     if cache_dir.exists():
         for f in cache_dir.rglob("*.gguf"):
             return str(f)
-
-    info = mgr.get_model_info(model_id)
-    if info:
-        hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
-        model_dir = hf_cache / f"models--{info.source.replace('/', '--')}"
-        if model_dir.exists():
-            for f in model_dir.rglob("*.gguf"):
-                return str(f)
 
     return None
 
@@ -84,16 +61,12 @@ def _llama_cpp_available() -> bool:
 # -- LLM Wrapper (dual-backend) ------------------------------------------------
 
 class LyricsLLM:
-    """
-    Dual-backend LLM for lyrics generation.
-    Tries llama-cpp-python first (GGUF, fast, low VRAM).
-    Falls back to transformers (pure Python, no compiler needed).
-    """
+    """Local GGUF lyrics model wrapper."""
 
     def __init__(self):
         self._model = None
         self._tokenizer = None
-        self._backend: Optional[str] = None  # "llama_cpp" or "transformers"
+        self._backend: Optional[str] = None
         self._model_id: Optional[str] = None
         self._model_path: Optional[str] = None
 
@@ -111,33 +84,16 @@ class LyricsLLM:
 
     def load(self, model_id: str = None, model_path: str = None, n_ctx: int = 4096):
         """
-        Load a model for inference. Tries llama-cpp-python first,
-        falls back to transformers if unavailable.
+        Load a verified local GGUF model for inference.
         """
         self.unload()
 
-        # Phase 1: Try llama-cpp-python (best performance)
-        if _llama_cpp_available():
-            try:
-                self._load_llama_cpp(model_id, model_path, n_ctx)
-                return
-            except Exception as e:
-                print(f"[Lyrics] llama-cpp-python load failed: {e}")
-
-        # Phase 2: Try to install llama-cpp-python
         if not _llama_cpp_available():
-            try:
-                from core.deps import ensure
-                ensure("llama_cpp")
-                self._load_llama_cpp(model_id, model_path, n_ctx)
-                return
-            except ImportError:
-                print("[Lyrics] llama-cpp-python unavailable, using transformers backend")
-            except Exception as e:
-                print(f"[Lyrics] llama-cpp-python load failed: {e}")
-
-        # Phase 3: Transformers fallback
-        self._load_transformers(model_id)
+            raise RuntimeError(
+                "llama-cpp-python is required for the verified local GGUF lyrics model. "
+                "Install the reviewed runtime dependency; remote Transformers fallback is disabled."
+            )
+        self._load_llama_cpp(model_id, model_path, n_ctx)
 
     def _load_llama_cpp(self, model_id: str = None, model_path: str = None,
                          n_ctx: int = 4096):
@@ -165,45 +121,6 @@ class LyricsLLM:
         self._backend = "llama_cpp"
         self._model_id = model_id or Path(model_path).stem
         self._model_path = model_path
-
-    def _load_transformers(self, model_id: str = None):
-        """Load via transformers (standard HuggingFace models, no compiler needed)."""
-        from core.deps import ensure
-        ensure("transformers", "torch")
-
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-        from core.model_manager import ModelManager
-
-        mgr = ModelManager()
-        local_only = mgr.is_offline
-
-        # Map GGUF model IDs to equivalent HuggingFace models
-        hf_model = _TRANSFORMERS_MODELS.get(model_id, _TRANSFORMERS_DEFAULT)
-        print(f"[Lyrics] Loading transformers model: {hf_model}")
-
-        # Detect best dtype
-        if torch.cuda.is_available():
-            device = "cuda"
-            dtype = torch.float16
-        else:
-            device = "cpu"
-            dtype = torch.float32
-
-        self._tokenizer = AutoTokenizer.from_pretrained(
-            hf_model, trust_remote_code=True, local_files_only=local_only,
-        )
-        self._model = AutoModelForCausalLM.from_pretrained(
-            hf_model,
-            torch_dtype=dtype,
-            device_map=device,
-            trust_remote_code=True,
-            local_files_only=local_only,
-        )
-
-        self._backend = "transformers"
-        self._model_id = model_id or hf_model.split("/")[-1]
-        self._model_path = hf_model
 
     def unload(self):
         """Unload the model and free memory."""

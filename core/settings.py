@@ -48,6 +48,7 @@ DEFAULTS = {
         "offline_mode": False,
         "auto_download_core": True,
         "show_experimental": False,
+        "execution_consents": {},
     },
     "lyrics": {
         "model_id": "llama-3.1-8b-q4",
