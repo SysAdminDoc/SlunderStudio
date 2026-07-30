@@ -16,6 +16,7 @@ from enum import Enum
 
 import numpy as np
 
+from core.audio_buffers import normalize_channel_layout, resample_audio
 from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir
 
@@ -223,21 +224,6 @@ def _verify_audio_artifact(path: str | Path | None) -> bool:
         return info.frames > 0 and info.samplerate > 0 and info.channels > 0
     except (OSError, RuntimeError, ValueError):
         return False
-
-
-def _normalize_stereo(audio: np.ndarray) -> np.ndarray:
-    """Normalize decoded frames to finite float32 stereo."""
-    frames = np.asarray(audio, dtype=np.float32)
-    if frames.ndim == 1:
-        frames = frames[:, None]
-    if frames.ndim != 2 or frames.shape[0] == 0 or frames.shape[1] == 0:
-        raise ValueError("Audio layer has no decodable frames")
-    if frames.shape[1] == 1:
-        frames = np.repeat(frames, 2, axis=1)
-    elif frames.shape[1] > 2:
-        mono = frames.mean(axis=1, keepdims=True)
-        frames = np.repeat(mono, 2, axis=1)
-    return np.nan_to_num(frames[:, :2], copy=False).astype(np.float32, copy=False)
 
 
 # ── Genre Intelligence ─────────────────────────────────────────────────────────
@@ -828,7 +814,7 @@ class AIProducer:
             dtype="float32",
             always_2d=True,
         )
-        audio = _normalize_stereo(audio)
+        audio = normalize_channel_layout(audio, target_channels=2)
         layers.append(("song", audio, 1.0))
 
         # Load SFX (at lower volume)
@@ -840,16 +826,9 @@ class AIProducer:
                 dtype="float32",
                 always_2d=True,
             )
-            sfx_audio = _normalize_stereo(sfx_audio)
+            sfx_audio = normalize_channel_layout(sfx_audio, target_channels=2)
             if sfx_sr != sr:
-                import librosa
-
-                sfx_audio = librosa.resample(
-                    sfx_audio.T,
-                    orig_sr=sfx_sr,
-                    target_sr=sr,
-                    axis=-1,
-                ).T.astype(np.float32, copy=False)
+                sfx_audio = resample_audio(sfx_audio, sfx_sr, sr)
             layers.append(("sfx", sfx_audio, 0.15))
 
         if not layers:
@@ -910,7 +889,7 @@ class AIProducer:
         # Load mix
         import soundfile as sf
         audio, sr = sf.read(mix_path, dtype="float32", always_2d=True)
-        audio = _normalize_stereo(audio)
+        audio = normalize_channel_layout(audio, target_channels=2)
 
         preset = PRESETS.get(brief.mastering_preset, PRESETS["Balanced"])
         master_result = master_audio(audio, sr, preset)

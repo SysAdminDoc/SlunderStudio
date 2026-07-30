@@ -45,7 +45,7 @@ through PyTorch 2.3.1, below the PyTorch 2.6.0 security floor.
 | Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, voice conversion, voice cloning, and vocal auto-tune pitch correction | DiffSinger, RVC v2, GPT-SoVITS, librosa |
 | Stem Separation | Isolate vocals, drums, bass, and other instruments | Demucs (htdemucs) |
 | SFX Generator | Text-to-sound-effect generation | Stable Audio Open |
-| Mixer | Multi-track mixing with stem-aware dynamic EQ, Mid/Side trims, reference loudness matching, and smart mastering (8 presets) | Built-in DSP |
+| Mixer | Project-rate mixing with validated resampling, channel normalization, dynamic EQ, Mid/Side trims, reference matching, and mastering | Built-in DSP |
 | AI Producer | Cancellable staged production with verified output, explicit demo/degraded states, and retry | Orchestrator |
 | Model Hub | Download, manage, and switch AI models | HuggingFace Hub |
 | Projects | Save/load projects with version history and asset tracking | — |
@@ -70,7 +70,7 @@ Settings can export a redacted health report ZIP with app/dependency versions, G
 
 Major app chrome and lyric controls use an English locale catalog, and Settings > Appearance > Default Lyrics Language feeds Quick lyrics prompts, Guided lyrics metadata, and new GPT-SoVITS voice profile language defaults where supported. MIDI Studio supports explicit chord-progression priors such as `I-V-vi-IV` and `ii-V-I` for text-to-MIDI prompts and fallback generation. MIDI Studio also includes selectable drum groove templates with swing timing, snare ghost notes, and velocity humanization for generated GM drum tracks, `.chordpro` and `.crd` chord chart export with optional pasted lyrics, and piano roll editing tools for quantize, swing, velocity humanize, and MIDI CC automation lanes. Vocal Suite includes a Lyric Melody tab that converts hummed audio into provenance-tracked MIDI, aligns pasted lyrics to detected notes, and can render a routed DiffSinger vocal when a model is loaded. The Auto-Tune tab writes routed, provenance-tracked WAV files with adjustable pitch correction toward the nearest semitone.
 
-Mixer can analyze each imported stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also trim Mid and Side gain independently before limiting, load a reference track, match the final master to its integrated LUFS, report short-term LUFS profile deltas for the match, and target streaming, podcast, broadcast, cinema, or loud CD delivery levels.
+Mixer converts every imported track to the configured project sample rate with deterministic polyphase resampling and explicit stereo normalization before calculating duration or summing. It can analyze each stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also trim Mid and Side gain independently before limiting, load a reference track, match the final master to its integrated LUFS, report short-term LUFS profile deltas for the match, and target streaming, podcast, broadcast, cinema, or loud CD delivery levels.
 
 ## Mastering Presets
 

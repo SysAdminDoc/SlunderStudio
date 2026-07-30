@@ -19,6 +19,13 @@ import numpy as np
 from ui.accessibility import install_accessibility
 from ui.theme import ThemeEngine
 from ui.waveform_widget import WaveformWidget, MiniWaveform
+from core.audio_buffers import (
+    decode_audio_file,
+    normalize_channel_layout,
+    prepare_audio_buffer,
+    validate_audio_buffer,
+    validate_sample_rate,
+)
 from core.mastering import (
     LUFS_TARGETS,
     PRESETS,
@@ -203,10 +210,18 @@ class MixerTrackStrip(QFrame):
 class MixerView(QWidget):
     """Multi-track mixer with mastering and export."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, project_sample_rate: Optional[int] = None):
         super().__init__(parent)
+        if project_sample_rate is None:
+            from core.settings import Settings
+
+            project_sample_rate = Settings().get("general.sample_rate", 48000)
+        try:
+            self._project_sample_rate = validate_sample_rate(project_sample_rate)
+        except ValueError:
+            self._project_sample_rate = 48000
         self._strips: list[MixerTrackStrip] = []
-        self._tracks: list[dict] = []  # {name, audio, sr}
+        self._tracks: list[dict] = []  # normalized project-rate buffers
         self._dynamic_eq_suggestions: dict[int, DynamicEQSuggestion] = {}
         self._reference_audio: Optional[np.ndarray] = None
         self._reference_sr: int = 44100
@@ -223,6 +238,12 @@ class MixerView(QWidget):
         tracks_header = QHBoxLayout()
         tl = QLabel("Tracks")
         tl.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 13px;")
+        self._project_rate_label = QLabel(
+            f"Project: {self._project_sample_rate / 1000:g} kHz stereo"
+        )
+        self._project_rate_label.setStyleSheet(
+            f"color: {t['text_secondary']}; font-size: 10px;"
+        )
 
         self._add_btn = QPushButton("+ Import Track")
         self._add_btn.setStyleSheet(f"""
@@ -249,6 +270,7 @@ class MixerView(QWidget):
         self._dynamic_eq_btn.clicked.connect(self._on_suggest_dynamic_eq)
 
         tracks_header.addWidget(tl)
+        tracks_header.addWidget(self._project_rate_label)
         tracks_header.addStretch()
         tracks_header.addWidget(self._dynamic_eq_btn)
         tracks_header.addWidget(self._add_btn)
@@ -435,10 +457,29 @@ class MixerView(QWidget):
 
     def add_track(self, name: str, audio: np.ndarray, sr: int = 44100):
         """Add an audio track to the mixer."""
+        source_sr = validate_sample_rate(sr)
+        source_frames = len(audio)
+        prepared = prepare_audio_buffer(
+            audio,
+            source_sr,
+            self._project_sample_rate,
+            target_channels=2,
+        )
         idx = len(self._strips)
-        self._tracks.append({"name": name, "audio": audio, "sr": sr})
+        self._tracks.append({
+            "name": name,
+            "audio": prepared,
+            "sr": self._project_sample_rate,
+            "source_sr": source_sr,
+            "source_frames": source_frames,
+        })
 
-        strip = MixerTrackStrip(idx, name, audio, sr)
+        strip = MixerTrackStrip(
+            idx,
+            name,
+            prepared,
+            self._project_sample_rate,
+        )
         strip.remove_requested.connect(self._on_remove_track)
         strip.volume_changed.connect(lambda *_: self._update_mix_state())
         strip.pan_changed.connect(lambda *_: self._update_mix_state())
@@ -451,26 +492,7 @@ class MixerView(QWidget):
         self._update_mix_state()
 
     def _read_audio_file(self, file_path: str) -> tuple[np.ndarray, int]:
-        try:
-            import soundfile as sf
-            audio, sr = sf.read(file_path, dtype="float32", always_2d=True)
-        except Exception:
-            import wave
-            with wave.open(file_path, "r") as wf:
-                sr = wf.getframerate()
-                channels = wf.getnchannels()
-                frames = wf.readframes(wf.getnframes())
-                audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-                if channels > 1:
-                    audio = audio.reshape(-1, channels)
-
-        if audio.ndim == 1:
-            audio = np.column_stack([audio, audio])
-        elif audio.shape[1] == 1:
-            audio = np.column_stack([audio[:, 0], audio[:, 0]])
-        elif audio.shape[1] > 2:
-            audio = audio[:, :2]
-        return audio.astype(np.float32), int(sr)
+        return decode_audio_file(file_path, target_channels=2)
 
     def add_track_from_file(self, file_path: str):
         """Import an audio file as a track."""
@@ -478,22 +500,25 @@ class MixerView(QWidget):
             name = os.path.splitext(os.path.basename(file_path))[0]
             audio, sr = self._read_audio_file(file_path)
             self.add_track(name, audio, sr)
-            self._status.setText(f"Added track: {name} ({len(audio) / sr:.1f}s)")
+            conversion = (
+                f"{sr / 1000:g}->{self._project_sample_rate / 1000:g} kHz"
+                if sr != self._project_sample_rate
+                else f"{sr / 1000:g} kHz"
+            )
+            self._status.setText(
+                f"Added track: {name} ({len(audio) / sr:.1f}s, {conversion})"
+            )
         except Exception as e:
             self._status.setText(f"Import error: {e}")
 
     def set_reference_track(self, name: str, audio: np.ndarray, sr: int = 44100,
                             path: str = ""):
         """Set a loudness reference track for mastering."""
-        if audio.ndim == 1:
-            audio = np.column_stack([audio, audio])
-        elif audio.ndim == 2 and audio.shape[1] == 1:
-            audio = np.column_stack([audio[:, 0], audio[:, 0]])
-        elif audio.ndim == 2 and audio.shape[1] > 2:
-            audio = audio[:, :2]
-
-        self._reference_audio = audio.astype(np.float32)
-        self._reference_sr = int(sr)
+        self._reference_sr = validate_sample_rate(sr)
+        self._reference_audio = normalize_channel_layout(
+            audio,
+            target_channels=2,
+        )
         self._reference_name = name or os.path.basename(path) or "Reference"
         ref_lufs = measure_lufs(self._reference_audio, self._reference_sr)
         profile = measure_short_term_lufs(self._reference_audio, self._reference_sr)
@@ -637,9 +662,22 @@ class MixerView(QWidget):
         if not self._strips:
             return None
 
-        # Find max length and target SR
-        sr = self._tracks[0]["sr"] if self._tracks else 44100
-        max_len = max(len(t["audio"]) for t in self._tracks) if self._tracks else 0
+        prepared_tracks = []
+        for track in self._tracks:
+            audio = validate_audio_buffer(track["audio"])
+            if (
+                track["sr"] != self._project_sample_rate
+                or audio.ndim != 2
+                or audio.shape[1] != 2
+            ):
+                audio = prepare_audio_buffer(
+                    audio,
+                    track["sr"],
+                    self._project_sample_rate,
+                    target_channels=2,
+                )
+            prepared_tracks.append(audio)
+        max_len = max((len(audio) for audio in prepared_tracks), default=0)
         if max_len == 0:
             return None
 
@@ -651,9 +689,7 @@ class MixerView(QWidget):
         for strip in active:
             if strip.track_idx >= len(self._tracks):
                 continue
-            audio = self._tracks[strip.track_idx]["audio"]
-            if audio.ndim == 1:
-                audio = np.column_stack([audio, audio])
+            audio = prepared_tracks[strip.track_idx]
 
             length = min(len(audio), max_len)
             vol = strip.volume
@@ -679,7 +715,7 @@ class MixerView(QWidget):
             self._status.setText("No audio to master")
             return
 
-        sr = self._tracks[0]["sr"] if self._tracks else 44100
+        sr = self._project_sample_rate
 
         # Get preset
         preset_name = self._preset_combo.currentText()

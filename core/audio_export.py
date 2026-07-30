@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 
+from core.audio_buffers import resample_audio
 from core.provenance import read_provenance_sidecar, write_provenance_sidecar
 
 
@@ -151,18 +152,8 @@ def export_audio(
 
     # Resample if needed
     if sr != settings.sample_rate:
-        try:
-            import librosa
-            if audio.ndim == 2:
-                channels = []
-                for ch in range(audio.shape[1]):
-                    channels.append(librosa.resample(audio[:, ch], orig_sr=sr, target_sr=settings.sample_rate))
-                audio = np.column_stack(channels)
-            else:
-                audio = librosa.resample(audio, orig_sr=sr, target_sr=settings.sample_rate)
-            sr = settings.sample_rate
-        except ImportError:
-            pass  # Keep original sample rate
+        audio = resample_audio(audio, sr, settings.sample_rate)
+        sr = settings.sample_rate
 
     # Apply processing
     if settings.fade_in_ms > 0 or settings.fade_out_ms > 0:
