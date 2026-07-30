@@ -9,17 +9,14 @@ pyqtgraph>=0.13
 librosa>=0.10
 psutil>=5.9
 
-# ── Optional: AI Models (install per-module as needed) ─────────────
-# Song Generation (ACE-Step)
-# torch>=2.1
-# torchaudio>=2.1
-# transformers>=4.36
-# diffusers>=0.25
-# accelerate>=0.25
+# ── Optional: AI Models ─────────────────────────────────────────────
+# Do not install broad AI minimums into the application environment.
+# Use tools/dependency_profiles.py with a hash-locked CPU/CUDA/MPS profile.
+# Security floors: torch>=2.6.0 and transformers>=4.53.0.
+# DirectML remains disabled until its supported torch version clears that floor.
 
-# Lyrics Generation (Llama / LLM)
-# transformers>=4.36
-# bitsandbytes>=0.41       # 4-bit quantization
+# Lyrics Generation (GGUF)
+# llama-cpp-python>=0.3
 
 # MIDI Studio
 # pretty_midi>=0.2.10

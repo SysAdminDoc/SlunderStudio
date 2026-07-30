@@ -21,6 +21,20 @@ py -3.12 main.py
 
 Python 3.10+ required. Install core dependencies explicitly before launch; if anything is missing, Slunder Studio opens a diagnostics screen with the exact setup command. AI models are downloaded on-demand from HuggingFace via the built-in Model Hub.
 
+Optional AI runtimes use platform-specific, SHA-256-locked profiles for CPython
+3.12. Prepare a wheelhouse while connected, then the installation command
+operates with `--no-index` and writes a complete CycloneDX SBOM:
+
+```bash
+py -3.12 tools/dependency_profiles.py download windows-cpu --wheelhouse C:\SlunderWheelhouse\windows-cpu
+py -3.12 tools/dependency_profiles.py install windows-cpu --wheelhouse C:\SlunderWheelhouse\windows-cpu
+py -3.12 tools/dependency_profiles.py smoke windows-cpu
+```
+
+Available locks cover Windows/Linux CPU and CUDA 12.6 plus Apple Silicon MPS.
+Torch-DirectML is intentionally disabled: Microsoft documents support only
+through PyTorch 2.3.1, below the PyTorch 2.6.0 security floor.
+
 ## Features
 
 | Module | Description | AI Engine |

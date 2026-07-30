@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from core.audio_export import _find_ffmpeg
+from core.dependency_profiles import DependencyProfileError, registry_diagnostics
 from core.job_state import JobStatus, JobStore
 from core.model_manager import ModelManager
 from core.project import PROJECT_SCHEMA_VERSION
@@ -108,6 +109,7 @@ def collect_health_report(
         "paths": _path_info(settings, replacements),
         "settings_repair": _sanitize(settings.repair_status, replacements, include_private=True),
         "dependencies": _dependency_info(),
+        "dependency_profiles": _dependency_profile_info(),
         "gpu": model_manager.get_gpu_status(),
         "ffmpeg": _ffmpeg_info(replacements),
         "models": _model_info(model_manager, replacements),
@@ -161,6 +163,16 @@ def format_health_report_text(report: dict[str, Any]) -> str:
     for name, details in report.get("dependencies", {}).items():
         version = details.get("version") or "not installed"
         lines.append(f"- {name}: {version}")
+
+    lines.extend(["", "Optional AI Profiles"])
+    profiles = report.get("dependency_profiles", {}).get("profiles", {})
+    if not profiles:
+        lines.append("- Unavailable")
+    for name, details in profiles.items():
+        state = "enabled" if details.get("enabled") else "disabled"
+        validity = "valid" if details.get("valid", True) else "invalid"
+        packages = details.get("package_count", 0)
+        lines.append(f"- {name}: {state}, {validity}, {packages} locked packages")
 
     return "\n".join(lines) + "\n"
 
@@ -233,6 +245,17 @@ def _dependency_info() -> dict[str, dict[str, Any]]:
             "version": version,
         }
     return dependencies
+
+
+def _dependency_profile_info() -> dict[str, Any]:
+    try:
+        return registry_diagnostics()
+    except DependencyProfileError as exc:
+        return {
+            "schema_version": 0,
+            "profiles": {},
+            "error": str(exc),
+        }
 
 
 def _ffmpeg_info(replacements: Iterable[tuple[str, str]]) -> dict[str, Any]:

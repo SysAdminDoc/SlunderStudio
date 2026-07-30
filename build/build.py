@@ -50,6 +50,8 @@ def build(onefile: bool = False, smoke: bool = True):
     datas = [
         ("assets/locales", "assets/locales"),
         ("assets/templates", "assets/templates"),
+        ("requirements/profiles.json", "requirements"),
+        ("requirements/profiles", "requirements/profiles"),
     ]
 
     # Hidden imports (engines that are dynamically loaded)
@@ -78,6 +80,7 @@ def build(onefile: bool = False, smoke: bool = True):
         "core.project",
         "core.settings",
         "core.diagnostics",
+        "core.dependency_profiles",
         "core.voice_bank",
         "core.workers",
         "numpy",
