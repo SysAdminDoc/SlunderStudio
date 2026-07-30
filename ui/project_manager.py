@@ -349,6 +349,7 @@ class ProjectManagerView(QWidget):
         super().__init__(parent)
         self._cards: list[ProjectCard] = []
         self.toast_mgr = toast_mgr
+        self._last_repair_notice = ""
 
         t = ThemeEngine.get_colors()
         layout = QHBoxLayout(self)
@@ -374,8 +375,23 @@ class ProjectManagerView(QWidget):
         """)
         self._new_btn.clicked.connect(self._on_new_project)
 
+        self._rescan_btn = QPushButton("Rescan")
+        self._rescan_btn.setToolTip(
+            "Rebuild the project index from valid project folders and backups."
+        )
+        self._rescan_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['surface']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 5px;
+                padding: 6px 12px; font-weight: bold; font-size: 11px;
+            }}
+            QPushButton:hover {{ border-color: {t['accent']}; }}
+        """)
+        self._rescan_btn.clicked.connect(self._on_rescan_projects)
+
         header.addWidget(title)
         header.addStretch()
+        header.addWidget(self._rescan_btn)
         header.addWidget(self._new_btn)
         left.addLayout(header)
 
@@ -442,7 +458,33 @@ class ProjectManagerView(QWidget):
             self._cards.append(card)
             self._list_layout.insertWidget(self._list_layout.count() - 1, card)
 
-        self._count_label.setText(f"{len(projects)} project{'s' if len(projects) != 1 else ''}")
+        count_text = f"{len(projects)} project{'s' if len(projects) != 1 else ''}"
+        repair_text = self._repair_status_text(mgr.last_repair_status)
+        self._count_label.setText(
+            f"{count_text} | {repair_text}" if repair_text else count_text
+        )
+        self._count_label.setToolTip(
+            self._repair_status_details(mgr.last_repair_status)
+        )
+        if (
+            repair_text
+            and repair_text != self._last_repair_notice
+            and self.toast_mgr
+        ):
+            self.toast_mgr.warning(repair_text)
+        if repair_text:
+            self._last_repair_notice = repair_text
+
+    def _on_rescan_projects(self):
+        mgr = get_project_manager()
+        count = mgr.rebuild_index()
+        self._refresh_list()
+        repair_text = self._repair_status_text(mgr.last_repair_status)
+        if self.toast_mgr and not repair_text:
+            self.toast_mgr.success(
+                f"Project index verified: {count} project"
+                f"{'s' if count != 1 else ''}."
+            )
 
     def _on_new_project(self):
         name, ok = QInputDialog.getText(self, "New Project", "Project name:")
@@ -501,12 +543,23 @@ class ProjectManagerView(QWidget):
         state = status.get("status", "ok")
         if state == "ok":
             return ""
+        label = {
+            "migrated": "Project data upgraded",
+            "repaired": "Project library repaired",
+            "error": "Project recovery needs attention",
+        }.get(state, "Project recovery needs attention")
+        if status.get("backup_paths"):
+            label += " — backup saved"
+        return label
+
+    @staticmethod
+    def _repair_status_details(status: dict) -> str:
         messages = status.get("messages") or []
         backups = status.get("backup_paths") or []
-        text = f"Project {state}: " + (" ".join(messages) if messages else "Review project files.")
+        details = "\n".join(str(message) for message in messages)
         if backups:
-            text += f" Backup: {backups[-1]}"
-        return text
+            details += ("\n" if details else "") + f"Latest backup: {backups[-1]}"
+        return details
 
     def _on_search(self, text: str):
         query = text.lower()

@@ -5,6 +5,7 @@ and asset tracking across all modules.
 """
 import os
 import json
+import re
 import threading
 import time
 import shutil
@@ -148,27 +149,205 @@ class ProjectManager:
         self._load_index()
 
     def _load_index(self):
-        if os.path.isfile(self._index_path):
-            try:
-                with open(self._index_path, encoding="utf-8") as f:
-                    self._index = json.load(f)
-                if not isinstance(self._index, dict):
-                    raise json.JSONDecodeError("Project index root is not an object", "", 0)
-            except (json.JSONDecodeError, OSError) as exc:
-                backup = self._backup_file(Path(self._index_path), "corrupt")
-                self._last_repair_status = ProjectRepairStatus(
-                    status="repaired",
-                    messages=[f"Project index was unreadable and reset: {exc}"],
-                    backup_paths=[str(backup)] if backup else [],
-                )
-                self._index = {}
+        index_path = Path(self._index_path)
+        loaded_index: dict[str, dict] = {}
+        messages: list[str] = []
+        backup_paths: list[str] = []
+        index_failed = False
 
-    def _save_index(self):
-        self._backup_file(Path(self._index_path), "pre-save")
+        if index_path.is_file():
+            try:
+                loaded_index = self._read_json_object(index_path)
+            except (json.JSONDecodeError, OSError) as exc:
+                index_failed = True
+                backup = self._backup_file(index_path, "corrupt")
+                if backup:
+                    backup_paths.append(str(backup))
+                messages.append(f"Project index was unreadable: {exc}")
+                loaded_index, recovered_backup = self._load_latest_index_backup()
+                if recovered_backup:
+                    backup_paths.append(str(recovered_backup))
+                    messages.append(
+                        f"Recovered index seed from backup {recovered_backup.name}."
+                    )
+
+        rebuilt, scan_messages, scan_backups = self._reconstruct_index(loaded_index)
+        messages.extend(scan_messages)
+        backup_paths.extend(str(path) for path in scan_backups)
+        changed = rebuilt != loaded_index
+        self._index = rebuilt
+
+        if index_failed or changed or messages:
+            if rebuilt or index_path.exists():
+                self._save_index(create_backup=False)
+            self._last_repair_status = ProjectRepairStatus(
+                status="repaired",
+                messages=messages or ["Rebuilt the project index from project files."],
+                backup_paths=list(dict.fromkeys(backup_paths)),
+            )
+
+    def _save_index(self, create_backup: bool = True):
+        if create_backup:
+            self._backup_file(Path(self._index_path), "pre-save")
         tmp = self._index_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self._index, f, indent=2)
         os.replace(tmp, self._index_path)
+
+    @staticmethod
+    def _read_json_object(path: Path) -> dict:
+        with path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, dict):
+            raise json.JSONDecodeError("JSON root is not an object", "", 0)
+        return payload
+
+    def _load_latest_index_backup(self) -> tuple[dict[str, dict], Optional[Path]]:
+        backup_dir = Path(self._projects_dir) / "backups"
+        candidates = sorted(
+            backup_dir.glob("index.json.*.bak"),
+            key=lambda path: path.name,
+            reverse=True,
+        )
+        for candidate in candidates:
+            try:
+                return self._read_json_object(candidate), candidate
+            except (json.JSONDecodeError, OSError):
+                continue
+        return {}, None
+
+    @staticmethod
+    def _safe_project_id(project_id: object) -> bool:
+        if not isinstance(project_id, str) or not project_id:
+            return False
+        return (
+            project_id not in {".", ".."}
+            and "/" not in project_id
+            and "\\" not in project_id
+            and bool(re.fullmatch(r"[A-Za-z0-9._-]+", project_id))
+        )
+
+    def _reconstruct_index(
+        self,
+        seed: dict,
+    ) -> tuple[dict[str, dict], list[str], list[Path]]:
+        """Rebuild canonical index entries from internal project directories."""
+        root = Path(self._projects_dir).resolve()
+        rebuilt: dict[str, dict] = {}
+        messages: list[str] = []
+        backup_paths: list[Path] = []
+
+        for project_id, entry in seed.items():
+            if not self._safe_project_id(project_id) or not isinstance(entry, dict):
+                messages.append(f"Ignored invalid index entry {project_id!r}.")
+                continue
+            project_dir = root / project_id
+            if not project_dir.is_dir():
+                messages.append(f"Removed missing project {project_id} from the index.")
+                continue
+            rebuilt[project_id] = {
+                "name": str(entry.get("name") or project_id),
+                "path": str(project_dir),
+                "updated_at": self._safe_timestamp(entry.get("updated_at")),
+            }
+
+        for project_dir in sorted(root.iterdir(), key=lambda path: path.name):
+            if (
+                not project_dir.is_dir()
+                or project_dir.name == "backups"
+                or not self._safe_project_id(project_dir.name)
+            ):
+                continue
+            data, recovery_messages, recovery_backups = (
+                self._load_recoverable_project_metadata(project_dir)
+            )
+            messages.extend(recovery_messages)
+            backup_paths.extend(recovery_backups)
+            if data is None:
+                continue
+
+            data_id = data.get("id") or project_dir.name
+            if data_id != project_dir.name:
+                messages.append(
+                    f"Ignored project directory {project_dir.name}: "
+                    f"metadata id {data_id!r} does not match."
+                )
+                continue
+            entry = {
+                "name": str(data.get("name") or project_dir.name),
+                "path": str(project_dir),
+                "updated_at": self._safe_timestamp(data.get("updated_at")),
+            }
+            if project_dir.name not in rebuilt:
+                messages.append(
+                    f"Recovered project {entry['name']} ({project_dir.name}) into the index."
+                )
+            rebuilt[project_dir.name] = entry
+
+        return rebuilt, messages, backup_paths
+
+    def _load_recoverable_project_metadata(
+        self,
+        project_dir: Path,
+    ) -> tuple[Optional[dict], list[str], list[Path]]:
+        meta_path = project_dir / "project.json"
+        try:
+            return self._read_json_object(meta_path), [], []
+        except (json.JSONDecodeError, OSError):
+            pass
+
+        backup_dir = project_dir / "backups"
+        candidates = sorted(
+            backup_dir.glob("project.json.*.bak"),
+            key=lambda path: path.name,
+            reverse=True,
+        )
+        for candidate in candidates:
+            try:
+                data = self._read_json_object(candidate)
+            except (json.JSONDecodeError, OSError):
+                continue
+            backup_paths = [candidate]
+            if meta_path.exists():
+                corrupt_backup = self._backup_file(meta_path, "corrupt")
+                if corrupt_backup:
+                    backup_paths.append(corrupt_backup)
+            tmp = meta_path.with_name(meta_path.name + ".recovery.tmp")
+            try:
+                shutil.copy2(candidate, tmp)
+                os.replace(tmp, meta_path)
+            except OSError:
+                try:
+                    tmp.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                return None, [
+                    f"Found a backup for {project_dir.name} but could not restore it."
+                ], backup_paths
+            return data, [
+                f"Restored project {project_dir.name} from backup {candidate.name}."
+            ], backup_paths
+        return None, [], []
+
+    @staticmethod
+    def _safe_timestamp(value: object) -> float:
+        try:
+            timestamp = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        return timestamp if timestamp >= 0 else 0.0
+
+    def rebuild_index(self) -> int:
+        """Rescan project storage and persist a canonical internal index."""
+        rebuilt, messages, backups = self._reconstruct_index(self._index)
+        self._index = rebuilt
+        self._save_index()
+        self._last_repair_status = ProjectRepairStatus(
+            status="repaired" if messages else "ok",
+            messages=messages,
+            backup_paths=[str(path) for path in backups],
+        )
+        return len(rebuilt)
 
     # ── CRUD ───────────────────────────────────────────────────────────────────
 
@@ -191,25 +370,36 @@ class ProjectManager:
 
     def open(self, project_id: str) -> Optional[Project]:
         self._last_repair_status = ProjectRepairStatus()
-        if project_id not in self._index:
+        if not self._safe_project_id(project_id):
             return None
+        if project_id not in self._index:
+            self.rebuild_index()
+            if project_id not in self._index:
+                return None
 
-        project_dir = self._index[project_id]["path"]
+        project_dir = os.path.join(self._projects_dir, project_id)
         meta_path = os.path.join(project_dir, "project.json")
 
-        if not os.path.isfile(meta_path):
-            return None
-
         try:
-            with open(meta_path, encoding="utf-8") as f:
-                data = json.load(f)
+            data, recovery_messages, recovery_backups = (
+                self._load_recoverable_project_metadata(Path(project_dir))
+            )
+            if data is None:
+                raise json.JSONDecodeError(
+                    "No readable project metadata or backup",
+                    "",
+                    0,
+                )
             data, migrated, messages = self._migrate_project_data(data, project_id)
-            if migrated:
+            if migrated or recovery_messages:
                 backup = self._backup_file(Path(meta_path), "pre-migration")
                 self._last_repair_status = ProjectRepairStatus(
-                    status="migrated",
-                    messages=messages,
-                    backup_paths=[str(backup)] if backup else [],
+                    status="migrated" if migrated else "repaired",
+                    messages=[*recovery_messages, *messages],
+                    backup_paths=list(dict.fromkeys([
+                        *(str(path) for path in recovery_backups),
+                        *([str(backup)] if backup else []),
+                    ])),
                 )
                 self._repair_status[project_id] = self._last_repair_status
 
@@ -248,7 +438,7 @@ class ProjectManager:
                 }))
 
             self._current = project
-            if migrated:
+            if migrated or recovery_messages:
                 self._save_project(project, create_backup=False)
             return project
 
@@ -496,36 +686,113 @@ class ProjectManager:
         if self._current is None:
             return None
 
-        if name is None:
-            name = os.path.basename(file_path)
+        source = Path(file_path).resolve(strict=True)
+        if not source.is_file():
+            raise ValueError(f"Project asset is not a regular file: {source}")
 
-        project_dir = os.path.join(self._projects_dir, self._current.id, "assets")
-        os.makedirs(project_dir, exist_ok=True)
-
-        dest = os.path.join(project_dir, name)
-        if os.path.abspath(file_path) != os.path.abspath(dest):
-            shutil.copy2(file_path, dest)
-
-        sidecar = Path(provenance_path) if provenance_path else find_provenance_sidecar(file_path)
-        dest_sidecar = ""
-        provenance_metadata = {}
-        if sidecar and sidecar.is_file():
-            sidecar_dest = sidecar_path_for(dest)
-            if os.path.abspath(sidecar) != os.path.abspath(sidecar_dest):
-                shutil.copy2(sidecar, sidecar_dest)
-            dest_sidecar = str(sidecar_dest)
-            provenance = read_provenance_sidecar(dest_sidecar)
-            provenance_metadata = project_metadata_from_provenance(provenance, dest_sidecar)
-
+        display_name = str(name or source.name).strip() or source.name
+        display_name = Path(display_name).name or source.name
         asset = ProjectAsset(
-            name=name, asset_type=asset_type,
-            file_path=dest, module=module,
-            provenance_path=dest_sidecar,
-            metadata=provenance_metadata,
+            name=display_name,
+            asset_type=asset_type,
+            module=module,
         )
-        self._current.add_asset(asset)
-        self.save()
-        return asset.id
+
+        assets_dir = Path(
+            self._projects_dir,
+            self._current.id,
+            "assets",
+        ).resolve()
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        storage_name = self._asset_storage_name(asset.id, display_name, source.suffix)
+        dest = assets_dir / storage_name
+        if dest.parent != assets_dir:
+            raise ValueError("Asset destination escaped the project assets directory")
+
+        explicit_sidecar = Path(provenance_path) if provenance_path else None
+        if explicit_sidecar is not None and not explicit_sidecar.is_file():
+            raise FileNotFoundError(
+                f"Provenance sidecar not found: {explicit_sidecar}"
+            )
+        sidecar = explicit_sidecar or find_provenance_sidecar(source)
+        sidecar_dest = sidecar_path_for(dest) if sidecar else None
+        copied_paths: list[Path] = []
+
+        try:
+            self._copy_file_exclusive(source, dest)
+            copied_paths.append(dest)
+            provenance_metadata = {}
+            if sidecar and sidecar.is_file() and sidecar_dest is not None:
+                self._copy_file_exclusive(sidecar.resolve(strict=True), sidecar_dest)
+                copied_paths.append(sidecar_dest)
+                provenance = read_provenance_sidecar(sidecar_dest)
+                provenance_metadata = project_metadata_from_provenance(
+                    provenance,
+                    sidecar_dest,
+                )
+
+            asset.file_path = str(dest)
+            asset.provenance_path = str(sidecar_dest) if sidecar_dest else ""
+            asset.metadata = {
+                "storage": {
+                    "original_filename": source.name,
+                    "stored_filename": dest.name,
+                },
+                **provenance_metadata,
+            }
+            self._current.add_asset(asset)
+            if not self.save():
+                self._current.remove_asset(asset.id)
+                raise OSError("Project metadata could not be saved after asset import")
+            return asset.id
+        except Exception:
+            removed = self._current.remove_asset(asset.id)
+            if removed:
+                try:
+                    self._save_project(self._current, create_backup=False)
+                except (OSError, TypeError, ValueError):
+                    pass
+            for copied_path in reversed(copied_paths):
+                try:
+                    copied_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
+
+    @staticmethod
+    def _asset_storage_name(asset_id: str, display_name: str, source_suffix: str) -> str:
+        safe_name = Path(display_name).name
+        safe_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", safe_name)
+        safe_name = safe_name.strip(" .") or "asset"
+        suffix = Path(safe_name).suffix or source_suffix
+        stem = Path(safe_name).stem if Path(safe_name).suffix else safe_name
+        suffix = re.sub(r"[^A-Za-z0-9._-]", "_", suffix)[:16]
+        stem = re.sub(r"\s+", " ", stem).strip()[:96] or "asset"
+        return f"{asset_id}__{stem}{suffix}"
+
+    @staticmethod
+    def _copy_file_exclusive(source: Path, destination: Path) -> None:
+        """Copy without any overwrite window, preserving source timestamps."""
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        created = False
+        try:
+            with source.open("rb") as source_handle:
+                destination_handle = destination.open("xb")
+                created = True
+                with destination_handle:
+                    shutil.copyfileobj(
+                        source_handle,
+                        destination_handle,
+                        length=1024 * 1024,
+                    )
+            shutil.copystat(source, destination)
+        except Exception:
+            if created:
+                try:
+                    destination.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
 
     def delete_asset(self, asset_id: str) -> Optional[TrashEntry]:
         """Move a project asset file to trash and remove it from the project."""
