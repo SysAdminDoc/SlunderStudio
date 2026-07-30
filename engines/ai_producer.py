@@ -6,8 +6,11 @@ vocal synthesis, SFX layering, and mastering — all automated.
 """
 import os
 import time
-import json
-from typing import Optional, Callable
+import threading
+import uuid
+import wave
+from pathlib import Path
+from typing import Any, Optional, Callable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 
@@ -29,6 +32,7 @@ class PipelineStage(Enum):
     MASTERING = "mastering"
     COMPLETE = "complete"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 @dataclass
@@ -51,7 +55,7 @@ class ProducerBrief:
 class PipelineStep:
     """Record of a single pipeline step execution."""
     stage: PipelineStage = PipelineStage.PLANNING
-    status: str = "pending"  # "pending" | "running" | "complete" | "skipped" | "failed"
+    status: str = "pending"  # pending | running | complete | skipped | failed | cancelled
     start_time: float = 0.0
     end_time: float = 0.0
     output_path: Optional[str] = None
@@ -64,6 +68,15 @@ class PipelineStep:
             return self.end_time - self.start_time
         return 0.0
 
+    def to_job_dict(self) -> dict[str, Any]:
+        """Return the bounded, JSON-safe stage state stored in the job ledger."""
+        return {
+            "stage": self.stage.value,
+            "status": self.status,
+            "duration_seconds": round(self.duration, 3),
+            "error": self.error or "",
+        }
+
 
 @dataclass
 class ProducerResult:
@@ -74,6 +87,12 @@ class ProducerResult:
     total_time: float = 0.0
     stage: PipelineStage = PipelineStage.PLANNING
     error: Optional[str] = None
+    run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    started_at_ns: int = field(default_factory=time.time_ns)
+    output_kind: str = "model"
+    degraded_reasons: list[str] = field(default_factory=list)
+    cancelled: bool = False
+    artifact_paths: list[str] = field(default_factory=list)
 
     # Intermediate outputs
     lyrics_text: str = ""
@@ -96,8 +115,76 @@ class ProducerResult:
     @property
     def progress(self) -> float:
         total = len(PIPELINE_ORDER)
-        done = len(self.completed_stages)
+        done = sum(
+            step.status in {"complete", "skipped", "failed", "cancelled"}
+            for step in self.steps
+        )
         return done / total if total > 0 else 0.0
+
+    @property
+    def is_demo(self) -> bool:
+        return self.output_kind == "demo"
+
+    @property
+    def is_degraded(self) -> bool:
+        return bool(self.degraded_reasons)
+
+    @property
+    def is_success(self) -> bool:
+        return (
+            self.stage == PipelineStage.COMPLETE
+            and not self.cancelled
+            and not self.error
+            and self.can_export
+        )
+
+    @property
+    def can_export(self) -> bool:
+        return (
+            bool(self.final_audio_path)
+            and self.final_audio_path in self.artifact_paths
+            and _verify_audio_artifact(self.final_audio_path)
+        )
+
+    @property
+    def output_paths(self) -> list[str]:
+        return list(dict.fromkeys(self.artifact_paths))
+
+    def add_artifact(self, *paths: str | Path | None) -> None:
+        for path in paths:
+            if path:
+                value = str(Path(path))
+                if value not in self.artifact_paths:
+                    self.artifact_paths.append(value)
+
+    def add_degraded_reason(self, reason: str) -> None:
+        reason = reason.strip()
+        if reason and reason not in self.degraded_reasons:
+            self.degraded_reasons.append(reason)
+
+    def job_metadata(self) -> dict[str, Any]:
+        """Persist a truthful, bounded pipeline summary with the durable job."""
+        if self.cancelled:
+            outcome = "cancelled"
+        elif self.stage == PipelineStage.FAILED:
+            outcome = "failed"
+        elif self.is_demo:
+            outcome = "demo"
+        elif self.is_degraded:
+            outcome = "degraded"
+        elif self.is_success:
+            outcome = "complete"
+        else:
+            outcome = self.stage.value
+        return {
+            "pipeline": {
+                "run_id": self.run_id,
+                "outcome": outcome,
+                "output_kind": self.output_kind,
+                "degraded_reasons": self.degraded_reasons[:12],
+                "stages": [step.to_job_dict() for step in self.steps],
+            }
+        }
 
 
 # Pipeline execution order
@@ -111,6 +198,46 @@ PIPELINE_ORDER = [
     PipelineStage.MIXING,
     PipelineStage.MASTERING,
 ]
+
+REQUIRED_STAGES = {
+    PipelineStage.PLANNING,
+    PipelineStage.LYRICS,
+    PipelineStage.STYLE,
+    PipelineStage.SONG_GEN,
+    PipelineStage.MIXING,
+    PipelineStage.MASTERING,
+}
+
+
+def _verify_audio_artifact(path: str | Path | None) -> bool:
+    """Verify that a pipeline artifact is a non-empty, readable audio file."""
+    if not path:
+        return False
+    candidate = Path(path)
+    try:
+        if not candidate.is_file() or candidate.stat().st_size <= 44:
+            return False
+        import soundfile as sf
+
+        info = sf.info(str(candidate))
+        return info.frames > 0 and info.samplerate > 0 and info.channels > 0
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def _normalize_stereo(audio: np.ndarray) -> np.ndarray:
+    """Normalize decoded frames to finite float32 stereo."""
+    frames = np.asarray(audio, dtype=np.float32)
+    if frames.ndim == 1:
+        frames = frames[:, None]
+    if frames.ndim != 2 or frames.shape[0] == 0 or frames.shape[1] == 0:
+        raise ValueError("Audio layer has no decodable frames")
+    if frames.shape[1] == 1:
+        frames = np.repeat(frames, 2, axis=1)
+    elif frames.shape[1] > 2:
+        mono = frames.mean(axis=1, keepdims=True)
+        frames = np.repeat(mono, 2, axis=1)
+    return np.nan_to_num(frames[:, :2], copy=False).astype(np.float32, copy=False)
 
 
 # ── Genre Intelligence ─────────────────────────────────────────────────────────
@@ -222,6 +349,10 @@ def analyze_brief(brief: ProducerBrief) -> dict:
 
 # ── Pipeline Executor ──────────────────────────────────────────────────────────
 
+class _ProducerCancelled(RuntimeError):
+    """Internal sentinel used to stop the pipeline at a safe stage boundary."""
+
+
 class AIProducer:
     """
     AI Producer: one-prompt-to-full-song pipeline orchestrator.
@@ -233,9 +364,15 @@ class AIProducer:
         os.makedirs(self._output_dir, exist_ok=True)
         self._current_result: Optional[ProducerResult] = None
 
-    def produce(self, brief: ProducerBrief,
-                progress_callback: Optional[Callable] = None) -> ProducerResult:
-        """Execute the full production pipeline."""
+    def produce(
+        self,
+        brief: ProducerBrief,
+        progress_callback: Optional[Callable[[float, str], None]] = None,
+        step_callback: Optional[Callable[[str], None]] = None,
+        log_callback: Optional[Callable[[str], None]] = None,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> ProducerResult:
+        """Execute the pipeline with cooperative cancellation and truthful outcomes."""
         t0 = time.time()
         result = ProducerResult(brief=brief)
         self._current_result = result
@@ -243,74 +380,140 @@ class AIProducer:
         try:
             # Stage 1: Planning
             step = self._run_stage(PipelineStage.PLANNING, result,
-                                   lambda: self._plan(brief), progress_callback)
-            if step.status == "failed":
-                return result
+                                   lambda: self._plan(brief), progress_callback,
+                                   step_callback, log_callback, cancel_event)
+            if self._must_stop(step, result):
+                return self._finish(result, t0)
 
             plan = step.output_data
 
             # Stage 2: Lyrics
             step = self._run_stage(PipelineStage.LYRICS, result,
                                    lambda: self._generate_lyrics(plan, brief),
-                                   progress_callback)
+                                   progress_callback, step_callback, log_callback,
+                                   cancel_event)
+            if self._must_stop(step, result):
+                return self._finish(result, t0)
 
             # Stage 3: Style
             step = self._run_stage(PipelineStage.STYLE, result,
                                    lambda: self._select_style(plan, brief),
-                                   progress_callback)
+                                   progress_callback, step_callback, log_callback,
+                                   cancel_event)
+            if self._must_stop(step, result):
+                return self._finish(result, t0)
 
             # Stage 4: Song Generation (must succeed to continue)
             step = self._run_stage(PipelineStage.SONG_GEN, result,
-                                   lambda: self._generate_song(plan, result, brief),
-                                   progress_callback)
-            if step.status == "failed":
-                result.stage = PipelineStage.FAILED
-                result.total_time = time.time() - t0
-                return result
+                                   lambda: self._generate_song(
+                                       plan,
+                                       result,
+                                       brief,
+                                       progress_callback=lambda pct, message: self._emit_nested_progress(
+                                           PipelineStage.SONG_GEN,
+                                           pct,
+                                           message,
+                                           progress_callback,
+                                           step_callback,
+                                       ),
+                                       step_callback=step_callback,
+                                       log_callback=log_callback,
+                                       cancel_event=cancel_event,
+                                   ),
+                                   progress_callback, step_callback, log_callback,
+                                   cancel_event)
+            if self._must_stop(step, result):
+                return self._finish(result, t0)
 
             # Stage 5: Vocals (if requested)
             if brief.vocal_style and brief.vocal_style != "none":
                 step = self._run_stage(PipelineStage.VOCALS, result,
                                        lambda: self._add_vocals(plan, result, brief),
-                                       progress_callback)
+                                       progress_callback, step_callback, log_callback,
+                                       cancel_event, required=False)
+                if self._must_stop(step, result):
+                    return self._finish(result, t0)
             else:
-                result.steps.append(PipelineStep(
-                    stage=PipelineStage.VOCALS, status="skipped"))
+                self._record_skipped(
+                    PipelineStage.VOCALS,
+                    result,
+                    "No vocal layer requested",
+                    progress_callback,
+                    step_callback,
+                )
 
             # Stage 6: SFX (if requested)
             if brief.include_sfx and plan.get("sfx_prompt"):
                 step = self._run_stage(PipelineStage.SFX, result,
                                        lambda: self._add_sfx(plan, result, brief),
-                                       progress_callback)
+                                       progress_callback, step_callback, log_callback,
+                                       cancel_event, required=False)
+                if self._must_stop(step, result):
+                    return self._finish(result, t0)
             else:
-                result.steps.append(PipelineStep(
-                    stage=PipelineStage.SFX, status="skipped"))
+                self._record_skipped(
+                    PipelineStage.SFX,
+                    result,
+                    "No matching SFX layer requested",
+                    progress_callback,
+                    step_callback,
+                )
 
             # Stage 7: Mixing
             step = self._run_stage(PipelineStage.MIXING, result,
                                    lambda: self._mix(result, brief),
-                                   progress_callback)
+                                   progress_callback, step_callback, log_callback,
+                                   cancel_event)
+            if self._must_stop(step, result):
+                return self._finish(result, t0)
 
             # Stage 8: Mastering
             step = self._run_stage(PipelineStage.MASTERING, result,
                                    lambda: self._master(result, brief),
-                                   progress_callback)
+                                   progress_callback, step_callback, log_callback,
+                                   cancel_event)
+            if self._must_stop(step, result):
+                return self._finish(result, t0)
+
+            if not result.can_export:
+                step.status = "failed"
+                step.error = "Mastering did not produce a new, readable audio artifact"
+                result.stage = PipelineStage.FAILED
+                result.error = f"Failed at mastering: {step.error}"
+                if log_callback:
+                    log_callback(result.error)
+                return self._finish(result, t0)
 
             result.stage = PipelineStage.COMPLETE
-            result.total_time = time.time() - t0
 
             if progress_callback:
                 progress_callback(1.0, "Production complete!")
+            if step_callback:
+                status = "demo" if result.is_demo else (
+                    "degraded" if result.is_degraded else "complete"
+                )
+                step_callback(f"Production {status}")
 
         except Exception as e:
             result.stage = PipelineStage.FAILED
-            result.error = str(e)
-            result.total_time = time.time() - t0
+            result.error = f"{type(e).__name__}: {e}"
+            if log_callback:
+                log_callback(result.error)
 
-        return result
+        return self._finish(result, t0)
 
-    def _run_stage(self, stage: PipelineStage, result: ProducerResult,
-                   func: Callable, progress_callback: Optional[Callable]) -> PipelineStep:
+    def _run_stage(
+        self,
+        stage: PipelineStage,
+        result: ProducerResult,
+        func: Callable,
+        progress_callback: Optional[Callable[[float, str], None]],
+        step_callback: Optional[Callable[[str], None]],
+        log_callback: Optional[Callable[[str], None]],
+        cancel_event: Optional[threading.Event],
+        *,
+        required: bool = True,
+    ) -> PipelineStep:
         """Execute a single pipeline stage with timing and error handling."""
         step = PipelineStep(stage=stage, status="running", start_time=time.time())
         result.steps.append(step)
@@ -318,21 +521,130 @@ class AIProducer:
 
         stage_idx = PIPELINE_ORDER.index(stage) if stage in PIPELINE_ORDER else 0
         base_progress = stage_idx / len(PIPELINE_ORDER)
+        label = stage.value.replace("_", " ").title()
 
         if progress_callback:
-            progress_callback(base_progress, f"{stage.value}...")
+            progress_callback(base_progress, f"{label}...")
+        if step_callback:
+            step_callback(f"{label}: running")
+        if log_callback:
+            log_callback(f"{label} started")
 
         try:
+            if cancel_event and cancel_event.is_set():
+                raise _ProducerCancelled()
             output = func()
+            if cancel_event and cancel_event.is_set():
+                raise _ProducerCancelled()
             step.output_data = output if isinstance(output, dict) else {"result": output}
-            step.status = "complete"
+            if step.output_data.get("cancelled"):
+                raise _ProducerCancelled()
+            if step.output_data.get("error"):
+                raise RuntimeError(str(step.output_data["error"]))
+
+            reported_status = str(step.output_data.get("status", ""))
+            if reported_status.startswith("skipped"):
+                step.status = "skipped"
+                reason = str(
+                    step.output_data.get("note")
+                    or reported_status.replace("_", " ")
+                )
+                result.add_degraded_reason(f"{label}: {reason}")
+            else:
+                step.status = "complete"
+
+            if step.output_data.get("demo") or step.output_data.get("fallback"):
+                result.output_kind = "demo"
+                result.add_degraded_reason(
+                    f"{label}: explicit demo fallback was used"
+                )
+        except _ProducerCancelled:
+            step.status = "cancelled"
+            step.error = "Cancellation requested"
+            result.cancelled = True
+            result.stage = PipelineStage.CANCELLED
         except Exception as e:
             step.status = "failed"
             step.error = str(e)
-            result.error = f"Failed at {stage.value}: {e}"
+            if required:
+                result.error = f"Failed at {stage.value}: {e}"
+                result.stage = PipelineStage.FAILED
+            else:
+                result.add_degraded_reason(f"{label} failed: {e}")
 
         step.end_time = time.time()
+        terminal_progress = (stage_idx + 1) / len(PIPELINE_ORDER)
+        if progress_callback:
+            progress_callback(
+                terminal_progress,
+                f"{label}: {step.status}",
+            )
+        if step_callback:
+            step_callback(f"{label}: {step.status}")
+        if log_callback:
+            detail = f" ({step.error})" if step.error else ""
+            log_callback(f"{label} {step.status}{detail}")
         return step
+
+    @staticmethod
+    def _finish(result: ProducerResult, started_at: float) -> ProducerResult:
+        result.total_time = time.time() - started_at
+        return result
+
+    @staticmethod
+    def _must_stop(step: PipelineStep, result: ProducerResult) -> bool:
+        if step.status == "cancelled":
+            result.cancelled = True
+            result.stage = PipelineStage.CANCELLED
+            return True
+        if step.status == "failed" and step.stage in REQUIRED_STAGES:
+            result.stage = PipelineStage.FAILED
+            return True
+        return False
+
+    @staticmethod
+    def _record_skipped(
+        stage: PipelineStage,
+        result: ProducerResult,
+        reason: str,
+        progress_callback: Optional[Callable[[float, str], None]],
+        step_callback: Optional[Callable[[str], None]],
+    ) -> None:
+        now = time.time()
+        result.steps.append(PipelineStep(
+            stage=stage,
+            status="skipped",
+            start_time=now,
+            end_time=now,
+            output_data={"reason": reason},
+        ))
+        stage_idx = PIPELINE_ORDER.index(stage)
+        label = stage.value.replace("_", " ").title()
+        if progress_callback:
+            progress_callback(
+                (stage_idx + 1) / len(PIPELINE_ORDER),
+                f"{label}: skipped",
+            )
+        if step_callback:
+            step_callback(f"{label}: skipped")
+
+    @staticmethod
+    def _emit_nested_progress(
+        stage: PipelineStage,
+        pct: int | float,
+        message: str,
+        progress_callback: Optional[Callable[[float, str], None]],
+        step_callback: Optional[Callable[[str], None]],
+    ) -> None:
+        stage_idx = PIPELINE_ORDER.index(stage)
+        normalized = max(0.0, min(1.0, float(pct) / 100.0))
+        if progress_callback:
+            progress_callback(
+                (stage_idx + normalized) / len(PIPELINE_ORDER),
+                message,
+            )
+        if step_callback and message:
+            step_callback(message)
 
     # ── Pipeline Stage Implementations ─────────────────────────────────────────
 
@@ -371,39 +683,71 @@ class AIProducer:
         self._current_result.style_tags = tags
         return {"tags": tags, "tempo": plan["tempo"], "key": plan["key"]}
 
-    def _generate_song(self, plan: dict, result: ProducerResult,
-                       brief: ProducerBrief) -> dict:
+    def _generate_song(
+        self,
+        plan: dict,
+        result: ProducerResult,
+        brief: ProducerBrief,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
+        step_callback: Optional[Callable[[str], None]] = None,
+        log_callback: Optional[Callable[[str], None]] = None,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> dict:
         """Generate the instrumental track."""
         try:
             from engines.ace_step_engine import generate_song
+
+            def _progress(pct: int) -> None:
+                if progress_callback:
+                    progress_callback(pct, f"Song generation: {pct}%")
+
             song_result = generate_song(
                 lyrics=result.lyrics_text,
                 tags=", ".join(result.style_tags),
                 duration=brief.duration_seconds,
                 seed=brief.seed,
+                progress_cb=_progress,
+                step_cb=step_callback,
+                log_cb=log_callback,
+                cancel_event=cancel_event,
             )
+            if cancel_event and cancel_event.is_set():
+                return {"cancelled": True}
+            if isinstance(song_result, dict) and song_result.get("cancelled"):
+                return {"cancelled": True}
             audio_path = (
                 song_result.get("audio_path", "")
                 if isinstance(song_result, dict)
                 else str(song_result)
             )
-            if not audio_path:
-                raise RuntimeError("Song generation completed without an audio path")
+            if not _verify_audio_artifact(audio_path):
+                raise RuntimeError(
+                    "Song generation completed without a readable audio artifact"
+                )
             result.song_audio_path = audio_path
+            result.add_artifact(
+                audio_path,
+                song_result.get("provenance_path")
+                if isinstance(song_result, dict) else None,
+                song_result.get("vocal_stem_path")
+                if isinstance(song_result, dict) else None,
+                song_result.get("vocal_stem_provenance_path")
+                if isinstance(song_result, dict) else None,
+            )
             if isinstance(song_result, dict):
                 song_result["audio_path"] = audio_path
                 return song_result
             return {"audio_path": audio_path}
         except Exception as exc:
+            if cancel_event and cancel_event.is_set():
+                return {"cancelled": True}
             if not brief.demo_fallback:
                 raise RuntimeError(
                     f"Song generation failed: {exc}. "
                     "Enable 'Demo Fallback' to continue with a silent placeholder."
                 ) from exc
 
-            import wave
-            ts = time.strftime("%Y%m%d_%H%M%S")
-            path = os.path.join(self._output_dir, f"song_demo_{ts}.wav")
+            path = os.path.join(self._output_dir, f"song_demo_{result.run_id}.wav")
             sr = 44100
             n = int(brief.duration_seconds * sr)
             silence = np.zeros((n, 2), dtype=np.int16)
@@ -412,7 +756,7 @@ class AIProducer:
                 wf.setsampwidth(2)
                 wf.setframerate(sr)
                 wf.writeframes(silence.tobytes())
-            write_provenance_sidecar(
+            provenance_path = write_provenance_sidecar(
                 path,
                 module="ai_producer",
                 operation="generate_song_fallback",
@@ -430,7 +774,13 @@ class AIProducer:
                 },
             )
             result.song_audio_path = path
-            return {"audio_path": path, "fallback": True, "demo": True}
+            result.add_artifact(path, provenance_path)
+            return {
+                "audio_path": path,
+                "provenance_path": str(provenance_path),
+                "fallback": True,
+                "demo": True,
+            }
 
     def _add_vocals(self, plan: dict, result: ProducerResult,
                     brief: ProducerBrief) -> dict:
@@ -441,61 +791,69 @@ class AIProducer:
     def _add_sfx(self, plan: dict, result: ProducerResult,
                  brief: ProducerBrief) -> dict:
         """Generate and add SFX layer."""
-        try:
-            from engines.sfx_engine import SFXParams, generate_sfx
-            sfx_prompt = plan.get("sfx_prompt", "ambient texture")
-            params = SFXParams(
-                prompt=sfx_prompt,
-                duration=min(brief.duration_seconds, 30.0),
-                seed=brief.seed,
-            )
-            sfx_result = generate_sfx(params)
-            if sfx_result.file_path:
-                result.sfx_audio_path = sfx_result.file_path
-            return {"sfx_path": sfx_result.file_path, "prompt": sfx_prompt}
-        except Exception as e:
-            return {"error": str(e)}
+        from engines.sfx_engine import SFXParams, generate_sfx
+
+        sfx_prompt = plan.get("sfx_prompt", "ambient texture")
+        params = SFXParams(
+            prompt=sfx_prompt,
+            duration=min(brief.duration_seconds, 30.0),
+            seed=brief.seed,
+            allow_demo_output=brief.demo_fallback,
+        )
+        sfx_result = generate_sfx(params)
+        if not sfx_result.is_success or not _verify_audio_artifact(sfx_result.file_path):
+            raise RuntimeError(sfx_result.error or "SFX generation produced no readable audio")
+        result.sfx_audio_path = sfx_result.file_path
+        result.add_artifact(sfx_result.file_path, sfx_result.provenance_path)
+        return {
+            "sfx_path": sfx_result.file_path,
+            "provenance_path": sfx_result.provenance_path,
+            "prompt": sfx_prompt,
+            "demo": sfx_result.is_demo,
+            "output_kind": sfx_result.output_kind,
+        }
 
     def _mix(self, result: ProducerResult, brief: ProducerBrief) -> dict:
         """Mix all layers together."""
-        import wave
+        import soundfile as sf
 
         layers = []
-        sr = 44100
+        sr = 0
 
         # Load song
-        if result.song_audio_path and os.path.isfile(result.song_audio_path):
-            try:
-                with wave.open(result.song_audio_path, "r") as wf:
-                    sr = wf.getframerate()
-                    frames = wf.readframes(wf.getnframes())
-                    audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-                    ch = wf.getnchannels()
-                    if ch == 2:
-                        audio = audio.reshape(-1, 2)
-                    else:
-                        audio = np.column_stack([audio, audio])
-                    layers.append(("song", audio, 1.0))
-            except Exception:
-                pass
+        if not _verify_audio_artifact(result.song_audio_path):
+            raise RuntimeError("Generated song artifact is missing or unreadable")
+        audio, sr = sf.read(
+            result.song_audio_path,
+            dtype="float32",
+            always_2d=True,
+        )
+        audio = _normalize_stereo(audio)
+        layers.append(("song", audio, 1.0))
 
         # Load SFX (at lower volume)
-        if result.sfx_audio_path and os.path.isfile(result.sfx_audio_path):
-            try:
-                with wave.open(result.sfx_audio_path, "r") as wf:
-                    frames = wf.readframes(wf.getnframes())
-                    audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-                    ch = wf.getnchannels()
-                    if ch == 2:
-                        audio = audio.reshape(-1, 2)
-                    else:
-                        audio = np.column_stack([audio, audio])
-                    layers.append(("sfx", audio, 0.15))
-            except Exception:
-                pass
+        if result.sfx_audio_path:
+            if not _verify_audio_artifact(result.sfx_audio_path):
+                raise RuntimeError("SFX artifact is missing or unreadable")
+            sfx_audio, sfx_sr = sf.read(
+                result.sfx_audio_path,
+                dtype="float32",
+                always_2d=True,
+            )
+            sfx_audio = _normalize_stereo(sfx_audio)
+            if sfx_sr != sr:
+                import librosa
+
+                sfx_audio = librosa.resample(
+                    sfx_audio.T,
+                    orig_sr=sfx_sr,
+                    target_sr=sr,
+                    axis=-1,
+                ).T.astype(np.float32, copy=False)
+            layers.append(("sfx", sfx_audio, 0.15))
 
         if not layers:
-            return {"error": "No audio layers to mix"}
+            raise RuntimeError("No audio layers to mix")
 
         # Mix
         max_len = max(len(a) for _, a, _ in layers)
@@ -510,15 +868,9 @@ class AIProducer:
             mixed /= peak
 
         # Save
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        mix_path = os.path.join(self._output_dir, f"mix_{ts}.wav")
-        int_audio = (mixed * 32767).clip(-32768, 32767).astype(np.int16)
-        with wave.open(mix_path, "w") as wf:
-            wf.setnchannels(2)
-            wf.setsampwidth(2)
-            wf.setframerate(sr)
-            wf.writeframes(int_audio.tobytes())
-        write_provenance_sidecar(
+        mix_path = os.path.join(self._output_dir, f"mix_{result.run_id}.wav")
+        sf.write(mix_path, mixed, sr, subtype="PCM_24")
+        provenance_path = write_provenance_sidecar(
             mix_path,
             module="ai_producer",
             operation="mix",
@@ -531,47 +883,48 @@ class AIProducer:
                 if path
             ],
             export_format="wav",
-            output_kind="export",
+            output_kind=result.output_kind,
         )
+        result.add_artifact(mix_path, provenance_path)
 
-        return {"mix_path": mix_path, "layers": len(layers), "duration": max_len / sr}
+        return {
+            "mix_path": mix_path,
+            "provenance_path": str(provenance_path),
+            "layers": len(layers),
+            "duration": max_len / sr,
+            "sample_rate": sr,
+        }
 
     def _master(self, result: ProducerResult, brief: ProducerBrief) -> dict:
         """Apply mastering to the final mix."""
         from core.mastering import master_audio, PRESETS
 
         mix_step = result.get_step(PipelineStage.MIXING)
-        if not mix_step or not mix_step.output_data:
-            return {"error": "No mix to master"}
+        if not mix_step or mix_step.status != "complete" or not mix_step.output_data:
+            raise RuntimeError("No verified mix to master")
 
         mix_path = mix_step.output_data.get("mix_path")
-        if not mix_path or not os.path.isfile(mix_path):
-            return {"error": "Mix file not found"}
+        if not _verify_audio_artifact(mix_path):
+            raise RuntimeError("Mix file is missing or unreadable")
 
         # Load mix
-        import wave
-        with wave.open(mix_path, "r") as wf:
-            sr = wf.getframerate()
-            frames = wf.readframes(wf.getnframes())
-            audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-            audio = audio.reshape(-1, 2)
+        import soundfile as sf
+        audio, sr = sf.read(mix_path, dtype="float32", always_2d=True)
+        audio = _normalize_stereo(audio)
 
         preset = PRESETS.get(brief.mastering_preset, PRESETS["Balanced"])
         master_result = master_audio(audio, sr, preset)
 
         if master_result.error:
-            return {"error": master_result.error}
+            raise RuntimeError(master_result.error)
 
         # Save mastered
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        master_path = os.path.join(self._output_dir, f"mastered_{ts}.wav")
-        int_audio = (master_result.audio * 32767).clip(-32768, 32767).astype(np.int16)
-        with wave.open(master_path, "w") as wf:
-            wf.setnchannels(2)
-            wf.setsampwidth(2)
-            wf.setframerate(sr)
-            wf.writeframes(int_audio.tobytes())
-        write_provenance_sidecar(
+        master_path = os.path.join(
+            self._output_dir,
+            f"mastered_{result.run_id}.wav",
+        )
+        sf.write(master_path, master_result.audio, sr, subtype="PCM_24")
+        provenance_path = write_provenance_sidecar(
             master_path,
             module="ai_producer",
             operation="master",
@@ -587,14 +940,16 @@ class AIProducer:
             },
             source_paths=[mix_path],
             export_format="wav",
-            output_kind="export",
+            output_kind=result.output_kind,
         )
 
         result.mastered_audio_path = master_path
         result.final_audio_path = master_path
+        result.add_artifact(master_path, provenance_path)
 
         return {
             "master_path": master_path,
+            "provenance_path": str(provenance_path),
             "input_lufs": master_result.input_lufs,
             "output_lufs": master_result.output_lufs,
             "peak_db": master_result.peak_db,
@@ -614,7 +969,26 @@ def get_producer() -> AIProducer:
     return _producer
 
 
-def produce_song(brief: ProducerBrief,
-                 progress_callback: Optional[Callable] = None) -> ProducerResult:
+def produce_song(
+    brief: ProducerBrief,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+    progress_cb: Optional[Callable[[int], None]] = None,
+    step_cb: Optional[Callable[[str], None]] = None,
+    log_cb: Optional[Callable[[str], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
+    **_kwargs,
+) -> ProducerResult:
     """One-shot song production from brief. Called by InferenceWorker."""
-    return get_producer().produce(brief, progress_callback)
+    def _report(progress: float, message: str) -> None:
+        if progress_callback:
+            progress_callback(progress, message)
+        if progress_cb:
+            progress_cb(round(max(0.0, min(1.0, progress)) * 100))
+
+    return get_producer().produce(
+        brief,
+        progress_callback=_report,
+        step_callback=step_cb,
+        log_callback=log_cb,
+        cancel_event=cancel_event,
+    )

@@ -46,7 +46,7 @@ through PyTorch 2.3.1, below the PyTorch 2.6.0 security floor.
 | Stem Separation | Isolate vocals, drums, bass, and other instruments | Demucs (htdemucs) |
 | SFX Generator | Text-to-sound-effect generation | Stable Audio Open |
 | Mixer | Multi-track mixing with stem-aware dynamic EQ, Mid/Side trims, reference loudness matching, and smart mastering (8 presets) | Built-in DSP |
-| AI Producer | One prompt to full song — auto-chains all modules | Orchestrator |
+| AI Producer | Cancellable staged production with verified output, explicit demo/degraded states, and retry | Orchestrator |
 | Model Hub | Download, manage, and switch AI models | HuggingFace Hub |
 | Projects | Save/load projects with version history and asset tracking | — |
 

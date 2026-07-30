@@ -167,12 +167,14 @@ class JobStore:
         job_id: str,
         error: str,
         outputs: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[JobRecord]:
         return self._update(
             job_id,
             status=JobStatus.FAILED,
             error=error,
             outputs=_jsonable(outputs or {}),
+            metadata=_jsonable(metadata or {}),
             finished_at=time.time(),
             recoverable=True,
         )
@@ -182,6 +184,7 @@ class JobStore:
         job_id: str,
         outputs: Optional[dict[str, Any]] = None,
         recoverable: bool = False,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[JobRecord]:
         message = "Cancelled; resume is available" if recoverable else "Cancelled"
         return self._update(
@@ -189,6 +192,7 @@ class JobStore:
             status=JobStatus.CANCELLED,
             message=message,
             outputs=_jsonable(outputs or {}),
+            metadata=_jsonable(metadata or {}),
             finished_at=time.time(),
             recoverable=recoverable,
         )
@@ -422,10 +426,19 @@ class JobLog:
 
 OUTPUT_KEYS = {
     "audio_path",
+    "artifact_paths",
+    "final_audio_path",
+    "mastered_audio_path",
+    "mix_path",
+    "master_path",
+    "output_paths",
     "provenance_path",
     "output_path",
     "path",
+    "sfx_audio_path",
+    "song_audio_path",
     "file_path",
+    "vocal_audio_path",
     "vocal_stem_path",
     "vocal_stem_provenance_path",
 }
@@ -452,6 +465,8 @@ def extract_output_paths(
                 if key in OUTPUT_KEYS:
                     if isinstance(item, (str, Path)):
                         paths.append(str(item))
+                    elif isinstance(item, (list, tuple, set)):
+                        visit(item, candidate_expected=True)
                     elif item is not None and invalid_cb:
                         invalid_cb(item)
                 elif key in {"results", "outputs", "sections", "paths"}:
@@ -464,10 +479,28 @@ def extract_output_paths(
                 visit(item, candidate_expected=candidate_expected)
             return
         found_path = False
-        for attr in ("audio_path", "provenance_path", "output_path", "vocal_stem_path", "vocal_stem_provenance_path"):
+        for attr in (
+            "audio_path",
+            "artifact_paths",
+            "final_audio_path",
+            "mastered_audio_path",
+            "mix_path",
+            "master_path",
+            "output_path",
+            "output_paths",
+            "provenance_path",
+            "sfx_audio_path",
+            "song_audio_path",
+            "vocal_audio_path",
+            "vocal_stem_path",
+            "vocal_stem_provenance_path",
+        ):
             item = getattr(value, attr, None)
             if item:
-                paths.append(str(item))
+                if isinstance(item, (list, tuple, set)):
+                    visit(item, candidate_expected=True)
+                else:
+                    paths.append(str(item))
                 found_path = True
         if candidate_expected and not found_path and invalid_cb:
             invalid_cb(value)

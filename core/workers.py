@@ -87,19 +87,48 @@ class InferenceWorker(QThread):
             )
             output_paths = extract_output_paths(self._result)
             outputs = {"paths": output_paths} if output_paths else {}
+            result_metadata = _extract_job_metadata(self._result)
             if self._cancel_event.is_set():
                 self._job_store.cleanup_outputs(output_paths)
                 if self.job_id:
-                    self._job_store.mark_cancelled(self.job_id, outputs=outputs)
+                    self._job_store.mark_cancelled(
+                        self.job_id,
+                        outputs=outputs,
+                        metadata=result_metadata,
+                    )
                 if self._job_log:
                     self._job_log.warn("Cancelled; partial outputs cleaned.")
                 self.log.emit("Worker cancelled; partial outputs cleaned.")
                 self.cancelled.emit()
             else:
-                if self.job_id:
-                    self._job_store.mark_completed(self.job_id, outputs=outputs)
-                if self._job_log:
-                    self._job_log.info(f"Completed with {len(output_paths)} output(s).")
+                semantic_success = getattr(self._result, "is_success", None)
+                if callable(semantic_success):
+                    semantic_success = semantic_success()
+                if semantic_success is False:
+                    semantic_error = str(
+                        getattr(self._result, "error", "")
+                        or "Task returned an unsuccessful result"
+                    )
+                    if self.job_id:
+                        self._job_store.mark_failed(
+                            self.job_id,
+                            semantic_error,
+                            outputs=outputs,
+                            metadata=result_metadata,
+                        )
+                    if self._job_log:
+                        self._job_log.error(semantic_error)
+                else:
+                    if self.job_id:
+                        self._job_store.mark_completed(
+                            self.job_id,
+                            outputs=outputs,
+                            metadata=result_metadata,
+                        )
+                    if self._job_log:
+                        self._job_log.info(
+                            f"Completed with {len(output_paths)} output(s)."
+                        )
                 self.finished.emit(self._result)
         except CancelledJobError as e:
             output_paths = extract_output_paths(e.outputs)
@@ -141,6 +170,8 @@ class InferenceWorker(QThread):
     def _emit_step(self, message: str):
         if self.job_id:
             self._job_store.update_message(self.job_id, message)
+        if self._job_log:
+            self._job_log.info(message)
         self.step_info.emit(message)
 
     def _emit_log(self, message: str):
@@ -149,6 +180,18 @@ class InferenceWorker(QThread):
         if self._job_log:
             self._job_log.info(message)
         self.log.emit(message)
+
+
+def _extract_job_metadata(result: Any) -> dict[str, Any]:
+    """Read optional bounded result metadata without coupling workers to engines."""
+    metadata = getattr(result, "job_metadata", None)
+    if callable(metadata):
+        try:
+            value = metadata()
+            return value if isinstance(value, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+    return metadata if isinstance(metadata, dict) else {}
 
 
 class DownloadWorker(QThread):

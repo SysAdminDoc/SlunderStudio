@@ -3,17 +3,14 @@ Slunder Studio v0.1.29 — AI Producer View
 One-prompt-to-full-song interface with creative brief input,
 live pipeline stage visualization, and final output preview.
 """
-import os
-import time
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
-    QComboBox, QSpinBox, QDoubleSpinBox, QFrame, QScrollArea,
-    QLineEdit, QCheckBox, QProgressBar,
+    QComboBox, QSpinBox, QFrame, QCheckBox, QProgressBar,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt
 
-from ui.theme import ThemeEngine
+from ui.theme import Palette, ThemeEngine
 from ui.waveform_widget import WaveformWidget
 from engines.ai_producer import (
     ProducerBrief, ProducerResult, PipelineStage, PIPELINE_ORDER,
@@ -101,7 +98,22 @@ class StageIndicator(QFrame):
         self._status = status
         t = ThemeEngine.get_colors()
 
-        if status == "running":
+        if status == "pending":
+            self.setStyleSheet(self._base_style)
+            self._num_label.setStyleSheet(f"""
+                background: {t['border']};
+                color: {t['text_secondary']};
+                border-radius: 12px;
+                font-size: 10px; font-weight: bold;
+            """)
+            self._name_label.setStyleSheet(
+                f"color: {t['text_secondary']}; font-size: 11px;"
+            )
+            self._status_label.clear()
+            self._status_label.setStyleSheet(
+                f"color: {t['text_secondary']}; font-size: 10px;"
+            )
+        elif status == "running":
             self.setStyleSheet(f"""
                 StageIndicator {{
                     background: {t['accent']}15;
@@ -122,19 +134,21 @@ class StageIndicator(QFrame):
             self.setStyleSheet(f"""
                 StageIndicator {{
                     background: {t['surface']};
-                    border: 1px solid #238636;
+                    border: 1px solid {t['success']};
                     border-radius: 6px;
                 }}
             """)
             self._num_label.setStyleSheet(f"""
-                background: #238636;
-                color: white; border-radius: 12px;
+                background: {t['success']};
+                color: {t['background']}; border-radius: 12px;
                 font-size: 10px; font-weight: bold;
             """)
             self._name_label.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
             dur_str = f"{duration:.1f}s" if duration > 0 else ""
             self._status_label.setText(dur_str)
-            self._status_label.setStyleSheet(f"color: #238636; font-size: 10px;")
+            self._status_label.setStyleSheet(
+                f"color: {t['success']}; font-size: 10px;"
+            )
 
         elif status == "skipped":
             self._name_label.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
@@ -156,6 +170,23 @@ class StageIndicator(QFrame):
             """)
             self._status_label.setText("Failed")
             self._status_label.setStyleSheet(f"color: {t['error']}; font-size: 10px;")
+        elif status == "cancelled":
+            self.setStyleSheet(f"""
+                StageIndicator {{
+                    background: {t['surface']};
+                    border: 1px solid {t['warning']};
+                    border-radius: 6px;
+                }}
+            """)
+            self._num_label.setStyleSheet(f"""
+                background: {t['warning']};
+                color: {t['background']}; border-radius: 12px;
+                font-size: 10px; font-weight: bold;
+            """)
+            self._status_label.setText("Cancelled")
+            self._status_label.setStyleSheet(
+                f"color: {t['warning']}; font-size: 10px;"
+            )
 
 
 # ── AI Producer View ───────────────────────────────────────────────────────────
@@ -167,6 +198,7 @@ class AIProducerView(QWidget):
         super().__init__(parent)
         self._result: Optional[ProducerResult] = None
         self._worker: Optional[InferenceWorker] = None
+        self._last_job_id = ""
         self._stage_indicators: dict[PipelineStage, StageIndicator] = {}
 
         t = ThemeEngine.get_colors()
@@ -328,7 +360,41 @@ class AIProducerView(QWidget):
             QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
         self._produce_btn.clicked.connect(self._on_produce)
-        ctrl.addWidget(self._produce_btn)
+
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setFixedHeight(44)
+        self._cancel_btn.setEnabled(False)
+        self._cancel_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['surface_hover']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 5px;
+                font-weight: bold; padding: 0 12px;
+            }}
+            QPushButton:hover {{ border-color: {t['warning']}; }}
+            QPushButton:disabled {{ color: {t['muted']}; }}
+        """)
+        self._cancel_btn.clicked.connect(self._on_cancel)
+
+        self._retry_btn = QPushButton("Retry")
+        self._retry_btn.setFixedHeight(44)
+        self._retry_btn.setEnabled(False)
+        self._retry_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['surface_hover']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 5px;
+                font-weight: bold; padding: 0 12px;
+            }}
+            QPushButton:hover {{ border-color: {t['accent']}; }}
+            QPushButton:disabled {{ color: {t['muted']}; }}
+        """)
+        self._retry_btn.clicked.connect(self._on_produce)
+
+        action_row = QHBoxLayout()
+        action_row.setSpacing(6)
+        action_row.addWidget(self._produce_btn, 1)
+        action_row.addWidget(self._cancel_btn)
+        action_row.addWidget(self._retry_btn)
+        ctrl.addLayout(action_row)
 
         left.addWidget(ctrl_frame)
 
@@ -418,12 +484,12 @@ class AIProducerView(QWidget):
         self._export_btn.setEnabled(False)
         self._export_btn.setStyleSheet(f"""
             QPushButton {{
-                background: #238636; color: white; border: none;
+                background: {t['success']}; color: {t['background']}; border: none;
                 border-radius: 6px; padding: 8px 16px;
                 font-weight: bold; font-size: 12px;
             }}
-            QPushButton:hover {{ background: #2ea043; }}
-            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
+            QPushButton:hover {{ border: 1px solid {t['text']}; }}
+            QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
         self._export_btn.clicked.connect(self._on_export)
         right.addWidget(self._export_btn)
@@ -435,6 +501,8 @@ class AIProducerView(QWidget):
     # ── Production ─────────────────────────────────────────────────────────────
 
     def _on_produce(self):
+        if self._worker and self._worker.isRunning():
+            return
         prompt = self._prompt.toPlainText().strip()
         if not prompt:
             self._output_info.setText("Enter a prompt to begin")
@@ -455,50 +523,119 @@ class AIProducerView(QWidget):
             demo_fallback=self._demo_fallback_check.isChecked(),
         )
 
-        # Reset indicators
+        self._reset_for_run()
+        self._produce_btn.setEnabled(False)
+        self._cancel_btn.setEnabled(True)
+        self._retry_btn.setEnabled(False)
+        self._output_title.setText("Production in progress")
+        self._output_info.setText("Planning...")
+
+        prior_job_id = self._last_job_id
+        self._worker = InferenceWorker(
+            produce_song,
+            brief,
+            job_kind="ai_producer",
+            job_label="AI Producer pipeline",
+            job_inputs={
+                "duration_seconds": brief.duration_seconds,
+                "genre": brief.genre or "auto",
+                "mood": brief.mood or "auto",
+                "vocal_style": brief.vocal_style,
+                "include_sfx": brief.include_sfx,
+                "demo_fallback": brief.demo_fallback,
+                "prompt_chars": len(brief.prompt),
+            },
+            job_metadata={
+                "module": "ai_producer",
+                **({"retry_of": prior_job_id} if prior_job_id else {}),
+            },
+        )
+        self._last_job_id = self._worker.job_id
+        self._worker.progress.connect(self._on_progress)
+        self._worker.step_info.connect(self._on_step)
+        self._worker.finished.connect(self._on_produce_finished)
+        self._worker.error.connect(self._on_produce_error)
+        self._worker.cancelled.connect(self._on_produce_cancelled)
+        self._worker.start()
+
+    def _reset_for_run(self):
+        """Clear every routable artifact before a new run can start."""
+        self._result = None
+        self._export_btn.setEnabled(False)
+        self._export_btn.setText("Export Final Song")
+        self._waveform.clear()
         for indicator in self._stage_indicators.values():
             indicator.set_status("pending")
         self._progress.setValue(0)
         self._lyrics_preview.clear()
 
-        self._produce_btn.setEnabled(False)
-        self._output_info.setText("Producing...")
-
-        def _run_produce(brief=brief, **kwargs):
-            return produce_song(brief)
-
-        self._worker = InferenceWorker(
-            _run_produce,
-            job_kind="ai_producer",
-            job_label="AI Producer pipeline",
-        )
-        self._worker.finished.connect(self._on_produce_finished)
-        self._worker.error.connect(self._on_produce_error)
-        self._worker.start()
-
     def _on_produce_finished(self, result):
         self._result = result
         self._display_result(result)
-        self._produce_btn.setEnabled(True)
-        self._worker = None
+        self._finish_worker_ui()
 
     def _on_produce_error(self, error_msg):
+        self._result = None
+        self._output_title.setText("Production failed")
         self._output_info.setText(f"Error: {error_msg}")
-        self._produce_btn.setEnabled(True)
-        self._worker = None
+        self._export_btn.setEnabled(False)
+        self._retry_btn.setEnabled(True)
+        self._finish_worker_ui(keep_retry=True)
 
-    def _on_progress(self, progress: float, message: str):
-        """Update progress from pipeline."""
-        self._progress.setValue(int(progress * 100))
+    def _on_produce_cancelled(self):
+        self._result = None
+        for indicator in self._stage_indicators.values():
+            if indicator._status == "running":
+                indicator.set_status("cancelled")
+        self._output_title.setText("Production cancelled")
+        self._output_info.setText(
+            "Cancellation completed. Partial artifacts were removed; Retry starts a new job."
+        )
+        self._export_btn.setEnabled(False)
+        self._retry_btn.setEnabled(True)
+        self._finish_worker_ui(keep_retry=True)
+
+    def _on_cancel(self):
+        if not self._worker or not self._worker.isRunning():
+            return
+        self._worker.cancel()
+        self._cancel_btn.setEnabled(False)
+        self._output_info.setText("Cancellation requested; finishing the active stage safely...")
+
+    def _on_progress(self, progress: int):
+        """Update persisted overall progress from the worker."""
+        self._progress.setValue(max(0, min(100, int(progress))))
+
+    def _on_step(self, message: str):
+        """Keep the current detailed stage message and indicator visible."""
         self._output_info.setText(message)
+        normalized = message.casefold()
+        for stage, indicator in self._stage_indicators.items():
+            label = stage.value.replace("_", " ").casefold()
+            if not normalized.startswith(label):
+                continue
+            if ": failed" in normalized:
+                indicator.set_status("failed")
+            elif ": cancelled" in normalized:
+                indicator.set_status("cancelled")
+            elif ": skipped" in normalized:
+                indicator.set_status("skipped")
+            elif ": complete" in normalized:
+                indicator.set_status("complete")
+            else:
+                indicator.set_status("running")
+            break
 
-        # Update stage indicators
-        if self._result:
-            for step in self._result.steps:
-                if step.stage in self._stage_indicators:
-                    self._stage_indicators[step.stage].set_status(
-                        step.status, step.duration
-                    )
+    def _finish_worker_ui(self, *, keep_retry: bool = False):
+        self._produce_btn.setEnabled(True)
+        self._cancel_btn.setEnabled(False)
+        if not keep_retry and self._result:
+            self._retry_btn.setEnabled(
+                not self._result.is_success
+                or self._result.is_demo
+                or self._result.is_degraded
+            )
+        self._worker = None
 
     def _display_result(self, result: ProducerResult):
         """Display pipeline results."""
@@ -517,10 +654,16 @@ class AIProducerView(QWidget):
             self._lyrics_preview.setPlainText(result.lyrics_text)
 
         # Output info
-        if result.stage == PipelineStage.COMPLETE:
-            self._output_title.setText("Production Complete")
+        if result.is_success:
+            if result.is_demo:
+                self._output_title.setText("Demo production complete")
+            elif result.is_degraded:
+                self._output_title.setText("Production complete with limitations")
+            else:
+                self._output_title.setText("Production complete")
             info_parts = [f"Total time: {result.total_time:.1f}s"]
             info_parts.append(f"Stages: {len(result.completed_stages)}/{len(PIPELINE_ORDER)}")
+            info_parts.append(f"Output: {result.output_kind}")
             if result.style_tags:
                 info_parts.append(f"Style: {', '.join(result.style_tags[:6])}")
 
@@ -528,31 +671,41 @@ class AIProducerView(QWidget):
             if master_step and master_step.output_data:
                 lufs = master_step.output_data.get("output_lufs", 0)
                 info_parts.append(f"Loudness: {lufs:.1f} LUFS")
+            if result.degraded_reasons:
+                info_parts.append(
+                    "Limitations: " + "; ".join(result.degraded_reasons[:3])
+                )
 
             self._output_info.setText(" | ".join(info_parts))
-        elif result.error:
-            self._output_title.setText("Production Failed")
-            self._output_info.setText(result.error)
+        elif result.cancelled or result.stage == PipelineStage.CANCELLED:
+            self._output_title.setText("Production cancelled")
+            self._output_info.setText("Cancellation completed; no result is exportable.")
+        else:
+            self._output_title.setText("Production failed")
+            stage_errors = [
+                f"{STAGE_LABELS.get(step.stage, step.stage.value)}: {step.error}"
+                for step in result.steps if step.error
+            ]
+            self._output_info.setText(
+                " | ".join([result.error or "The pipeline did not complete", *stage_errors])
+            )
 
         # Load waveform
-        if result.final_audio_path and os.path.isfile(result.final_audio_path):
-            try:
-                import wave
-                import numpy as np
-                with wave.open(result.final_audio_path, "r") as wf:
-                    frames = wf.readframes(wf.getnframes())
-                    sr = wf.getframerate()
-                    audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-                    if wf.getnchannels() == 2:
-                        audio = audio.reshape(-1, 2)[:, 0]
-                    self._waveform.load_audio(audio, sr)
-            except Exception:
-                pass
-
+        if result.can_export:
+            self._waveform.load_file(result.final_audio_path)
             self._export_btn.setEnabled(True)
+            self._export_btn.setText(
+                "Export Demo" if result.is_demo else "Export Final Song"
+            )
+        else:
+            self._export_btn.setEnabled(False)
 
     def _on_export(self):
-        if not self._result or not self._result.final_audio_path:
+        if not self._result or not self._result.can_export:
+            self._export_btn.setEnabled(False)
+            self._output_info.setText(
+                "The verified result is no longer available. Retry production before exporting."
+            )
             return
 
         from PySide6.QtWidgets import QFileDialog
