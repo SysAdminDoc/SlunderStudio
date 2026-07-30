@@ -31,7 +31,7 @@ class JobStateTests(unittest.TestCase):
             tmp_path = Path(tmp)
             audio = tmp_path / "render.wav"
             sidecar = tmp_path / "render.wav.provenance.json"
-            store = JobStore(tmp_path / "jobs")
+            store = JobStore(tmp_path / "jobs", cleanup_roots=[tmp_path])
 
             def task(progress_cb=None, step_cb=None, log_cb=None, cancel_event=None):
                 audio.write_bytes(b"partial audio")
@@ -53,6 +53,72 @@ class JobStateTests(unittest.TestCase):
             self.assertEqual(record.status, JobStatus.CANCELLED)
             self.assertFalse(audio.exists())
             self.assertFalse(sidecar.exists())
+
+    def test_cleanup_rejects_outside_directories_relative_and_malformed_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            owned_root = root / "owned"
+            owned_root.mkdir()
+            owned_file = owned_root / "partial.wav"
+            owned_file.write_bytes(b"partial")
+            owned_directory = owned_root / "folder"
+            owned_directory.mkdir()
+            outside_file = root / "outside.wav"
+            outside_file.write_bytes(b"keep")
+            store = JobStore(root / "jobs", cleanup_roots=[owned_root])
+
+            with self.assertLogs("core.job_state", level="WARNING") as captured:
+                removed = store.cleanup_outputs({
+                    "paths": [
+                        str(owned_file),
+                        str(owned_directory),
+                        str(outside_file),
+                        "relative.wav",
+                        "\0invalid",
+                        42,
+                    ]
+                })
+
+            self.assertEqual(removed, [str(owned_file.resolve())])
+            self.assertFalse(owned_file.exists())
+            self.assertTrue(owned_directory.is_dir())
+            self.assertTrue(outside_file.exists())
+            messages = "\n".join(captured.output)
+            self.assertIn("path is not a regular file", messages)
+            self.assertIn("path is outside approved roots", messages)
+            self.assertIn("path is not absolute", messages)
+            self.assertIn("malformed output record", messages)
+            self.assertIn("malformed path", messages)
+
+    def test_cleanup_rejects_traversal_and_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            owned_root = root / "owned"
+            outside_root = root / "outside"
+            owned_root.mkdir()
+            outside_root.mkdir()
+            outside_file = outside_root / "keep.wav"
+            outside_file.write_bytes(b"keep")
+            store = JobStore(root / "jobs", cleanup_roots=[owned_root])
+
+            traversal = owned_root / ".." / "outside" / "keep.wav"
+            with self.assertLogs("core.job_state", level="WARNING") as captured:
+                removed = store.cleanup_outputs([str(traversal)])
+            self.assertEqual(removed, [])
+            self.assertTrue(outside_file.exists())
+            self.assertIn("outside approved roots", "\n".join(captured.output))
+
+            symlink = owned_root / "escape.wav"
+            try:
+                symlink.symlink_to(outside_file)
+            except (NotImplementedError, OSError):
+                return
+            with self.assertLogs("core.job_state", level="WARNING") as captured:
+                removed = store.cleanup_outputs([str(symlink)])
+            self.assertEqual(removed, [])
+            self.assertTrue(outside_file.exists())
+            self.assertTrue(symlink.is_symlink())
+            self.assertIn("symbolic links", "\n".join(captured.output))
 
     def test_download_worker_cancel_is_recoverable(self):
         with tempfile.TemporaryDirectory() as tmp:

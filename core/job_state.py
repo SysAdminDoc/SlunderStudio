@@ -4,18 +4,21 @@ Slunder Studio v0.1.29 - Durable job state and recovery records.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import tempfile
 import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
-from core.settings import get_config_dir
+from core.settings import APP_NAME, get_config_dir, get_default_output_dir
 
 
 JOB_SCHEMA_VERSION = 1
+logger = logging.getLogger(__name__)
 
 
 class JobStatus:
@@ -66,11 +69,17 @@ class JobRecord:
 class JobStore:
     """JSON-backed job ledger for restart recovery and cancellation cleanup."""
 
-    def __init__(self, root: Optional[Path] = None):
+    def __init__(
+        self,
+        root: Optional[Path] = None,
+        cleanup_roots: Optional[Iterable[Path | str]] = None,
+    ):
         self._lock = threading.RLock()
         self.root = Path(root) if root is not None else get_config_dir() / "jobs"
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "jobs.json"
+        roots = cleanup_roots if cleanup_roots is not None else _default_cleanup_roots()
+        self._cleanup_roots = _canonical_cleanup_roots(roots)
 
     def create(
         self,
@@ -203,17 +212,61 @@ class JobStore:
         return recovered
 
     def cleanup_outputs(self, record_or_outputs: JobRecord | dict[str, Any] | list[str]) -> list[str]:
-        paths = extract_output_paths(record_or_outputs)
+        paths = extract_output_paths(
+            record_or_outputs,
+            invalid_cb=lambda value: self._log_cleanup_rejection(
+                value, "malformed output record"
+            ),
+        )
         removed: list[str] = []
         for raw_path in paths:
-            path = Path(raw_path)
             try:
-                if path.is_file():
-                    path.unlink()
-                    removed.append(str(path))
-            except OSError:
+                if not raw_path or "\0" in raw_path:
+                    self._log_cleanup_rejection(raw_path, "malformed path")
+                    continue
+                path = Path(raw_path)
+                if not path.is_absolute():
+                    self._log_cleanup_rejection(raw_path, "path is not absolute")
+                    continue
+                if path.is_symlink():
+                    self._log_cleanup_rejection(raw_path, "symbolic links are not cleanup targets")
+                    continue
+
+                resolved = path.resolve(strict=True)
+                if not self._is_approved_cleanup_path(resolved):
+                    self._log_cleanup_rejection(raw_path, "path is outside approved roots")
+                    continue
+                if not resolved.is_file():
+                    self._log_cleanup_rejection(raw_path, "path is not a regular file")
+                    continue
+
+                # Resolve again immediately before unlinking so a replaced symlink or
+                # moved parent cannot redirect cleanup after the boundary check.
+                current = path.resolve(strict=True)
+                if current != resolved or not self._is_approved_cleanup_path(current):
+                    self._log_cleanup_rejection(raw_path, "path changed during cleanup")
+                    continue
+                current.unlink()
+                removed.append(str(current))
+            except (OSError, RuntimeError, ValueError) as exc:
+                self._log_cleanup_rejection(raw_path, f"unusable path: {type(exc).__name__}")
                 continue
         return removed
+
+    @property
+    def cleanup_roots(self) -> tuple[Path, ...]:
+        """Canonical directories that may contain cancellable job artifacts."""
+        return self._cleanup_roots
+
+    def _is_approved_cleanup_path(self, candidate: Path) -> bool:
+        return any(
+            candidate != root and candidate.is_relative_to(root)
+            for root in self._cleanup_roots
+        )
+
+    @staticmethod
+    def _log_cleanup_rejection(candidate: Any, reason: str) -> None:
+        logger.warning("Skipped unsafe job output cleanup (%s): %r", reason, candidate)
 
     def _update(self, job_id: str, **changes: Any) -> Optional[JobRecord]:
         with self._lock:
@@ -378,10 +431,14 @@ OUTPUT_KEYS = {
 }
 
 
-def extract_output_paths(payload: Any) -> list[str]:
+def extract_output_paths(
+    payload: Any,
+    *,
+    invalid_cb: Optional[Callable[[Any], None]] = None,
+) -> list[str]:
     paths: list[str] = []
 
-    def visit(value: Any) -> None:
+    def visit(value: Any, candidate_expected: bool = False) -> None:
         if value is None:
             return
         if isinstance(value, (str, Path)):
@@ -392,24 +449,68 @@ def extract_output_paths(payload: Any) -> list[str]:
             return
         if isinstance(value, dict):
             for key, item in value.items():
-                if key in OUTPUT_KEYS and isinstance(item, (str, Path)):
-                    paths.append(str(item))
+                if key in OUTPUT_KEYS:
+                    if isinstance(item, (str, Path)):
+                        paths.append(str(item))
+                    elif item is not None and invalid_cb:
+                        invalid_cb(item)
                 elif key in {"results", "outputs", "sections", "paths"}:
-                    visit(item)
+                    visit(item, candidate_expected=True)
                 elif isinstance(item, (dict, list, tuple)):
                     visit(item)
             return
         if isinstance(value, (list, tuple, set)):
             for item in value:
-                visit(item)
+                visit(item, candidate_expected=candidate_expected)
             return
+        found_path = False
         for attr in ("audio_path", "provenance_path", "output_path", "vocal_stem_path", "vocal_stem_provenance_path"):
             item = getattr(value, attr, None)
             if item:
                 paths.append(str(item))
+                found_path = True
+        if candidate_expected and not found_path and invalid_cb:
+            invalid_cb(value)
 
     visit(payload)
     return list(dict.fromkeys(paths))
+
+
+def _default_cleanup_roots() -> list[Path]:
+    config_dir = get_config_dir()
+    roots = [
+        config_dir / "generations",
+        config_dir / "projects",
+        config_dir / "temp",
+        Path(tempfile.gettempdir()) / APP_NAME,
+        get_default_output_dir(),
+    ]
+    settings_path = config_dir / "config.json"
+    try:
+        payload = json.loads(settings_path.read_text(encoding="utf-8"))
+        configured = payload.get("general", {}).get("output_dir")
+        if configured:
+            roots.append(Path(configured))
+    except (json.JSONDecodeError, OSError, TypeError, AttributeError):
+        pass
+    return roots
+
+
+def _canonical_cleanup_roots(roots: Iterable[Path | str]) -> tuple[Path, ...]:
+    canonical: list[Path] = []
+    for raw_root in roots:
+        try:
+            root = Path(raw_root)
+            if not root.is_absolute():
+                logger.warning("Ignored relative job cleanup root: %r", raw_root)
+                continue
+            resolved = root.resolve(strict=False)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            logger.warning("Ignored malformed job cleanup root: %r", raw_root)
+            continue
+        if resolved not in canonical:
+            canonical.append(resolved)
+    return tuple(canonical)
 
 
 def _jsonable(value: Any) -> Any:
