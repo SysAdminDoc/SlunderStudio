@@ -100,6 +100,13 @@ def version_at_least(version: str, minimum: str) -> bool:
     return actual + (0,) * (width - len(actual)) >= floor + (0,) * (width - len(floor))
 
 
+def version_less_than(version: str, maximum: str) -> bool:
+    actual = _version_numbers(version)
+    ceiling = _version_numbers(maximum)
+    width = max(len(actual), len(ceiling))
+    return actual + (0,) * (width - len(actual)) < ceiling + (0,) * (width - len(ceiling))
+
+
 def load_registry(path: Optional[str | Path] = None) -> dict[str, Any]:
     registry_path = Path(path) if path is not None else profiles_file()
     try:
@@ -249,6 +256,18 @@ def validate_profile(
             raise DependencyProfileError(
                 f"{entry.name} {entry.version} is below security floor {minimum} "
                 f"({advisory.get('advisory', 'advisory')})"
+            )
+    for package, constraint in registry.get("compatibility_ceilings", {}).items():
+        normalized = normalize_name(package)
+        entry = entries.get(normalized)
+        if entry is None:
+            continue
+        maximum = str(constraint.get("maximum_exclusive", ""))
+        if not maximum or not version_less_than(entry.version, maximum):
+            raise DependencyProfileError(
+                f"{entry.name} {entry.version} is incompatible with "
+                f"{constraint.get('source', 'the selected runtime')}; "
+                f"required <{maximum}"
             )
     return profile, entries
 

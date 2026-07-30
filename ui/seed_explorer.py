@@ -145,7 +145,7 @@ class SeedCell(QFrame):
 class SeedExplorer(QWidget):
     """
     2D grid seed interpolation explorer.
-    X-axis: seed range, Y-axis: CFG scale (or custom parameter).
+    X-axis: seed range, Y-axis: ACE-Step timestep shift.
     Each cell generates with those parameters and shows a mini waveform.
     """
     generate_requested = Signal(list)  # list of param dicts for batch generation
@@ -158,8 +158,8 @@ class SeedExplorer(QWidget):
         self._cells: list[list[SeedCell]] = []
         self._center_seed = 42
         self._seed_range = 100
-        self._cfg_min = 3.0
-        self._cfg_max = 8.0
+        self._shift_min = 1.0
+        self._shift_max = 3.0
         self._setup_ui()
 
     def _setup_ui(self):
@@ -207,21 +207,23 @@ class SeedExplorer(QWidget):
         self._distance_slider.valueChanged.connect(self._on_distance_changed)
         ctrl.addWidget(self._distance_slider)
 
-        ctrl.addWidget(QLabel("CFG:"))
-        self._cfg_min_spin = QDoubleSpinBox()
-        self._cfg_min_spin.setRange(1.0, 15.0)
-        self._cfg_min_spin.setValue(3.0)
-        self._cfg_min_spin.setSingleStep(0.5)
-        self._cfg_min_spin.setFixedWidth(65)
-        ctrl.addWidget(self._cfg_min_spin)
+        ctrl.addWidget(QLabel("Shift:"))
+        self._shift_min_spin = QDoubleSpinBox()
+        self._shift_min_spin.setRange(1.0, 3.0)
+        self._shift_min_spin.setValue(1.0)
+        self._shift_min_spin.setSingleStep(1.0)
+        self._shift_min_spin.setDecimals(1)
+        self._shift_min_spin.setFixedWidth(65)
+        ctrl.addWidget(self._shift_min_spin)
 
         ctrl.addWidget(QLabel("-"))
-        self._cfg_max_spin = QDoubleSpinBox()
-        self._cfg_max_spin.setRange(1.0, 15.0)
-        self._cfg_max_spin.setValue(8.0)
-        self._cfg_max_spin.setSingleStep(0.5)
-        self._cfg_max_spin.setFixedWidth(65)
-        ctrl.addWidget(self._cfg_max_spin)
+        self._shift_max_spin = QDoubleSpinBox()
+        self._shift_max_spin.setRange(1.0, 3.0)
+        self._shift_max_spin.setValue(3.0)
+        self._shift_max_spin.setSingleStep(1.0)
+        self._shift_max_spin.setDecimals(1)
+        self._shift_max_spin.setFixedWidth(65)
+        ctrl.addWidget(self._shift_max_spin)
 
         ctrl.addStretch()
 
@@ -257,7 +259,7 @@ class SeedExplorer(QWidget):
         self._grid_layout.setSpacing(6)
 
         # Y-axis label
-        y_label = QLabel("CFG\n||\nV")
+        y_label = QLabel("SHIFT\n||\nV")
         y_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 10px;")
         y_label.setAlignment(Qt.AlignCenter)
         self._grid_layout.addWidget(y_label, 0, 0, self._grid_size, 1)
@@ -300,14 +302,14 @@ class SeedExplorer(QWidget):
         """Generate parameters for each grid cell and emit generation request."""
         center_seed = self._seed_spin.value()
         seed_range = self._range_spin.value()
-        cfg_min = self._cfg_min_spin.value()
-        cfg_max = self._cfg_max_spin.value()
+        shift_min = self._shift_min_spin.value()
+        shift_max = self._shift_max_spin.value()
 
         n = self._grid_size
         params_list = []
 
         for r in range(n):
-            cfg = cfg_min + (cfg_max - cfg_min) * r / max(1, n - 1)
+            shift = shift_min + (shift_max - shift_min) * r / max(1, n - 1)
             for c in range(n):
                 seed_offset = -seed_range // 2 + int(seed_range * c / max(1, n - 1))
                 seed = center_seed + seed_offset
@@ -316,7 +318,7 @@ class SeedExplorer(QWidget):
                 params_list.append({
                     "row": r, "col": c,
                     "seed": seed,
-                    "cfg_scale": round(cfg, 2),
+                    "shift": round(shift, 2),
                 })
 
         self._info.setText(f"Generating {len(params_list)} variations...")
@@ -373,9 +375,11 @@ class SeedExplorer(QWidget):
             if cell.seed:
                 self._seed_spin.setValue(cell.seed)
                 self._range_spin.setValue(max(5, self._range_spin.value() // 3))
-                cfg = self._cfg_min_spin.value() + (
-                    (self._cfg_max_spin.value() - self._cfg_min_spin.value()) * row / max(1, self._grid_size - 1)
+                shift = self._shift_min_spin.value() + (
+                    (self._shift_max_spin.value() - self._shift_min_spin.value())
+                    * row
+                    / max(1, self._grid_size - 1)
                 )
                 spread = 1.0
-                self._cfg_min_spin.setValue(max(1.0, cfg - spread))
-                self._cfg_max_spin.setValue(min(15.0, cfg + spread))
+                self._shift_min_spin.setValue(max(1.0, shift - spread))
+                self._shift_max_spin.setValue(min(3.0, shift + spread))

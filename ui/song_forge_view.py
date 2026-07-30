@@ -3,6 +3,8 @@ Slunder Studio v0.1.29 — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSplitter, QTabWidget, QTextEdit, QLineEdit, QComboBox,
@@ -143,7 +145,7 @@ class StyleTagBrowser(QWidget):
 
 class SongForgeView(QWidget):
     """
-    Main Song Forge page. ACE-Step v1.5 song generation with:
+    Main Song Forge page. ACE-Step 1.5 XL Turbo song generation with:
     - Quick/Advanced mode tabs
     - Style tag browser
     - Waveform display
@@ -238,22 +240,26 @@ class SongForgeView(QWidget):
 
         pg.addWidget(QLabel("Duration (s):"), 0, 0)
         self._duration_spin = QDoubleSpinBox()
-        self._duration_spin.setRange(5, 600)
+        self._duration_spin.setRange(10, 600)
         self._duration_spin.setValue(60)
         self._duration_spin.setSuffix("s")
         pg.addWidget(self._duration_spin, 0, 1)
 
-        pg.addWidget(QLabel("CFG Scale:"), 0, 2)
-        self._cfg_spin = QDoubleSpinBox()
-        self._cfg_spin.setRange(1.0, 15.0)
-        self._cfg_spin.setValue(5.0)
-        self._cfg_spin.setSingleStep(0.5)
-        pg.addWidget(self._cfg_spin, 0, 3)
+        pg.addWidget(QLabel("Timestep Shift:"), 0, 2)
+        self._shift_spin = QDoubleSpinBox()
+        self._shift_spin.setRange(1.0, 3.0)
+        self._shift_spin.setValue(3.0)
+        self._shift_spin.setSingleStep(1.0)
+        self._shift_spin.setDecimals(1)
+        self._shift_spin.setToolTip(
+            "ACE-Step 1.5 XL Turbo schedule shift (1, 2, or 3)."
+        )
+        pg.addWidget(self._shift_spin, 0, 3)
 
         pg.addWidget(QLabel("Steps:"), 1, 0)
         self._steps_spin = QSpinBox()
-        self._steps_spin.setRange(10, 100)
-        self._steps_spin.setValue(60)
+        self._steps_spin.setRange(1, 100)
+        self._steps_spin.setValue(8)
         pg.addWidget(self._steps_spin, 1, 1)
 
         pg.addWidget(QLabel("Seed:"), 1, 2)
@@ -318,13 +324,13 @@ class SongForgeView(QWidget):
 
         al.addWidget(fusion)
 
-        cover_group = QGroupBox("Cover / Repaint")
+        cover_group = QGroupBox("Source-conditioned Generation")
         cg = QGridLayout(cover_group)
         cg.setSpacing(6)
 
         cg.addWidget(QLabel("Mode:"), 0, 0)
         self._cover_mode_combo = QComboBox()
-        self._cover_mode_combo.addItems(["Normal", "Cover", "Repaint"])
+        self._cover_mode_combo.addItems(["Normal", "Cover", "Extend", "Repaint"])
         self._cover_mode_combo.currentTextChanged.connect(self._on_cover_mode_changed)
         cg.addWidget(self._cover_mode_combo, 0, 1)
 
@@ -336,6 +342,7 @@ class SongForgeView(QWidget):
         self._cover_browse_btn = QPushButton("Browse")
         self._cover_browse_btn.setFixedHeight(26)
         self._cover_browse_btn.clicked.connect(self._on_browse_cover_source)
+        self._cover_browse_btn.setEnabled(False)
         cg.addWidget(self._cover_browse_btn, 1, 3)
 
         cg.addWidget(QLabel("Start (s):"), 2, 0)
@@ -521,11 +528,15 @@ class SongForgeView(QWidget):
                 (self._quick_tags, "Quick style tags", "Comma-separated style prompt for quick generation."),
                 (self._adv_lyrics, "Advanced lyrics", "Lyrics with structure tags for advanced generation."),
                 (self._duration_spin, "Song duration", "Target generated song duration in seconds."),
-                (self._cfg_spin, "CFG scale", "Controls prompt adherence for generation."),
+                (self._shift_spin, "Timestep shift", "Controls the ACE-Step XL Turbo timestep schedule."),
                 (self._steps_spin, "Inference steps", "Controls generation quality and speed."),
                 (self._seed_spin, "Generation seed", "Use random or fixed seed for repeatable generation."),
                 (self._batch_spin, "Batch count", "Number of variations to generate."),
                 (self._long_form_check, "Long-form stitching", "Renders long songs by sections and stitches them."),
+                (self._cover_mode_combo, "Source generation mode", "Chooses normal, cover, extend, or repaint generation."),
+                (self._cover_browse_btn, "Choose source audio", "Chooses the required audio file for source-conditioned generation."),
+                (self._repaint_start_spin, "Repaint start", "Start of the source region to regenerate."),
+                (self._repaint_end_spin, "Repaint end", "End of the source region to regenerate."),
                 (self._fusion_primary, "Primary genre", "First genre for fusion tags."),
                 (self._fusion_secondary, "Secondary genre", "Second genre for fusion tags."),
                 (self._fusion_slider, "Genre blend", "Balances primary and secondary genre tags."),
@@ -545,11 +556,15 @@ class SongForgeView(QWidget):
                 self._quick_tags,
                 self._adv_lyrics,
                 self._duration_spin,
-                self._cfg_spin,
+                self._shift_spin,
                 self._steps_spin,
                 self._seed_spin,
                 self._batch_spin,
                 self._long_form_check,
+                self._cover_mode_combo,
+                self._cover_browse_btn,
+                self._repaint_start_spin,
+                self._repaint_end_spin,
                 self._fusion_primary,
                 self._fusion_secondary,
                 self._fusion_slider,
@@ -600,9 +615,18 @@ class SongForgeView(QWidget):
                 self._quick_tags.setText(tags)
 
     def _on_cover_mode_changed(self, mode: str):
+        uses_source = mode in {"Cover", "Extend", "Repaint"}
         is_repaint = mode == "Repaint"
+        self._cover_browse_btn.setEnabled(uses_source)
+        self._cover_source_label.setEnabled(uses_source)
         self._repaint_start_spin.setEnabled(is_repaint)
         self._repaint_end_spin.setEnabled(is_repaint)
+        if mode == "Extend":
+            self._duration_spin.setToolTip(
+                "Additional seconds to generate after the source endpoint."
+            )
+        else:
+            self._duration_spin.setToolTip("Target generated song duration.")
 
     def _on_browse_cover_source(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -637,6 +661,31 @@ class SongForgeView(QWidget):
                 self._toast.show_toast("Add lyrics or style tags first", "warning")
             return
 
+        advanced = self._mode_tabs.currentIndex() == 1
+        cover_mode = self._cover_mode_combo.currentText() if advanced else "Normal"
+        if cover_mode != "Normal":
+            if (
+                not self._cover_source_path
+                or not Path(self._cover_source_path).is_file()
+            ):
+                if self._toast:
+                    self._toast.show_toast(
+                        f"Select a source audio file for {cover_mode.lower()}",
+                        "warning",
+                    )
+                return
+            if (
+                cover_mode == "Repaint"
+                and self._repaint_end_spin.value()
+                <= self._repaint_start_spin.value()
+            ):
+                if self._toast:
+                    self._toast.show_toast(
+                        "Repaint end must be later than its start",
+                        "warning",
+                    )
+                return
+
         self._is_generating = True
         self._generate_btn.hide()
         self._cancel_btn.show()
@@ -647,20 +696,24 @@ class SongForgeView(QWidget):
 
         # Determine batch count
         batch_count = 1
-        if self._mode_tabs.currentIndex() == 1:
+        if advanced:
             batch_count = self._batch_spin.value()
 
-        duration = self._duration_spin.value() if self._mode_tabs.currentIndex() == 1 else 60.0
-        cfg = self._cfg_spin.value() if self._mode_tabs.currentIndex() == 1 else 5.0
-        steps = self._steps_spin.value() if self._mode_tabs.currentIndex() == 1 else 60
-        seed = self._seed_spin.value() if self._mode_tabs.currentIndex() == 1 else -1
+        duration = self._duration_spin.value() if advanced else 60.0
+        shift = self._shift_spin.value() if advanced else 3.0
+        steps = self._steps_spin.value() if advanced else 8
+        seed = self._seed_spin.value() if advanced else -1
         long_form = (
-            self._mode_tabs.currentIndex() == 1
+            advanced
             and duration > 120
             and self._long_form_check.isChecked()
         )
+        if cover_mode != "Normal":
+            batch_count = 1
+            long_form = False
         job_inputs = {
             "duration": duration,
+            "shift": shift,
             "batch_count": batch_count,
             "long_form": long_form,
             "has_lyrics": bool(lyrics),
@@ -668,9 +721,9 @@ class SongForgeView(QWidget):
             "style_tags": tags[:240],
         }
 
-        cover_mode = self._cover_mode_combo.currentText() if self._mode_tabs.currentIndex() == 1 else "Normal"
-        is_cover = cover_mode == "Cover" and self._cover_source_path
-        is_repaint = cover_mode == "Repaint" and self._cover_source_path
+        is_cover = cover_mode == "Cover"
+        is_extend = cover_mode == "Extend"
+        is_repaint = cover_mode == "Repaint"
 
         if is_cover:
             from engines.ace_step_engine import generate_cover
@@ -683,10 +736,28 @@ class SongForgeView(QWidget):
                 lyrics=lyrics,
                 duration=duration,
                 seed=seed,
-                cfg_scale=cfg,
                 infer_steps=steps,
+                shift=shift,
                 job_kind="song_generation",
                 job_label="Song Forge cover",
+                job_inputs=job_inputs,
+            )
+        elif is_extend:
+            from engines.ace_step_engine import generate_extend
+            job_inputs["mode"] = "extend"
+            job_inputs["source_audio_path"] = self._cover_source_path
+            job_inputs["extend_duration"] = duration
+            self._worker = InferenceWorker(
+                generate_extend,
+                source_audio_path=self._cover_source_path,
+                extend_duration=duration,
+                style_tags=tags,
+                lyrics=lyrics,
+                seed=seed,
+                infer_steps=steps,
+                shift=shift,
+                job_kind="song_generation",
+                job_label="Song Forge extension",
                 job_inputs=job_inputs,
             )
         elif is_repaint:
@@ -703,8 +774,8 @@ class SongForgeView(QWidget):
                 style_tags=tags,
                 lyrics=lyrics,
                 seed=seed,
-                cfg_scale=cfg,
                 infer_steps=steps,
+                shift=shift,
                 job_kind="song_generation",
                 job_label="Song Forge repaint",
                 job_inputs=job_inputs,
@@ -717,8 +788,8 @@ class SongForgeView(QWidget):
                 style_tags=tags,
                 count=batch_count,
                 duration=duration,
-                cfg_scale=cfg,
                 infer_steps=steps,
+                shift=shift,
                 long_form=long_form,
                 job_kind="song_generation",
                 job_label=f"Song Forge batch ({batch_count})",
@@ -732,8 +803,8 @@ class SongForgeView(QWidget):
                 style_tags=tags,
                 duration=duration,
                 seed=seed,
-                cfg_scale=cfg,
                 infer_steps=steps,
+                shift=shift,
                 long_form=long_form,
                 job_kind="song_generation",
                 job_label="Song Forge generation",
@@ -970,7 +1041,7 @@ class SongForgeView(QWidget):
             return
 
         duration = self._duration_spin.value() if self._mode_tabs.currentIndex() == 1 else 60.0
-        steps = self._steps_spin.value() if self._mode_tabs.currentIndex() == 1 else 60
+        steps = self._steps_spin.value() if self._mode_tabs.currentIndex() == 1 else 8
         long_form = (
             self._mode_tabs.currentIndex() == 1
             and duration > 120

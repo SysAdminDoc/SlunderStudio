@@ -284,17 +284,22 @@ class SettingsView(QWidget):
         forge_group = QGroupBox("Song Forge")
         forge_layout = QVBoxLayout(forge_group)
 
-        self._cfg_scale = QDoubleSpinBox()
-        self._cfg_scale.setRange(1.0, 15.0)
-        self._cfg_scale.setSingleStep(0.5)
-        self._cfg_scale.setFixedWidth(100)
-        self._cfg_scale.valueChanged.connect(
-            lambda v: self._save("song_forge.cfg_scale", v))
-        forge_layout.addLayout(SettingRow("CFG Scale", self._cfg_scale, "Higher = stronger prompt adherence"))
+        self._timestep_shift = QDoubleSpinBox()
+        self._timestep_shift.setRange(1.0, 3.0)
+        self._timestep_shift.setSingleStep(1.0)
+        self._timestep_shift.setDecimals(1)
+        self._timestep_shift.setFixedWidth(100)
+        self._timestep_shift.valueChanged.connect(
+            lambda v: self._save("song_forge.timestep_shift", v))
+        forge_layout.addLayout(SettingRow(
+            "Timestep Shift",
+            self._timestep_shift,
+            "ACE-Step XL Turbo schedule shift (1, 2, or 3)",
+        ))
 
         self._inference_steps = QSpinBox()
-        self._inference_steps.setRange(10, 200)
-        self._inference_steps.setSingleStep(5)
+        self._inference_steps.setRange(1, 100)
+        self._inference_steps.setSingleStep(1)
         self._inference_steps.setFixedWidth(100)
         self._inference_steps.valueChanged.connect(
             lambda v: self._save("song_forge.inference_steps", v))
@@ -393,7 +398,7 @@ class SettingsView(QWidget):
             self._offline_mode, self._hf_token, self._experience_combo,
             self._default_language,
             self._lyrics_model, self._temperature, self._top_p,
-            self._max_tokens, self._cfg_scale, self._inference_steps,
+            self._max_tokens, self._timestep_shift, self._inference_steps,
             self._batch_count, self._default_duration, self._default_bpm,
             self._mastering_target, self._auto_eq, self._auto_compress,
             self._max_cache, self._autosave_interval,
@@ -438,8 +443,12 @@ class SettingsView(QWidget):
             self._temperature.setValue(s.get("lyrics.temperature", 0.8))
             self._top_p.setValue(s.get("lyrics.top_p", 0.92))
             self._max_tokens.setValue(s.get("lyrics.max_tokens", 2048))
-            self._cfg_scale.setValue(s.get("song_forge.cfg_scale", 7.0))
-            self._inference_steps.setValue(s.get("song_forge.inference_steps", 50))
+            self._timestep_shift.setValue(
+                s.get("song_forge.timestep_shift", 3.0)
+            )
+            self._inference_steps.setValue(
+                s.get("song_forge.inference_steps", 8)
+            )
             self._batch_count.setValue(s.get("song_forge.batch_count", 4))
             self._default_duration.setValue(s.get("song_forge.default_duration", 180))
             self._default_bpm.setValue(s.get("midi_studio.default_bpm", 120))
@@ -521,7 +530,7 @@ class SettingsView(QWidget):
                 (self._temperature, "Lyrics temperature", "Controls creative variation."),
                 (self._top_p, "Lyrics top-p", "Controls nucleus sampling."),
                 (self._max_tokens, "Max lyrics tokens", "Controls maximum lyrics generation length."),
-                (self._cfg_scale, "Song Forge CFG scale", "Controls prompt adherence."),
+                (self._timestep_shift, "Song Forge timestep shift", "Controls the ACE-Step XL Turbo timestep schedule."),
                 (self._inference_steps, "Song Forge inference steps", "Controls generation quality and speed."),
                 (self._batch_count, "Song Forge batch count", "Controls number of variations."),
                 (self._default_duration, "Default song duration", "Controls default generation duration."),
@@ -551,7 +560,7 @@ class SettingsView(QWidget):
                 self._temperature,
                 self._top_p,
                 self._max_tokens,
-                self._cfg_scale,
+                self._timestep_shift,
                 self._inference_steps,
                 self._batch_count,
                 self._default_duration,

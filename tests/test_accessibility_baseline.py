@@ -97,7 +97,7 @@ class AccessibilityBaselineTests(unittest.TestCase):
                             "_quick_lyrics",
                             "_quick_tags",
                             "_duration_spin",
-                            "_cfg_spin",
+                            "_shift_spin",
                             "_tag_browser",
                             "_generate_btn",
                             "_play_btn",

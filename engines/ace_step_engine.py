@@ -1,16 +1,8 @@
-"""
-Slunder Studio v0.1.29 — ACE-Step Engine
-Native Python wrapper for ACE-Step inference (not Gradio).
-Supports: generate, batch, retake, repaint, extend.
-<4GB VRAM, 48kHz stereo, up to 4 min duration.
-
-Real upstream API (pip install ace-step):
-  from acestep.pipeline_ace_step import ACEStepPipeline
-  pipe = ACEStepPipeline(checkpoint_dir=path)
-  result = pipe(prompt=..., lyrics=..., audio_duration=..., ...)
-"""
+"""Native offline adapter for the official ACE-Step 1.5 Diffusers pipeline."""
+import importlib.metadata
 import os
 import re
+import sys
 import time
 import random
 import threading
@@ -20,6 +12,22 @@ from dataclasses import asdict, dataclass, field, replace
 
 from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir
+from core.ace_step_contract import (
+    ACE_STEP_ADAPTER,
+    ACE_STEP_APP_TASKS,
+    ACE_STEP_DEFAULT_SHIFT,
+    ACE_STEP_DEFAULT_STEPS,
+    ACE_STEP_DEPENDENCY_BOUNDS,
+    ACE_STEP_MAX_DURATION,
+    ACE_STEP_MIN_DURATION,
+    ACE_STEP_MODEL_ID,
+    ACE_STEP_PYTHON_VERSIONS,
+    ACE_STEP_REVISION,
+    ACE_STEP_SAMPLE_RATE,
+    ACE_STEP_SOURCE,
+    ACE_STEP_SOURCE_TASKS,
+)
+from core.dependency_profiles import version_at_least, version_less_than
 
 
 def _cleanup_output_paths(paths: list[str | Path]) -> None:
@@ -57,6 +65,98 @@ def _raise_if_cancelled(
         _cleanup_output_paths(output_paths)
         from core.workers import CancelledJobError
         raise CancelledJobError("Generation cancelled", outputs={"paths": output_paths})
+
+
+def validate_ace_step_runtime() -> dict[str, str]:
+    """Fail before model allocation when the optional runtime is incompatible."""
+    python_version = sys.version_info[:2]
+    if python_version not in ACE_STEP_PYTHON_VERSIONS:
+        supported = ", ".join(
+            f"{major}.{minor}" for major, minor in ACE_STEP_PYTHON_VERSIONS
+        )
+        raise RuntimeError(
+            f"ACE-Step 1.5 requires Python {supported}; "
+            f"found {python_version[0]}.{python_version[1]}."
+        )
+
+    versions: dict[str, str] = {}
+    missing: list[str] = []
+    for package, (minimum, maximum) in ACE_STEP_DEPENDENCY_BOUNDS.items():
+        try:
+            installed = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            missing.append(package)
+            continue
+        versions[package] = installed
+        if minimum and not version_at_least(installed, minimum):
+            raise RuntimeError(
+                f"ACE-Step 1.5 requires {package}>={minimum}; found {installed}."
+            )
+        if maximum and not version_less_than(installed, maximum):
+            raise RuntimeError(
+                f"ACE-Step 1.5 requires {package}<{maximum}; found {installed}."
+            )
+    if missing:
+        names = ", ".join(missing)
+        raise RuntimeError(
+            f"ACE-Step 1.5 optional runtime is incomplete ({names}). "
+            "Install a verified profile with tools/dependency_profiles.py."
+        )
+    return versions
+
+
+def _load_source_audio_tensor(
+    source_path: str,
+    *,
+    sample_rate: int = ACE_STEP_SAMPLE_RATE,
+    target_duration: Optional[float] = None,
+):
+    """Decode, resample, and normalize source audio to stereo [channels, samples]."""
+    source = Path(source_path)
+    if not source.is_file():
+        raise FileNotFoundError(f"Source audio not found: {source_path}")
+
+    import librosa
+    import numpy as np
+    import soundfile as sf
+    import torch
+
+    audio, source_rate = sf.read(
+        source,
+        dtype="float32",
+        always_2d=True,
+    )
+    if audio.size == 0 or source_rate <= 0:
+        raise ValueError(f"Source audio is empty or invalid: {source}")
+    if not np.isfinite(audio).all():
+        raise ValueError(f"Source audio contains non-finite samples: {source}")
+
+    source_duration = len(audio) / source_rate
+    if audio.shape[1] == 1:
+        audio = np.repeat(audio, 2, axis=1)
+    elif audio.shape[1] > 2:
+        mono = audio.mean(axis=1, keepdims=True)
+        audio = np.repeat(mono, 2, axis=1)
+
+    if source_rate != sample_rate:
+        channels = [
+            librosa.resample(
+                audio[:, channel],
+                orig_sr=source_rate,
+                target_sr=sample_rate,
+            )
+            for channel in range(2)
+        ]
+        audio = np.stack(channels, axis=1)
+
+    if target_duration is not None:
+        target_samples = max(1, int(round(float(target_duration) * sample_rate)))
+        if len(audio) < target_samples:
+            audio = np.pad(audio, ((0, target_samples - len(audio)), (0, 0)))
+        else:
+            audio = audio[:target_samples]
+
+    return torch.from_numpy(np.ascontiguousarray(audio.T)), float(source_duration)
 
 
 def recover_song_vocal_stem(
@@ -118,15 +218,19 @@ class GenerationParams:
     lyrics: str = ""
     style_tags: str = ""  # comma-separated ACE-Step tags (maps to 'prompt')
     duration: float = 60.0  # seconds (maps to 'audio_duration')
-    seed: int = -1  # -1 = random (maps to 'manual_seeds')
-    cfg_scale: float = 15.0  # 1.0-30.0 (maps to 'guidance_scale')
-    infer_steps: int = 60  # 10-200 (maps to 'infer_step')
-    scheduler: str = "euler"  # euler, heun, pingpong (maps to 'scheduler_type')
-    sample_rate: int = 48000
+    seed: int = -1  # -1 = random
+    cfg_scale: float = 1.0  # XL Turbo is guidance-distilled; compatibility field
+    infer_steps: int = ACE_STEP_DEFAULT_STEPS
+    shift: float = ACE_STEP_DEFAULT_SHIFT
+    scheduler: str = "flow_match_euler"
+    sample_rate: int = ACE_STEP_SAMPLE_RATE
+    task_type: str = "text2music"
+    vocal_language: str = "en"
+    audio_cover_strength: float = 1.0
     # Repaint/retake
     repaint_start: float = -1.0  # -1 = disabled
     repaint_end: float = -1.0
-    source_audio_path: str = ""  # for cover/repaint
+    source_audio_path: str = ""  # required by cover/repaint/extend
     # LoRA
     lora_path: str = ""  # maps to 'lora_name_or_path'
     lora_weight: float = 1.0
@@ -446,13 +550,13 @@ def stitch_audio_files(
 
 class ACEStepEngine:
     """
-    Wrapper around ACE-Step inference pipeline.
-    Uses the real acestep.pipeline_ace_step.ACEStepPipeline API.
+    Wrapper around the official Diffusers ACE-Step 1.5 DiT pipeline.
     """
 
     def __init__(self):
         self._pipeline = None
         self._model_loaded = False
+        self._device = "cpu"
         self._output_dir = get_config_dir() / "generations" / "song_forge"
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -462,12 +566,9 @@ class ACEStepEngine:
 
     def load(self, cache_dir: str = None):
         """Load ACE-Step pipeline. Called by ModelManager."""
-        try:
-            from acestep.pipeline_ace_step import ACEStepPipeline
-        except ImportError:
-            from core.deps import ensure
-            ensure("acestep", pip_name="ace-step")
-            from acestep.pipeline_ace_step import ACEStepPipeline
+        validate_ace_step_runtime()
+        import torch
+        from diffusers import AceStepPipeline
 
         from core.model_manager import ModelManager, OfflineModeError
 
@@ -476,7 +577,7 @@ class ACEStepEngine:
         if cache_dir:
             checkpoint_dir = cache_dir
         else:
-            checkpoint_dir = str(mgr.get_cache_dir("ace-step-v1.5"))
+            checkpoint_dir = str(mgr.get_cache_dir(ACE_STEP_MODEL_ID))
 
         if mgr.is_offline and not Path(checkpoint_dir).exists():
             raise OfflineModeError(
@@ -484,18 +585,36 @@ class ACEStepEngine:
                 "Download the model first, then enable Offline Mode."
             )
 
-        prev_offline = os.environ.get("HF_HUB_OFFLINE")
-        if mgr.is_offline:
-            os.environ["HF_HUB_OFFLINE"] = "1"
+        if torch.cuda.is_available():
+            self._device = "cuda"
+            dtype = (
+                torch.bfloat16
+                if getattr(torch.cuda, "is_bf16_supported", lambda: False)()
+                else torch.float16
+            )
+        elif (
+            hasattr(torch.backends, "mps")
+            and torch.backends.mps.is_available()
+        ):
+            self._device = "mps"
+            dtype = torch.float16
+        else:
+            self._device = "cpu"
+            dtype = torch.float32
 
-        try:
-            self._pipeline = ACEStepPipeline(checkpoint_dir=checkpoint_dir)
-            self._model_loaded = True
-        finally:
-            if prev_offline is None:
-                os.environ.pop("HF_HUB_OFFLINE", None)
-            elif prev_offline != os.environ.get("HF_HUB_OFFLINE"):
-                os.environ["HF_HUB_OFFLINE"] = prev_offline
+        self._pipeline = AceStepPipeline.from_pretrained(
+            checkpoint_dir,
+            local_files_only=True,
+            use_safetensors=True,
+            torch_dtype=dtype,
+        )
+        if self._device == "cuda" and hasattr(
+            self._pipeline, "enable_model_cpu_offload"
+        ):
+            self._pipeline.enable_model_cpu_offload()
+        else:
+            self._pipeline.to(self._device)
+        self._model_loaded = True
 
     def unload(self):
         """Unload model and free GPU memory."""
@@ -521,6 +640,40 @@ class ACEStepEngine:
         """
         if not self.is_loaded:
             raise RuntimeError("ACE-Step model not loaded. Call load() first.")
+        if params.task_type not in ACE_STEP_APP_TASKS:
+            options = ", ".join(ACE_STEP_APP_TASKS)
+            raise ValueError(
+                f"Unsupported ACE-Step task {params.task_type!r}; choose: {options}"
+            )
+        if not ACE_STEP_MIN_DURATION <= params.duration <= ACE_STEP_MAX_DURATION:
+            raise ValueError(
+                f"ACE-Step duration must be {ACE_STEP_MIN_DURATION:g}-"
+                f"{ACE_STEP_MAX_DURATION:g} seconds."
+            )
+        if params.sample_rate != ACE_STEP_SAMPLE_RATE:
+            raise ValueError(
+                f"ACE-Step 1.5 renders at {ACE_STEP_SAMPLE_RATE} Hz only."
+            )
+        if params.infer_steps < 1:
+            raise ValueError("ACE-Step inference steps must be at least 1.")
+        if params.shift not in {1.0, 2.0, 3.0}:
+            raise ValueError("ACE-Step timestep shift must be 1, 2, or 3.")
+        if not 0.0 <= params.audio_cover_strength <= 1.0:
+            raise ValueError("Cover strength must be between 0 and 1.")
+        if params.task_type in ACE_STEP_SOURCE_TASKS:
+            if not params.source_audio_path:
+                raise ValueError(
+                    f"{params.task_type.title()} requires a source audio file."
+                )
+            if not Path(params.source_audio_path).is_file():
+                raise FileNotFoundError(
+                    f"Source audio not found: {params.source_audio_path}"
+                )
+        if params.lora_path:
+            raise RuntimeError(
+                "ACE-Step 1.5 LoRA loading is unavailable until the versioned "
+                "training and adapter contract is implemented."
+            )
 
         _raise_if_cancelled(cancel_event)
         seed = params.resolve_seed()
@@ -531,42 +684,96 @@ class ACEStepEngine:
         if progress_cb:
             progress_cb(5)
 
-        # Build kwargs matching the real ACEStepPipeline.__call__ signature
+        pipeline_task = "repaint" if params.task_type == "extend" else params.task_type
         gen_kwargs = {
             "prompt": params.style_tags,
             "lyrics": params.lyrics,
             "audio_duration": params.duration,
-            "infer_step": params.infer_steps,
-            "guidance_scale": params.cfg_scale,
-            "scheduler_type": params.scheduler,
-            "manual_seeds": str(seed),
-            "save_path": save_dir,
-            "format": "wav",
+            "vocal_language": params.vocal_language,
+            "num_inference_steps": params.infer_steps,
+            "guidance_scale": 1.0,
+            "shift": params.shift,
+            "task_type": pipeline_task,
+            "output_type": "pt",
         }
 
-        # Add repaint params if specified
-        if params.repaint_start >= 0 and params.repaint_end > params.repaint_start:
-            gen_kwargs["repaint_start"] = params.repaint_start
-            gen_kwargs["repaint_end"] = params.repaint_end
-            if params.source_audio_path:
-                gen_kwargs["src_audio_path"] = params.source_audio_path
+        import torch
+        gen_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(seed)
 
-        # Add LoRA if specified
-        if params.lora_path and os.path.exists(params.lora_path):
-            gen_kwargs["lora_name_or_path"] = params.lora_path
-            gen_kwargs["lora_weight"] = params.lora_weight
+        if params.task_type == "cover":
+            reference_audio, _ = _load_source_audio_tensor(
+                params.source_audio_path,
+                sample_rate=ACE_STEP_SAMPLE_RATE,
+            )
+            gen_kwargs["reference_audio"] = reference_audio
+            gen_kwargs["audio_cover_strength"] = params.audio_cover_strength
+        elif params.task_type in {"repaint", "extend"}:
+            source_audio, source_duration = _load_source_audio_tensor(
+                params.source_audio_path,
+                sample_rate=ACE_STEP_SAMPLE_RATE,
+                target_duration=params.duration,
+            )
+            repaint_start = params.repaint_start
+            repaint_end = params.repaint_end
+            if params.task_type == "repaint":
+                if abs(params.duration - source_duration) > 0.05:
+                    raise ValueError(
+                        "Repaint duration must match the source audio duration."
+                    )
+                if repaint_start < 0 or repaint_end <= repaint_start:
+                    raise ValueError(
+                        "Repaint requires an end time greater than its start time."
+                    )
+                if repaint_end > source_duration:
+                    raise ValueError(
+                        "Repaint end time exceeds the source audio duration."
+                    )
+            else:
+                if abs(repaint_start - source_duration) > 0.05:
+                    raise ValueError(
+                        "Extend must start at the end of the source audio."
+                    )
+                if repaint_end <= repaint_start:
+                    raise ValueError(
+                        "Extend requires a positive continuation duration."
+                    )
+                if abs(repaint_end - params.duration) > 0.05:
+                    raise ValueError(
+                        "Extend must repaint through the requested output endpoint."
+                    )
+            gen_kwargs.update({
+                "src_audio": source_audio,
+                "repainting_start": repaint_start,
+                "repainting_end": repaint_end,
+            })
 
         if progress_cb:
             progress_cb(10)
 
         _raise_if_cancelled(cancel_event)
 
-        # ACEStepPipeline is callable
+        def _on_step_end(_pipeline, step_index, _timestep, callback_kwargs):
+            _raise_if_cancelled(cancel_event)
+            if progress_cb:
+                completed = (step_index + 1) / max(1, params.infer_steps)
+                progress_cb(10 + int(completed * 80))
+            return callback_kwargs
+
+        gen_kwargs["callback_on_step_end"] = _on_step_end
         result = self._pipeline(**gen_kwargs)
 
         elapsed = time.time() - start_time
 
-        output_path = self._find_output(save_dir, result)
+        output_path = self._find_output(
+            save_dir,
+            result,
+            sample_rate=getattr(
+                self._pipeline,
+                "sample_rate",
+                ACE_STEP_SAMPLE_RATE,
+            ),
+            seed=seed,
+        )
         _raise_if_cancelled(cancel_event, [output_path])
 
         if progress_cb:
@@ -576,7 +783,9 @@ class ACEStepEngine:
             output_path,
             module="song_forge",
             operation="generate",
-            model_id="ace-step-v1.5",
+            model_id=ACE_STEP_MODEL_ID,
+            model_source=ACE_STEP_SOURCE,
+            model_revision=ACE_STEP_REVISION,
             seed=seed,
             prompt=params.style_tags,
             lyrics=params.lyrics,
@@ -584,6 +793,11 @@ class ACEStepEngine:
             source_paths=[params.source_audio_path] if params.source_audio_path else [],
             export_format="wav",
             output_kind="model",
+            extra={
+                "adapter": ACE_STEP_ADAPTER,
+                "task_type": pipeline_task,
+                "requested_task": params.task_type,
+            },
         )
         _raise_if_cancelled(cancel_event, [output_path, sidecar])
 
@@ -594,7 +808,7 @@ class ACEStepEngine:
             audio_path=str(output_path),
             seed=seed,
             duration=params.duration,
-            sample_rate=params.sample_rate,
+            sample_rate=ACE_STEP_SAMPLE_RATE,
             params=params,
             generation_time=elapsed,
             provenance_path=str(sidecar),
@@ -614,6 +828,11 @@ class ACEStepEngine:
         """
         if not self.is_loaded:
             raise RuntimeError("ACE-Step model not loaded. Call load() first.")
+        if params.task_type != "text2music":
+            raise ValueError(
+                "Long-form stitching supports text-to-music only; source tasks "
+                "must use one native ACE-Step render."
+            )
 
         _raise_if_cancelled(cancel_event)
         start_time = time.time()
@@ -684,7 +903,7 @@ class ACEStepEngine:
         stitched_path, actual_duration = stitch_audio_files(
             section_paths,
             str(output_path),
-            target_sample_rate=params.sample_rate,
+            target_sample_rate=ACE_STEP_SAMPLE_RATE,
             crossfade_seconds=params.section_crossfade,
         )
         stitched_outputs = _result_paths(section_results) + [stitched_path]
@@ -693,7 +912,9 @@ class ACEStepEngine:
             stitched_path,
             module="song_forge",
             operation="generate_long_form",
-            model_id="ace-step-v1.5",
+            model_id=ACE_STEP_MODEL_ID,
+            model_source=ACE_STEP_SOURCE,
+            model_revision=ACE_STEP_REVISION,
             seed=base_seed,
             prompt=params.style_tags,
             lyrics=params.lyrics,
@@ -726,14 +947,21 @@ class ACEStepEngine:
             audio_path=stitched_path,
             seed=base_seed,
             duration=actual_duration,
-            sample_rate=params.sample_rate,
+            sample_rate=ACE_STEP_SAMPLE_RATE,
             params=params,
             generation_time=elapsed,
             sections=section_payload,
             provenance_path=str(sidecar),
         )
 
-    def _find_output(self, save_dir: str, pipeline_result) -> Path:
+    def _find_output(
+        self,
+        save_dir: str,
+        pipeline_result,
+        *,
+        sample_rate: int = ACE_STEP_SAMPLE_RATE,
+        seed: int = 0,
+    ) -> Path:
         """
         Locate the output file from pipeline result.
         Pipeline may return file paths, audio tensor, or save to save_path.
@@ -755,39 +983,51 @@ class ACEStepEngine:
                 if isinstance(val, str) and os.path.isfile(val):
                     return Path(val)
 
-        # If pipeline returned audio tensor, save it ourselves
-        try:
-            import torch
-            import numpy as np
+        import numpy as np
+        import soundfile as sf
+        import torch
 
-            audio_data = None
-            if isinstance(pipeline_result, torch.Tensor):
-                audio_data = pipeline_result
-            elif isinstance(pipeline_result, np.ndarray):
-                audio_data = torch.from_numpy(pipeline_result)
-            elif isinstance(pipeline_result, (list, tuple)):
-                for item in pipeline_result:
-                    if isinstance(item, (torch.Tensor, np.ndarray)):
-                        audio_data = item if isinstance(item, torch.Tensor) else torch.from_numpy(item)
-                        break
+        audio_data = getattr(pipeline_result, "audios", None)
+        if audio_data is None and isinstance(pipeline_result, torch.Tensor):
+            audio_data = pipeline_result
+        elif audio_data is None and isinstance(pipeline_result, np.ndarray):
+            audio_data = pipeline_result
+        elif audio_data is None and isinstance(pipeline_result, (list, tuple)):
+            for item in pipeline_result:
+                if isinstance(item, (torch.Tensor, np.ndarray)):
+                    audio_data = item
+                    break
 
-            if audio_data is not None:
-                import torchaudio
-                if audio_data.dim() == 1:
-                    audio_data = audio_data.unsqueeze(0)
-                if audio_data.dim() == 3:
-                    audio_data = audio_data.squeeze(0)
-                audio_data = audio_data.float().cpu()
-                peak = audio_data.abs().max()
-                if peak > 0:
-                    audio_data = audio_data / peak * 0.95
+        if audio_data is not None:
+            if isinstance(audio_data, torch.Tensor):
+                audio_data = audio_data.detach().float().cpu().numpy()
+            else:
+                audio_data = np.asarray(audio_data, dtype=np.float32)
+            if audio_data.ndim == 3:
+                audio_data = audio_data[0]
+            if audio_data.ndim == 1:
+                audio_data = np.stack([audio_data, audio_data])
+            if audio_data.ndim != 2:
+                raise RuntimeError(
+                    f"ACE-Step returned unsupported audio shape {audio_data.shape}"
+                )
+            if audio_data.shape[0] <= 8:
+                audio_data = audio_data.T
+            if audio_data.shape[1] == 1:
+                audio_data = np.repeat(audio_data, 2, axis=1)
+            elif audio_data.shape[1] > 2:
+                audio_data = audio_data[:, :2]
+            if not np.isfinite(audio_data).all():
+                raise RuntimeError("ACE-Step returned non-finite audio samples")
+            audio_data = np.clip(audio_data, -1.0, 1.0)
 
-                timestamp = int(time.time())
-                out_path = Path(save_dir) / f"output_{timestamp}.wav"
-                torchaudio.save(str(out_path), audio_data, 48000)
-                return out_path
-        except ImportError:
-            pass
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            out_path = (
+                Path(save_dir)
+                / f"ace_step_{timestamp}_{time.time_ns() % 1_000_000_000:09d}_{seed}.wav"
+            )
+            sf.write(out_path, audio_data, sample_rate, subtype="PCM_24")
+            return out_path
 
         # Fallback: find most recent wav in save_dir created after generation started
         cutoff = time.time() - 300
@@ -816,18 +1056,7 @@ class ACEStepEngine:
             if step_cb:
                 step_cb(f"Generating variation {i+1}/{count}...")
 
-            batch_params = GenerationParams(
-                lyrics=params.lyrics,
-                style_tags=params.style_tags,
-                duration=params.duration,
-                seed=-1,
-                cfg_scale=params.cfg_scale,
-                infer_steps=params.infer_steps,
-                scheduler=params.scheduler,
-                sample_rate=params.sample_rate,
-                lora_path=params.lora_path,
-                lora_weight=params.lora_weight,
-            )
+            batch_params = replace(params, seed=-1)
 
             def _batch_progress(pct):
                 if progress_cb:
@@ -869,9 +1098,27 @@ class ACEStepEngine:
         cancel_event: threading.Event = None,
     ) -> GenerationResult:
         """Extend a song from its endpoint."""
-        params.source_audio_path = source_path
-        params.duration = extend_duration
-        return self.generate(params, progress_cb=progress_cb, cancel_event=cancel_event)
+        if not source_path or not Path(source_path).is_file():
+            raise FileNotFoundError(f"Source audio not found: {source_path}")
+        if extend_duration <= 0:
+            raise ValueError("Extend duration must be positive.")
+        import soundfile as sf
+
+        source_duration = float(sf.info(source_path).duration)
+        target_duration = source_duration + float(extend_duration)
+        extended_params = replace(
+            params,
+            task_type="extend",
+            source_audio_path=source_path,
+            duration=target_duration,
+            repaint_start=source_duration,
+            repaint_end=target_duration,
+        )
+        return self.generate(
+            extended_params,
+            progress_cb=progress_cb,
+            cancel_event=cancel_event,
+        )
 
     def retake(
         self,
@@ -883,10 +1130,24 @@ class ACEStepEngine:
         cancel_event: threading.Event = None,
     ) -> GenerationResult:
         """Regenerate a section while keeping the rest (repaint)."""
-        params.source_audio_path = source_path
-        params.repaint_start = start_sec
-        params.repaint_end = end_sec
-        return self.generate(params, progress_cb=progress_cb, cancel_event=cancel_event)
+        if not source_path or not Path(source_path).is_file():
+            raise FileNotFoundError(f"Source audio not found: {source_path}")
+        import soundfile as sf
+
+        source_duration = float(sf.info(source_path).duration)
+        repaint_params = replace(
+            params,
+            task_type="repaint",
+            source_audio_path=source_path,
+            duration=source_duration,
+            repaint_start=start_sec,
+            repaint_end=end_sec,
+        )
+        return self.generate(
+            repaint_params,
+            progress_cb=progress_cb,
+            cancel_event=cancel_event,
+        )
 
 
 # -- High-Level Functions for InferenceWorker ----------------------------------
@@ -896,8 +1157,9 @@ def generate_song(
     style_tags: str = "",
     duration: float = 60.0,
     seed: int = -1,
-    cfg_scale: float = 15.0,
-    infer_steps: int = 60,
+    cfg_scale: float = 1.0,
+    infer_steps: int = ACE_STEP_DEFAULT_STEPS,
+    shift: float = ACE_STEP_DEFAULT_SHIFT,
     long_form: bool = False,
     progress_cb: Callable = None,
     step_cb: Callable = None,
@@ -921,7 +1183,7 @@ def generate_song(
         engine.load()
         return engine
 
-    mgr.load_model("ace-step-v1.5", loader_fn=_loader)
+    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
 
     if cancel_event and cancel_event.is_set():
         return {"cancelled": True}
@@ -936,6 +1198,7 @@ def generate_song(
         seed=seed,
         cfg_scale=cfg_scale,
         infer_steps=infer_steps,
+        shift=shift,
         long_form=long_form,
     )
 
@@ -969,6 +1232,7 @@ def generate_song(
             "style_tags": style_tags,
             "cfg_scale": cfg_scale,
             "infer_steps": infer_steps,
+            "shift": shift,
         },
     }
 
@@ -978,8 +1242,9 @@ def generate_song_batch(
     style_tags: str,
     count: int = 4,
     duration: float = 60.0,
-    cfg_scale: float = 15.0,
-    infer_steps: int = 60,
+    cfg_scale: float = 1.0,
+    infer_steps: int = ACE_STEP_DEFAULT_STEPS,
+    shift: float = ACE_STEP_DEFAULT_SHIFT,
     long_form: bool = False,
     progress_cb: Callable = None,
     step_cb: Callable = None,
@@ -999,7 +1264,7 @@ def generate_song_batch(
         engine.load()
         return engine
 
-    mgr.load_model("ace-step-v1.5", loader_fn=_loader)
+    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
 
     if cancel_event and cancel_event.is_set():
         return {"cancelled": True}
@@ -1010,6 +1275,7 @@ def generate_song_batch(
         duration=duration,
         cfg_scale=cfg_scale,
         infer_steps=infer_steps,
+        shift=shift,
         long_form=long_form,
     )
 
@@ -1050,7 +1316,7 @@ def generate_seed_grid(
     style_tags: str,
     params_list: list[dict],
     duration: float = 60.0,
-    infer_steps: int = 60,
+    infer_steps: int = ACE_STEP_DEFAULT_STEPS,
     long_form: bool = False,
     progress_cb: Callable = None,
     step_cb: Callable = None,
@@ -1058,7 +1324,7 @@ def generate_seed_grid(
     cancel_event: threading.Event = None,
     **kwargs,
 ) -> dict:
-    """Generate a seed explorer grid with explicit seed/CFG per cell."""
+    """Generate a seed explorer grid with explicit seed/timestep-shift cells."""
     if step_cb:
         step_cb("Loading ACE-Step model...")
 
@@ -1070,7 +1336,7 @@ def generate_seed_grid(
         engine.load()
         return engine
 
-    mgr.load_model("ace-step-v1.5", loader_fn=_loader)
+    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
 
     total = max(1, len(params_list))
     results = []
@@ -1089,7 +1355,9 @@ def generate_seed_grid(
         row = int(cell.get("row", 0))
         col = int(cell.get("col", 0))
         seed = int(cell.get("seed", -1))
-        cfg_scale = float(cell.get("cfg_scale", kwargs.get("cfg_scale", 5.0)))
+        shift = float(
+            cell.get("shift", kwargs.get("shift", ACE_STEP_DEFAULT_SHIFT))
+        )
 
         if step_cb:
             step_cb(f"Generating seed cell {i + 1}/{total} (seed {seed})...")
@@ -1099,8 +1367,8 @@ def generate_seed_grid(
             style_tags=style_tags,
             duration=duration,
             seed=seed,
-            cfg_scale=cfg_scale,
             infer_steps=infer_steps,
+            shift=shift,
             long_form=long_form,
         )
 
@@ -1132,7 +1400,7 @@ def generate_seed_grid(
                 "audio_path": result.audio_path,
                 "provenance_path": result.provenance_path,
                 "seed": result.seed,
-                "cfg_scale": cfg_scale,
+                "shift": shift,
                 "duration": result.duration,
                 "generation_time": result.generation_time,
                 "mode": "long_form" if result.sections else "single",
@@ -1155,7 +1423,7 @@ def generate_seed_grid(
                 "row": row,
                 "col": col,
                 "seed": seed,
-                "cfg_scale": cfg_scale,
+                "shift": shift,
                 "error": message,
             })
 
@@ -1171,8 +1439,10 @@ def generate_cover(
     lyrics: str = "",
     duration: float = 0.0,
     seed: int = -1,
-    cfg_scale: float = 15.0,
-    infer_steps: int = 60,
+    cfg_scale: float = 1.0,
+    infer_steps: int = ACE_STEP_DEFAULT_STEPS,
+    shift: float = ACE_STEP_DEFAULT_SHIFT,
+    audio_cover_strength: float = 1.0,
     progress_cb: Callable = None,
     step_cb: Callable = None,
     log_cb: Callable = None,
@@ -1194,7 +1464,7 @@ def generate_cover(
         engine.load()
         return engine
 
-    mgr.load_model("ace-step-v1.5", loader_fn=_loader)
+    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
 
     if cancel_event and cancel_event.is_set():
         return {"cancelled": True}
@@ -1213,6 +1483,9 @@ def generate_cover(
         seed=seed,
         cfg_scale=cfg_scale,
         infer_steps=infer_steps,
+        shift=shift,
+        task_type="cover",
+        audio_cover_strength=audio_cover_strength,
         source_audio_path=source_audio_path,
     )
 
@@ -1229,6 +1502,72 @@ def generate_cover(
     }
 
 
+def generate_extend(
+    source_audio_path: str,
+    extend_duration: float = 30.0,
+    style_tags: str = "",
+    lyrics: str = "",
+    seed: int = -1,
+    cfg_scale: float = 1.0,
+    infer_steps: int = ACE_STEP_DEFAULT_STEPS,
+    shift: float = ACE_STEP_DEFAULT_SHIFT,
+    progress_cb: Callable = None,
+    step_cb: Callable = None,
+    log_cb: Callable = None,
+    cancel_event: threading.Event = None,
+    **kwargs,
+) -> dict:
+    """Extend source audio by repainting a zero-padded continuation region."""
+    if not source_audio_path or not os.path.isfile(source_audio_path):
+        raise FileNotFoundError(f"Source audio not found: {source_audio_path}")
+    if extend_duration <= 0:
+        raise ValueError("Extend duration must be positive.")
+
+    if step_cb:
+        step_cb("Loading ACE-Step for extension...")
+
+    from core.model_manager import ModelManager
+    mgr = ModelManager()
+    engine = ACEStepEngine()
+
+    def _loader():
+        engine.load()
+        return engine
+
+    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
+
+    if cancel_event and cancel_event.is_set():
+        return {"cancelled": True}
+    if step_cb:
+        step_cb(f"Extending source by {extend_duration:.1f}s...")
+
+    params = GenerationParams(
+        lyrics=lyrics,
+        style_tags=style_tags,
+        seed=seed,
+        cfg_scale=cfg_scale,
+        infer_steps=infer_steps,
+        shift=shift,
+    )
+    result = engine.extend(
+        source_audio_path,
+        params,
+        extend_duration=extend_duration,
+        progress_cb=progress_cb,
+        cancel_event=cancel_event,
+    )
+    return {
+        "audio_path": result.audio_path,
+        "provenance_path": result.provenance_path,
+        "seed": result.seed,
+        "duration": result.duration,
+        "generation_time": result.generation_time,
+        "mode": "extend",
+        "source_audio_path": source_audio_path,
+        "extend_duration": extend_duration,
+    }
+
+
 def generate_repaint(
     source_audio_path: str,
     start_sec: float,
@@ -1236,8 +1575,9 @@ def generate_repaint(
     style_tags: str = "",
     lyrics: str = "",
     seed: int = -1,
-    cfg_scale: float = 15.0,
-    infer_steps: int = 60,
+    cfg_scale: float = 1.0,
+    infer_steps: int = ACE_STEP_DEFAULT_STEPS,
+    shift: float = ACE_STEP_DEFAULT_SHIFT,
     progress_cb: Callable = None,
     step_cb: Callable = None,
     log_cb: Callable = None,
@@ -1261,7 +1601,7 @@ def generate_repaint(
         engine.load()
         return engine
 
-    mgr.load_model("ace-step-v1.5", loader_fn=_loader)
+    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
 
     if cancel_event and cancel_event.is_set():
         return {"cancelled": True}
@@ -1279,6 +1619,8 @@ def generate_repaint(
         seed=seed,
         cfg_scale=cfg_scale,
         infer_steps=infer_steps,
+        shift=shift,
+        task_type="repaint",
         source_audio_path=source_audio_path,
         repaint_start=start_sec,
         repaint_end=end_sec,

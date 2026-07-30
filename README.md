@@ -2,7 +2,7 @@
 
 ![Version](https://img.shields.io/badge/version-0.1.30-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11--3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![Status](https://img.shields.io/badge/status-active-success)
 
@@ -19,7 +19,7 @@ py -3.12 -m pip install -r requirements.txt
 py -3.12 main.py
 ```
 
-Python 3.10+ required. Install core dependencies explicitly before launch; if anything is missing, Slunder Studio opens a diagnostics screen with the exact setup command. AI models are downloaded on-demand from HuggingFace via the built-in Model Hub.
+Python 3.11 or 3.12 is required. Install core dependencies explicitly before launch; if anything is missing, Slunder Studio opens a diagnostics screen with the exact setup command. AI models are downloaded on-demand from HuggingFace via the built-in Model Hub.
 
 Optional AI runtimes use platform-specific, SHA-256-locked profiles for CPython
 3.12. Prepare a wheelhouse while connected, then the installation command
@@ -39,8 +39,8 @@ through PyTorch 2.3.1, below the PyTorch 2.6.0 security floor.
 
 | Module | Description | AI Engine |
 |--------|-------------|-----------|
-| Song Forge | Full song generation from lyrics + style tags, stitched long-form songs, and recovered vocal-stem export | ACE-Step, Demucs |
-| Lyrics Engine | AI-powered lyrics writing with 33 genre templates | Llama 3.2 1B |
+| Song Forge | ACE-Step 1.5 XL Turbo song generation, reference covers, source repaint/extend, stitched long-form songs, and recovered vocal-stem export | ACE-Step, Demucs |
+| Lyrics Engine | AI-powered lyrics writing with 33 genre templates | Llama 3.1 8B |
 | MIDI Studio | Piano roll editor with quantize/swing/humanize tools, CC lanes, text-to-MIDI composition, groove-template drums, and chord chart export | MIDI-LLM |
 | Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, voice conversion, voice cloning, and vocal auto-tune pitch correction | DiffSinger, RVC v2, GPT-SoVITS, librosa |
 | Stem Separation | Isolate vocals, drums, bass, and other instruments | Demucs (htdemucs) |
@@ -64,7 +64,7 @@ through PyTorch 2.3.1, below the PyTorch 2.6.0 security floor.
 └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
 ```
 
-Every module can route audio to any other module. Generate a song in Song Forge, separate stems in Vocal Suite, add SFX, mix everything in the Mixer, and export a mastered track. Generated and exported assets write adjacent `.provenance.json` sidecars with app version, prompt/lyrics, seed, model revision/hash metadata, source paths, and render parameters so projects can be audited or reproduced. Long-running generation and model-download jobs persist queued/running/completed/failed/cancelled/recoverable state so interrupted sessions can show what needs recovery on restart. Settings and project files use versioned schemas with timestamped backups before migrations, repairs, and saves. Primary creative workflows expose screen-reader names, descriptions, high-contrast focus rings, and predictable tab traversal. For songs over 2 minutes, Song Forge can render structured sections separately and stitch them with crossfades for more stable long-form arrangements; completed Song Forge renders also attempt a Demucs vocal-stem recovery and expose a separate vocals-only route when recovery succeeds. Seed Explorer renders nearby seed/CFG variations from the current lyrics and style prompt so you can compare takes before committing to a full arrangement. Reference Track analysis maps an audio fingerprint to ACE-Step tags for one-click style conditioning, Genre Fusion blends two template tag sets into weighted hybrid prompts, and Voice Cloning validates 10-30s GPT-SoVITS reference samples before saving reusable voice profiles with owner, consent source, language, permitted-use, and sidecar provenance metadata.
+Every module can route audio to any other module. Generate a song in Song Forge, separate stems in Vocal Suite, add SFX, mix everything in the Mixer, and export a mastered track. Generated and exported assets write adjacent `.provenance.json` sidecars with app version, prompt/lyrics, seed, model revision/hash metadata, source paths, and render parameters so projects can be audited or reproduced. Long-running generation and model-download jobs persist queued/running/completed/failed/cancelled/recoverable state so interrupted sessions can show what needs recovery on restart. Settings and project files use versioned schemas with timestamped backups before migrations, repairs, and saves. Primary creative workflows expose screen-reader names, descriptions, high-contrast focus rings, and predictable tab traversal. For songs over 2 minutes, Song Forge can render structured sections separately and stitch them with crossfades for more stable long-form arrangements; completed Song Forge renders also attempt a Demucs vocal-stem recovery and expose a separate vocals-only route when recovery succeeds. Seed Explorer renders nearby seed/timestep-shift variations from the current lyrics and style prompt so you can compare takes before committing to a full arrangement. Reference Track analysis maps an audio fingerprint to ACE-Step tags for one-click style conditioning, Genre Fusion blends two template tag sets into weighted hybrid prompts, and Voice Cloning validates 10-30s GPT-SoVITS reference samples before saving reusable voice profiles with owner, consent source, language, permitted-use, and sidecar provenance metadata.
 
 Settings can export a redacted health report ZIP with app/dependency versions, GPU and ffmpeg status, model cache state, settings repair status, crash log metadata, and recent failed jobs. HuggingFace tokens are always redacted, and job prompts/lyrics stay out of the report unless the private-input opt-in is enabled.
 
@@ -105,8 +105,8 @@ Models are downloaded on-demand through the Model Hub. Nothing downloads until y
 
 | Model | Size | Module | Required |
 |-------|------|--------|----------|
-| ACE-Step | ~3 GB | Song Forge | Recommended |
-| Llama 3.2 1B | ~2 GB | Lyrics Engine | Recommended |
+| ACE-Step 1.5 XL Turbo (DiT) | ~10.4 GB | Song Forge | Recommended |
+| Llama 3.1 8B Q4_K_M | ~4.9 GB | Lyrics Engine | Recommended |
 | DiffSinger (ONNX) | ~500 MB | Vocal Suite | Optional |
 | RVC v2 | ~200 MB/voice | Vocal Suite | Optional |
 | Demucs (htdemucs) | ~300 MB | Stem Separation | Optional |
@@ -122,10 +122,10 @@ Built-in Hugging Face downloads use reviewed immutable commit revisions and hash
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
 | OS | Windows 10 / Linux / macOS | Windows 11 / Ubuntu 22.04+ |
-| Python | 3.10 | 3.11+ |
+| Python | 3.11 | 3.12 |
 | RAM | 8 GB | 16 GB+ |
 | GPU | None (CPU mode) | NVIDIA 8GB+ VRAM (CUDA) |
-| Disk | 2 GB (app only) | 20 GB+ (with models) |
+| Disk | 2 GB (app only) | 45 GB+ (full model registry) |
 
 GPU acceleration requires PyTorch with CUDA support. The app runs on CPU without any GPU, but generation will be slower.
 
@@ -234,7 +234,7 @@ SlunderStudio/
 No. Everything runs on CPU. A CUDA-capable NVIDIA GPU (8GB+ VRAM) dramatically speeds up AI generation but is not required.
 
 **Q: How much disk space do models need?**
-About 3 GB for the recommended models (ACE-Step + Llama). The full model suite is approximately 10 GB. Models download on-demand — nothing installs until you request it.
+About 15.3 GB for the recommended ACE-Step and Llama checkpoints. The full built-in model registry is approximately 38.4 GB. Models download on-demand — nothing installs until you request it.
 
 **Q: Can I use my own voice models?**
 Yes. Import RVC `.pth` models or GPT-SoVITS checkpoints through the Voice Bank. The app auto-detects models in standard directories.

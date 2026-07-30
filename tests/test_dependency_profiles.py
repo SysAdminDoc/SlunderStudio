@@ -20,6 +20,7 @@ from core.dependency_profiles import (
     validate_profile,
     verify_wheelhouse,
     version_at_least,
+    version_less_than,
 )
 
 
@@ -44,6 +45,7 @@ class DependencyProfileTests(unittest.TestCase):
             self.assertTrue(all(entry.hashes for entry in entries.values()))
             self.assertTrue(version_at_least(entries["torch"].version, "2.6.0"))
             self.assertTrue(version_at_least(entries["transformers"].version, "4.53.0"))
+            self.assertTrue(version_less_than(entries["transformers"].version, "4.58.0"))
 
     def test_directml_fails_closed_below_safe_torch_floor(self):
         registry = load_registry()
@@ -86,7 +88,7 @@ class DependencyProfileTests(unittest.TestCase):
                     "machines": ["AMD64"],
                     "python_tag": "cp312",
                     "lock": "bad.txt",
-                    "roots": {"torch": "2.5.1", "transformers": "5.14.1"},
+                    "roots": {"torch": "2.5.1", "transformers": "4.57.6"},
                     "smoke_imports": ["torch"],
                 }
             }
@@ -94,7 +96,7 @@ class DependencyProfileTests(unittest.TestCase):
             registry_path.write_text(json.dumps(registry), encoding="utf-8")
             (root / "bad.txt").write_text(
                 "torch==2.5.1 --hash=sha256:" + "a" * 64 + "\n"
-                "transformers==5.14.1 --hash=sha256:" + "b" * 64 + "\n",
+                "transformers==4.57.6 --hash=sha256:" + "b" * 64 + "\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(DependencyProfileError, "below security floor"):
@@ -104,7 +106,7 @@ class DependencyProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             torch_wheel = root / "torch-2.11.0+cpu-py3-none-any.whl"
-            transformer_wheel = root / "transformers-5.14.1-py3-none-any.whl"
+            transformer_wheel = root / "transformers-4.57.6-py3-none-any.whl"
             torch_wheel.write_bytes(b"torch wheel")
             transformer_wheel.write_bytes(b"transformers wheel")
             entries = {
@@ -115,7 +117,7 @@ class DependencyProfileTests(unittest.TestCase):
                 ),
                 "transformers": LockEntry(
                     "transformers",
-                    "5.14.1",
+                    "4.57.6",
                     (hashlib.sha256(transformer_wheel.read_bytes()).hexdigest(),),
                 ),
             }
@@ -130,12 +132,12 @@ class DependencyProfileTests(unittest.TestCase):
                 lock_path=root / "test.txt",
                 index_url="https://example.invalid/simple",
                 extra_index_url="",
-                roots={"torch": "2.11.0+cpu", "transformers": "5.14.1"},
+                roots={"torch": "2.11.0+cpu", "transformers": "4.57.6"},
                 smoke_imports=("torch",),
             )
             profile.lock_path.write_text(
                 "torch==2.11.0+cpu --hash=sha256:" + entries["torch"].hashes[0] + "\n"
-                "transformers==5.14.1 --hash=sha256:"
+                "transformers==4.57.6 --hash=sha256:"
                 + entries["transformers"].hashes[0]
                 + "\n",
                 encoding="utf-8",
@@ -193,7 +195,7 @@ class DependencyProfileTests(unittest.TestCase):
     def test_diagnostics_report_profile_validity_and_advisory_state(self):
         with mock.patch(
             "core.dependency_profiles.importlib.metadata.version",
-            side_effect=lambda name: {"torch": "2.5.1", "transformers": "5.14.1"}[name],
+            side_effect=lambda name: {"torch": "2.5.1", "transformers": "4.57.6"}[name],
         ):
             report = registry_diagnostics()
         self.assertFalse(report["advisory_status"]["torch"]["compliant"])

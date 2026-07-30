@@ -49,7 +49,7 @@ class GenerationProvenanceTests(unittest.TestCase):
 
             summary = project_metadata_from_provenance(data, sidecar)
             self.assertEqual(summary["provenance"]["model_id"], "ace-step-v1.5")
-            self.assertEqual(summary["provenance"]["model_license"], "Apache 2.0")
+            self.assertEqual(summary["provenance"]["model_license"], "MIT")
             self.assertEqual(summary["provenance"]["model_commercial_use"], "allowed")
             self.assertEqual(summary["provenance"]["artifact_sha256"], data["artifact"]["sha256"])
 

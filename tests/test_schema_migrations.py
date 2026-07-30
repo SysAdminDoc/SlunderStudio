@@ -44,6 +44,9 @@ class SchemaMigrationTests(unittest.TestCase):
             self.assertEqual(saved["version"], APP_VERSION)
             self.assertEqual(saved["general"]["audio_format"], "flac")
             self.assertEqual(saved["general"]["trash_retention_days"], 30)
+            self.assertEqual(saved["song_forge"]["timestep_shift"], 3.0)
+            self.assertEqual(saved["song_forge"]["inference_steps"], 8)
+            self.assertNotIn("cfg_scale", saved["song_forge"])
             self.assertTrue(status["backup_paths"])
             self.assertTrue(Path(status["backup_paths"][0]).is_file())
 

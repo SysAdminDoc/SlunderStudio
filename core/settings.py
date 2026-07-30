@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 APP_NAME = "SlunderStudio"
 APP_VERSION = "0.1.30"
-SETTINGS_SCHEMA_VERSION = 2
+SETTINGS_SCHEMA_VERSION = 3
 
 
 @dataclass
@@ -62,12 +62,12 @@ DEFAULTS = {
     },
     "song_forge": {
         "model_id": "ace-step-v1.5",
-        "cfg_scale": 7.0,
-        "inference_steps": 50,
+        "timestep_shift": 3.0,
+        "inference_steps": 8,
         "default_duration": 180,
         "batch_count": 4,
         "seed": -1,
-        "scheduler": "default",
+        "scheduler": "flow_match_euler",
     },
     "midi_studio": {
         "model_id": "midi-llm-1b",
@@ -382,13 +382,22 @@ class Settings:
             schema_version = 1
 
         if schema_version < 2:
-            data["schema_version"] = SETTINGS_SCHEMA_VERSION
             data.setdefault("general", {})
             data["general"].setdefault(
                 "trash_retention_days",
                 DEFAULTS["general"]["trash_retention_days"],
             )
             messages.append("Migrated settings schema from v1 to v2.")
+            migrated = True
+        if schema_version < 3:
+            song_forge = data.setdefault("song_forge", {})
+            song_forge.pop("cfg_scale", None)
+            song_forge["timestep_shift"] = DEFAULTS["song_forge"]["timestep_shift"]
+            song_forge["inference_steps"] = DEFAULTS["song_forge"]["inference_steps"]
+            song_forge["scheduler"] = DEFAULTS["song_forge"]["scheduler"]
+            messages.append(
+                "Migrated Song Forge controls to the ACE-Step 1.5 XL Turbo schedule."
+            )
             migrated = True
         elif schema_version > SETTINGS_SCHEMA_VERSION:
             messages.append(

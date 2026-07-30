@@ -118,15 +118,15 @@ class SeedExplorerTests(unittest.TestCase):
         explorer._range_spin.setValue(250)
         self.assertEqual(explorer._distance_slider.value(), 250)
 
-    def test_explore_emits_seed_and_cfg_grid(self):
+    def test_explore_emits_seed_and_timestep_shift_grid(self):
         explorer = SeedExplorer()
         emitted = []
         explorer.generate_requested.connect(emitted.append)
         explorer._grid_combo.setCurrentIndex(0)
         explorer._seed_spin.setValue(1000)
         explorer._range_spin.setValue(100)
-        explorer._cfg_min_spin.setValue(3.0)
-        explorer._cfg_max_spin.setValue(5.0)
+        explorer._shift_min_spin.setValue(1.0)
+        explorer._shift_max_spin.setValue(3.0)
 
         explorer._start_exploration()
 
@@ -135,8 +135,8 @@ class SeedExplorerTests(unittest.TestCase):
         self.assertEqual(len(params), 4)
         self.assertEqual(params[0]["seed"], 950)
         self.assertEqual(params[-1]["seed"], 1050)
-        self.assertEqual(params[0]["cfg_scale"], 3.0)
-        self.assertEqual(params[-1]["cfg_scale"], 5.0)
+        self.assertEqual(params[0]["shift"], 1.0)
+        self.assertEqual(params[-1]["shift"], 3.0)
 
 
 if __name__ == "__main__":

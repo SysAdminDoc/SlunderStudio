@@ -235,8 +235,8 @@ class ModelGuidePage(QWidget):
         ml.setSpacing(10)
 
         models = [
-            ("ACE-Step", "Song generation from lyrics + tags", "~3 GB", True),
-            ("Llama 3.2 1B", "Lyrics generation + MIDI composition", "~2 GB", True),
+            ("ACE-Step 1.5 XL Turbo", "Song generation and source editing", "~10.4 GB", True),
+            ("Llama 3.1 8B Q4", "Lyrics generation and producer planning", "~4.9 GB", True),
             ("DiffSinger", "Singing voice synthesis", "~500 MB", False),
             ("RVC v2", "Voice conversion", "~200 MB per voice", False),
             ("Demucs (htdemucs)", "Stem separation", "~300 MB", False),

@@ -18,6 +18,16 @@ from PySide6.QtCore import QObject, Signal
 
 from core.settings import Settings, get_config_dir
 from core.trash import TrashEntry, TrashError, TrashManager
+from core.ace_step_contract import (
+    ACE_STEP_CAPABILITIES,
+    ACE_STEP_DISPLAY_NAME,
+    ACE_STEP_IGNORE_PATTERNS,
+    ACE_STEP_LICENSE,
+    ACE_STEP_LICENSE_URL,
+    ACE_STEP_MODEL_ID,
+    ACE_STEP_REVISION,
+    ACE_STEP_SOURCE,
+)
 
 
 class OfflineModeError(RuntimeError):
@@ -183,23 +193,34 @@ def _serialization_summary(file_hashes: dict[str, str]) -> str:
 # ── Built-in Model Registry ───────────────────────────────────────────────────
 
 BUILTIN_MODELS: dict[str, ModelInfo] = {
-    "ace-step-v1.5": ModelInfo(
-        model_id="ace-step-v1.5",
-        name="ACE-Step v1.5",
-        description="Full song generation with vocals and instrumentals. Under 10s per song, <8GB VRAM.",
+    ACE_STEP_MODEL_ID: ModelInfo(
+        model_id=ACE_STEP_MODEL_ID,
+        name=ACE_STEP_DISPLAY_NAME,
+        description=(
+            "Official ACE-Step 1.5 XL Turbo Diffusers synthesizer for 48 kHz "
+            "stereo songs, source repainting, reference covers, and extensions."
+        ),
         category=ModelCategory.SONG_FORGE,
-        vram_gb=3.5,
-        disk_gb=8.3,
-        license="Apache 2.0",
-        source="ACE-Step/ACE-Step-v1-3.5B",
+        vram_gb=4.0,
+        disk_gb=10.4,
+        license=ACE_STEP_LICENSE,
+        source=ACE_STEP_SOURCE,
         loader_module="engines.ace_step_engine",
         loader_fn="load_model",
         is_core=True,
-        tags=["song", "vocals", "instrumental", "music generation"],
-        revision="82cd0d7b6322bd28cd4e830fe675ddb6180ce36c",
+        tags=list(ACE_STEP_CAPABILITIES),
+        ignore_patterns=list(ACE_STEP_IGNORE_PATTERNS),
+        revision=ACE_STEP_REVISION,
+        trust_note=(
+            "Pinned official Diffusers conversion; repository code and the "
+            "unused pickle-backed converter artifact are excluded."
+        ),
         commercial_use=COMMERCIAL_USE_ALLOWED,
-        commercial_use_note="Apache 2.0 model weights; generated output rights still depend on prompts and inputs.",
-        license_url="https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+        commercial_use_note=(
+            "MIT model weights; generated output rights still depend on prompts "
+            "and source material."
+        ),
+        license_url=ACE_STEP_LICENSE_URL,
     ),
     "llama-3.1-8b-q4": ModelInfo(
         model_id="llama-3.1-8b-q4",
@@ -801,10 +822,11 @@ class ModelManager(QObject):
         if not info.source:
             raise ValueError(f"No download source for model: {model_id}")
 
+        cache_path = self.get_cache_dir(model_id)
+        self._quarantine_incompatible_cache(model_id, cache_path)
+
         self._set_status(model_id, ModelStatus.DOWNLOADING)
         self.download_started.emit(model_id)
-
-        cache_path = self.get_cache_dir(model_id)
 
         def _mark_cancelled_download():
             self._set_status(
@@ -937,6 +959,51 @@ class ModelManager(QObject):
                 self._set_status(model_id, ModelStatus.ERROR)
                 self.download_error.emit(model_id, str(e))
             raise
+
+    def _quarantine_incompatible_cache(
+        self,
+        model_id: str,
+        cache_path: Optional[Path] = None,
+    ) -> Optional[TrashEntry]:
+        """Recoverably move a completed cache whose immutable identity changed."""
+        info = self._registry.get(model_id)
+        if info is None or info.pip_managed:
+            return None
+
+        path = cache_path or self.get_cache_dir(model_id)
+        marker = path / self.COMPLETE_MARKER
+        if not marker.is_file():
+            return None
+
+        try:
+            manifest = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+
+        if (
+            manifest.get("source") == info.source
+            and manifest.get("revision") == info.revision
+            and manifest.get("resolved_revision") == info.revision
+        ):
+            return None
+
+        if self._current_model_id == model_id:
+            self.unload()
+
+        return self._trash.trash_path(
+            path,
+            category="model",
+            label=f"{info.name}-incompatible-cache",
+            metadata={
+                "model_id": model_id,
+                "model_name": info.name,
+                "migration": "immutable model identity changed",
+                "old_source": manifest.get("source", ""),
+                "old_revision": manifest.get("revision", ""),
+                "new_source": info.source,
+                "new_revision": info.revision,
+            },
+        )
 
     def _resolve_hf_revision(self, info: ModelInfo, token: Optional[str] = None) -> str:
         """Resolve a HuggingFace revision to a commit SHA when online."""
