@@ -188,6 +188,10 @@ class ReferencePanel(QWidget):
             if path:
                 self._analyze_file(path)
 
+    def load_reference_file(self, file_path: str):
+        """Public entry point used by cross-module routes."""
+        self._analyze_file(file_path)
+
     def _analyze_file(self, file_path: str):
         """Run analysis on the dropped/selected file."""
         from pathlib import Path

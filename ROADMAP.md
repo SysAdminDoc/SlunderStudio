@@ -32,15 +32,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ## Research-Driven Additions
 
-### P1
-
-- [ ] P1 — Make cross-module routing transfer real artifacts and context
-  Why: Some routes only switch pages and show a toast while discarding the selected file or MIDI context.
-  Evidence: `ui/main_window.py:486-501`; current SFX/Vocal-to-Mixer routes; Hacker News demand for granular DAW-style handoff.
-  Touches: `ui/main_window.py`, route payload types, Song Forge, MIDI Studio, Vocal Suite, Mixer, project asset registration.
-  Acceptance: Each advertised route transfers a typed artifact plus tempo/key/lyrics/provenance, selects it in the destination, registers it to the active project when requested, and has an end-to-end test.
-  Complexity: M
-
 ### P2
 
 - [ ] P2 — Run SFX batches as cancellable background jobs

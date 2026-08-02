@@ -592,6 +592,34 @@ class SongForgeView(QWidget):
         if self._toast:
             self._toast.show_toast("Lyrics loaded into Song Forge", "info")
 
+    def receive_reference(self, artifact) -> bool:
+        """Load a routed audio artifact as the reference track and select it.
+
+        Carries tempo, key and lyrics across rather than discarding them.
+        """
+        if not artifact.exists:
+            return False
+        self._routed_reference = artifact
+        self._ref_panel.load_reference_file(artifact.path)
+        if artifact.lyrics:
+            self.set_lyrics(artifact.lyrics)
+        if artifact.tempo:
+            for attr in ("_duration_spin", "_bpm_spin"):
+                widget = getattr(self, attr, None)
+                if widget is not None and attr == "_bpm_spin":
+                    widget.setValue(int(artifact.tempo))
+        if self._toast:
+            self._toast.show_toast(
+                f"Reference from {artifact.source_module}: "
+                f"{artifact.context_summary()}",
+                "info",
+            )
+        return True
+
+    @property
+    def routed_reference(self):
+        return getattr(self, "_routed_reference", None)
+
     # ── Generation ────────────────────────────────────────────────────────────
 
     def _get_lyrics(self) -> str:

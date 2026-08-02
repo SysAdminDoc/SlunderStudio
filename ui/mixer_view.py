@@ -535,6 +535,20 @@ class MixerView(QWidget):
     def _read_audio_file(self, file_path: str) -> tuple[np.ndarray, int]:
         return decode_audio_file(file_path, target_channels=2)
 
+    def select_track(self, index: int) -> bool:
+        """Focus one track strip so a routed artifact lands somewhere visible."""
+        if not (0 <= index < len(self._strips)):
+            return False
+        strip = self._strips[index]
+        self._scroll.ensureWidgetVisible(strip)
+        strip.setFocus()
+        self._selected_track_index = index
+        return True
+
+    @property
+    def selected_track_index(self) -> int:
+        return getattr(self, "_selected_track_index", -1)
+
     def add_track_from_file(self, file_path: str):
         """Import an audio file as a track."""
         try:

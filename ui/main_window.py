@@ -653,33 +653,93 @@ class MainWindow(QMainWindow):
         self._sidebar.select_page(1)  # Switch to Song Forge page
         self._song_forge_view.set_lyrics(lyrics_text)
 
+    def _build_route_artifact(self, path: str, source_module: str, **context):
+        """Build a typed route payload, or report why the route cannot run."""
+        from core.routing import RouteError, build_routed_artifact
+
+        try:
+            return build_routed_artifact(
+                path, source_module=source_module, **context
+            )
+        except RouteError as exc:
+            self.toast_mgr.error(f"Route cancelled: {exc}")
+            return None
+
+    def _register_routed_artifact(self, artifact, module: str):
+        """Attach a routed artifact to the open project when there is one."""
+        from core.routing import register_with_project
+
+        try:
+            asset_id = register_with_project(artifact, module=module)
+        except Exception as exc:
+            self.toast_mgr.warning(f"Could not register with project: {exc}")
+            return None
+        return asset_id
+
+    def _route_to_forge_reference(self, audio_path: str, source_module: str,
+                                  page: int = 1):
+        artifact = self._build_route_artifact(audio_path, source_module)
+        if artifact is None:
+            return None
+        self._sidebar.select_page(page)
+        if not self._song_forge_view.receive_reference(artifact):
+            self.toast_mgr.error("Song Forge could not load the routed reference.")
+            return None
+        asset_id = self._register_routed_artifact(artifact, "song_forge")
+        suffix = " and added to the project" if asset_id else ""
+        self.toast_mgr.info(
+            f"Reference loaded in Song Forge: {artifact.context_summary()}{suffix}"
+        )
+        return artifact
+
     def _on_midi_to_forge(self, audio_path: str):
         """Route rendered MIDI audio to Song Forge as reference."""
-        self._sidebar.select_page(1)
-        self.toast_mgr.info("MIDI render sent to Song Forge as reference")
+        return self._route_to_forge_reference(audio_path, "midi_studio")
 
     def _on_send_to_vocals(self, audio_path: str):
         """Route audio from Song Forge/MIDI Studio to Vocal Suite."""
+        artifact = self._build_route_artifact(audio_path, "song_forge")
+        if artifact is None:
+            return None
         self._sidebar.select_page(3)  # Switch to Vocals page
-        self._vocal_suite_view.set_audio(audio_path)
-        self.toast_mgr.info("Audio sent to Vocal Suite")
+        self._vocal_suite_view.set_audio(artifact.path)
+        asset_id = self._register_routed_artifact(artifact, "vocal_suite")
+        suffix = " and added to the project" if asset_id else ""
+        self.toast_mgr.info(
+            f"Audio selected in Vocal Suite: {artifact.context_summary()}{suffix}"
+        )
+        return artifact
 
     def _on_vocal_to_forge(self, audio_path: str):
         """Route processed vocals back to Song Forge."""
-        self._sidebar.select_page(1)
-        self.toast_mgr.info("Vocals sent to Song Forge as reference")
+        return self._route_to_forge_reference(audio_path, "vocal_suite")
 
     def _on_vocal_to_mixer(self, audio_path: str):
         """Route vocals to Mixer."""
-        self._sidebar.select_page(5)
-        self._mixer_view.add_track_from_file(audio_path)
-        self.toast_mgr.info("Audio added to Mixer")
+        return self._route_to_mixer(audio_path, "vocal_suite")
 
     def _on_sfx_to_mixer(self, audio_path: str):
         """Route SFX to Mixer."""
+        return self._route_to_mixer(audio_path, "sfx")
+
+    def _route_to_mixer(self, audio_path: str, source_module: str):
+        artifact = self._build_route_artifact(audio_path, source_module)
+        if artifact is None:
+            return None
         self._sidebar.select_page(5)
-        self._mixer_view.add_track_from_file(audio_path)
-        self.toast_mgr.info("SFX added to Mixer")
+        before = len(self._mixer_view._tracks)
+        self._mixer_view.add_track_from_file(artifact.path)
+        if len(self._mixer_view._tracks) == before:
+            self.toast_mgr.error(f"Mixer could not import {artifact.name}.")
+            return None
+        # Select the track that was just added.
+        self._mixer_view.select_track(len(self._mixer_view._tracks) - 1)
+        asset_id = self._register_routed_artifact(artifact, "mixer")
+        suffix = " and added to the project" if asset_id else ""
+        self.toast_mgr.info(
+            f"Track added to Mixer: {artifact.context_summary()}{suffix}"
+        )
+        return artifact
 
     # ── Window Events ──────────────────────────────────────────────────────────
 
