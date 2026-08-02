@@ -32,6 +32,9 @@ All notable changes to SlunderStudio will be documented in this file.
   supersede/cancel feedback informational instead of reporting a failure.
 - Closed the audio stream and emitted `playback_finished` when the callback reaches the final buffer,
   even if the callback already marked playback as stopped.
+- Moved Mixer mastering, loudness-reference matching, dynamic EQ analysis/apply, and file decode/
+  resampling into background workers with progress updates; routed imports now finish selection and
+  project registration from the worker completion callback.
 - Marked FluidSynth sine fallbacks as demo renders with an explicit reason and kept MIDI routing buttons disabled for those previews.
 - Repaired AI Producer lyrics generation to use the canonical loaded lyrics model and structured prompts, while labeling template fallback lyrics as demo/degraded output.
 - Marshalled streamed lyrics tokens through an `InferenceWorker` signal and queued connection so the editor is updated only on its GUI thread.

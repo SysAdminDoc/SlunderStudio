@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -24,6 +25,18 @@ class LoudnessReferenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._app = QApplication.instance() or QApplication([])
+
+    @classmethod
+    def _wait_for(cls, predicate, timeout=15.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            cls._app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        cls._app.processEvents()
+        if not predicate():
+            raise AssertionError("Timed out waiting for Mixer worker")
 
     def test_short_term_lufs_tracks_windows(self):
         sr = 12000
@@ -63,6 +76,7 @@ class LoudnessReferenceTests(unittest.TestCase):
                 return_value=("", ""),
             ):
                 view._on_master_export()
+                self._wait_for(lambda: view._master_worker is None)
 
             self.assertIsNotNone(view._last_loudness_match)
             self.assertIn("Ref:", view._lufs_label.text())

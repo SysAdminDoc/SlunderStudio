@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import time
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
@@ -96,6 +97,18 @@ class RouteEndToEndTests(unittest.TestCase):
     def setUpClass(cls):
         cls._app = QApplication.instance() or QApplication([])
 
+    @classmethod
+    def _wait_for(cls, predicate, timeout=10.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            cls._app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        cls._app.processEvents()
+        if not predicate():
+            raise AssertionError("Timed out waiting for Mixer import")
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
@@ -154,12 +167,23 @@ class RouteEndToEndTests(unittest.TestCase):
         self.addCleanup(_release_lyrics_db)
 
         self.window = MainWindow()
-        self.addCleanup(self.window.deleteLater)
+        self.addCleanup(self._cleanup_window)
         self.projects = ProjectManager()
+
+    def _cleanup_window(self):
+        reference_panel = getattr(
+            getattr(self.window, "_song_forge_view", None),
+            "_ref_panel",
+            None,
+        )
+        if reference_panel is not None:
+            reference_panel.cancel_analysis()
+        self.window.deleteLater()
 
     def test_route_to_mixer_transfers_selects_and_registers(self):
         self.projects.create("Routing Project")
         artifact = self.window._on_sfx_to_mixer(str(self.audio_path))
+        self._wait_for(lambda: self.window._mixer_view._import_worker is None)
 
         self.assertIsNotNone(artifact)
         self.assertEqual(artifact.tempo, 150.0)
@@ -208,6 +232,7 @@ class RouteEndToEndTests(unittest.TestCase):
     def test_routing_without_an_open_project_still_transfers(self):
         self.projects.close()
         artifact = self.window._on_vocal_to_mixer(str(self.audio_path))
+        self._wait_for(lambda: self.window._mixer_view._import_worker is None)
         self.assertIsNotNone(artifact)
         self.assertEqual(len(self.window._mixer_view._tracks), 1)
         self.assertNotIn("added to the project",

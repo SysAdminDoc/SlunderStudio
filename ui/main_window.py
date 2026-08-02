@@ -735,17 +735,21 @@ class MainWindow(QMainWindow):
         if artifact is None:
             return None
         self._sidebar.select_page(5)
-        before = len(self._mixer_view._tracks)
-        self._mixer_view.add_track_from_file(artifact.path)
-        if len(self._mixer_view._tracks) == before:
-            self.toast_mgr.error(f"Mixer could not import {artifact.name}.")
-            return None
-        # Select the track that was just added.
-        self._mixer_view.select_track(len(self._mixer_view._tracks) - 1)
-        asset_id = self._register_routed_artifact(artifact, "mixer")
-        suffix = " and added to the project" if asset_id else ""
-        self.toast_mgr.info(
-            f"Track added to Mixer: {artifact.context_summary()}{suffix}"
+
+        def _on_import_complete(success: bool, index: int):
+            if not success:
+                self.toast_mgr.error(f"Mixer could not import {artifact.name}.")
+                return
+            self._mixer_view.select_track(index)
+            asset_id = self._register_routed_artifact(artifact, "mixer")
+            suffix = " and added to the project" if asset_id else ""
+            self.toast_mgr.info(
+                f"Track added to Mixer: {artifact.context_summary()}{suffix}"
+            )
+
+        self._mixer_view.add_track_from_file(
+            artifact.path,
+            on_complete=_on_import_complete,
         )
         return artifact
 

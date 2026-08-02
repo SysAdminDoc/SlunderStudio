@@ -1,4 +1,5 @@
 import os
+import time
 import unittest
 from unittest import mock
 
@@ -15,6 +16,18 @@ class MidSideMasteringTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._app = QApplication.instance() or QApplication([])
+
+    @classmethod
+    def _wait_for(cls, predicate, timeout=10.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            cls._app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        cls._app.processEvents()
+        if not predicate():
+            raise AssertionError("Timed out waiting for Mixer worker")
 
     def test_apply_mid_side_gain_adjusts_side_energy(self):
         left = np.array([0.4, -0.3, 0.2, -0.1], dtype=np.float32)
@@ -38,7 +51,7 @@ class MidSideMasteringTests(unittest.TestCase):
         ]).astype(np.float32)
         captured = {}
 
-        def fake_master(mixed, sample_rate, preset):
+        def fake_master(mixed, sample_rate, preset, progress_callback=None):
             captured["mid"] = preset.ms_mid_gain_db
             captured["side"] = preset.ms_side_gain_db
             captured["target_lufs"] = preset.target_lufs
@@ -59,6 +72,7 @@ class MidSideMasteringTests(unittest.TestCase):
             with mock.patch("ui.mixer_view.master_audio", side_effect=fake_master), \
                     mock.patch("ui.mixer_view.QFileDialog.getSaveFileName", return_value=("", "")):
                 view._on_master_export()
+                self._wait_for(lambda: view._master_worker is None)
 
             self.assertEqual(1.5, captured["mid"])
             self.assertEqual(-2.0, captured["side"])

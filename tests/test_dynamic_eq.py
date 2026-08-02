@@ -1,4 +1,5 @@
 import os
+import time
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -14,6 +15,18 @@ class DynamicEQTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._app = QApplication.instance() or QApplication([])
+
+    @classmethod
+    def _wait_for(cls, predicate, timeout=10.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            cls._app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        cls._app.processEvents()
+        if not predicate():
+            raise AssertionError("Timed out waiting for Mixer worker")
 
     def test_suggest_dynamic_eq_curve_is_stem_aware(self):
         sr = 22050
@@ -50,6 +63,7 @@ class DynamicEQTests(unittest.TestCase):
             before = view._tracks[0]["audio"].copy()
 
             view._on_suggest_dynamic_eq()
+            self._wait_for(lambda: view._dynamic_eq_worker is None)
 
             np.testing.assert_allclose(view._tracks[0]["audio"], before)
             self.assertIn(0, view._dynamic_eq_suggestions)
@@ -69,8 +83,10 @@ class DynamicEQTests(unittest.TestCase):
             view.add_track("Lead Vocal", stereo, sr)
             before = view._tracks[0]["audio"].copy()
             view._on_suggest_dynamic_eq()
+            self._wait_for(lambda: view._dynamic_eq_worker is None)
 
             view._dynamic_eq_preview_btn.setChecked(True)
+            self._wait_for(lambda: view._dynamic_eq_operation_worker is None)
             previewed = view._tracks[0]["audio"]
             self.assertFalse(np.allclose(before, previewed))
             # Gain-matched: the preview compares tone, not level.
@@ -81,6 +97,7 @@ class DynamicEQTests(unittest.TestCase):
             )
 
             view._dynamic_eq_preview_btn.setChecked(False)
+            self._wait_for(lambda: view._dynamic_eq_operation_worker is None)
             np.testing.assert_allclose(view._tracks[0]["audio"], before)
         finally:
             view.deleteLater()
@@ -94,8 +111,10 @@ class DynamicEQTests(unittest.TestCase):
             view.add_track("Lead Vocal", stereo, sr)
             before = view._tracks[0]["audio"].copy()
             view._on_suggest_dynamic_eq()
+            self._wait_for(lambda: view._dynamic_eq_worker is None)
 
             view._on_apply_dynamic_eq()
+            self._wait_for(lambda: view._dynamic_eq_operation_worker is None)
             self.assertFalse(np.allclose(before, view._tracks[0]["audio"]))
             self.assertTrue(view._dynamic_eq_revert_btn.isEnabled())
             self.assertIn("Revert", view._status.text())
@@ -135,6 +154,7 @@ class DynamicEQTests(unittest.TestCase):
             view.add_track("Bass", np.column_stack([bass, bass]).astype(np.float32), sr)
 
             view._on_suggest_dynamic_eq()
+            self._wait_for(lambda: view._dynamic_eq_worker is None)
             view._on_remove_track(0)
 
             self.assertIn(0, view._dynamic_eq_suggestions)

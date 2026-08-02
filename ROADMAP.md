@@ -118,27 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Mastering, dynamic EQ, import decode and resample all run on the GUI thread
-  Category: perf
-  Where: `ui/mixer_view.py:871-1004` (`_on_master_export`), `:685-717`
-    (`_on_suggest_dynamic_eq`), `:744-792` (EQ preview/apply), `:553-568` (import decode and
-    resample)
-  Problem: Mastering (shelf EQ, envelope compression, LUFS/LRA/true-peak measurement —
-    `core/mastering.py:908+`), loudness matching, dynamic EQ analysis and filtering, and file
-    decode plus resample to the project rate all run synchronously inside click handlers.
-    `core/workers.py:33-36` states that all model operations must run through the worker to avoid
-    freezing the GUI. For a three-to-six minute song these block the UI for seconds to tens of
-    seconds with no repaint — the "Mastering..." status label often never paints before the freeze.
-    Measured cost of the DSP itself on a 3-minute 48 kHz stereo buffer: EQ 0.65 s, compression
-    1.31 s, limiter 1.57 s, LUFS 0.33 s, LRA 0.32 s, true peak 1.01 s.
-  Evidence: All call paths are synchronous; `master_audio` and the renderer already accept progress
-    callbacks, so the plumbing exists.
-  Fix: Move each into `InferenceWorker` with progress wiring.
-  Acceptance: A test asserting the master-export handler returns before the DSP completes and that
-    the work happens on a worker thread.
-  Confidence: Verified (call paths); exact freeze duration is machine-dependent
-  Effort: M
-
 - [ ] P2 — Every waveform load computes a full-track mel spectrogram on the GUI thread, including 60px thumbnails
   Category: perf
   Where: `ui/waveform_widget.py:293` (`_display_audio` calls `_update_spectrogram`

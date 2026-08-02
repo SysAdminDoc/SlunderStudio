@@ -1,5 +1,7 @@
 import os
+import threading
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +25,18 @@ class MixerResamplingTests(unittest.TestCase):
         from PySide6.QtWidgets import QApplication
 
         cls.app = QApplication.instance() or QApplication([])
+
+    @classmethod
+    def _wait_for(cls, predicate, timeout=10.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            cls.app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        cls.app.processEvents()
+        if not predicate():
+            raise AssertionError("Timed out waiting for Mixer worker")
 
     def test_polyphase_resampling_preserves_duration_and_tone_pitch(self):
         source_rate = 44100
@@ -118,17 +132,80 @@ class MixerResamplingTests(unittest.TestCase):
         view.add_track("source", self._tone(44100, 220.0, 0.05), 44100)
         captured = {}
 
-        def fake_master(audio, sample_rate, _preset):
+        started = threading.Event()
+        release = threading.Event()
+        gui_thread = threading.get_ident()
+
+        def fake_master(audio, sample_rate, _preset, progress_callback=None):
             captured["shape"] = audio.shape
             captured["sample_rate"] = sample_rate
+            captured["thread"] = threading.get_ident()
+            started.set()
+            release.wait(10.0)
             return SimpleNamespace(error="test stop")
 
         with patch("ui.mixer_view.master_audio", side_effect=fake_master):
+            started_at = time.monotonic()
             view._on_master_export()
+            self.assertLess(time.monotonic() - started_at, 0.5)
+            self.assertTrue(started.wait(2.0))
+            self.assertFalse(view._master_worker is None)
+            release.set()
+            self._wait_for(lambda: view._master_worker is None)
 
         self.assertEqual(48000, captured["sample_rate"])
         self.assertEqual(2, captured["shape"][1])
+        self.assertNotEqual(gui_thread, captured["thread"])
         view.close()
+
+    def test_file_import_decodes_and_resamples_on_worker(self):
+        from ui.mixer_view import MixerView, prepare_audio_buffer
+
+        source_rate = 44100
+        source = np.column_stack([
+            self._tone(source_rate, 220.0, 0.1),
+            self._tone(source_rate, 330.0, 0.1),
+        ]).astype(np.float32)
+        started = threading.Event()
+        release = threading.Event()
+        gui_thread = threading.get_ident()
+        calls = []
+
+        def slow_prepare(audio, source_sr, target_sr, *, target_channels):
+            calls.append(threading.get_ident())
+            started.set()
+            release.wait(10.0)
+            return prepare_audio_buffer(
+                audio,
+                source_sr,
+                target_sr,
+                target_channels=target_channels,
+            )
+
+        view = MixerView(project_sample_rate=48000)
+        try:
+            with patch(
+                "ui.mixer_view.decode_audio_file",
+                return_value=(source, source_rate),
+            ), patch(
+                "ui.mixer_view.prepare_audio_buffer",
+                side_effect=slow_prepare,
+            ):
+                started_at = time.monotonic()
+                view.add_track_from_file("source.wav")
+                self.assertLess(time.monotonic() - started_at, 0.5)
+                self.assertTrue(started.wait(2.0))
+                self.assertEqual([], view._tracks)
+                release.set()
+                self._wait_for(lambda: view._import_worker is None)
+
+            self.assertEqual([4800], [len(track["audio"]) for track in view._tracks])
+            self.assertEqual(44100, view._tracks[0]["source_sr"])
+            self.assertEqual(4410, view._tracks[0]["source_frames"])
+            self.assertTrue(calls)
+            self.assertTrue(all(thread_id != gui_thread for thread_id in calls))
+        finally:
+            view.close()
 
     def test_export_uses_the_same_duration_preserving_resampler(self):
         with tempfile.TemporaryDirectory() as tmp:
