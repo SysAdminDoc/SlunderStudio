@@ -118,27 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Generated SFX is never trimmed to the requested duration
-  Category: correctness
-  Where: `engines/sfx_engine.py:195-248` (`SFXEngine.generate`)
-  Problem: `sample_size` comes from the model config — a fixed 2,097,152 samples for Stable Audio
-    Open — and `params.duration` is used only as a fallback when that key is missing.
-    `generate_diffusion_cond` always returns `sample_size` samples, and the reference implementation
-    trims to `seconds_total * sr`; this code saves the whole buffer. A 5-second request yields a
-    roughly 47-second file whose tail is whatever the model emitted past the conditioning window.
-    Downstream, `engines/ai_producer.py:838-842` (`_mix`) sets `max_len = max(len(a))` across
-    layers, so an untrimmed 47-second SFX layer on a 30-second song produces a 47-second master
-    with 17 seconds of near-solo SFX tail (`_add_sfx` at `:777-800` requests
-    `min(duration, 30)`).
-  Evidence: Read the generate path and the mix length logic; the trim step present upstream is
-    absent here.
-  Fix: After generation, `audio = audio[:int(params.duration * sample_rate)]` before normalize and
-    save.
-  Acceptance: A test asserting a 5-second request writes a file of approximately 5 seconds.
-  Confidence: Likely (the model cannot be run here; the upstream API's fixed-size output is
-    well documented) — confirm with one real generation before changing behavior
-  Effort: S
-
 - [ ] P2 — whisper-tiny can never load: the loader wants a file the registry's download never produces
   Category: correctness
   Where: `engines/audio_analyzer.py:632-651` (`load_model`), `:654-658` (`transcribe_audio`);

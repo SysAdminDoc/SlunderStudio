@@ -237,6 +237,12 @@ class SFXEngine:
             elif audio.shape[0] == 2:
                 audio = audio.T
 
+            # Stable Audio Open returns its configured sample_size even when
+            # the conditioning window is shorter. Keep the artifact bounded
+            # to the duration the caller requested before normalizing/saving.
+            target_samples = max(1, int(params.duration * sample_rate))
+            audio = audio[:target_samples]
+
             # Normalize
             peak = np.max(np.abs(audio))
             if peak > 0:

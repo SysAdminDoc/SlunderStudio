@@ -1,8 +1,13 @@
 import os
+import sys
 import tempfile
+import types
 import unittest
+import wave
 from pathlib import Path
 from unittest import mock
+
+import numpy as np
 
 from core.project import ProjectManager
 from core.provenance import (
@@ -76,6 +81,50 @@ class GenerationProvenanceTests(unittest.TestCase):
             self.assertEqual(data["seed"], 77)
             self.assertEqual(data["prompt"], "soft chime")
             self.assertEqual(data["model"]["id"], "stable-audio-open")
+
+    def test_model_sfx_is_trimmed_to_requested_duration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = SFXEngine()
+            engine._output_dir = tmp
+            engine._model = object()
+            engine._model_config = {"sample_rate": 8000, "sample_size": 800}
+
+            class _Tensor:
+                def squeeze(self):
+                    return self
+
+                def cpu(self):
+                    return self
+
+                def numpy(self):
+                    return np.ones(800, dtype=np.float32)
+
+            fake_torch = types.ModuleType("torch")
+            fake_torch.manual_seed = mock.Mock()
+            fake_torch.no_grad = mock.MagicMock()
+            generation = types.ModuleType("stable_audio_tools.inference.generation")
+            generation.generate_diffusion_cond = mock.Mock(return_value=_Tensor())
+            inference = types.ModuleType("stable_audio_tools.inference")
+            stable_audio_tools = types.ModuleType("stable_audio_tools")
+
+            with mock.patch.dict(sys.modules, {
+                "torch": fake_torch,
+                "stable_audio_tools": stable_audio_tools,
+                "stable_audio_tools.inference": inference,
+                "stable_audio_tools.inference.generation": generation,
+            }):
+                result = engine.generate(SFXParams(
+                    prompt="trim me",
+                    duration=0.05,
+                    seed=77,
+                ))
+
+            self.assertIsNone(result.error)
+            self.assertEqual((400, 2), result.audio.shape)
+            self.assertAlmostEqual(0.05, result.duration)
+            with wave.open(result.file_path, "rb") as handle:
+                self.assertEqual(400, handle.getnframes())
+                self.assertEqual(8000, handle.getframerate())
 
     def test_project_import_copies_sidecar_and_stores_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
