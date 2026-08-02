@@ -271,14 +271,17 @@ class DownloadWorker(QThread):
     def run(self):
         self._job_store.mark_running(self.job_id, "Starting download")
         try:
-            self.download_fn(
+            download_result = self.download_fn(
                 self.model_id,
                 progress_cb=self._emit_progress,
                 speed_cb=self.speed.emit,
                 downloaded_cb=self.downloaded.emit,
                 cancel_event=self._cancel_event,
             )
-            if not self._cancel_event.is_set():
+            # A download may finish and write its marker just as cancellation
+            # is requested. An explicit True result means that artifact is
+            # complete and must be retained.
+            if download_result is True or not self._cancel_event.is_set():
                 self._job_store.mark_completed(
                     self.job_id,
                     outputs={"model_id": self.model_id},

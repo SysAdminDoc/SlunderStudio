@@ -116,31 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Model Hub Cancel does not stop the download, and Resume is then a silent no-op
-  Category: ux
-  Where: `ui/model_hub.py:870-880` (`_cancel_download`), `:794-797` (`_start_download` early
-    return); `core/model_manager.py:1422-1429`
-  Problem: `download_model` checks the cancel event only before and after the single
-    `snapshot_download(**kwargs)` call — there is no per-file checkpoint. So Cancel (a) instantly
-    shows "Incomplete"/PARTIAL and toasts "download cancelled" while the worker keeps pulling the
-    remaining gigabytes, and (b) leaves the worker in `self._workers` until `snapshot_download`
-    returns, so the now-visible "Resume Download" button hits `if model_id in self._workers:
-    return` and does nothing at all, with no feedback, for potentially many minutes. If the
-    download happens to finish just after Cancel, the post-call `_raise_if_cancelled` discards the
-    completed snapshot as cancelled and writes no completion marker, throwing away the whole
-    transfer.
-  Evidence: Traced `_cancel_download -> worker.cancel()` (event only) `-> _set_status(PARTIAL)`;
-    `_download_model_locked` has exactly two `_raise_if_cancelled()` call sites, both outside the
-    transfer.
-  Fix: Keep the card in an explicit "Stopping…" state while a cancelled worker drains (and toast
-    "still stopping" if Resume is pressed then); check the cancel event inside the transfer via
-    HuggingFace's `tqdm_class` hook or per-pattern chunking; on a post-completion cancel, keep the
-    finished snapshot and write the marker.
-  Acceptance: Cancel during a stubbed multi-file download stops further file fetches; pressing
-    Resume while draining produces visible feedback rather than silence.
-  Confidence: Verified
-  Effort: M
-
 ### P2
 
 - [ ] P2 — DiffSinger renders at the model's sample rate but labels and writes the file at `params.sample_rate`

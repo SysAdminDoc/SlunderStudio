@@ -425,6 +425,8 @@ class ModelCard(QFrame):
             self._set_badge("Downloading", Palette.BLUE)
             btn.setVisible(False)
             self._dl_panel.setVisible(True)
+            self._cancel_btn.setText("Cancel")
+            self._cancel_btn.setEnabled(True)
             self._progress.setValue(0)
             self._pct_label.setText("0%")
             self._size_label.setText("Starting...")
@@ -533,6 +535,14 @@ class ModelCard(QFrame):
         """Legacy compat — route through new method."""
         self.update_download_progress(pct)
 
+    def set_download_stopping(self):
+        """Show that cancellation was requested while the worker drains."""
+        self._set_badge("Stopping...", Palette.YELLOW)
+        self._dl_panel.setVisible(True)
+        self._cancel_btn.setText("Stopping...")
+        self._cancel_btn.setEnabled(False)
+        self._size_label.setText("Finishing current transfer...")
+
 
 class ModelHubView(QWidget):
     """Model Hub page with grid of model cards, search/filter, and disk usage."""
@@ -542,6 +552,7 @@ class ModelHubView(QWidget):
         self.toast_mgr = toast_mgr
         self._cards: dict[str, ModelCard] = {}
         self._workers: dict[str, DownloadWorker] = {}
+        self._stopping_downloads: set[str] = set()
         self._activation_workers: dict[str, InferenceWorker] = {}
         self._mgr = ModelManager()
         self._job_store = JobStore()
@@ -795,6 +806,12 @@ class ModelHubView(QWidget):
     def _start_download(self, model_id: str):
         """Start or resume downloading a model in a background thread."""
         if model_id in self._workers:
+            if model_id in self._stopping_downloads and self.toast_mgr:
+                info = self._mgr.get_model_info(model_id)
+                self.toast_mgr.info(
+                    f"{info.name} download is still stopping; "
+                    "wait for cancellation to finish before resuming."
+                )
             return
 
         if self._mgr.is_offline:
@@ -869,18 +886,20 @@ class ModelHubView(QWidget):
             self._cards[model_id]._size_label.setText(size)
 
     def _cancel_download(self, model_id: str):
-        """Cancel an active download and mark as partial."""
-        if model_id in self._workers:
-            self._workers[model_id].cancel()
-        self._mgr._set_status(model_id, ModelStatus.PARTIAL)
+        """Request cancellation and keep the card in a stopping state."""
+        worker = self._workers.get(model_id)
+        if worker is None:
+            return
+        self._stopping_downloads.add(model_id)
+        worker.cancel()
         if model_id in self._cards:
-            self._cards[model_id].update_status(ModelStatus.PARTIAL)
-        self._update_recovery_banner()
+            self._cards[model_id].set_download_stopping()
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
-            self.toast_mgr.info(f"{info.name} download cancelled.")
+            self.toast_mgr.info(f"Stopping {info.name} download...")
 
     def _on_download_cancelled(self, model_id: str):
+        self._stopping_downloads.discard(model_id)
         if model_id in self._workers:
             del self._workers[model_id]
         self._mgr._set_status(model_id, ModelStatus.PARTIAL)
@@ -889,16 +908,25 @@ class ModelHubView(QWidget):
         self._update_recovery_banner()
 
     def _on_download_finished(self, model_id: str):
+        self._stopping_downloads.discard(model_id)
         if model_id in self._workers:
             del self._workers[model_id]
+        if model_id in self._cards:
+            self._cards[model_id].update_status(self._mgr.get_status(model_id))
         self._update_recovery_banner()
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
             self.toast_mgr.success(f"{info.name} downloaded successfully!")
 
     def _on_download_error(self, model_id: str, error: str):
+        was_stopping = model_id in self._stopping_downloads
+        self._stopping_downloads.discard(model_id)
         if model_id in self._workers:
             del self._workers[model_id]
+        if was_stopping:
+            self._mgr._set_status(model_id, ModelStatus.PARTIAL)
+            if model_id in self._cards:
+                self._cards[model_id].update_status(ModelStatus.PARTIAL)
         self._update_recovery_banner()
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)

@@ -1307,7 +1307,7 @@ class ModelManager(QObject):
             self.download_completed.emit(model_id)
             if progress_cb:
                 progress_cb(100)
-            return
+            return True
 
         if not info.source:
             raise ValueError(f"No download source for model: {model_id}")
@@ -1332,7 +1332,20 @@ class ModelManager(QObject):
 
         try:
             from huggingface_hub import snapshot_download
+            from tqdm.auto import tqdm as _BaseTqdm
             import time as _time
+
+            class _CancelableTqdm(_BaseTqdm):
+                """Abort HF transfer progress at the next downloaded chunk."""
+
+                def __init__(self, *args, **kwargs):
+                    _raise_if_cancelled()
+                    kwargs.setdefault("disable", True)
+                    super().__init__(*args, **kwargs)
+
+                def update(self, n=1):
+                    _raise_if_cancelled()
+                    return super().update(n)
 
             _raise_if_cancelled()
 
@@ -1343,6 +1356,10 @@ class ModelManager(QObject):
                 "cache_dir": cache_dir,
                 "local_dir": str(cache_path),
                 "revision": info.revision,
+                # A single transfer worker makes cancellation deterministic:
+                # once the active file raises, no queued file can begin.
+                "max_workers": 1,
+                "tqdm_class": _CancelableTqdm,
             }
 
             if info.allow_patterns:
@@ -1426,8 +1443,6 @@ class ModelManager(QObject):
                 _download_done.set()
                 poll_thread.join(timeout=2)
 
-            _raise_if_cancelled()
-
             # -- Write completion marker --
             resolved_revision = self._resolve_hf_revision(info, kwargs.get("token"))
             self._write_complete_marker(
@@ -1441,6 +1456,7 @@ class ModelManager(QObject):
             self.download_completed.emit(model_id)
             if progress_cb:
                 progress_cb(100)
+            return True
 
         except Exception as e:
             if cancel_event and cancel_event.is_set():
