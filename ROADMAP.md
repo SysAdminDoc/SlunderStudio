@@ -34,13 +34,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Bound recovery artifacts and expose one recovery center
-  Why: Jobs, crash logs, settings backups, and project versions can grow indefinitely and recovery actions are fragmented.
-  Evidence: `core/job_state.py`, `core/settings.py`, `core/project.py`, log/crash paths; Ableton recovery and YuE-UI saved sessions.
-  Touches: retention settings, job/log/version stores, recovery UI, diagnostics, cleanup tests.
-  Acceptance: Age/count/size policies have safe defaults and dry-run previews; active/recoverable records are never pruned; users can inspect, retry, resume, discard, restore, or reveal artifacts from one screen with redacted failure details.
-  Complexity: M
-
 - [ ] P1 — Make cross-module routing transfer real artifacts and context
   Why: Some routes only switch pages and show a toast while discarding the selected file or MIDI context.
   Evidence: `ui/main_window.py:486-501`; current SFX/Vocal-to-Mixer routes; Hacker News demand for granular DAW-style handoff.

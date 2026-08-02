@@ -51,6 +51,14 @@ DEFAULTS = {
         "max_cache_gb": 20.0,
         "trash_retention_days": 30,
     },
+    "retention": {
+        # Age/count/size caps for recovery artifacts. 0 means no limit.
+        "jobs": {"max_age_days": 30, "max_count": 500, "max_total_mb": 0},
+        "job_logs": {"max_age_days": 30, "max_count": 500, "max_total_mb": 200},
+        "crash_logs": {"max_age_days": 90, "max_count": 50, "max_total_mb": 50},
+        "settings_backups": {"max_age_days": 90, "max_count": 40, "max_total_mb": 20},
+        "project_versions": {"max_age_days": 0, "max_count": 20, "max_total_mb": 0},
+    },
     "model_hub": {
         "cache_dir": "",
         "offline_mode": False,

@@ -272,6 +272,21 @@ class JobStore:
     def _log_cleanup_rejection(candidate: Any, reason: str) -> None:
         logger.warning("Skipped unsafe job output cleanup (%s): %r", reason, candidate)
 
+    def delete(self, job_id: str) -> bool:
+        """Remove one finished job record. Active jobs are never deleted."""
+        with self._lock:
+            records = self._read()
+            keep = []
+            removed = False
+            for record in records:
+                if record.id == job_id and record.status not in ACTIVE_STATUSES:
+                    removed = True
+                    continue
+                keep.append(record)
+            if removed:
+                self._write(keep)
+            return removed
+
     def _update(self, job_id: str, **changes: Any) -> Optional[JobRecord]:
         with self._lock:
             records = self._read()

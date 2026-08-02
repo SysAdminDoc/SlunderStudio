@@ -6,7 +6,7 @@ All changes apply immediately with toast feedback.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QScrollArea, QComboBox, QLineEdit, QPushButton,
-    QSpinBox, QDoubleSpinBox, QCheckBox, QSlider,
+    QSpinBox, QDoubleSpinBox, QCheckBox, QSlider, QListWidget,
     QFileDialog, QGroupBox, QFormLayout, QTabWidget,
 )
 from PySide6.QtCore import Qt
@@ -51,6 +51,7 @@ class SettingsView(QWidget):
         super().__init__(parent)
         self.toast_mgr = toast_mgr
         self._settings = Settings()
+        self._recovery = None
         self._build_ui()
         self._load_values()
         self._install_accessibility()
@@ -408,10 +409,133 @@ class SettingsView(QWidget):
         ))
 
         layout.addWidget(cache_group)
+        layout.addWidget(self._build_recovery_center())
 
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
+
+    def _build_recovery_center(self) -> QGroupBox:
+        """One screen for every recovery artifact: inspect, preview, clean."""
+        group = QGroupBox("Recovery Center")
+        layout = QVBoxLayout(group)
+
+        intro = QLabel(
+            "Jobs, logs, crash reports, settings backups, and project versions "
+            "are bounded by age, count, and size. Preview always runs first; "
+            "active, recoverable, and pre-restore records are never removed."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px;")
+        layout.addWidget(intro)
+
+        self._recovery_list = QListWidget()
+        self._recovery_list.setMinimumHeight(140)
+        layout.addWidget(self._recovery_list)
+
+        self._recovery_status = QLabel("")
+        self._recovery_status.setWordWrap(True)
+        self._recovery_status.setStyleSheet(
+            f"color: {Palette.SUBTEXT0}; font-size: 11px;"
+        )
+        layout.addWidget(self._recovery_status)
+
+        row = QHBoxLayout()
+        self._recovery_refresh_btn = QPushButton("Refresh")
+        self._recovery_refresh_btn.setObjectName("secondaryBtn")
+        self._recovery_refresh_btn.clicked.connect(self._refresh_recovery_center)
+
+        self._recovery_preview_btn = QPushButton("Preview Cleanup")
+        self._recovery_preview_btn.setObjectName("secondaryBtn")
+        self._recovery_preview_btn.clicked.connect(self._preview_recovery_cleanup)
+
+        self._recovery_clean_btn = QPushButton("Clean Now")
+        self._recovery_clean_btn.setObjectName("dangerBtn")
+        self._recovery_clean_btn.setEnabled(False)
+        self._recovery_clean_btn.clicked.connect(self._run_recovery_cleanup)
+
+        self._recovery_reveal_btn = QPushButton("Open Config Folder")
+        self._recovery_reveal_btn.setObjectName("secondaryBtn")
+        self._recovery_reveal_btn.clicked.connect(self._open_config_dir)
+
+        for button in (
+            self._recovery_refresh_btn, self._recovery_preview_btn,
+            self._recovery_clean_btn, self._recovery_reveal_btn,
+        ):
+            button.setFixedHeight(30)
+            row.addWidget(button)
+        row.addStretch()
+        layout.addLayout(row)
+        return group
+
+    def _recovery_center(self):
+        from core.retention import RecoveryCenter
+
+        if getattr(self, "_recovery", None) is None:
+            self._recovery = RecoveryCenter(self._settings)
+        return self._recovery
+
+    def _refresh_recovery_center(self):
+        from core.retention import CATEGORIES, CATEGORY_LABELS, load_policy
+
+        self._recovery_list.clear()
+        center = self._recovery_center()
+        total_bytes = 0
+        for category in CATEGORIES:
+            try:
+                items = center.collect(category)
+            except Exception as exc:
+                self._recovery_list.addItem(
+                    f"{CATEGORY_LABELS[category]}: unavailable ({exc})"
+                )
+                continue
+            size = sum(item.size_bytes for item in items)
+            total_bytes += size
+            protected = sum(1 for item in items if item.protected)
+            policy = load_policy(category, self._settings)
+            self._recovery_list.addItem(
+                f"{CATEGORY_LABELS[category]}: {len(items)} item(s), "
+                f"{size / 1e6:.1f} MB, {protected} protected - keeps "
+                f"{policy.describe()}"
+            )
+        self._recovery_status.setText(
+            f"Recovery artifacts use {total_bytes / 1e6:.1f} MB."
+        )
+        self._recovery_clean_btn.setEnabled(False)
+
+    def _preview_recovery_cleanup(self):
+        center = self._recovery_center()
+        self._recovery_list.clear()
+        removable = 0
+        freed = 0
+        for category, plan in center.preview_all().items():
+            self._recovery_list.addItem(plan.summary())
+            removable += len(plan.remove)
+            freed += plan.removed_bytes
+        self._recovery_status.setText(
+            f"Preview only - nothing removed. {removable} item(s) would be "
+            f"removed, freeing {freed / 1e6:.1f} MB."
+            if removable else "Preview only - nothing needs removing."
+        )
+        self._recovery_clean_btn.setEnabled(removable > 0)
+
+    def _run_recovery_cleanup(self):
+        from core.retention import CATEGORY_LABELS
+
+        center = self._recovery_center()
+        removed = center.clean_all()
+        lines = [
+            f"{CATEGORY_LABELS[category]}: removed {len(items)}"
+            for category, items in removed.items() if items
+        ]
+        total = sum(len(items) for items in removed.values())
+        self._refresh_recovery_center()
+        self._recovery_status.setText(
+            f"Removed {total} item(s). " + " | ".join(lines)
+            if total else "Nothing needed removing."
+        )
+        if self.toast_mgr:
+            self.toast_mgr.success(f"Recovery cleanup removed {total} item(s).")
 
     def _load_values(self):
         """Load current settings into UI controls."""
@@ -498,6 +622,7 @@ class SettingsView(QWidget):
                 w.blockSignals(False)
         self._update_repair_status()
         self._refresh_credential_status()
+        self._refresh_recovery_center()
 
     def _save(self, key: str, value):
         """Save a setting and show toast."""
