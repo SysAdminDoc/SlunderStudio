@@ -14,6 +14,7 @@ import numpy as np
 
 from ui.theme import ThemeEngine
 from ui.waveform_widget import MiniWaveform
+from core.panning import pan_gains
 
 
 # ── Stem Colors ────────────────────────────────────────────────────────────────
@@ -319,9 +320,8 @@ class StemMixer(QWidget):
             vol = strip.volume
             pan = strip.pan  # -1.0 to 1.0
 
-            # Pan law (constant power)
-            left_gain = vol * np.cos(max(0, pan) * np.pi / 2)
-            right_gain = vol * np.cos(max(0, -pan) * np.pi / 2)
+            # Constant-power pan law, shared with the other mixer.
+            left_gain, right_gain = pan_gains(pan, vol)
 
             output[:length, 0] += audio[:length, 0] * left_gain
             output[:length, 1] += audio[:length, 1] * right_gain

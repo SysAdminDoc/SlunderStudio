@@ -68,12 +68,3 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
   Touches: settings schema/consumers, onboarding dialog and readiness probes, first-run state, copy, tests.
   Acceptance: Every visible setting has a tested consumer or is removed; dismissing onboarding does not mark completion; readiness distinguishes installed/downloaded/loadable/loaded/offline/error; disk/VRAM estimates and reopen steps match the selected engine.
   Complexity: M
-
-### P3
-
-- [ ] P3 — Correct constant-power pan in both mixers
-  Why: The duplicated cosine formula does not implement the documented constant-power law.
-  Evidence: `ui/mixer_view.py:660-663`, `ui/stem_mixer.py:320-324`.
-  Touches: shared pan utility, Mixer, Stem Mixer, audio fixtures.
-  Acceptance: Center produces equal −3 dB gains, endpoints fully attenuate the opposite channel, mono energy remains constant within tolerance, and both mixers use the same tested implementation.
-  Complexity: S

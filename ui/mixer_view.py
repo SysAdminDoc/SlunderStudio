@@ -19,6 +19,7 @@ import numpy as np
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 from ui.waveform_widget import WaveformWidget, MiniWaveform
+from core.panning import pan_gains
 from core.audio_export import (
     DELIVERY_FORMATS,
     ExportSettings,
@@ -853,8 +854,8 @@ class MixerView(QWidget):
             vol = strip.volume
             pan = strip.pan
 
-            left_gain = vol * np.cos(max(0, pan) * np.pi / 2)
-            right_gain = vol * np.cos(max(0, -pan) * np.pi / 2)
+            # Constant-power pan law, shared with the other mixer.
+            left_gain, right_gain = pan_gains(pan, vol)
 
             output[:length, 0] += audio[:length, 0] * left_gain
             output[:length, 1] += audio[:length, 1] * right_gain
