@@ -118,23 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — MIDI Studio to Vocal Suite routes are provenance-labelled "song_forge"
-  Category: correctness
-  Where: `ui/main_window.py:699-711` (`_on_send_to_vocals`), connected from both `:528`
-    (Song Forge) and `:534` (MIDI Studio)
-  Problem: The shared slot hardcodes `self._build_route_artifact(audio_path, "song_forge")`, so
-    artifacts routed from MIDI Studio carry `source_module="song_forge"` into the toast, the project
-    asset registration and the `RoutedArtifact` context — mislabelled provenance in the very
-    feature that was added to carry provenance. `_on_midi_to_forge` (`:695-697`) passes
-    `"midi_studio"` correctly for the opposite direction, so the two disagree.
-  Evidence: `grep -n send_to_vocals ui/*.py` confirms both `ui/song_forge_view.py:157` and
-    `ui/midi_studio_view.py:73` emit into the same slot.
-  Fix: Connect each source with its own module string (a bound lambda or two thin slots).
-  Acceptance: Extend `tests/test_cross_module_routing.py` — routing from MIDI Studio yields
-    `source_module == "midi_studio"`.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P2 — A superseded model activation is reported to the user as a failure
   Category: correctness
   Where: `ui/model_hub.py:944-953` (`_on_activation_finished`); `core/model_manager.py:1035-1041`;

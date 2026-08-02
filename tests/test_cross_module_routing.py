@@ -193,6 +193,12 @@ class RouteEndToEndTests(unittest.TestCase):
         label = self.window._vocal_suite_view._stem_input_label
         self.assertEqual(label.property("path"), artifact.path)
 
+    def test_midi_to_vocal_suite_route_preserves_source_module(self):
+        artifact = self.window._on_midi_to_vocals(str(self.audio_path))
+
+        self.assertIsNotNone(artifact)
+        self.assertEqual("midi_studio", artifact.source_module)
+
     def test_a_missing_file_reports_instead_of_silently_switching_pages(self):
         missing = str(self.root / "gone.wav")
         self.assertIsNone(self.window._on_sfx_to_mixer(missing))

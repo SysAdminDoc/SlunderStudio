@@ -525,13 +525,13 @@ class MainWindow(QMainWindow):
 
         # Page 1: Song Forge (Phase 3)
         self._song_forge_view = SongForgeView(toast_mgr=self.toast_mgr)
-        self._song_forge_view.send_to_vocals.connect(self._on_send_to_vocals)
+        self._song_forge_view.send_to_vocals.connect(self._on_song_forge_to_vocals)
         self._pages.addWidget(self._song_forge_view)
 
         # Page 2: MIDI Studio (Phase 4)
         self._midi_studio_view = MidiStudioView()
         self._midi_studio_view.send_to_forge.connect(self._on_midi_to_forge)
-        self._midi_studio_view.send_to_vocals.connect(self._on_send_to_vocals)
+        self._midi_studio_view.send_to_vocals.connect(self._on_midi_to_vocals)
         self._pages.addWidget(self._midi_studio_view)
 
         # Page 3: Vocals (Phase 5)
@@ -696,9 +696,17 @@ class MainWindow(QMainWindow):
         """Route rendered MIDI audio to Song Forge as reference."""
         return self._route_to_forge_reference(audio_path, "midi_studio")
 
-    def _on_send_to_vocals(self, audio_path: str):
-        """Route audio from Song Forge/MIDI Studio to Vocal Suite."""
-        artifact = self._build_route_artifact(audio_path, "song_forge")
+    def _on_song_forge_to_vocals(self, audio_path: str):
+        """Route Song Forge audio to Vocal Suite."""
+        return self._on_send_to_vocals(audio_path, "song_forge")
+
+    def _on_midi_to_vocals(self, audio_path: str):
+        """Route rendered MIDI audio to Vocal Suite."""
+        return self._on_send_to_vocals(audio_path, "midi_studio")
+
+    def _on_send_to_vocals(self, audio_path: str, source_module: str = "song_forge"):
+        """Route audio from Song Forge or MIDI Studio to Vocal Suite."""
+        artifact = self._build_route_artifact(audio_path, source_module)
         if artifact is None:
             return None
         self._sidebar.select_page(3)  # Switch to Vocals page
