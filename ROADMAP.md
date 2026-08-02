@@ -118,26 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — FluidSynth's shared synth carries reverb tail and channel state into the next render
-  Category: correctness
-  Where: `engines/fluidsynth_engine.py:149-194` (`render_to_numpy`), singleton at `:347-354`
-  Problem: Rendering stops sampling immediately after the last chunk. CC 123 stops notes, but the
-    synth's reverb and chorus buffers and the note releases still hold energy, and the singleton is
-    reused for the next render — so the opening samples of render B contain the decaying tail of
-    render A (up to the roughly 1 s release window plus reverb time, audible at the default
-    `reverb_room=0.6`). Program selections persist across renders too, mostly masked by the t=0
-    program events. Latent secondary defect: the `channels == 1` branch (`:175-176`) reshapes
-    FluidSynth's always-interleaved stereo output to `(2*n, 1)`, which would raise a broadcast
-    `ValueError` at `:180` — unreachable today because no caller sets `channels=1`
-    (`RenderSettings` is never customized in `ui/`), but it will break the first time mono render
-    is wired up.
-  Fix: Drain and discard a release window of samples after the event loop, or call
-    `Synth.system_reset()` (or recreate the synth) per render; delete or fix the mono branch.
-  Acceptance: A test rendering a dense passage then a silent one finds the second render's opening
-    samples silent.
-  Confidence: Likely (standard FluidSynth state behavior; not executed here)
-  Effort: S
-
 - [ ] P2 — Fixed pixel widths clip user data today and will clip harder once translated
   Category: ux
   Where: `ui/mixer_view.py:92-93` (track-name `QLabel`, `setFixedWidth(80)`, 11px bold, no elide

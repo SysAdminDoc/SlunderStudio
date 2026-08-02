@@ -14,6 +14,8 @@ All notable changes to SlunderStudio will be documented in this file.
   validation and generation coverage for edited template assets.
 - Marked failed or empty Demucs separations as unsuccessful so inference workers persist them as
   failed jobs instead of completed records.
+- Reset shared FluidSynth state around renders to prevent reverb tails leaking into the next job,
+  and fixed mono rendering to downmix the synthesizer's stereo frames safely.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

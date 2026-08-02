@@ -112,6 +112,26 @@ class FluidSynthEngine:
         self._soundfont_id = sf_id
         self._soundfont_path = soundfont_path
 
+    def _reset_synth_state(self):
+        """Clear voices and effect state before the next render."""
+        if self._synth is None:
+            return
+
+        system_reset = getattr(self._synth, "system_reset", None)
+        if callable(system_reset):
+            try:
+                result = system_reset()
+                if result is None or result >= 0:
+                    return
+            except (AttributeError, RuntimeError):
+                pass
+
+        # Older bindings may not expose system_reset. Discard a release/effect
+        # window after all-notes-off so it cannot become the next render's pre-roll.
+        for channel in range(16):
+            self._synth.cc(channel, 123, 0)
+        self._synth.get_samples(max(1, int(self._settings.sample_rate * 2.0)))
+
     def render_to_numpy(self, midi_data: MidiData,
                         mute_tracks: Optional[set[int]] = None,
                         solo_track: Optional[int] = None,
@@ -124,6 +144,9 @@ class FluidSynthEngine:
             raise RuntimeError("FluidSynth not initialized. Call initialize() first.")
 
         s = self._settings
+        if s.channels not in (1, 2):
+            raise ValueError("FluidSynth rendering supports mono or stereo output")
+        self._reset_synth_state()
         duration = midi_data.duration + 1.0  # extra second for release
         total_samples = int(duration * s.sample_rate)
 
@@ -181,13 +204,12 @@ class FluidSynthEngine:
             remaining = min(chunk_size, total_samples - sample_pos)
             samples = self._synth.get_samples(remaining)
 
-            # FluidSynth returns interleaved stereo int16
-            if s.channels == 2:
-                chunk = np.frombuffer(samples, dtype=np.int16).reshape(-1, 2)
+            # FluidSynth returns interleaved stereo int16 even for mono output.
+            stereo = np.frombuffer(samples, dtype=np.int16).reshape(-1, 2)
+            if s.channels == 1:
+                chunk_f = stereo.astype(np.float32).mean(axis=1, keepdims=True) / 32768.0
             else:
-                chunk = np.frombuffer(samples, dtype=np.int16).reshape(-1, 1)
-
-            chunk_f = chunk.astype(np.float32) / 32768.0
+                chunk_f = stereo.astype(np.float32) / 32768.0
             end_pos = sample_pos + chunk_f.shape[0]
             output[sample_pos:end_pos] = chunk_f
             sample_pos = end_pos
@@ -196,9 +218,7 @@ class FluidSynthEngine:
                 prog = 0.1 + 0.85 * (sample_pos / total_samples)
                 progress_callback(prog, f"Rendering... {int(prog * 100)}%")
 
-        # All notes off
-        for ch in range(16):
-            self._synth.cc(ch, 123, 0)  # All notes off
+        self._reset_synth_state()
 
         if progress_callback:
             progress_callback(1.0, "Render complete")
