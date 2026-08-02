@@ -116,38 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Three primary buttons do nothing: Vocal Suite "Export WAV", Seed Explorer "Export Starred", and every per-item Play
-  Category: ux
-  Where: `ui/vocal_suite_view.py:142-153` and `:2169-2171` (`_on_export`);
-    `ui/seed_explorer.py:354-369` (`_export_starred`); `ui/sfx_view.py:36, 104-106, 608-613`
-    (`SFXCard.play_requested`); `ui/stem_mixer.py:41, 95-97, 212-213, 271-273` (`stem_play`)
-  Problem: Four separate handlers claim work they never do.
-    (a) Vocal Suite's green "Export WAV" button runs
-    `self._status.setText(f"Audio available at: {self._current_audio_path}")` — no save dialog, no
-    copy, no file written. Song Forge's Export on the same screen family opens a save dialog and
-    writes the file (`ui/song_forge_view.py:1015-1040`), so siblings disagree. The accessible
-    description at `:219` even admits it ("Shows the current vocal output path").
-    (b) Seed Explorer's `_export_starred` sets the label to "Exporting {n} starred variations..."
-    and then returns — no copy, no signal, no dialog; there is not even a signal a parent could
-    connect to. `star_toggled` (`:21`) and `zoom_requested`/`zoom_into` (`:371-386`) are likewise
-    orphaned.
-    (c) `SFXCard.play_requested` is emitted by its Play button, but `_add_result_card` connects
-    only `use_requested` and `delete_requested` — no consumer anywhere in the repo.
-    (d) `StemMixer.stem_play`: strips forward `play_requested` into `stem_play`, but the only
-    consumer of StemMixer (`ui/vocal_suite_view.py:1092-1094`) connects only `remix_requested`.
-  Evidence: Repo-wide grep for `play_requested` and `stem_play` finds no connection outside the
-    emitting classes; both export handlers read as quoted above.
-  Fix: Wire the two Play signals to the shared `AudioEngine` (`load_file`/`load_array` + `play`) as
-    `ui/batch_view.py` and `ui/song_forge_view.py` already do; implement Vocal Suite export through
-    `core.audio_export` with a save dialog, mirroring Song Forge; implement starred export as a
-    directory-pick plus copy of each starred `audio_path` and its provenance sidecar — and only
-    show the "Exporting…" message once files are actually landing.
-  Acceptance: Clicking each control produces its effect in a headless test (a file exists at the
-    chosen path; `AudioEngine.load_file` was called with the card's path). No user-facing string
-    announces an action that did not happen.
-  Confidence: Verified
-  Effort: M
-
 - [ ] P1 — Play silently replays the previous track when the requested file cannot be loaded
   Category: correctness
   Where: `ui/song_forge_view.py:1000-1007` (`_play_audio`, also wired to Batch cards `:495` and

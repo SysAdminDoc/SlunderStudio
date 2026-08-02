@@ -24,6 +24,7 @@ from core.engine_contract import (
     adapt_engine_result,
 )
 from core.model_manager import ModelManager
+from core.audio_engine import AudioEngine
 from core.workers import CancelledJobError, InferenceWorker
 from engines.sfx_engine import SFXParams, SFXResult, SFX_CATEGORIES
 
@@ -607,10 +608,28 @@ class SFXView(QWidget):
 
     def _add_result_card(self, result: SFXResult):
         card = SFXCard(result)
+        card.play_requested.connect(self._on_play_sfx)
         card.use_requested.connect(self._on_use_sfx)
         card.delete_requested.connect(self._on_delete_card)
         self._cards.append(card)
         self._results_layout.insertWidget(self._results_layout.count() - 1, card)
+
+    def _on_play_sfx(self, result: SFXResult):
+        try:
+            engine = AudioEngine()
+            if result.file_path:
+                loaded = engine.load_file(result.file_path)
+            elif result.audio is not None:
+                loaded = engine.load_array(result.audio, result.sample_rate)
+            else:
+                loaded = False
+            if not loaded:
+                self._status.setText("Could not load SFX audio for playback")
+                return
+            engine.play()
+            self._status.setText("Playing SFX preview")
+        except Exception as exc:
+            self._status.setText(f"SFX playback error: {exc}")
 
     def _on_use_sfx(self, result: SFXResult):
         if result.file_path and result.can_route:

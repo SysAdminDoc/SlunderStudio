@@ -2,6 +2,8 @@ import os
 import tempfile
 import unittest
 import wave
+from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -10,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from engines.audio_analyzer import QualityScore, score_generation_quality
+from core.provenance import sidecar_path_for
 from ui.batch_view import BatchView
 from ui.seed_explorer import SeedExplorer
 
@@ -137,6 +140,30 @@ class SeedExplorerTests(unittest.TestCase):
         self.assertEqual(params[-1]["seed"], 1050)
         self.assertEqual(params[0]["shift"], 1.0)
         self.assertEqual(params[-1]["shift"], 3.0)
+
+    def test_export_starred_copies_audio_and_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "generated.wav"
+            destination = root / "exported"
+            destination.mkdir()
+            _write_test_wav(str(source), duration=0.2)
+            sidecar_path_for(source).write_text('{"test": true}', encoding="utf-8")
+
+            explorer = SeedExplorer()
+            explorer._cells[0][0].set_result(str(source), seed=123)
+            explorer._cells[0][0]._toggle_star()
+
+            with mock.patch(
+                "ui.seed_explorer.QFileDialog.getExistingDirectory",
+                return_value=str(destination),
+            ):
+                explorer._export_starred()
+
+            exported = destination / "seed_0_0_123.wav"
+            self.assertTrue(exported.is_file())
+            self.assertTrue(sidecar_path_for(exported).is_file())
+            self.assertIn("Exported 1 starred", explorer._info.text())
 
 
 if __name__ == "__main__":

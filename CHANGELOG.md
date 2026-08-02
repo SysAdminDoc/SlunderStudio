@@ -2,8 +2,10 @@
 
 All notable changes to SlunderStudio will be documented in this file.
 
-## Unreleased - 2026-07-29
+## Unreleased - 2026-08-02
 
+- Wired Vocal Suite WAV export, Seed Explorer starred variation export with provenance sidecars,
+  SFX card playback, and Stem Mixer per-stem playback to their real audio effects.
 - Marked FluidSynth sine fallbacks as demo renders with an explicit reason and kept MIDI routing buttons disabled for those previews.
 - Repaired AI Producer lyrics generation to use the canonical loaded lyrics model and structured prompts, while labeling template fallback lyrics as demo/degraded output.
 - Marshalled streamed lyrics tokens through an `InferenceWorker` signal and queued connection so the editor is updated only on its GUI thread.

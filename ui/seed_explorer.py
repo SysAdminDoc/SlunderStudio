@@ -3,15 +3,19 @@ Slunder Studio — Seed Interpolation Explorer
 2D grid where each cell represents a generation with varying parameters.
 Progressive generation, click to play, star favorites, zoom into regions.
 """
+import shutil
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel,
     QSpinBox, QDoubleSpinBox, QFrame, QScrollArea, QComboBox,
-    QSlider,
+    QSlider, QFileDialog,
 )
 from PySide6.QtCore import Signal, Qt
 
 from ui.theme import Palette
 from ui.waveform_widget import MiniWaveform
+from core.provenance import sidecar_path_for
 
 
 class SeedCell(QFrame):
@@ -352,7 +356,7 @@ class SeedExplorer(QWidget):
                 c.reset_playing()
 
     def _export_starred(self):
-        """Get all starred results."""
+        """Copy starred audio results and any adjacent provenance sidecars."""
         starred = []
         for r in self._cells:
             for c in r:
@@ -364,7 +368,45 @@ class SeedExplorer(QWidget):
                         "col": c.col,
                     })
         if starred:
-            self._info.setText(f"Exporting {len(starred)} starred variations...")
+            destination = QFileDialog.getExistingDirectory(
+                self, "Export Starred Variations"
+            )
+            if not destination:
+                return
+
+            copied = 0
+            sidecars = 0
+            skipped = 0
+            destination_path = Path(destination)
+            for item in starred:
+                source = Path(item["audio_path"])
+                if not source.is_file():
+                    skipped += 1
+                    continue
+
+                target = destination_path / (
+                    f"seed_{item['row']}_{item['col']}_{item['seed']}{source.suffix}"
+                )
+                if target.resolve() == source.resolve():
+                    target = target.with_name(f"{target.stem}_export{target.suffix}")
+                try:
+                    shutil.copy2(source, target)
+                    copied += 1
+                    source_sidecar = sidecar_path_for(source)
+                    if source_sidecar.is_file():
+                        shutil.copy2(source_sidecar, sidecar_path_for(target))
+                        sidecars += 1
+                except OSError:
+                    skipped += 1
+
+            if copied:
+                detail = f"; skipped {skipped}" if skipped else ""
+                self._info.setText(
+                    f"Exported {copied} starred variation(s) to {destination}"
+                    f" ({sidecars} provenance sidecar(s){detail})"
+                )
+            else:
+                self._info.setText("No starred audio files were available to export")
         else:
             self._info.setText("No starred cells to export")
 

@@ -26,6 +26,7 @@ from core.i18n import (
     tr,
 )
 from core.settings import Settings
+from core.audio_engine import AudioEngine
 from core.voice_bank import VOICE_OPERATION_CLONE, VOICE_OPERATION_CONVERSION, VoiceBank, VoiceProfile
 from core.workers import CancelledJobError, InferenceWorker
 from core.engine_contract import (
@@ -1091,6 +1092,7 @@ class VocalSuiteView(QWidget):
         # Stem mixer
         self._stem_mixer = StemMixer()
         self._stem_mixer.remix_requested.connect(self._on_remix_export)
+        self._stem_mixer.stem_play.connect(self._on_play_stem)
         layout.addWidget(self._stem_mixer, 1)
 
         return widget
@@ -2166,9 +2168,52 @@ class VocalSuiteView(QWidget):
             self._status.setText(f"Remix exported: {path}")
             self._enable_routing()
 
+    def _on_play_stem(self, stem_name: str):
+        strip = self._stem_mixer._strips.get(stem_name)
+        if strip is None or strip.audio is None:
+            self._status.setText(f"No audio is available for the {stem_name} stem")
+            return
+
+        try:
+            engine = AudioEngine()
+            if not engine.load_array(strip.audio, self._stem_mixer._sample_rate):
+                self._status.setText(f"Could not load the {stem_name} stem for playback")
+                return
+            engine.play()
+            self._status.setText(f"Playing {stem_name} stem")
+        except Exception as exc:
+            self._status.setText(f"Playback error: {exc}")
+
     def _on_export(self):
-        if self._current_audio_path:
-            self._status.setText(f"Audio available at: {self._current_audio_path}")
+        if not self._current_audio_path:
+            self._status.setText("No vocal audio is available to export")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Vocal WAV", "vocal_output.wav", "WAV (*.wav)"
+        )
+        if not path:
+            return
+
+        try:
+            from core.audio_export import (
+                ExportSettings,
+                export_audio,
+                get_export_license_warnings,
+            )
+
+            warnings = get_export_license_warnings(self._current_audio_path)
+            output = export_audio(
+                self._current_audio_path,
+                path,
+                ExportSettings(format="wav"),
+                module="vocal_suite",
+                operation="export_vocal_wav",
+            )
+            suffix = f" Warning: {warnings[0]}" if warnings else ""
+            self._status.setText(f"Exported vocal WAV: {output}{suffix}")
+        except Exception as exc:
+            self._status.setText(f"Vocal export failed: {exc}")
 
     def _on_send_to_forge(self):
         if self._current_audio_path:
