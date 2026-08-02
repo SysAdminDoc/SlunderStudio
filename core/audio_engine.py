@@ -3,16 +3,12 @@ Slunder Studio — Audio Engine
 sounddevice + soundfile playback with transport controls,
 seek, loop, and waveform data extraction for mini-display.
 """
-import os
 import logging
 import threading
 import numpy as np
-from typing import Optional, Callable
-from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import QObject, Signal, QTimer
-
-from core.provenance import write_provenance_sidecar
 
 # Lazy imports for audio libraries
 _sd = None
@@ -313,54 +309,6 @@ class AudioEngine(QObject):
     @property
     def loop_enabled(self) -> bool:
         return self._loop_enabled
-
-    # ── Export ─────────────────────────────────────────────────────────────────
-
-    def save_to_file(self, file_path: str, audio_data: Optional[np.ndarray] = None,
-                     sample_rate: Optional[int] = None) -> bool:
-        """Save audio data to a file. Uses current loaded audio if none provided."""
-        _ensure_audio_libs()
-        data = audio_data if audio_data is not None else self._audio_data
-        sr = sample_rate or self._sample_rate
-
-        if data is None:
-            return False
-
-        try:
-            ext = Path(file_path).suffix.lower()
-            if ext in (".wav", ".flac", ".ogg"):
-                _sf.write(file_path, data, sr)
-            elif ext == ".mp3":
-                # MP3 requires pydub + ffmpeg
-                from pydub import AudioSegment
-                # Convert to 16-bit PCM for pydub
-                pcm = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
-                channels = pcm.shape[1] if pcm.ndim > 1 else 1
-                seg = AudioSegment(
-                    pcm.tobytes(),
-                    frame_rate=sr,
-                    sample_width=2,
-                    channels=channels,
-                )
-                seg.export(file_path, format="mp3", bitrate="320k")
-            else:
-                _sf.write(file_path, data, sr)
-            write_provenance_sidecar(
-                file_path,
-                module="audio_engine",
-                operation="save_to_file",
-                parameters={
-                    "sample_rate": sr,
-                    "shape": list(data.shape) if hasattr(data, "shape") else [],
-                },
-                source_paths=[self._source_path] if self._source_path else [],
-                export_format=Path(file_path).suffix.lstrip(".").lower(),
-                output_kind="export",
-            )
-            return True
-        except Exception:
-            logger.exception("Failed to save audio file %s", file_path)
-            return False
 
     # ── Internal ───────────────────────────────────────────────────────────────
 

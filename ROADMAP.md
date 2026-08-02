@@ -120,19 +120,6 @@ therefore new work, not a pre-existing red build.
 
 ### P3
 
-- [ ] P3 — Dead `AudioEngine.save_to_file` duplicates the real export path and needs an undeclared dependency
-  Category: maintainability
-  Where: `core/audio_engine.py:309-353`
-  Problem: `save_to_file` has no callers anywhere — real exports go through `core/audio_export.py`,
-    which does MP3 via ffmpeg with proper diagnostics. The dead path imports `pydub`, which is
-    absent from `requirements.txt`, the lock file and `core/deps._PIP_NAMES`, and swallows every
-    failure with a bare `print` that is invisible in the windowed exe — violating the explicit
-    diagnostics design in `core/deps.require`. If anyone wires it up, MP3 export fails silently.
-  Fix: Delete it and route any future caller to `core.audio_export`.
-  Acceptance: The function is gone and the suite still passes.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P3 — `requirements-lock.txt` is not a lock, and it under-declares scipy
   Category: build
   Where: `requirements-lock.txt`; `core/mastering.py:301, 397, 453, 481`;

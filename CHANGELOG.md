@@ -22,6 +22,8 @@ All notable changes to SlunderStudio will be documented in this file.
   breakpoints, scaled reading time to message length, and paused timed dismissal while hovered.
 - Added direct audio transport coverage for callback looping, tail zero-fill, pause, seek, waveform,
   formatting, and playback controls; failed file loads now preserve the previously loaded track.
+- Removed the unused `AudioEngine.save_to_file` path so all exports use the shared, diagnosed audio
+  export pipeline instead of an undeclared pydub dependency.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked
