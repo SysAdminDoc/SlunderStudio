@@ -4,6 +4,7 @@ sounddevice + soundfile playback with transport controls,
 seek, loop, and waveform data extraction for mini-display.
 """
 import os
+import logging
 import threading
 import numpy as np
 from typing import Optional, Callable
@@ -16,6 +17,7 @@ from core.provenance import write_provenance_sidecar
 # Lazy imports for audio libraries
 _sd = None
 _sf = None
+logger = logging.getLogger(__name__)
 
 
 def _ensure_audio_libs():
@@ -120,14 +122,26 @@ class AudioEngine(QObject):
 
     def load_file(self, file_path: str) -> bool:
         """Load an audio file for playback."""
-        _ensure_audio_libs()
         try:
+            _ensure_audio_libs()
             data, sr = _sf.read(file_path, dtype="float32", always_2d=True)
-            self._source_path = file_path
-            return self._load_data(data, sr)
-        except Exception as e:
-            print(f"AudioEngine: Failed to load {file_path}: {e}")
+            loaded = self._load_data(data, sr)
+            if loaded:
+                self._source_path = file_path
+            return loaded
+        except Exception:
+            logger.exception("Failed to load audio file %s", file_path)
+            self._clear_loaded_audio()
             return False
+
+    def _clear_loaded_audio(self):
+        """Stop playback and discard a track that failed to load."""
+        self.stop()
+        with self._lock:
+            self._audio_data = None
+            self._source_path = None
+            self._loop_start = 0
+            self._loop_end = 0
 
     def load_array(self, data: np.ndarray, sample_rate: int) -> bool:
         """Load a NumPy array for playback. Shape: (samples,) or (samples, channels)."""
@@ -237,8 +251,8 @@ class AudioEngine(QObject):
             self._stream.start()
             self.playback_started.emit()
             self._pos_timer.start()
-        except Exception as e:
-            print(f"AudioEngine: Playback error: {e}")
+        except Exception:
+            logger.exception("Audio playback failed")
             self._is_playing = False
 
     def pause(self):
@@ -348,8 +362,8 @@ class AudioEngine(QObject):
                 output_kind="export",
             )
             return True
-        except Exception as e:
-            print(f"AudioEngine: Save error: {e}")
+        except Exception:
+            logger.exception("Failed to save audio file %s", file_path)
             return False
 
     # ── Internal ───────────────────────────────────────────────────────────────

@@ -116,27 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Play silently replays the previous track when the requested file cannot be loaded
-  Category: correctness
-  Where: `ui/song_forge_view.py:1000-1007` (`_play_audio`, also wired to Batch cards `:495` and
-    Seed Explorer `:500`); root cause `core/audio_engine.py:121-130` (`load_file`)
-  Problem: `AudioEngine.load_file` catches all exceptions, `print`s to stdout and returns `False`,
-    keeping the previously loaded `_audio_data`. `_play_audio` ignores the return value and calls
-    `engine.play()` regardless, so clicking Play on a missing or corrupt file — a batch card whose
-    WAV was cleaned by retention, or a cancelled-and-cleaned output — audibly replays whatever was
-    loaded before, with no toast. The surrounding `try/except` never fires because nothing raises.
-    The `print` is also invisible in the windowed exe, violating the app's own no-silent-failure
-    rule. Related: `_load_output:970` calls `os.path.getsize(audio_path)` unguarded, so
-    `_use_batch_result` on a since-deleted file raises inside the slot.
-  Evidence: Traced `BatchCard.play_requested -> SongForgeView._play_audio ->
-    AudioEngine.load_file` (swallows) -> `play()` (plays stale `_audio_data`).
-  Fix: Check `load_file`'s return value, toast "Could not load <file>" and stop playback; replace
-    the `print` with the app's logging path; guard the `getsize` call.
-  Acceptance: A test where `load_file` fails asserts `play()` is not called and an error toast is
-    raised.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P1 — Lyrics Pro mode silently discards the user's system prompt
   Category: correctness
   Where: `ui/lyrics_view.py:550-575` (`_generate_pro`)

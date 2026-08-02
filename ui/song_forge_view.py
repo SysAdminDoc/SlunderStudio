@@ -1059,8 +1059,11 @@ class SongForgeView(QWidget):
         self._to_vocal_stem_btn.setEnabled(bool(self._current_vocal_stem_path))
 
         import os
-        size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-        info = f"seed: {seed} | {size_mb:.1f} MB"
+        try:
+            size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+            info = f"seed: {seed} | {size_mb:.1f} MB"
+        except (OSError, TypeError):
+            info = f"seed: {seed} | size unavailable"
         if self._current_vocal_stem_path:
             info += f" | vocals: {os.path.basename(self._current_vocal_stem_path)}"
         elif vocal_stem_error:
@@ -1092,7 +1095,10 @@ class SongForgeView(QWidget):
     def _play_audio(self, path: str):
         try:
             engine = AudioEngine()
-            engine.load_file(path)
+            if not engine.load_file(path):
+                if self._toast:
+                    self._toast.show_toast(f"Could not load {path}", "error")
+                return
             engine.play()
         except Exception as e:
             if self._toast:
