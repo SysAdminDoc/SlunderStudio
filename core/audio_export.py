@@ -3,7 +3,9 @@ Slunder Studio — Audio Export
 Multi-format audio export: WAV, FLAC, MP3, OGG.
 Uses soundfile for lossless, ffmpeg subprocess for lossy.
 """
+import hashlib
 import os
+import re
 import shutil
 import subprocess
 from typing import Optional
@@ -16,14 +18,40 @@ from core.audio_buffers import resample_audio
 from core.provenance import read_provenance_sidecar, write_provenance_sidecar
 
 
+# Every delivery format the app can produce, and what writes it.
+LOSSLESS_FORMATS = ("wav", "flac")
+LOSSY_FORMATS = ("mp3", "ogg", "opus")
+DELIVERY_FORMATS = LOSSLESS_FORMATS + LOSSY_FORMATS
+
+# ffmpeg encoder required for each lossy format.
+FORMAT_ENCODERS = {
+    "mp3": "libmp3lame",
+    "ogg": "libvorbis",
+    "opus": "libopus",
+}
+
+# Field -> tag name per container standard. ffmpeg maps its generic -metadata
+# keys onto ID3v2.4 for MP3 and Vorbis comments for Ogg/Opus/FLAC, so one
+# canonical key set covers all of them; the mapping is recorded in provenance
+# so an export can be audited against the standard it claims.
+METADATA_STANDARDS = {
+    "mp3": "ID3v2.4",
+    "ogg": "Vorbis comment (RFC 7845 style)",
+    "opus": "Vorbis comment (RFC 7845)",
+    "flac": "Vorbis comment",
+    "wav": "RIFF INFO / BWF",
+}
+
+
 @dataclass
 class ExportSettings:
     """Export configuration."""
-    format: str = "wav"  # wav, flac, mp3, ogg
+    format: str = "wav"  # wav, flac, mp3, ogg, opus
     sample_rate: int = 48000
     bit_depth: int = 16  # 16, 24, 32 (wav only)
     mp3_bitrate: int = 320  # 128, 192, 256, 320
     ogg_quality: int = 8  # 0-10
+    opus_bitrate: int = 192  # kbps
     normalize: bool = False
     normalize_target_db: float = -1.0  # peak normalization target
     fade_in_ms: int = 0
@@ -34,6 +62,175 @@ class ExportSettings:
     album: str = ""
     year: str = ""
     genre: str = ""
+    # Standards-mapped production metadata.
+    bpm: float = 0.0
+    musical_key: str = ""
+    language: str = ""
+    lyrics: str = ""
+    rights: str = ""
+    revision: str = ""
+    track_number: str = ""
+    isrc: str = ""
+    comment: str = ""
+
+    def metadata_tags(self) -> dict:
+        """Canonical tag keys for this delivery, empty values dropped."""
+        tags = {
+            "title": self.title,
+            "artist": self.artist,
+            "album": self.album,
+            "date": self.year,
+            "genre": self.genre,
+            "language": self.language,
+            "lyrics": self.lyrics,
+            "copyright": self.rights,
+            "comment": self.comment,
+            "track": self.track_number,
+            "TSRC": self.isrc,
+            "version": self.revision,
+        }
+        if self.bpm and self.bpm > 0:
+            tags["TBPM"] = f"{self.bpm:g}"
+        if self.musical_key:
+            tags["TKEY"] = self.musical_key
+        return {k: str(v) for k, v in tags.items() if str(v).strip()}
+
+
+@dataclass(frozen=True)
+class CodecAvailability:
+    """Whether a delivery format can actually be written right now."""
+    format: str
+    available: bool
+    writer: str
+    detail: str = ""
+
+
+def probe_codecs() -> dict[str, CodecAvailability]:
+    """Report which delivery formats this installation can write, and why not."""
+    results: dict[str, CodecAvailability] = {}
+    try:
+        import soundfile as sf
+
+        writable = {fmt.lower() for fmt in sf.available_formats()}
+    except Exception as exc:
+        writable = set()
+        sf_error = f"soundfile is unavailable: {exc}"
+    else:
+        sf_error = ""
+
+    for fmt in LOSSLESS_FORMATS:
+        ok = fmt in writable
+        results[fmt] = CodecAvailability(
+            format=fmt,
+            available=ok,
+            writer="soundfile",
+            detail="" if ok else (sf_error or f"soundfile cannot write {fmt.upper()}"),
+        )
+
+    ffmpeg = _find_ffmpeg()
+    encoders = _ffmpeg_encoders(ffmpeg) if ffmpeg else set()
+    for fmt in LOSSY_FORMATS:
+        encoder = FORMAT_ENCODERS[fmt]
+        if not ffmpeg:
+            detail = "ffmpeg was not found on PATH."
+        elif encoder not in encoders:
+            detail = f"ffmpeg has no {encoder} encoder."
+        else:
+            detail = ""
+        results[fmt] = CodecAvailability(
+            format=fmt,
+            available=not detail,
+            writer="ffmpeg",
+            detail=detail,
+        )
+    return results
+
+
+def _ffmpeg_encoders(ffmpeg: Optional[str]) -> set:
+    if not ffmpeg:
+        return set()
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-encoders"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception:
+        return set()
+    if result.returncode != 0:
+        return set()
+    names = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].startswith(("A", "V", "S")):
+            names.add(parts[1])
+    return names
+
+
+def require_codec(fmt: str) -> CodecAvailability:
+    """Raise a clear error when the requested format cannot be written."""
+    fmt = fmt.lower()
+    if fmt not in DELIVERY_FORMATS:
+        raise ValueError(f"Unsupported format: {fmt}")
+    availability = probe_codecs()[fmt]
+    if not availability.available:
+        raise RuntimeError(
+            f"{fmt.upper()} export is unavailable. {availability.detail}"
+        )
+    return availability
+
+
+def deterministic_filename(base: str, *, fmt: str, revision: str = "",
+                           variant: str = "") -> str:
+    """Build a stable, filesystem-safe delivery filename.
+
+    The same inputs always produce the same name, so re-running an export
+    overwrites its own artifact rather than accumulating copies.
+    """
+    def _slug(value: str) -> str:
+        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip())
+        return re.sub(r"-{2,}", "-", cleaned).strip("-._")
+
+    parts = [p for p in (_slug(base) or "export", _slug(variant), _slug(revision)) if p]
+    return f"{'-'.join(parts)}.{fmt.lower()}"
+
+
+def _verify_written_file(path: str) -> dict:
+    """Reopen and hash a written delivery. Raises if it cannot be read back."""
+    import soundfile as sf
+
+    if not os.path.isfile(path):
+        raise RuntimeError(f"Export did not produce a file: {path}")
+    size = os.path.getsize(path)
+    if size <= 0:
+        raise RuntimeError(f"Export produced an empty file: {path}")
+    try:
+        info = sf.info(path)
+        frames, channels, samplerate = info.frames, info.channels, info.samplerate
+        readable = True
+        read_error = ""
+    except Exception as exc:
+        # Opus and some Ogg variants are not always readable by libsndfile;
+        # say so rather than claiming a verification that did not happen.
+        frames = channels = samplerate = 0
+        readable = False
+        read_error = f"{type(exc).__name__}: {exc}"
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+
+    return {
+        "path": path,
+        "bytes": size,
+        "sha256": digest.hexdigest(),
+        "reopened": readable,
+        "reopen_error": read_error,
+        "frames": frames,
+        "channels": channels,
+        "sample_rate": samplerate,
+        "duration_sec": round(frames / samplerate, 6) if samplerate else 0.0,
+    }
 
 
 def _find_ffmpeg() -> Optional[str]:
@@ -162,8 +359,11 @@ def export_audio(
     if settings.normalize:
         audio = normalize_audio(audio, settings.normalize_target_db)
 
+    availability = require_codec(settings.format)
+    tags = settings.metadata_tags()
+
     # Export based on format
-    if settings.format in ("wav", "flac"):
+    if settings.format in LOSSLESS_FORMATS:
         subtype_map = {
             (16, "wav"): "PCM_16",
             (24, "wav"): "PCM_24",
@@ -173,51 +373,36 @@ def export_audio(
         }
         subtype = subtype_map.get((settings.bit_depth, settings.format), "PCM_16")
         sf.write(output_path, audio, sr, subtype=subtype)
+        _write_lossless_tags(output_path, settings.format, tags)
 
-    elif settings.format in ("mp3", "ogg"):
+    else:
         # Write temp WAV, then convert via ffmpeg
         ffmpeg = _find_ffmpeg()
-        if not ffmpeg:
-            raise RuntimeError(
-                "ffmpeg not found. Install ffmpeg for MP3/OGG export.\n"
-                "Download from: https://ffmpeg.org/download.html"
-            )
-
         temp_wav = output_path + ".tmp.wav"
         sf.write(temp_wav, audio, sr, subtype="PCM_16")
 
-        def _sanitize_meta(value: str) -> str:
-            return value.replace("\n", " ").replace("\r", " ").replace("\\", "\\\\").replace(";", ",")
-
         try:
             cmd = [ffmpeg, "-y", "-i", temp_wav]
-
-            if settings.title:
-                cmd += ["-metadata", f"title={_sanitize_meta(settings.title)}"]
-            if settings.artist:
-                cmd += ["-metadata", f"artist={_sanitize_meta(settings.artist)}"]
-            if settings.album:
-                cmd += ["-metadata", f"album={_sanitize_meta(settings.album)}"]
-            if settings.year:
-                cmd += ["-metadata", f"date={_sanitize_meta(settings.year)}"]
-            if settings.genre:
-                cmd += ["-metadata", f"genre={_sanitize_meta(settings.genre)}"]
+            for key, value in tags.items():
+                cmd += ["-metadata", f"{key}={_sanitize_meta(value)}"]
 
             if settings.format == "mp3":
                 cmd += ["-codec:a", "libmp3lame", "-b:a", f"{settings.mp3_bitrate}k"]
-            else:  # ogg
+            elif settings.format == "ogg":
                 cmd += ["-codec:a", "libvorbis", "-q:a", str(settings.ogg_quality)]
+            else:  # opus
+                cmd += ["-codec:a", "libopus", "-b:a", f"{settings.opus_bitrate}k"]
 
             cmd.append(output_path)
 
-            result = subprocess.run(cmd, capture_output=True, timeout=120)
+            result = subprocess.run(cmd, capture_output=True, timeout=300)
             if result.returncode != 0:
                 raise RuntimeError(f"ffmpeg failed: {result.stderr.decode()[:200]}")
         finally:
             if os.path.exists(temp_wav):
                 os.remove(temp_wav)
-    else:
-        raise ValueError(f"Unsupported format: {settings.format}")
+
+    verification = _verify_written_file(output_path)
 
     extra = dict(provenance_extra or {})
     source_model_license = _source_model_license_metadata(source_path)
@@ -226,6 +411,12 @@ def export_audio(
     license_warnings = get_export_license_warnings(source_path)
     if license_warnings:
         extra["license_warnings"] = license_warnings
+    extra["delivery"] = {
+        "writer": availability.writer,
+        "metadata_standard": METADATA_STANDARDS.get(settings.format, "unknown"),
+        "tags": tags,
+        "verification": verification,
+    }
 
     write_provenance_sidecar(
         output_path,
@@ -239,6 +430,39 @@ def export_audio(
         extra=extra,
     )
     return output_path
+
+
+def _sanitize_meta(value: str) -> str:
+    return (
+        str(value)
+        .replace("\r", " ")
+        .replace("\n", " ")
+        .replace("\\", "\\\\")
+        .replace(";", ",")
+    )
+
+
+def _write_lossless_tags(path: str, fmt: str, tags: dict):
+    """Attach metadata to a FLAC/WAV written by soundfile, where supported."""
+    if not tags:
+        return
+    try:
+        import soundfile as sf
+
+        with sf.SoundFile(path, mode="r+") as handle:
+            for key, value in tags.items():
+                field = {
+                    "date": "date", "track": "tracknumber", "copyright": "copyright",
+                }.get(key, key)
+                try:
+                    setattr(handle, field, _sanitize_meta(value))
+                except Exception:
+                    # libsndfile only exposes a fixed set of string fields; the
+                    # rest still live in the provenance sidecar.
+                    continue
+    except Exception:
+        # Never fail an otherwise good export because a tag could not be set.
+        pass
 
 
 def export_from_numpy(

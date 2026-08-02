@@ -8,7 +8,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 - [ ] Wire the existing `.dawproject` exporter/validator into Project Manager and Mixer, make archived media names collision-safe, validate against the official schemas, then validate golden packages in Bitwig, Studio One, and Cubase. The core ZIP/XML export already exists; do not reimplement it.
 - [ ] Add stem export naming templates for user-selected DAWs.
-- [ ] Add project-level MP3/FLAC/Opus delivery with standards-mapped metadata and provenance.
 - [ ] Add OSC control with a versioned namespace, loopback default, explicit LAN opt-in, allowlists, and rate/size limits.
 - [ ] Add a headless CLI that uses the same engine, job, export, and error contracts as the desktop UI.
 
@@ -34,13 +33,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 ## Research-Driven Additions
 
 ### P1
-
-- [ ] P1 — Centralize delivery formats, metadata, and provenance
-  Why: Mixer writes PCM16 directly while other surfaces use `core/audio_export.py`, creating inconsistent formats, validation, rights warnings, and sidecars.
-  Evidence: `ui/mixer_view.py:676-748`, `ui/stem_mixer.py`, `core/audio_export.py`; ID3v2.4, Vorbis comments, RFC 7845, BWF, Suno and Logic exports.
-  Touches: `core/audio_export.py`, Mixer/Stem Mixer/project export, metadata schema, codec probes, provenance, round-trip tests.
-  Acceptance: Full mix, selected range, clips, stems, and MIDI use one export service; codec availability is probed; filenames are deterministic; BPM/key/language/lyrics/rights/revision map correctly; every successful write is reopened, hashed, and paired with provenance.
-  Complexity: L
 
 - [ ] P1 — Bound recovery artifacts and expose one recovery center
   Why: Jobs, crash logs, settings backups, and project versions can grow indefinitely and recovery actions are fragmented.

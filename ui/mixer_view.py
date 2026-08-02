@@ -19,6 +19,12 @@ import numpy as np
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 from ui.waveform_widget import WaveformWidget, MiniWaveform
+from core.audio_export import (
+    DELIVERY_FORMATS,
+    ExportSettings,
+    export_from_numpy,
+    probe_codecs,
+)
 from core.audio_buffers import (
     decode_audio_file,
     normalize_channel_layout,
@@ -914,23 +920,52 @@ class MixerView(QWidget):
                     f"True peak: {result.true_peak_dbtp:.2f} dBTP"
                 )
 
-            # Export dialog
+            # Export dialog. Only formats this installation can actually
+            # write are offered.
+            codecs = probe_codecs()
+            filters = [
+                f"{fmt.upper()} (*.{fmt})"
+                for fmt in DELIVERY_FORMATS if codecs[fmt].available
+            ]
+            unavailable = [
+                f"{fmt.upper()}: {codecs[fmt].detail}"
+                for fmt in DELIVERY_FORMATS if not codecs[fmt].available
+            ]
             path, _ = QFileDialog.getSaveFileName(
-                self, "Export Mastered Audio", "master.wav",
-                "WAV (*.wav);;FLAC (*.flac)"
+                self, "Export Mastered Audio", "master.wav", ";;".join(filters)
             )
             if path and result.audio is not None:
-                import soundfile as sf
-                ext = os.path.splitext(path)[1].lower()
-                if ext == ".flac":
-                    sf.write(path, result.audio, sr, subtype="PCM_16")
-                else:
-                    sf.write(path, result.audio, sr, subtype="PCM_16")
+                fmt = os.path.splitext(path)[1].lower().lstrip(".") or "wav"
+                settings = ExportSettings(
+                    format=fmt,
+                    sample_rate=sr,
+                    bit_depth=24,
+                    title=os.path.splitext(os.path.basename(path))[0],
+                    comment=" | ".join(result.report_lines()),
+                )
+                written = export_from_numpy(
+                    result.audio, sr, path, settings,
+                    module="mixer",
+                    operation="master_export",
+                    provenance_extra={
+                        "mastering": {
+                            "preset": result.preset_name,
+                            "input_lufs": result.input_lufs,
+                            "output_lufs": result.output_lufs,
+                            "output_lra_lu": result.output_lra_lu,
+                            "true_peak_dbtp": result.true_peak_dbtp,
+                            "target_lufs": result.target_lufs,
+                            "meets_target": result.meets_target,
+                        }
+                    },
+                )
 
+                warning = f" | Unavailable: {unavailable[0]}" if unavailable else ""
                 self._status.setText(
-                    f"Exported: {path} | "
+                    f"Exported: {written} | "
                     f"{result.output_lufs:.1f} LUFS | "
-                    f"{result.processing_time:.1f}s"
+                    f"{result.true_peak_dbtp:.2f} dBTP | "
+                    f"{result.processing_time:.1f}s{warning}"
                 )
             else:
                 if self._last_loudness_match:
