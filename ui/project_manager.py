@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
-from ui.theme import ThemeEngine
+from ui.theme import ThemeEngine, rgba
 from ui.accessibility import install_accessibility
 from core.project import ProjectManager, Project, ProjectAsset, get_project_manager
 from core.provenance import read_provenance_sidecar
@@ -169,7 +169,7 @@ class ProjectDetailPanel(QWidget):
                 border-bottom: 1px solid {t['border']};
             }}
             QListWidget::item:selected {{
-                background: {t['accent']}33;
+                background: {rgba(t['accent'], 51)};
             }}
         """)
         self._asset_list.currentItemChanged.connect(self._on_asset_selected)

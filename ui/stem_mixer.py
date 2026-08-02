@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, Signal
 
 import numpy as np
 
-from ui.theme import Palette, ThemeEngine
+from ui.theme import Palette, ThemeEngine, rgba
 from ui.accessibility import install_accessibility
 from ui.waveform_widget import MiniWaveform
 from core.panning import pan_gains
@@ -59,7 +59,7 @@ class StemStrip(QFrame):
         self.setStyleSheet(f"""
             StemStrip {{
                 background: {t['surface']};
-                border: 1px solid {color}44;
+                border: 1px solid {rgba(color, 68)};
                 border-left: 3px solid {color};
                 border-radius: 6px;
             }}

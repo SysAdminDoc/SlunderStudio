@@ -58,6 +58,18 @@ class ThemeEngine:
         }
 
 
+def rgba(hex_color: str, alpha: int) -> str:
+    """Return a Qt stylesheet rgba value without relying on ARGB hex parsing."""
+    color = QColor(hex_color)
+    if not color.isValid():
+        color = QColor("#808080")
+    bounded_alpha = max(0, min(255, int(alpha)))
+    return (
+        f"rgba({color.red()}, {color.green()}, {color.blue()}, "
+        f"{bounded_alpha})"
+    )
+
+
 def build_stylesheet(accent: str = Palette.BLUE) -> str:
     """
     Build the complete application stylesheet.

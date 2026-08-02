@@ -118,25 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — `{color}44` produces an `#AARRGGBB` string, so stem borders render the wrong hue
-  Category: visual
-  Where: `ui/stem_mixer.py:61`
-  Problem: `border: 1px solid {color}44;` intends the stem color at about 27% alpha, in CSS
-    `#RRGGBBAA` order. Qt stylesheets and QColor parse 8-digit hex as `#AARRGGBB` — alpha first —
-    so `#f38ba8` + `44` becomes `#f38ba844`, read as alpha 0xF3 with RGB `#8ba844`: a nearly opaque
-    olive border instead of a translucent pink one. Every stem gets a shifted-hue, nearly opaque
-    border that visually contradicts the correct `border-left: 3px solid {color}` on the same frame
-    (`:62`).
-  Evidence: Confirmed by construction under PySide6 — `QColor("#f38ba844")` reports valid with
-    `name()` `#8ba844` and `alpha()` 243; likewise `#a6e3a144` -> `#e3a144` alpha 166 and
-    `#f9e2af44` -> `#e2af44` alpha 249.
-  Fix: Emit `rgba(r, g, b, 68)` via a helper — `ui/model_hub.py::_hex_to_rgba` already exists — or
-    build the color with `QColor(color); c.setAlpha(68); c.name(QColor.HexArgb)`.
-  Acceptance: A test asserting no `ui/*.py` stylesheet interpolates a 2-digit suffix directly onto
-    a hex color; the rendered border matches the stem hue.
-  Confidence: Verified (reproduced with Qt)
-  Effort: S
-
 - [ ] P2 — The app's own wordmark is clipped in the sidebar
   Category: visual
   Where: `ui/main_window.py:75` (`self.setFixedWidth(196)`), `:80-92` (brand row);

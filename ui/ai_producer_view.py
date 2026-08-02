@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from ui.theme import Palette, ThemeEngine
+from ui.theme import Palette, ThemeEngine, rgba
 from ui.accessibility import install_accessibility
 from ui.waveform_widget import WaveformWidget
 from engines.ai_producer import (
@@ -125,7 +125,7 @@ class StageIndicator(QFrame):
         elif status == "running":
             self.setStyleSheet(f"""
                 StageIndicator {{
-                    background: {t['accent']}15;
+                    background: {rgba(t['accent'], 21)};
                     border: 1px solid {t['accent']};
                     border-radius: 6px;
                 }}

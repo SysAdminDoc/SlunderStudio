@@ -19,7 +19,7 @@ from ui.contrast import (
     token,
 )
 from ui.accessibility import FOCUS_RING_COLOR
-from ui.theme import Palette, build_stylesheet
+from ui.theme import Palette, build_stylesheet, rgba
 from ui.toast import ToastManager
 from ui.waveform_widget import WaveformWidget
 from ui.stem_mixer import STEM_COLORS
@@ -80,6 +80,19 @@ class ContrastGateTests(unittest.TestCase):
             if "#9b8cff" in text or "#8795a5" in text:
                 offenders.append(str(path.relative_to(ROOT)))
         self.assertEqual(offenders, [])
+
+    def test_dynamic_hex_alpha_uses_rgb_ordered_rgba(self):
+        offenders = []
+        suffix = re.compile(r"\{[^{}\n]+\}[0-9a-fA-F]{2}(?=[;}\s])")
+        for path in (ROOT / "ui").glob("*.py"):
+            for line_number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1
+            ):
+                if suffix.search(line):
+                    offenders.append(f"{path.relative_to(ROOT)}:{line_number}")
+
+        self.assertEqual(offenders, [])
+        self.assertEqual(rgba("#f38ba8", 68), "rgba(243, 139, 168, 68)")
 
 
 class InlineButtonContrastTests(unittest.TestCase):
