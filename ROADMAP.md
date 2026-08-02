@@ -35,20 +35,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Make mastering standards-conformant and non-destructive
-  Why: RMS-based loudness and sample-peak limiting are labeled as delivery presets, while Dynamic EQ mutates source arrays without preview or undo.
-  Evidence: `core/mastering.py`, `ui/mixer_view.py:576-631`; ITU-R BS.1770-5, EBU R128, LANDR, and Ozone.
-  Touches: `core/mastering.py`, Mixer mastering state, shared export, reference fixtures, undo/version integration.
-  Acceptance: Integrated loudness, LRA, and oversampled dBTP pass published conformance vectors; Analyze/Suggest, gain-matched Preview, Apply, and Revert are separate; originals remain recoverable and exported reports state measured values.
-  Complexity: L
-
-- [ ] P1 — Vectorize and benchmark mastering DSP
-  Why: Biquad, compressor, and limiter loops scale per sample in Python and block long renders even though current short benchmarks do not justify the prior “unusable for minutes” claim.
-  Evidence: `core/mastering.py:286-352`; 2026-07-29 local 48 kHz stereo benchmark.
-  Touches: `core/mastering.py`, background mastering worker, numerical-equivalence and performance tests.
-  Acceptance: Three-minute stereo fixtures complete within an explicit benchmark budget on the reference CPU, remain off the GUI thread, preserve channel independence/state, and match approved numerical tolerances.
-  Complexity: M
-
 - [ ] P1 — Centralize delivery formats, metadata, and provenance
   Why: Mixer writes PCM16 directly while other surfaces use `core/audio_export.py`, creating inconsistent formats, validation, rights warnings, and sidecars.
   Evidence: `ui/mixer_view.py:676-748`, `ui/stem_mixer.py`, `core/audio_export.py`; ID3v2.4, Vorbis comments, RFC 7845, BWF, Suno and Logic exports.

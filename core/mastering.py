@@ -153,6 +153,33 @@ class MasteringResult:
     peak_db: float = 0.0
     preset_name: str = ""
     error: Optional[str] = None
+    # Measured delivery values, reported rather than assumed.
+    input_lra_lu: float = 0.0
+    output_lra_lu: float = 0.0
+    true_peak_dbtp: float = 0.0
+    target_lufs: float = 0.0
+    ceiling_dbtp: float = 0.0
+
+    @property
+    def meets_target(self) -> bool:
+        """EBU R128 tolerance is +/-0.5 LU, plus the declared true-peak ceiling."""
+        return (
+            abs(self.output_lufs - self.target_lufs) <= 0.5
+            and self.true_peak_dbtp <= self.ceiling_dbtp + 0.1
+        )
+
+    def report_lines(self) -> list[str]:
+        """Measured values for the export report."""
+        return [
+            f"Preset: {self.preset_name}",
+            f"Integrated loudness: {self.output_lufs:.2f} LUFS "
+            f"(target {self.target_lufs:.1f} LUFS, was {self.input_lufs:.2f})",
+            f"Loudness range: {self.output_lra_lu:.2f} LU (was {self.input_lra_lu:.2f})",
+            f"True peak: {self.true_peak_dbtp:.2f} dBTP "
+            f"(ceiling {self.ceiling_dbtp:.1f} dBTP)",
+            f"Sample peak: {self.peak_db:.2f} dBFS",
+            f"Meets declared target: {'yes' if self.meets_target else 'no'}",
+        ]
 
 
 @dataclass(frozen=True)
@@ -213,44 +240,177 @@ def linear_to_db(linear: float) -> float:
     return 20.0 * np.log10(max(linear, 1e-10))
 
 
+# ── ITU-R BS.1770-5 / EBU R128 loudness ────────────────────────────────────────
+
+SILENCE_LUFS = -70.0
+# BS.1770 absolute gate, and the R128 relative gates for integrated and LRA.
+ABSOLUTE_GATE_LUFS = -70.0
+INTEGRATED_RELATIVE_GATE_LU = -10.0
+LRA_RELATIVE_GATE_LU = -20.0
+# BS.1770 channel weights. Left/right are unity; surround channels are +1.5 dB
+# but this app only ever masters mono or stereo.
+STEREO_CHANNEL_WEIGHTS = (1.0, 1.0)
+# BS.1770-4 Annex 2 requires >= 4x oversampling for true peak below 96 kHz.
+TRUE_PEAK_OVERSAMPLE = 4
+
+
+def _k_weighting_coefficients(sr: int) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """K-weighting biquads for any sample rate.
+
+    BS.1770 tabulates coefficients at 48 kHz. They are re-derived here from the
+    same filter definitions so 44.1 kHz and 96 kHz material is not measured with
+    48 kHz coefficients, which is a real error at low rates.
+    """
+    # Stage 1: high-frequency shelving, +4 dB at high frequencies.
+    f0 = 1681.974450955533
+    G = 3.999843853973347
+    Q = 0.7071752369554196
+    K = np.tan(np.pi * f0 / sr)
+    Vh = np.power(10.0, G / 20.0)
+    Vb = np.power(Vh, 0.4996667741545416)
+    denom = 1.0 + K / Q + K * K
+    shelf_b = (
+        (Vh + Vb * K / Q + K * K) / denom,
+        2.0 * (K * K - Vh) / denom,
+        (Vh - Vb * K / Q + K * K) / denom,
+    )
+    shelf_a = (1.0, 2.0 * (K * K - 1.0) / denom, (1.0 - K / Q + K * K) / denom)
+
+    # Stage 2: RLB high-pass.
+    f0 = 38.13547087602444
+    Q = 0.5003270373238773
+    K = np.tan(np.pi * f0 / sr)
+    hp_a = (
+        1.0,
+        2.0 * (K * K - 1.0) / (1.0 + K / Q + K * K),
+        (1.0 - K / Q + K * K) / (1.0 + K / Q + K * K),
+    )
+    hp_b = (1.0, -2.0, 1.0)
+    return (shelf_b, shelf_a), (hp_b, hp_a)
+
+
+def _as_2d(audio: np.ndarray) -> np.ndarray:
+    array = np.asarray(audio, dtype=np.float64)
+    if array.ndim == 1:
+        return array.reshape(-1, 1)
+    return array
+
+
+def k_weight(audio: np.ndarray, sr: int) -> np.ndarray:
+    """Apply the BS.1770 K-weighting pre-filter."""
+    from scipy.signal import lfilter
+
+    (shelf_b, shelf_a), (hp_b, hp_a) = _k_weighting_coefficients(max(int(sr), 1))
+    array = _as_2d(audio)
+    stage = lfilter(shelf_b, shelf_a, array, axis=0)
+    return lfilter(hp_b, hp_a, stage, axis=0)
+
+
+def _block_loudness(audio: np.ndarray, sr: int, window_sec: float,
+                    overlap: float = 0.75) -> np.ndarray:
+    """Gated-block loudness values (LKFS) for a sliding window."""
+    array = _as_2d(audio)
+    if array.shape[0] == 0:
+        return np.empty(0)
+    weighted = k_weight(array, sr)
+    channels = weighted.shape[1]
+    weights = np.array([
+        STEREO_CHANNEL_WEIGHTS[i] if i < len(STEREO_CHANNEL_WEIGHTS) else 1.0
+        for i in range(channels)
+    ])
+
+    block = max(int(round(window_sec * sr)), 1)
+    hop = max(int(round(block * (1.0 - overlap))), 1)
+    if weighted.shape[0] < block:
+        # Shorter than one window: measure what there is rather than report silence.
+        mean_square = np.mean(weighted ** 2, axis=0)
+        power = float(np.sum(weights * mean_square))
+        if power <= 0:
+            return np.empty(0)
+        return np.array([-0.691 + 10.0 * np.log10(power)])
+
+    starts = np.arange(0, weighted.shape[0] - block + 1, hop)
+    squared = weighted ** 2
+    cumulative = np.concatenate(
+        [np.zeros((1, channels)), np.cumsum(squared, axis=0)], axis=0
+    )
+    sums = cumulative[starts + block] - cumulative[starts]
+    mean_squares = sums / block
+    powers = mean_squares @ weights
+    powers = powers[powers > 0]
+    if powers.size == 0:
+        return np.empty(0)
+    return -0.691 + 10.0 * np.log10(powers)
+
+
+def _gated_mean_loudness(block_lufs: np.ndarray, relative_gate_lu: float) -> float:
+    """Apply the BS.1770 absolute gate then the relative gate."""
+    if block_lufs.size == 0:
+        return SILENCE_LUFS
+    above_absolute = block_lufs[block_lufs > ABSOLUTE_GATE_LUFS]
+    if above_absolute.size == 0:
+        return SILENCE_LUFS
+    powers = np.power(10.0, (above_absolute + 0.691) / 10.0)
+    relative_threshold = (
+        -0.691 + 10.0 * np.log10(np.mean(powers)) + relative_gate_lu
+    )
+    gated = above_absolute[above_absolute > relative_threshold]
+    if gated.size == 0:
+        return SILENCE_LUFS
+    gated_powers = np.power(10.0, (gated + 0.691) / 10.0)
+    return float(-0.691 + 10.0 * np.log10(np.mean(gated_powers)))
+
+
 def measure_lufs(audio: np.ndarray, sr: int) -> float:
-    """Simplified LUFS measurement (ITU-R BS.1770 approximation)."""
-    if audio.ndim == 1:
-        audio = np.column_stack([audio, audio])
+    """Integrated loudness in LUFS per ITU-R BS.1770-5 and EBU R128."""
+    blocks = _block_loudness(audio, sr, 0.400, overlap=0.75)
+    return _gated_mean_loudness(blocks, INTEGRATED_RELATIVE_GATE_LU)
 
-    # K-weighting filter (simplified high-shelf + high-pass)
-    # Apply simple RMS-based approximation
-    block_size = int(0.4 * sr)  # 400ms blocks
-    hop = int(0.1 * sr)  # 100ms hop
 
-    powers = []
-    for ch in range(min(audio.shape[1], 2)):
-        channel = audio[:, ch]
-        for start in range(0, len(channel) - block_size, hop):
-            block = channel[start:start + block_size]
-            power = np.mean(block ** 2)
-            if power > 0:
-                powers.append(power)
+def measure_loudness_range(audio: np.ndarray, sr: int) -> float:
+    """Loudness range (LU) per EBU Tech 3342: P95 minus P10 of gated 3 s blocks."""
+    blocks = _block_loudness(audio, sr, 3.000, overlap=2.0 / 3.0)
+    if blocks.size == 0:
+        return 0.0
+    above_absolute = blocks[blocks > ABSOLUTE_GATE_LUFS]
+    if above_absolute.size == 0:
+        return 0.0
+    powers = np.power(10.0, (above_absolute + 0.691) / 10.0)
+    relative_threshold = (
+        -0.691 + 10.0 * np.log10(np.mean(powers)) + LRA_RELATIVE_GATE_LU
+    )
+    gated = above_absolute[above_absolute > relative_threshold]
+    if gated.size < 2:
+        return 0.0
+    return float(np.percentile(gated, 95) - np.percentile(gated, 10))
 
-    if not powers:
-        return -70.0
 
-    # Gated loudness (relative threshold)
-    powers = np.array(powers)
-    abs_threshold = 10 ** (-70 / 10)
-    above_abs = powers[powers > abs_threshold]
+def measure_true_peak_db(audio: np.ndarray, sr: int) -> float:
+    """True peak in dBTP: 4x oversampled inter-sample peak per BS.1770-4."""
+    array = _as_2d(audio)
+    if array.size == 0:
+        return SILENCE_LUFS
+    factor = TRUE_PEAK_OVERSAMPLE
+    if sr >= 96000:
+        factor = 2
+    try:
+        from scipy.signal import resample_poly
 
-    if len(above_abs) == 0:
-        return -70.0
+        upsampled = resample_poly(array, factor, 1, axis=0)
+    except Exception:
+        upsampled = array
+    peak = float(np.max(np.abs(upsampled))) if upsampled.size else 0.0
+    # An oversampled reconstruction can dip below the raw sample peak; the true
+    # peak is never lower than the samples themselves.
+    peak = max(peak, float(np.max(np.abs(array))))
+    return linear_to_db(peak)
 
-    relative_threshold = np.mean(above_abs) * (10 ** (-10 / 10))
-    gated = above_abs[above_abs > relative_threshold]
 
-    if len(gated) == 0:
-        return -70.0
-
-    lufs = -0.691 + 10 * np.log10(np.mean(gated))
-    return float(lufs)
+def measure_sample_peak_db(audio: np.ndarray) -> float:
+    array = np.asarray(audio, dtype=np.float64)
+    if array.size == 0:
+        return SILENCE_LUFS
+    return linear_to_db(float(np.max(np.abs(array))))
 
 
 def apply_eq_shelf(audio: np.ndarray, sr: int, freq: float,
@@ -284,26 +444,56 @@ def apply_eq_shelf(audio: np.ndarray, sr: int, freq: float,
 
 
 def _biquad_filter(audio: np.ndarray, b0, b1, b2, a1, a2) -> np.ndarray:
-    """Apply biquad IIR filter to audio."""
-    output = np.zeros_like(audio)
-    channels = audio.shape[1] if audio.ndim == 2 else 1
+    """Apply a biquad IIR filter.
 
-    for ch in range(channels):
-        x = audio[:, ch] if audio.ndim == 2 else audio
-        y = np.zeros_like(x)
-        x1 = x2 = y1 = y2 = 0.0
+    Same difference equation as a per-sample loop, evaluated by scipy's
+    lfilter along the time axis so channels stay independent and long renders
+    do not scale with a Python loop.
+    """
+    from scipy.signal import lfilter
 
-        for i in range(len(x)):
-            y[i] = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
-            x2, x1 = x1, x[i]
-            y2, y1 = y1, y[i]
+    array = np.asarray(audio, dtype=np.float64)
+    filtered = lfilter([b0, b1, b2], [1.0, a1, a2], array, axis=0)
+    return filtered.astype(audio.dtype, copy=False)
 
-        if audio.ndim == 2:
-            output[:, ch] = y
+
+def _peak_envelope(audio: np.ndarray) -> np.ndarray:
+    """Per-frame peak magnitude across channels."""
+    array = np.asarray(audio, dtype=np.float64)
+    if array.ndim == 2:
+        return np.max(np.abs(array), axis=1)
+    return np.abs(array)
+
+
+def _follow_envelope(peaks: np.ndarray, attack_coeff: float,
+                     release_coeff: float) -> np.ndarray:
+    """Attack/release envelope follower.
+
+    The coefficient depends on whether the input rose or fell, so the recursion
+    cannot be expressed as one linear filter. When attack and release match it
+    reduces to a one-pole filter and is handed to lfilter; otherwise the
+    recursion runs over plain Python floats, which avoids per-sample numpy
+    scalar boxing and is far faster than indexing the array.
+    """
+    if peaks.size == 0:
+        return peaks
+    if abs(attack_coeff - release_coeff) < 1e-12:
+        from scipy.signal import lfilter
+
+        return lfilter([1.0 - attack_coeff], [1.0, -attack_coeff], peaks)
+
+    envelope = np.empty_like(peaks)
+    out = envelope
+    state = 0.0
+    attack_gain = 1.0 - attack_coeff
+    release_gain = 1.0 - release_coeff
+    for index, sample in enumerate(peaks.tolist()):
+        if sample > state:
+            state = attack_coeff * state + attack_gain * sample
         else:
-            output = y
-
-    return output
+            state = release_coeff * state + release_gain * sample
+        out[index] = state
+    return envelope
 
 
 def apply_compression(audio: np.ndarray, sr: int,
@@ -319,48 +509,57 @@ def apply_compression(audio: np.ndarray, sr: int,
     attack_coeff = np.exp(-1.0 / (attack_ms * 0.001 * sr))
     release_coeff = np.exp(-1.0 / (release_ms * 0.001 * sr))
 
-    output = np.copy(audio)
-    envelope = 0.0
+    peaks = _peak_envelope(audio)
+    envelope = _follow_envelope(peaks, attack_coeff, release_coeff)
 
-    for i in range(len(audio)):
-        sample = np.max(np.abs(audio[i])) if audio.ndim == 2 else abs(audio[i])
+    safe_envelope = np.maximum(envelope, 1e-10)
+    compressed = threshold + (envelope - threshold) / max(ratio, 1e-9)
+    gain = np.where(envelope > threshold, compressed / safe_envelope, 1.0)
+    gain *= makeup
 
-        if sample > envelope:
-            envelope = attack_coeff * envelope + (1 - attack_coeff) * sample
-        else:
-            envelope = release_coeff * envelope + (1 - release_coeff) * sample
-
-        if envelope > threshold:
-            gain_reduction = threshold + (envelope - threshold) / ratio
-            gain = gain_reduction / max(envelope, 1e-10)
-        else:
-            gain = 1.0
-
-        output[i] = audio[i] * gain * makeup
-
-    return output
+    array = np.asarray(audio, dtype=np.float64)
+    if array.ndim == 2:
+        output = array * gain[:, None]
+    else:
+        output = array * gain
+    return output.astype(audio.dtype, copy=False)
 
 
 def apply_limiter(audio: np.ndarray, ceiling_db: float,
                   release_ms: float, sr: int) -> np.ndarray:
     """Brick-wall limiter."""
     ceiling = db_to_linear(ceiling_db)
+    release_ms = max(release_ms, 0.01)
+    sr = max(sr, 1)
     release_coeff = np.exp(-1.0 / (release_ms * 0.001 * sr))
-    output = np.copy(audio)
+
+    peaks = _peak_envelope(audio)
+    gains = _limiter_gains(peaks, ceiling, release_coeff)
+
+    array = np.asarray(audio, dtype=np.float64)
+    if array.ndim == 2:
+        output = array * gains[:, None]
+    else:
+        output = array * gains
+    return output.astype(audio.dtype, copy=False)
+
+
+def _limiter_gains(peaks: np.ndarray, ceiling: float,
+                   release_coeff: float) -> np.ndarray:
+    """Per-frame limiter gain. Sequential by definition; kept off numpy scalars."""
+    if peaks.size == 0:
+        return peaks
+    gains = np.empty_like(peaks)
+    out = gains
     gain = 1.0
-
-    for i in range(len(audio)):
-        peak = np.max(np.abs(audio[i])) if audio.ndim == 2 else abs(audio[i])
-
+    release_gain = 1.0 - release_coeff
+    for index, peak in enumerate(peaks.tolist()):
         if peak * gain > ceiling:
             gain = ceiling / max(peak, 1e-10)
         else:
-            gain = release_coeff * gain + (1 - release_coeff) * 1.0
-            gain = min(gain, 1.0)
-
-        output[i] = audio[i] * gain
-
-    return output
+            gain = min(release_coeff * gain + release_gain, 1.0)
+        out[index] = gain
+    return gains
 
 
 def apply_stereo_width(audio: np.ndarray, width: float) -> np.ndarray:
@@ -769,7 +968,7 @@ def master_audio(audio: np.ndarray, sr: int,
         processed = np.clip(processed, -1.0, 1.0)
 
         output_lufs = measure_lufs(processed, sr)
-        peak = linear_to_db(np.max(np.abs(processed)))
+        peak = measure_sample_peak_db(processed)
         proc_time = time.time() - t0
 
         if progress_callback:
@@ -781,6 +980,11 @@ def master_audio(audio: np.ndarray, sr: int,
             processing_time=proc_time,
             input_lufs=input_lufs, output_lufs=output_lufs,
             peak_db=peak, preset_name=preset.name,
+            input_lra_lu=measure_loudness_range(audio, sr),
+            output_lra_lu=measure_loudness_range(processed, sr),
+            true_peak_dbtp=measure_true_peak_db(processed, sr),
+            target_lufs=preset.target_lufs,
+            ceiling_dbtp=preset.limiter_ceiling,
         )
 
     except Exception as e:

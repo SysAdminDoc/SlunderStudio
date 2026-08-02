@@ -40,7 +40,7 @@ class DynamicEQTests(unittest.TestCase):
         self.assertFalse(np.allclose(stereo, processed))
         self.assertLessEqual(float(np.max(np.abs(processed))), 1.0)
 
-    def test_mixer_applies_dynamic_eq_to_tracks(self):
+    def test_analysis_suggests_without_touching_the_audio(self):
         sr = 22050
         audio = self._tone(sr, [(90.0, 0.7), (320.0, 0.35), (3500.0, 0.06)])
         stereo = np.column_stack([audio, audio]).astype(np.float32)
@@ -51,11 +51,77 @@ class DynamicEQTests(unittest.TestCase):
 
             view._on_suggest_dynamic_eq()
 
-            after = view._tracks[0]["audio"]
-            self.assertFalse(np.allclose(before, after))
+            np.testing.assert_allclose(view._tracks[0]["audio"], before)
             self.assertIn(0, view._dynamic_eq_suggestions)
             self.assertEqual("vocal", view._dynamic_eq_suggestions[0].stem_role)
-            self.assertIn("Dynamic EQ applied", view._status.text())
+            self.assertIn("not applied", view._status.text())
+            self.assertTrue(view._dynamic_eq_preview_btn.isEnabled())
+            self.assertFalse(view._dynamic_eq_revert_btn.isEnabled())
+        finally:
+            view.deleteLater()
+
+    def test_preview_is_gain_matched_and_reversible(self):
+        sr = 22050
+        audio = self._tone(sr, [(90.0, 0.7), (320.0, 0.35), (3500.0, 0.06)])
+        stereo = np.column_stack([audio, audio]).astype(np.float32)
+        view = MixerView()
+        try:
+            view.add_track("Lead Vocal", stereo, sr)
+            before = view._tracks[0]["audio"].copy()
+            view._on_suggest_dynamic_eq()
+
+            view._dynamic_eq_preview_btn.setChecked(True)
+            previewed = view._tracks[0]["audio"]
+            self.assertFalse(np.allclose(before, previewed))
+            # Gain-matched: the preview compares tone, not level.
+            self.assertAlmostEqual(
+                float(np.sqrt(np.mean(np.square(previewed)))),
+                float(np.sqrt(np.mean(np.square(before)))),
+                delta=1e-6,
+            )
+
+            view._dynamic_eq_preview_btn.setChecked(False)
+            np.testing.assert_allclose(view._tracks[0]["audio"], before)
+        finally:
+            view.deleteLater()
+
+    def test_apply_then_revert_restores_the_original(self):
+        sr = 22050
+        audio = self._tone(sr, [(90.0, 0.7), (320.0, 0.35), (3500.0, 0.06)])
+        stereo = np.column_stack([audio, audio]).astype(np.float32)
+        view = MixerView()
+        try:
+            view.add_track("Lead Vocal", stereo, sr)
+            before = view._tracks[0]["audio"].copy()
+            view._on_suggest_dynamic_eq()
+
+            view._on_apply_dynamic_eq()
+            self.assertFalse(np.allclose(before, view._tracks[0]["audio"]))
+            self.assertTrue(view._dynamic_eq_revert_btn.isEnabled())
+            self.assertIn("Revert", view._status.text())
+
+            view._on_revert_dynamic_eq()
+            np.testing.assert_allclose(view._tracks[0]["audio"], before)
+            self.assertFalse(view._dynamic_eq_revert_btn.isEnabled())
+        finally:
+            view.deleteLater()
+
+    def test_preview_and_apply_require_analysis_first(self):
+        sr = 22050
+        audio = self._tone(sr, [(90.0, 0.7), (320.0, 0.35)])
+        stereo = np.column_stack([audio, audio]).astype(np.float32)
+        view = MixerView()
+        try:
+            view.add_track("Lead Vocal", stereo, sr)
+            before = view._tracks[0]["audio"].copy()
+
+            view._on_apply_dynamic_eq()
+            np.testing.assert_allclose(view._tracks[0]["audio"], before)
+            self.assertIn("Analyze", view._status.text())
+
+            view._dynamic_eq_preview_btn.setChecked(True)
+            self.assertFalse(view._dynamic_eq_preview_btn.isChecked())
+            np.testing.assert_allclose(view._tracks[0]["audio"], before)
         finally:
             view.deleteLater()
 

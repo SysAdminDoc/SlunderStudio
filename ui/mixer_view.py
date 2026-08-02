@@ -17,7 +17,7 @@ from PySide6.QtCore import Qt, Signal
 import numpy as np
 
 from ui.accessibility import install_accessibility
-from ui.theme import ThemeEngine
+from ui.theme import Palette, ThemeEngine
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.audio_buffers import (
     decode_audio_file,
@@ -35,7 +35,9 @@ from core.mastering import (
     apply_dynamic_eq,
     match_loudness_to_reference,
     master_audio,
+    measure_loudness_range,
     measure_lufs,
+    measure_true_peak_db,
     measure_short_term_lufs,
     suggest_dynamic_eq_curve,
 )
@@ -223,6 +225,10 @@ class MixerView(QWidget):
         self._strips: list[MixerTrackStrip] = []
         self._tracks: list[dict] = []  # normalized project-rate buffers
         self._dynamic_eq_suggestions: dict[int, DynamicEQSuggestion] = {}
+        # Pre-EQ audio, kept so Preview and Apply are both reversible.
+        self._dynamic_eq_originals: dict[int, np.ndarray] = {}
+        self._dynamic_eq_previewing = False
+        self._dynamic_eq_applied = False
         self._reference_audio: Optional[np.ndarray] = None
         self._reference_sr: int = 44100
         self._reference_name: str = ""
@@ -256,23 +262,47 @@ class MixerView(QWidget):
         """)
         self._add_btn.clicked.connect(self._on_import_track)
 
-        self._dynamic_eq_btn = QPushButton("Suggest Dynamic EQ")
-        self._dynamic_eq_btn.setStyleSheet(f"""
+        eq_btn_style = f"""
             QPushButton {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
                 padding: 5px 12px; font-size: 11px; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
-            QPushButton:disabled {{ color: #555; border-color: {t['border']}; }}
-        """)
+            QPushButton:disabled {{ color: {Palette.OVERLAY0}; border-color: {t['border']}; }}
+        """
+
+        # Analyze, Preview, Apply and Revert are separate: analysis never
+        # mutates a track, preview is gain-matched and reversible, and the
+        # originals are always recoverable.
+        self._dynamic_eq_btn = QPushButton("Analyze Dynamic EQ")
+        self._dynamic_eq_btn.setStyleSheet(eq_btn_style)
         self._dynamic_eq_btn.setEnabled(False)
         self._dynamic_eq_btn.clicked.connect(self._on_suggest_dynamic_eq)
+
+        self._dynamic_eq_preview_btn = QPushButton("Preview EQ")
+        self._dynamic_eq_preview_btn.setStyleSheet(eq_btn_style)
+        self._dynamic_eq_preview_btn.setCheckable(True)
+        self._dynamic_eq_preview_btn.setEnabled(False)
+        self._dynamic_eq_preview_btn.toggled.connect(self._on_preview_dynamic_eq)
+
+        self._dynamic_eq_apply_btn = QPushButton("Apply EQ")
+        self._dynamic_eq_apply_btn.setStyleSheet(eq_btn_style)
+        self._dynamic_eq_apply_btn.setEnabled(False)
+        self._dynamic_eq_apply_btn.clicked.connect(self._on_apply_dynamic_eq)
+
+        self._dynamic_eq_revert_btn = QPushButton("Revert EQ")
+        self._dynamic_eq_revert_btn.setStyleSheet(eq_btn_style)
+        self._dynamic_eq_revert_btn.setEnabled(False)
+        self._dynamic_eq_revert_btn.clicked.connect(self._on_revert_dynamic_eq)
 
         tracks_header.addWidget(tl)
         tracks_header.addWidget(self._project_rate_label)
         tracks_header.addStretch()
         tracks_header.addWidget(self._dynamic_eq_btn)
+        tracks_header.addWidget(self._dynamic_eq_preview_btn)
+        tracks_header.addWidget(self._dynamic_eq_apply_btn)
+        tracks_header.addWidget(self._dynamic_eq_revert_btn)
         tracks_header.addWidget(self._add_btn)
         layout.addLayout(tracks_header)
 
@@ -436,7 +466,10 @@ class MixerView(QWidget):
             "Mixer",
             named_controls=[
                 (self._add_btn, "Import track", "Opens file dialog to import an audio track."),
-                (self._dynamic_eq_btn, "Suggest dynamic EQ", "Analyzes tracks and suggests per-band dynamic EQ curves."),
+                (self._dynamic_eq_btn, "Analyze dynamic EQ", "Analyzes tracks and suggests per-band dynamic EQ curves without changing them."),
+                (self._dynamic_eq_preview_btn, "Preview dynamic EQ", "Toggles a gain-matched preview of the suggested curves."),
+                (self._dynamic_eq_apply_btn, "Apply dynamic EQ", "Commits the suggested curves; originals stay recoverable."),
+                (self._dynamic_eq_revert_btn, "Revert dynamic EQ", "Restores the original audio for every affected track."),
                 (self._preset_combo, "Mastering preset", "Selects a mastering preset profile."),
                 (self._target_combo, "LUFS delivery target", "Selects a loudness target standard."),
                 (self._lufs_spin, "Target LUFS", "Sets the target loudness in LUFS."),
@@ -447,6 +480,8 @@ class MixerView(QWidget):
             ],
             tab_order=[
                 self._add_btn, self._dynamic_eq_btn,
+                self._dynamic_eq_preview_btn, self._dynamic_eq_apply_btn,
+                self._dynamic_eq_revert_btn,
                 self._preset_combo, self._target_combo, self._lufs_spin,
                 self._mid_gain_spin, self._side_gain_spin,
                 self._ref_btn, self._master_btn,
@@ -574,20 +609,30 @@ class MixerView(QWidget):
                 s.track_idx = i
 
             old_track_count = len(self._tracks) + 1
+            old_originals = dict(self._dynamic_eq_originals)
             self._dynamic_eq_suggestions = {}
+            self._dynamic_eq_originals = {}
             for new_idx, old_idx in enumerate(
                 old_idx for old_idx in range(old_track_count) if old_idx != removed_idx
             ):
                 if old_idx in old_suggestions:
                     self._dynamic_eq_suggestions[new_idx] = old_suggestions[old_idx]
+                if old_idx in old_originals:
+                    self._dynamic_eq_originals[new_idx] = old_originals[old_idx]
             self._master_btn.setEnabled(len(self._strips) > 0)
             self._update_mix_state()
 
     def _update_mix_state(self):
         """Update master button state."""
         has_tracks = len(self._strips) > 0
+        has_suggestions = bool(self._dynamic_eq_suggestions)
         self._master_btn.setEnabled(has_tracks)
         self._dynamic_eq_btn.setEnabled(has_tracks)
+        self._dynamic_eq_preview_btn.setEnabled(has_tracks and has_suggestions)
+        self._dynamic_eq_apply_btn.setEnabled(
+            has_tracks and has_suggestions and not self._dynamic_eq_previewing
+        )
+        self._dynamic_eq_revert_btn.setEnabled(bool(self._dynamic_eq_originals))
 
     def _set_target_combo_key(self, key: str):
         for idx in range(self._target_combo.count()):
@@ -614,46 +659,139 @@ class MixerView(QWidget):
                 return
         self._set_target_combo_key("custom")
 
+    DYNAMIC_EQ_STRENGTH = 0.75
+
     def _on_suggest_dynamic_eq(self):
+        """Analyze only. Never mutates a track."""
         if not self._tracks:
             self._status.setText("Import audio tracks before dynamic EQ")
             return
 
         self._dynamic_eq_btn.setEnabled(False)
-        self._status.setText("Suggesting dynamic EQ curves...")
+        self._status.setText("Analyzing dynamic EQ curves...")
 
         summaries: list[str] = []
         try:
+            self._dynamic_eq_suggestions = {}
             for idx, track in enumerate(self._tracks):
-                audio = track["audio"]
-                sr = track["sr"]
-                name = track["name"]
-                suggestion = suggest_dynamic_eq_curve(audio, sr, name)
-                processed = apply_dynamic_eq(audio, sr, suggestion.bands, strength=0.75)
-                self._tracks[idx]["audio"] = processed
+                suggestion = suggest_dynamic_eq_curve(
+                    track["audio"], track["sr"], track["name"]
+                )
                 self._dynamic_eq_suggestions[idx] = suggestion
-
-                if idx < len(self._strips):
-                    strip = self._strips[idx]
-                    strip.audio = processed
-                    mono = processed[:, 0] if processed.ndim == 2 else processed
-                    strip._waveform.load_audio(mono, sr)
-
                 if suggestion.bands:
-                    first_moves = ", ".join(
+                    moves = ", ".join(
                         f"{band.frequency_hz:.0f}Hz {band.gain_db:+.1f}dB"
                         for band in suggestion.bands[:3]
                     )
-                    summaries.append(f"{name}: {first_moves}")
+                    summaries.append(f"{track['name']}: {moves}")
                 else:
-                    summaries.append(f"{name}: balanced")
+                    summaries.append(f"{track['name']}: balanced")
 
-            self._status.setText("Dynamic EQ applied - " + " | ".join(summaries[:3]))
-            self._update_mix_state()
+            self._status.setText(
+                "Dynamic EQ suggested (not applied) - " + " | ".join(summaries[:3])
+            )
         except Exception as e:
-            self._status.setText(f"Dynamic EQ error: {e}")
+            self._status.setText(f"Dynamic EQ analysis error: {e}")
         finally:
-            self._dynamic_eq_btn.setEnabled(len(self._strips) > 0)
+            self._update_mix_state()
+
+    def _dynamic_eq_processed(self, idx: int) -> Optional[np.ndarray]:
+        """Gain-matched EQ result for one track, or None when there is nothing to do."""
+        suggestion = self._dynamic_eq_suggestions.get(idx)
+        if suggestion is None or not suggestion.bands:
+            return None
+        track = self._tracks[idx]
+        source = self._dynamic_eq_originals.get(idx, track["audio"])
+        processed = apply_dynamic_eq(
+            source, track["sr"], suggestion.bands, strength=self.DYNAMIC_EQ_STRENGTH
+        )
+        # Gain-match so the preview compares tone, not level.
+        source_rms = float(np.sqrt(np.mean(np.square(source)))) if source.size else 0.0
+        out_rms = float(np.sqrt(np.mean(np.square(processed)))) if processed.size else 0.0
+        if source_rms > 1e-9 and out_rms > 1e-9:
+            processed = processed * (source_rms / out_rms)
+        return processed
+
+    def _set_track_audio(self, idx: int, audio: np.ndarray):
+        self._tracks[idx]["audio"] = audio
+        if idx < len(self._strips):
+            strip = self._strips[idx]
+            strip.audio = audio
+            mono = audio[:, 0] if audio.ndim == 2 else audio
+            strip._waveform.load_audio(mono, self._tracks[idx]["sr"])
+
+    def _on_preview_dynamic_eq(self, enabled: bool):
+        """Toggle a reversible, gain-matched preview of the suggested curves."""
+        if enabled:
+            if not self._dynamic_eq_suggestions:
+                self._dynamic_eq_preview_btn.setChecked(False)
+                self._status.setText("Analyze dynamic EQ before previewing")
+                return
+            applied = 0
+            for idx in range(len(self._tracks)):
+                processed = self._dynamic_eq_processed(idx)
+                if processed is None:
+                    continue
+                self._dynamic_eq_originals.setdefault(idx, self._tracks[idx]["audio"])
+                self._set_track_audio(idx, processed)
+                applied += 1
+            self._dynamic_eq_previewing = applied > 0
+            self._status.setText(
+                f"Previewing gain-matched dynamic EQ on {applied} track(s)"
+                if applied else "No EQ moves were suggested"
+            )
+        else:
+            self._restore_dynamic_eq_originals()
+            self._dynamic_eq_previewing = False
+            self._status.setText("Preview off - original audio restored")
+        self._update_mix_state()
+
+    def _on_apply_dynamic_eq(self):
+        """Commit the suggested curves. Originals stay recoverable via Revert."""
+        if not self._dynamic_eq_suggestions:
+            self._status.setText("Analyze dynamic EQ before applying")
+            return
+        applied = 0
+        for idx in range(len(self._tracks)):
+            processed = self._dynamic_eq_processed(idx)
+            if processed is None:
+                continue
+            self._dynamic_eq_originals.setdefault(idx, self._tracks[idx]["audio"])
+            self._set_track_audio(idx, processed)
+            applied += 1
+        self._dynamic_eq_applied = applied > 0
+        self._dynamic_eq_previewing = False
+        self._dynamic_eq_preview_btn.blockSignals(True)
+        self._dynamic_eq_preview_btn.setChecked(False)
+        self._dynamic_eq_preview_btn.blockSignals(False)
+        self._status.setText(
+            f"Dynamic EQ applied to {applied} track(s) - Revert restores the originals"
+            if applied else "No EQ moves were suggested"
+        )
+        self._update_mix_state()
+
+    def _on_revert_dynamic_eq(self):
+        """Restore every stored original."""
+        restored = self._restore_dynamic_eq_originals()
+        self._dynamic_eq_applied = False
+        self._dynamic_eq_previewing = False
+        self._dynamic_eq_preview_btn.blockSignals(True)
+        self._dynamic_eq_preview_btn.setChecked(False)
+        self._dynamic_eq_preview_btn.blockSignals(False)
+        self._status.setText(
+            f"Reverted dynamic EQ on {restored} track(s)" if restored
+            else "Nothing to revert"
+        )
+        self._update_mix_state()
+
+    def _restore_dynamic_eq_originals(self) -> int:
+        restored = 0
+        for idx, original in list(self._dynamic_eq_originals.items()):
+            if idx < len(self._tracks):
+                self._set_track_audio(idx, original)
+                restored += 1
+        self._dynamic_eq_originals = {}
+        return restored
 
     # ── Mixing ─────────────────────────────────────────────────────────────────
 
@@ -747,6 +885,11 @@ class MixerView(QWidget):
                 result.audio = match.audio
                 result.output_lufs = match.output_lufs
                 result.peak_db = match.peak_db
+                # Re-measure after the match; the pre-match numbers no longer
+                # describe what is being written.
+                result.output_lra_lu = measure_loudness_range(match.audio, sr)
+                result.true_peak_dbtp = measure_true_peak_db(match.audio, sr)
+                result.target_lufs = match.reference_lufs
             else:
                 self._last_loudness_match = None
 
@@ -767,7 +910,8 @@ class MixerView(QWidget):
                 self._lufs_label.setText(
                     f"In: {result.input_lufs:.1f} LUFS | "
                     f"Out: {result.output_lufs:.1f} LUFS | "
-                    f"Peak: {result.peak_db:.1f} dB"
+                    f"LRA: {result.output_lra_lu:.1f} LU | "
+                    f"True peak: {result.true_peak_dbtp:.2f} dBTP"
                 )
 
             # Export dialog
