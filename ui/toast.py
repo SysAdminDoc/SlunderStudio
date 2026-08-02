@@ -3,13 +3,13 @@ Slunder Studio — Toast Notification System
 Slide-in from bottom-right, auto-dismiss, no blocking dialogs.
 Supports success/error/warning/info types with color-coded borders.
 """
+import re
 import time
 
 from PySide6.QtWidgets import (
-    QFrame, QLabel, QHBoxLayout, QWidget, QApplication, QPushButton,
+    QFrame, QLabel, QHBoxLayout, QWidget, QPushButton,
 )
-from PySide6.QtCore import QTimer, QPropertyAnimation, QRect, QEasingCurve, Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QTimer, QPropertyAnimation, QRect, QEasingCurve, Signal
 
 from ui.theme import Palette
 
@@ -26,6 +26,8 @@ class Toast(QFrame):
         "error": {"border": Palette.RED, "icon": "\u2717", "name": "toastError"},
     }
 
+    _SOFT_BREAK_RE = re.compile(r"\S{24}(?=\S)")
+
     def __init__(
         self,
         message: str,
@@ -36,9 +38,12 @@ class Toast(QFrame):
         action_callback=None,
     ):
         super().__init__(parent)
-        self.duration_ms = duration_ms
+        self.duration_ms = (
+            max(duration_ms, len(message) * 60) if duration_ms > 0 else 0
+        )
         self._anim = None
         self._action_callback = action_callback
+        self._message = message
 
         config = self.TYPES.get(toast_type, self.TYPES["info"])
         self.setObjectName(config["name"])
@@ -65,10 +70,12 @@ class Toast(QFrame):
         layout.addWidget(icon_label)
 
         # Message
-        msg_label = QLabel(message)
+        msg_label = QLabel(self._soft_break_message(message))
         msg_label.setStyleSheet(f"color: {Palette.TEXT}; font-size: 13px; border: none;")
         msg_label.setWordWrap(True)
         msg_label.setMaximumWidth(320)
+        msg_label.setToolTip(message)
+        self._message_label = msg_label
         layout.addWidget(msg_label, 1)
 
         if action_label and action_callback:
@@ -89,11 +96,16 @@ class Toast(QFrame):
         self.adjustSize()
 
         # Dismiss timer
-        if duration_ms > 0:
+        if self.duration_ms > 0:
             self._dismiss_timer = QTimer(self)
             self._dismiss_timer.setSingleShot(True)
             self._dismiss_timer.timeout.connect(self.dismiss)
-            self._dismiss_timer.start(duration_ms)
+            self._dismiss_timer.start(self.duration_ms)
+
+    @classmethod
+    def _soft_break_message(cls, message: str) -> str:
+        """Allow long paths and tokens to wrap without changing the tooltip value."""
+        return cls._SOFT_BREAK_RE.sub(lambda match: f"{match.group(0)}\u200b", message)
 
     def slide_in(self, target_rect: QRect):
         """Animate sliding in from the right."""
@@ -113,8 +125,28 @@ class Toast(QFrame):
             self._action_callback()
         self.dismiss()
 
+    def enterEvent(self, event):
+        """Pause timed dismissal while the pointer is over the toast."""
+        super().enterEvent(event)
+        timer = getattr(self, "_dismiss_timer", None)
+        if timer is not None and timer.isActive():
+            self._paused_remaining_ms = timer.remainingTime()
+            timer.stop()
+
+    def leaveEvent(self, event):
+        """Resume timed dismissal after the pointer leaves the toast."""
+        super().leaveEvent(event)
+        timer = getattr(self, "_dismiss_timer", None)
+        remaining = getattr(self, "_paused_remaining_ms", 0)
+        if timer is not None and remaining > 0:
+            timer.start(remaining)
+            self._paused_remaining_ms = 0
+
     def dismiss(self):
         """Animate sliding out to the right, then destroy."""
+        timer = getattr(self, "_dismiss_timer", None)
+        if timer is not None:
+            timer.stop()
         if self._anim and self._anim.state() == QPropertyAnimation.State.Running:
             return
 

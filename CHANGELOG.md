@@ -18,6 +18,8 @@ All notable changes to SlunderStudio will be documented in this file.
   and fixed mono rendering to downmix the synthesizer's stereo frames safely.
 - Replaced fixed-width dynamic labels with resize-aware ellipsis and full-value tooltips, and let
   invalid HuggingFace token errors expand their dialog instead of clipping.
+- Kept toast notifications anchored through window resizes, wrapped long unbroken paths with soft
+  breakpoints, scaled reading time to message length, and paused timed dismissal while hovered.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

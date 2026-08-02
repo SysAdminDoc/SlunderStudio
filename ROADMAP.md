@@ -118,24 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Toasts do not reposition on resize, clip long paths, and use a duration independent of length
-  Category: ux
-  Where: `ui/toast.py:88, 212-226, 228-243`; `ui/main_window.py` (no `resizeEvent` override)
-  Problem: `ToastManager._reposition()` runs only when a toast is added or removed, and the main
-    window has no `resizeEvent` hook, so maximizing or restoring while a toast is visible leaves it
-    floating mid-window or clipped off-canvas until it expires. `setFixedWidth(380)` with
-    `msg_label.setMaximumWidth(320)` and word wrap cannot break the unbreakable file-path tokens
-    that error toasts routinely carry, so those clip horizontally. Durations are constant per type
-    (info 3 s through error 5 s) regardless of message length, with no hover-to-pause; the gated
-    persistent history satisfies SC 2.2.1, but the live toast itself is still unreadable for long
-    errors.
-  Fix: Reposition from a `resizeEvent` override; scale the duration by message length (for example
-    `max(base, 60ms * chars)`); pause the dismiss timer on `enterEvent`.
-  Acceptance: A toast stays correctly anchored across a window resize; a long error message stays
-    visible long enough to read and is not horizontally clipped.
-  Confidence: Verified (resize), Likely (clipping)
-  Effort: S
-
 ### P3
 
 - [ ] P3 — `core/audio_engine.py` has no test coverage at all

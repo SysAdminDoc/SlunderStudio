@@ -790,6 +790,12 @@ class MainWindow(QMainWindow):
         else:
             self._autosave_label.setText("Autosave  ·  off")
 
+    def resizeEvent(self, event):
+        """Keep transient notifications anchored to the current window bounds."""
+        super().resizeEvent(event)
+        if hasattr(self, "toast_mgr"):
+            self.toast_mgr._reposition()
+
     def closeEvent(self, event):
         """Clean up on close."""
         if hasattr(self, "_autosave"):
