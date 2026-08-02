@@ -118,25 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Playback-finished detection is a ~21 ms race, so the transport can stick in "playing"
-  Category: reliability
-  Where: `core/audio_engine.py:192-227` (stream callback), `:357-366` (`_emit_position`)
-  Problem: At end of audio the callback sets `_position = audio_end`, and only on the next callback
-    (about 21 ms later at blocksize 1024 / 48 kHz) sets `_is_playing = False` and raises
-    `CallbackStop`. `playback_finished` is emitted only if the 33 ms `_pos_timer` happens to fire
-    inside that one-callback window while `_is_playing` is still True, because `_emit_position`
-    gates on it. Most of the time the window is missed: no `playback_finished`, no
-    `playback_stopped`, the position timer keeps running, the stream object is never closed, and
-    `ui/main_window.py:243-246` leaves the play button showing the pause glyph until the user
-    presses stop or plays something else.
-  Evidence: Read both functions and the timer interval; the gate makes the emission probabilistic.
-  Fix: Detect end of audio in `_emit_position` via `self._position >= end` regardless of
-    `_is_playing`, or have the callback set a thread-safe latch the timer checks.
-  Acceptance: See the audio-engine test-coverage item below; add a case that drives the callback to
-    the end of the buffer and asserts `playback_finished` is emitted exactly once.
-  Confidence: Likely (logic verified; frequency of the stuck UI needs a live repro)
-  Effort: S
-
 - [ ] P2 — Mastering, dynamic EQ, import decode and resample all run on the GUI thread
   Category: perf
   Where: `ui/mixer_view.py:871-1004` (`_on_master_export`), `:685-717`

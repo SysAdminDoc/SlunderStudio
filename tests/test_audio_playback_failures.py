@@ -1,6 +1,7 @@
 import os
 import unittest
 from unittest import mock
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -43,6 +44,47 @@ class AudioPlaybackFailureTests(unittest.TestCase):
 
         self.assertIsNone(engine._audio_data)
         self.assertIsNone(engine._source_path)
+
+    def test_callback_end_emits_playback_finished_once(self):
+        engine = AudioEngine()
+        engine.cleanup()
+
+        class _CallbackStop(Exception):
+            pass
+
+        class _Stream:
+            def __init__(self, **kwargs):
+                self.callback = kwargs["callback"]
+
+            def start(self):
+                return None
+
+            def stop(self):
+                return None
+
+            def close(self):
+                return None
+
+        fake_sd = SimpleNamespace(OutputStream=_Stream, CallbackStop=_CallbackStop)
+        finished = []
+        engine.playback_finished.connect(lambda: finished.append(True))
+        engine.load_array(np.zeros((4, 1), dtype=np.float32), 4)
+
+        with mock.patch.object(audio_engine, "_sd", fake_sd), mock.patch.object(
+            audio_engine, "_sf", object()
+        ):
+            engine.play()
+            stream = engine._stream
+            stream.callback(np.zeros((4, 1), dtype=np.float32), 4, None, None)
+            with self.assertRaises(_CallbackStop):
+                stream.callback(np.zeros((4, 1), dtype=np.float32), 4, None, None)
+
+            engine._emit_position()
+            engine._emit_position()
+
+        self.assertEqual([True], finished)
+        self.assertFalse(engine.is_playing)
+        engine.cleanup()
 
     def test_song_forge_does_not_play_when_file_load_fails(self):
         toast = _ToastRecorder()

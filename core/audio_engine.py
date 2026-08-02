@@ -373,11 +373,20 @@ class AudioEngine(QObject):
         if self._is_playing and not self._is_paused:
             pos = self.position
             self.position_changed.emit(pos)
-            # Check if playback finished
-            if self._audio_data is not None and self._position >= len(self._audio_data):
-                if not self._loop_enabled:
-                    self.stop()
-                    self.playback_finished.emit()
+
+        # The sounddevice callback can mark playback false on the callback
+        # immediately after writing the final block. Check the position even
+        # in that state so the timer closes the stream and emits completion.
+        with self._lock:
+            at_end = (
+                self._audio_data is not None
+                and self._position >= len(self._audio_data)
+                and not self._loop_enabled
+                and self._stream is not None
+            )
+        if at_end:
+            self.stop()
+            self.playback_finished.emit()
 
     def cleanup(self):
         """Clean up resources."""

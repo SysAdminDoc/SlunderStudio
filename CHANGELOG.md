@@ -30,6 +30,8 @@ All notable changes to SlunderStudio will be documented in this file.
   `midi_studio` instead of `song_forge`.
 - Classified semantic model-activation cancellations as cancelled worker jobs and kept Model Hub
   supersede/cancel feedback informational instead of reporting a failure.
+- Closed the audio stream and emitted `playback_finished` when the callback reaches the final buffer,
+  even if the callback already marked playback as stopped.
 - Marked FluidSynth sine fallbacks as demo renders with an explicit reason and kept MIDI routing buttons disabled for those previews.
 - Repaired AI Producer lyrics generation to use the canonical loaded lyrics model and structured prompts, while labeling template fallback lyrics as demo/degraded output.
 - Marshalled streamed lyrics tokens through an `InferenceWorker` signal and queued connection so the editor is updated only on its GUI thread.
