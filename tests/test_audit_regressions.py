@@ -5,14 +5,49 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from core.audio_export import trim_audio
 from core.job_state import JobStore
+from core.model_manager import get_gpu_info
 from core.project import Project, ProjectAsset
 from core.settings import Settings
 from core.voice_bank import VoiceBank, VoiceProfile
 from engines.ai_producer import AIProducer, ProducerBrief, PipelineStage
+from ui.onboarding import check_system
+
+
+class GpuProbeTests(unittest.TestCase):
+    def setUp(self):
+        self.torch = SimpleNamespace(
+            cuda=SimpleNamespace(
+                is_available=lambda: True,
+                get_device_properties=lambda _index: SimpleNamespace(
+                    name="Fake CUDA GPU", total_memory=8 * (1024**3)
+                ),
+                get_device_name=lambda _index: "Fake CUDA GPU",
+                memory_reserved=lambda _index: 2 * (1024**3),
+                memory_allocated=lambda _index: 1 * (1024**3),
+            )
+        )
+
+    def test_gpu_info_uses_torch_total_memory(self):
+        with mock.patch.dict("sys.modules", {"torch": self.torch}):
+            info = get_gpu_info()
+
+        self.assertTrue(info["available"])
+        self.assertEqual(info["name"], "Fake CUDA GPU")
+        self.assertEqual(info["total_gb"], 8.0)
+        self.assertEqual(info["free_gb"], 6.0)
+
+    def test_onboarding_system_check_uses_torch_total_memory(self):
+        with mock.patch.dict("sys.modules", {"torch": self.torch}):
+            checks = check_system()
+
+        self.assertTrue(checks["cuda"])
+        self.assertEqual(checks["gpu_name"], "Fake CUDA GPU")
+        self.assertEqual(checks["vram_gb"], 8.0)
 
 
 class ThreadSafeSingletonTests(unittest.TestCase):
