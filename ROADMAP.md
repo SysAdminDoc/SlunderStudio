@@ -1,78 +1,180 @@
 # Slunder Studio Roadmap
 
-Roadmap for Slunder Studio - an offline local-first AI music generation suite (ACE-Step, DiffSinger, RVC, Demucs, Stable Audio Open). Focus: better quality, faster iteration, tighter DAW integration.
+Incomplete work only for Slunder Studio, an offline local-first AI music creation suite. Priority mapping: P0 = Now, P1 = Next, P2 = Later, P3 = Under Consideration.
 
 ## Planned Features
 
-### Generation quality
+### Export and integration
 
-### Vocals & voice
+- [ ] Wire the existing `.dawproject` exporter/validator into Project Manager and Mixer, make archived media names collision-safe, validate against the official schemas, then validate golden packages in Bitwig, Studio One, and Cubase. The core ZIP/XML export already exists; do not reimplement it.
+- [ ] Add stem export naming templates for user-selected DAWs.
+- [ ] Add project-level MP3/FLAC/Opus delivery with standards-mapped metadata and provenance.
+- [ ] Add OSC control with a versioned namespace, loopback default, explicit LAN opt-in, allowlists, and rate/size limits.
+- [ ] Add a headless CLI that uses the same engine, job, export, and error contracts as the desktop UI.
 
-### MIDI & composition
+### Model hub and operations
 
-### Mixing & mastering
+- [ ] Add model update checks with explicit release notes, immutable target revisions, health validation, and rollback to the last good revision.
+- [ ] Add tested 4-bit/8-bit model variants with measured quality, latency, disk, and VRAM tradeoffs.
+- [ ] Add DirectML backend support for AMD GPUs on Windows.
+- [ ] Add MPS backend support for Apple Silicon.
+- [ ] Add central admission control for concurrent model downloads and inference. Resume and SHA-256 verification already exist; retain them instead of duplicating that work.
 
-### Export & integration
-- `.dawproject` export (cross-DAW: Cubase, Studio One, Bitwig)
-- Stems export with naming convention matching user-chosen DAW template
-- Project-level MP3/FLAC/Opus render with metadata (ID3, Vorbis comments)
-- OSC control for external MIDI/DAW remotes
-- Headless CLI mode (`slunderstudio --prompt "..." --preset ace-step-long --out song.wav`)
+### Creative workflows
 
-### Model hub & ops
-- Model update checker with safe rollback (keep last good version)
-- Quantized model variants (4-bit, 8-bit) with quality/VRAM tradeoff picker
-- DirectML backend for AMD GPUs on Windows
-- Mac MPS backend for Apple Silicon
-- Background model download queue with resume + SHA256 verify
-
-## Competitive Research
-
-- **Suno / Udio** - cloud-only, closed. Slunder Studio's edge is fully local generation with full stem + MIDI access; lean into that in marketing and add "Suno-equivalent prompt" translator to import shared Suno prompts.
-- **Stable Audio Tools** (Stability) - open local pipeline for SFX, already integrated; upgrade path to Stable Audio 2 when released.
-- **AudioCraft/MusicGen** (Meta) - melody-conditioned generation; worth adding MusicGen-Melody as an alternate Song Forge backend so users can hum a melody and have AI complete the arrangement.
-- **Riffusion** - real-time spectrogram diffusion; add as a "live jam" mode for latent-space exploration.
-- **LM Studio / Jan.ai** - local LLM model-hub UX is mature; mirror their "import GGUF", "change backend", "VRAM estimator" patterns in the Model Hub.
-
-## Nice-to-Haves
-
-- Ableton Link sync for real-time tempo-matched jam sessions
-- MIDI controller mappings for Mixer and Piano Roll
-- Batch-queue panel ("generate 50 songs overnight with preset X") with resume-on-crash
-- In-app lyric scoring vs rhyme/rhythm heuristics during Lyrics Engine edits
-- Gradio/webview embed of each engine for remote/headless use
-- Plugin SDK so engines can be added without forking (drop a `.py` in `plugins/engines/`)
-- Direct export-and-upload pipeline to SunoJump for fingerprint masking before re-upload
-
-## Open-Source Research (Round 2)
-
-### Related OSS Projects
-- https://github.com/ace-step/ACE-Step-1.5 — Leading local Suno alternative, <4GB VRAM, LoRA training, Vocal2BGM, multi-track, LRC timestamps
-- https://github.com/fspecii/ace-step-ui — Professional Gradio-beyond UI for ACE-Step — UX reference for a desktop wrapper
-- https://github.com/multimodal-art-projection/YuE — Full-song foundation model, multilingual (EN/ZH/YUE/JA/KO)
-- https://github.com/facebookresearch/demucs — HTDemucs stem separator (industry standard)
-- https://github.com/nomadkaraoke/python-audio-separator — MDX/MDXC/VR/Roformer wrapper — single API over many separators
-- https://github.com/Anjok07/ultimatevocalremovergui — UVR GUI, huge model catalog
-- https://github.com/facebookresearch/audiocraft — MusicGen reference
-- https://github.com/magenta/magenta — MIDI-focused generation (melody/harmony RNN/Transformer)
-- https://github.com/Zizwar/Awesome-Suno — Awesome list of OSS Suno-adjacent projects
-
-### Features to Borrow
-- ACE-Step LoRA training flow — "train on my past songs, generate in my voice/style" (ACE-Step 1.5 v1.5 XL)
-- Vocal2BGM mode — user uploads an a cappella, engine generates a backing track (ACE-Step)
-- Audio understanding pass — extract BPM / key / time-sig / caption before generation as conditioning (ACE-Step)
-- LRC generation for lyric-timestamp export straight into Slunder-Songs vault (ACE-Step)
-- python-audio-separator as the stem-sep adapter — one interface, user picks MDX/MDXC/VR/Roformer/HTDemucs at runtime
-- UVR's model-downloader UI pattern — users pick models from a gallery, downloads cached to `%LOCALAPPDATA%` (Ultimate Vocal Remover GUI)
-- Magenta's MIDI scaffolds (melody-rnn, music-transformer) behind the MIDI Engine tab (magenta)
-- Multi-track "Add Layer" flow modeled on Suno Studio (ACE-Step XL)
-
-### Patterns & Architectures Worth Studying
-- Gradio server as local sidecar + PyQt6 front-end talking HTTP to it — users can open Gradio UI in browser OR PyQt shell, same backend (fspecii/ace-step-ui model)
-- Model registry manifest — `models.json` lists weights + hash + min-VRAM + download URL, settings UI toggles per model (UVR pattern)
-- Plugin engine interface (`BaseEngine` with `name, capabilities, generate(params, ctx) -> AudioResult`) — drop-in `plugins/engines/*.py`
-- VRAM-aware scheduler — engines declare min-VRAM, scheduler dequeues jobs only when a worker with capacity is free
-- Shared audio-tensor cache so stem-sep output can feed mastering/fingerprint-mask without re-decode
+- [ ] Add Ableton Link sync for tempo-matched sessions after transport timing is testable.
+- [ ] Add MIDI controller mapping for Mixer and Piano Roll after their keyboard/action contracts are complete.
+- [ ] Expand persistent jobs into a batch-queue panel with retry, resume-on-restart, per-job resource estimates, and export selection.
+- [ ] Add lyric rhyme/rhythm scoring as advisory feedback, never as an automatic rewrite.
+- [ ] Add ACE-Step LoRA dataset validation/training only after the versioned ACE-Step 1.5 inference adapter is stable.
+- [ ] Add ACE-Step Vocal-to-BGM, extract/complete, and non-destructive layer workflows through the shared source-conditioned task contract.
+- [ ] Add LRC/synchronized-lyrics export from verified alignment data.
+- [ ] Add a process-isolated engine plug-in SDK only after manifest signing is explicitly excluded, permissions are defined, and a bad extension cannot crash the shell.
 
 ## Research-Driven Additions
 
+### P1
+
+- [ ] P1 — Serialize LyricsDB operations
+  Why: A single SQLite connection is shared across GUI and worker threads with `check_same_thread=False` but no operation lock or busy policy.
+  Evidence: `core/lyrics_db.py:80,156-197`.
+  Touches: `core/lyrics_db.py`, connection lifecycle, concurrent database tests.
+  Acceptance: Concurrent reads/writes/imports are serialized or transactionally retried with a bounded busy timeout; stress tests produce no lock errors, partial rows, or cross-thread connection misuse.
+  Complexity: S
+
+- [ ] P1 — Guard ModelManager mutable lifecycle state
+  Why: GUI reads and worker writes race on status, current model identity, and loaded objects.
+  Evidence: `core/model_manager.py:428-447,499-587,1035-1036`.
+  Touches: `core/model_manager.py`, model workers/signals, concurrency tests.
+  Acceptance: State transitions are atomic and ordered; stale workers cannot overwrite a newer request; concurrent load/unload/download/cancel stress tests end in one valid observable state.
+  Complexity: M
+
+- [ ] P1 — Move Hugging Face credentials to the OS credential service
+  Why: The token is stored in plaintext config and copied into timestamped backups.
+  Evidence: `ui/model_hub.py:646-652`, `ui/settings_view.py:186-191`, `core/settings.py:235-244,407-417`; InvokeAI token/config security release.
+  Touches: credential abstraction, Settings, Model Hub, config migration/redaction, diagnostics and backup tests.
+  Acceptance: New tokens never enter JSON, logs, diagnostics, or backups; Windows Credential Manager, macOS Keychain, and Linux Secret Service are supported with a clear unavailable-backend state; legacy copies are detected and removed after confirmed migration.
+  Complexity: M
+
+- [ ] P1 — Add interval autosave and restorable project versions
+  Why: Settings promise an autosave interval, snapshots are list-only, and users cannot compare or restore a version.
+  Evidence: `core/settings.py:42`, `core/project.py:465-488`, `ui/project_manager.py:248-275`; Suno Studio, Udio Sessions, Moises, and Ableton recovery.
+  Touches: `core/project.py`, autosave coordinator, `ui/project_manager.py`, settings, project migration/retention tests.
+  Acceptance: Dirty projects autosave at the configured interval; manual/automatic versions can be previewed and restored after an automatic pre-restore snapshot; retention is bounded and crash/restart tests recover the selected state.
+  Complexity: L
+
+- [ ] P1 — Establish feature-level accessibility and responsive-layout gates
+  Why: Muted text fails normal-text contrast, focus indicators are suppressed, custom audio/MIDI controls are mouse-only, and fixed minimum sizing overflows smaller displays.
+  Evidence: `ui/theme.py`, `ui/main_window.py`, `ui/waveform_widget.py`, `ui/piano_roll.py`; WCAG 2.2, Qt accessibility, Ableton accessibility.
+  Touches: theme tokens/styles, navigation/layouts, custom widgets, toast/status announcements, accessibility test harness and documentation.
+  Acceptance: Normal text meets 4.5:1, focus is visible, all core workflows work by keyboard, custom widgets expose roles/states/actions/value changes, timed messages have an accessible alternative, and every major view is usable at 1024×768 and 200% scaling.
+  Complexity: L
+
+- [ ] P1 — Produce reproducible unsigned cross-platform releases
+  Why: Version strings disagree, the build assumes Windows paths/artifacts, optional dependencies are not captured, and signing code contradicts the release policy.
+  Evidence: `README.md`, source headers, `ui/settings_view.py`, `SlunderStudio.spec`, `build/build.py`; PyInstaller and PySide6 deployment guidance.
+  Touches: one version module, build/spec scripts, icon/resource paths, lock profiles, Windows/Linux/macOS build and smoke jobs, release docs.
+  Acceptance: One version source drives UI/docs/artifact metadata; all signing paths are removed; clean Windows, Linux, and macOS builds are unsigned, install/start offline, expose diagnostics, and pass a packaged GUI smoke suite with recorded hashes.
+  Complexity: L
+
+- [ ] P1 — Make mastering standards-conformant and non-destructive
+  Why: RMS-based loudness and sample-peak limiting are labeled as delivery presets, while Dynamic EQ mutates source arrays without preview or undo.
+  Evidence: `core/mastering.py`, `ui/mixer_view.py:576-631`; ITU-R BS.1770-5, EBU R128, LANDR, and Ozone.
+  Touches: `core/mastering.py`, Mixer mastering state, shared export, reference fixtures, undo/version integration.
+  Acceptance: Integrated loudness, LRA, and oversampled dBTP pass published conformance vectors; Analyze/Suggest, gain-matched Preview, Apply, and Revert are separate; originals remain recoverable and exported reports state measured values.
+  Complexity: L
+
+- [ ] P1 — Vectorize and benchmark mastering DSP
+  Why: Biquad, compressor, and limiter loops scale per sample in Python and block long renders even though current short benchmarks do not justify the prior “unusable for minutes” claim.
+  Evidence: `core/mastering.py:286-352`; 2026-07-29 local 48 kHz stereo benchmark.
+  Touches: `core/mastering.py`, background mastering worker, numerical-equivalence and performance tests.
+  Acceptance: Three-minute stereo fixtures complete within an explicit benchmark budget on the reference CPU, remain off the GUI thread, preserve channel independence/state, and match approved numerical tolerances.
+  Complexity: M
+
+- [ ] P1 — Centralize delivery formats, metadata, and provenance
+  Why: Mixer writes PCM16 directly while other surfaces use `core/audio_export.py`, creating inconsistent formats, validation, rights warnings, and sidecars.
+  Evidence: `ui/mixer_view.py:676-748`, `ui/stem_mixer.py`, `core/audio_export.py`; ID3v2.4, Vorbis comments, RFC 7845, BWF, Suno and Logic exports.
+  Touches: `core/audio_export.py`, Mixer/Stem Mixer/project export, metadata schema, codec probes, provenance, round-trip tests.
+  Acceptance: Full mix, selected range, clips, stems, and MIDI use one export service; codec availability is probed; filenames are deterministic; BPM/key/language/lyrics/rights/revision map correctly; every successful write is reopened, hashed, and paired with provenance.
+  Complexity: L
+
+- [ ] P1 — Bound recovery artifacts and expose one recovery center
+  Why: Jobs, crash logs, settings backups, and project versions can grow indefinitely and recovery actions are fragmented.
+  Evidence: `core/job_state.py`, `core/settings.py`, `core/project.py`, log/crash paths; Ableton recovery and YuE-UI saved sessions.
+  Touches: retention settings, job/log/version stores, recovery UI, diagnostics, cleanup tests.
+  Acceptance: Age/count/size policies have safe defaults and dry-run previews; active/recoverable records are never pruned; users can inspect, retry, resume, discard, restore, or reveal artifacts from one screen with redacted failure details.
+  Complexity: M
+
+- [ ] P1 — Make cross-module routing transfer real artifacts and context
+  Why: Some routes only switch pages and show a toast while discarding the selected file or MIDI context.
+  Evidence: `ui/main_window.py:486-501`; current SFX/Vocal-to-Mixer routes; Hacker News demand for granular DAW-style handoff.
+  Touches: `ui/main_window.py`, route payload types, Song Forge, MIDI Studio, Vocal Suite, Mixer, project asset registration.
+  Acceptance: Each advertised route transfers a typed artifact plus tempo/key/lyrics/provenance, selects it in the destination, registers it to the active project when requested, and has an end-to-end test.
+  Complexity: M
+
+### P2
+
+- [ ] P2 — Run SFX batches as cancellable background jobs
+  Why: Stable Audio inference runs in a synchronous UI-thread loop for the full batch.
+  Evidence: `ui/sfx_view.py:353-415`; commercial and OSS persistent-job patterns.
+  Touches: `ui/sfx_view.py`, SFX engine cancellation, shared workers/jobs, progress and partial-result UI.
+  Acceptance: The window remains responsive; progress identifies the active variation; cancellation waits for worker termination, preserves verified completed results, removes only owned partials, and supports retry.
+  Complexity: M
+
+- [ ] P2 — Run real MIDI generation as a cancellable background job
+  Why: MIDI Studio synchronously calls only the demo generator and does not use the installed MIDI model.
+  Evidence: `ui/midi_studio_view.py:421-439`; RVC/ACE-Step resource-aware inference patterns.
+  Touches: MIDI Studio, `engines/midi_llm_engine.py`, shared engine/job contract, mute/solo render path, tests.
+  Acceptance: A loaded model is used when selected; demo mode is explicit; generation is responsive/cancellable; mute/solo affects preview/export; fixed-seed fixtures are deterministic for the pinned runtime.
+  Complexity: M
+
+- [ ] P2 — Run reference analysis as a cancellable background job
+  Why: Librosa analysis runs synchronously and freezes the GUI on large files.
+  Evidence: `ui/reference_panel.py:191-210`; PySide thread-affinity guidance.
+  Touches: `ui/reference_panel.py`, `engines/audio_analyzer.py`, shared workers, cache and cancellation tests.
+  Acceptance: Large-file analysis keeps the UI responsive, reports stage progress, cancels cleanly, caches by content hash plus analyzer version, and never applies a stale result to a newer selection.
+  Complexity: S
+
+- [ ] P2 — Use the DiffSinger model's actual frame timing
+  Why: F0 frame-to-time mapping uses an approximation unrelated to the active model hop size.
+  Evidence: `engines/diffsinger_engine.py:255-280`; DiffSinger model/config contract.
+  Touches: `engines/diffsinger_engine.py`, model profile metadata, alignment fixtures.
+  Acceptance: Timing derives from the loaded model sample rate/hop configuration; known pitch events align within one frame across supported profiles and invalid metadata fails explicitly.
+  Complexity: S
+
+- [ ] P2 — Complete UI localization with pseudolocale and RTL gates
+  Why: The catalog/helper exist, but most views remain hard-coded English and there is no runtime locale control.
+  Evidence: `core/i18n.py`, `assets/locales/en.json`, limited `tr()` call sites; ACE-Step/RVC multilingual UIs and Qt translation support.
+  Touches: all `ui/*`, i18n extraction/completeness tooling, Settings locale control, layouts, tests and translator docs.
+  Acceptance: All user-visible strings are keys; locale changes persist and apply on restart; missing keys fail tests; pseudolocale finds clipping; one RTL locale passes mirrored-layout and keyboard smoke tests.
+  Complexity: L
+
+- [ ] P2 — Add a maintained separator adapter with honest model capabilities
+  Why: Archived Demucs is the only real backend while current tools expose maintained MDX/MDXC/Roformer/ensemble options and model-specific limitations.
+  Evidence: `engines/demucs_engine.py`; UVR, python-audio-separator, Ableton stem separation.
+  Touches: separator interface, Vocal Suite, Model Hub, job/export/provenance paths, quality/resource presets.
+  Acceptance: Demucs remains one adapter; at least one maintained backend is selectable; each model declares stems, license, device, RAM/VRAM, chunking, quality/speed, and known limitations; originals and per-run settings are preserved.
+  Complexity: L
+
+- [ ] P2 — Build a reproducible engine evaluation harness
+  Why: Engine claims lack fixed prompts, model revisions, hardware measurements, failure rates, and human-review baselines.
+  Evidence: ACE-Step/DiffRhythm papers; VERSA, MAD/MusicPrefs, and MusicEval; current absence of real-inference tests.
+  Touches: test fixtures, benchmark runner, provenance/report schema, release checklist, optional metrics dependencies.
+  Acceptance: Fixed prompts/seeds/durations/languages record latency, peak RAM/VRAM, failure, adherence, lyric timing, structure, loudness/true peak, and artifacts; reports include model/runtime hashes and a blinded listener rubric; no release is gated on FAD alone.
+  Complexity: L
+
+- [ ] P2 — Audit settings and onboarding against actual runtime behavior
+  Why: Several controls claim immediate effect without consumers, onboarding completes even when dismissed, and readiness checks can report false-green on exceptions.
+  Evidence: `ui/settings_view.py`, `core/settings.py`, `main.py:337-342`, onboarding UI; local-model onboarding patterns.
+  Touches: settings schema/consumers, onboarding dialog and readiness probes, first-run state, copy, tests.
+  Acceptance: Every visible setting has a tested consumer or is removed; dismissing onboarding does not mark completion; readiness distinguishes installed/downloaded/loadable/loaded/offline/error; disk/VRAM estimates and reopen steps match the selected engine.
+  Complexity: M
+
+### P3
+
+- [ ] P3 — Correct constant-power pan in both mixers
+  Why: The duplicated cosine formula does not implement the documented constant-power law.
+  Evidence: `ui/mixer_view.py:660-663`, `ui/stem_mixer.py:320-324`.
+  Touches: shared pan utility, Mixer, Stem Mixer, audio fixtures.
+  Acceptance: Center produces equal −3 dB gains, endpoints fully attenuate the opposite channel, mono energy remains constant within tolerance, and both mixers use the same tested implementation.
+  Complexity: S

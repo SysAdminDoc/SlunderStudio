@@ -18,6 +18,14 @@ from engines.ai_producer import (
 )
 from core.mastering import PRESETS
 from core.workers import InferenceWorker
+from core.engine_contract import (
+    ArtifactKind,
+    CAP_PRODUCER_RUN,
+    EngineArtifact,
+    EngineRunResult,
+    adapt_engine_result,
+)
+from core.model_manager import ModelManager
 
 
 # ── Stage Card ─────────────────────────────────────────────────────────────────
@@ -197,9 +205,11 @@ class AIProducerView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._result: Optional[ProducerResult] = None
+        self._contract_result: Optional[EngineRunResult] = None
         self._worker: Optional[InferenceWorker] = None
         self._last_job_id = ""
         self._stage_indicators: dict[PipelineStage, StageIndicator] = {}
+        self._model_mgr = ModelManager()
 
         t = ThemeEngine.get_colors()
         layout = QHBoxLayout(self)
@@ -255,6 +265,7 @@ class AIProducerView(QWidget):
                 padding: 8px; font-size: 13px;
             }}
         """)
+        self._prompt.textChanged.connect(self._refresh_capability_state)
         ctrl.addWidget(self._prompt)
 
         param_style = f"""
@@ -341,6 +352,7 @@ class AIProducerView(QWidget):
             "When disabled, the pipeline stops on failure."
         )
         self._demo_fallback_check.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        self._demo_fallback_check.toggled.connect(self._refresh_capability_state)
         row4.addWidget(self._demo_fallback_check)
         row4.addStretch()
         ctrl.addLayout(row4)
@@ -497,6 +509,8 @@ class AIProducerView(QWidget):
         right_w = QWidget()
         right_w.setLayout(right)
         layout.addWidget(right_w, 1)
+        self._model_mgr.status_changed.connect(self._on_model_status_changed)
+        self._refresh_capability_state()
 
     # ── Production ─────────────────────────────────────────────────────────────
 
@@ -506,6 +520,14 @@ class AIProducerView(QWidget):
         prompt = self._prompt.toPlainText().strip()
         if not prompt:
             self._output_info.setText("Enter a prompt to begin")
+            return
+        readiness = self._model_mgr.get_capability_readiness(
+            CAP_PRODUCER_RUN,
+            allow_demo=self._demo_fallback_check.isChecked(),
+        )
+        if not readiness.can_run:
+            self._output_info.setText(readiness.remedy)
+            self._refresh_capability_state()
             return
 
         genre = self._genre.currentText()
@@ -561,6 +583,7 @@ class AIProducerView(QWidget):
     def _reset_for_run(self):
         """Clear every routable artifact before a new run can start."""
         self._result = None
+        self._contract_result = None
         self._export_btn.setEnabled(False)
         self._export_btn.setText("Export Final Song")
         self._waveform.clear()
@@ -571,11 +594,29 @@ class AIProducerView(QWidget):
 
     def _on_produce_finished(self, result):
         self._result = result
+        artifacts = []
+        if result.can_export:
+            artifacts.append(EngineArtifact(
+                kind=ArtifactKind.AUDIO,
+                path=result.final_audio_path,
+                routable=True,
+            ))
+        self._contract_result = adapt_engine_result(
+            CAP_PRODUCER_RUN,
+            result,
+            artifacts,
+            model_id="ace-step-v1.5",
+        )
         self._display_result(result)
         self._finish_worker_ui()
 
     def _on_produce_error(self, error_msg):
         self._result = None
+        self._contract_result = EngineRunResult.failure(
+            CAP_PRODUCER_RUN,
+            error_msg,
+            model_id="ace-step-v1.5",
+        )
         self._output_title.setText("Production failed")
         self._output_info.setText(f"Error: {error_msg}")
         self._export_btn.setEnabled(False)
@@ -584,6 +625,11 @@ class AIProducerView(QWidget):
 
     def _on_produce_cancelled(self):
         self._result = None
+        self._contract_result = EngineRunResult.cancelled(
+            CAP_PRODUCER_RUN,
+            "Cancellation completed; partial artifacts were removed.",
+            model_id="ace-step-v1.5",
+        )
         for indicator in self._stage_indicators.values():
             if indicator._status == "running":
                 indicator.set_status("cancelled")
@@ -627,7 +673,6 @@ class AIProducerView(QWidget):
             break
 
     def _finish_worker_ui(self, *, keep_retry: bool = False):
-        self._produce_btn.setEnabled(True)
         self._cancel_btn.setEnabled(False)
         if not keep_retry and self._result:
             self._retry_btn.setEnabled(
@@ -636,6 +681,31 @@ class AIProducerView(QWidget):
                 or self._result.is_degraded
             )
         self._worker = None
+        self._refresh_capability_state()
+
+    def _on_model_status_changed(self, model_id: str, _status: str):
+        if model_id == "ace-step-v1.5":
+            self._refresh_capability_state()
+
+    def _refresh_capability_state(self):
+        if not hasattr(self, "_produce_btn"):
+            return
+        readiness = self._model_mgr.get_capability_readiness(
+            CAP_PRODUCER_RUN,
+            allow_demo=self._demo_fallback_check.isChecked(),
+        )
+        idle = not (self._worker and self._worker.isRunning())
+        has_prompt = bool(self._prompt.toPlainText().strip())
+        self._produce_btn.setEnabled(idle and readiness.can_run and has_prompt)
+        self._produce_btn.setToolTip(
+            (
+                f"Produces declared outputs: {readiness.output_summary}."
+                if readiness.can_run and has_prompt
+                else "Enter a production brief."
+                if not has_prompt
+                else readiness.remedy
+            )
+        )
 
     def _display_result(self, result: ProducerResult):
         """Display pipeline results."""

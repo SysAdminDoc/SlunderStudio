@@ -9,7 +9,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
     QComboBox, QSpinBox, QDoubleSpinBox, QFileDialog, QTabWidget,
-    QFrame, QSplitter, QGroupBox, QLineEdit, QStackedWidget,
+    QFrame, QSplitter, QGroupBox, QLineEdit, QStackedWidget, QCheckBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -21,8 +21,18 @@ from core.midi_utils import (
     MidiData, TrackData, NoteData, load_midi, save_midi, get_program_name,
 )
 from core.chord_chart import save_chord_chart
+from core.engine_contract import (
+    ArtifactKind,
+    CAP_MIDI_GENERATE,
+    EngineArtifact,
+    EngineRunResult,
+    RunMode,
+    adapt_engine_result,
+)
+from core.model_manager import ModelManager
+from core.workers import CancelledJobError, InferenceWorker
 from engines.midi_llm_engine import (
-    DRUM_GROOVE_NAMES, MidiGenParams, MidiGenResult, generate_demo_midi,
+    DRUM_GROOVE_NAMES, MidiGenParams, MidiGenResult, generate_midi,
 )
 
 
@@ -67,6 +77,9 @@ class MidiStudioView(QWidget):
         self._midi_data: Optional[MidiData] = None
         self._rendered_audio = None
         self._current_audio_path: Optional[str] = None
+        self._model_mgr = ModelManager()
+        self._generation_worker: Optional[InferenceWorker] = None
+        self._contract_result: Optional[EngineRunResult] = None
 
         t = ThemeEngine.get_colors()
         main_layout = QHBoxLayout(self)
@@ -108,6 +121,7 @@ class MidiStudioView(QWidget):
                 font-size: 12px;
             }}
         """)
+        self._prompt.textChanged.connect(self._refresh_capability_state)
         gen_layout.addWidget(self._prompt)
 
         # Style
@@ -244,6 +258,15 @@ class MidiStudioView(QWidget):
         """)
         gen_layout.addWidget(self._chart_lyrics)
 
+        self._demo_checkbox = QCheckBox(
+            "Enable algorithmic demo (no AI model)"
+        )
+        self._demo_checkbox.setToolTip(
+            "Demo output is rule-based MIDI and is labeled separately from model output."
+        )
+        self._demo_checkbox.toggled.connect(self._refresh_capability_state)
+        gen_layout.addWidget(self._demo_checkbox)
+
         # Generate button
         self._gen_btn = QPushButton("Generate MIDI")
         self._gen_btn.setFixedHeight(36)
@@ -261,6 +284,8 @@ class MidiStudioView(QWidget):
 
         # Status
         self._status = QLabel("")
+        self._status.setWordWrap(True)
+        self._status.setMinimumHeight(28)
         self._status.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 10px; border:none;")
         gen_layout.addWidget(self._status)
 
@@ -394,6 +419,8 @@ class MidiStudioView(QWidget):
 
         main_layout.addWidget(left_widget)
         main_layout.addWidget(right_widget, 1)
+        self._model_mgr.status_changed.connect(self._on_model_status_changed)
+        self._refresh_capability_state()
 
     # ── Generation ─────────────────────────────────────────────────────────────
 
@@ -415,27 +442,163 @@ class MidiStudioView(QWidget):
             instruments=instruments,
             chord_progression=self._progression_combo.currentText(),
             drum_groove=self._groove_combo.currentText(),
+            allow_demo_output=self._demo_checkbox.isChecked(),
         )
 
     def _on_generate(self):
-        """Generate MIDI (uses model if available, else demo fallback)."""
-        params = self._build_params()
-        self._gen_btn.setEnabled(False)
-        self._status.setText("Generating...")
+        """Generate with the active model or an explicitly enabled demo."""
+        if self._generation_worker is not None:
+            self._generation_worker.cancel()
+            self._gen_btn.setEnabled(False)
+            self._status.setText("Cancelling MIDI generation...")
+            return
 
-        # Use demo generator directly for now (model integration via InferenceWorker)
-        try:
-            midi_data = generate_demo_midi(params)
-            self._load_midi_data(midi_data)
-            self._status.setText(
-                f"Generated: {midi_data.track_count} tracks, "
-                f"{midi_data.total_notes} notes, "
-                f"{midi_data.duration:.1f}s"
-            )
-        except Exception as e:
-            self._status.setText(f"Error: {e}")
-        finally:
+        readiness = self._model_mgr.get_capability_readiness(
+            CAP_MIDI_GENERATE,
+            allow_demo=self._demo_checkbox.isChecked(),
+        )
+        if not readiness.can_run:
+            self._status.setText(readiness.remedy)
+            self._refresh_capability_state()
+            return
+
+        params = self._build_params()
+        self._status.setText(
+            "Generating algorithmic demo..."
+            if readiness.mode == RunMode.DEMO
+            else "Generating with MIDI-LLM..."
+        )
+        self._generation_worker = InferenceWorker(
+            self._run_generation,
+            params,
+            readiness.model_id,
+            job_kind="midi_generation",
+            job_label="MIDI Studio generation",
+            job_inputs={
+                "prompt_chars": len(params.prompt),
+                "duration_bars": params.duration_bars,
+                "tempo": params.tempo,
+                "demo": params.allow_demo_output,
+            },
+            job_metadata={
+                "module": "midi_studio",
+                "capability_id": CAP_MIDI_GENERATE,
+            },
+        )
+        self._generation_worker.progress.connect(
+            lambda pct: self._status.setText(f"MIDI generation... {pct}%")
+        )
+        self._generation_worker.step_info.connect(self._status.setText)
+        self._generation_worker.finished.connect(self._on_generation_finished)
+        self._generation_worker.error.connect(self._on_generation_error)
+        self._generation_worker.cancelled.connect(self._on_generation_cancelled)
+        self._generation_worker.start()
+        self._refresh_capability_state()
+
+    def _run_generation(
+        self,
+        params: MidiGenParams,
+        model_id: str,
+        progress_cb=None,
+        step_cb=None,
+        log_cb=None,
+        cancel_event=None,
+    ) -> EngineRunResult:
+        if cancel_event and cancel_event.is_set():
+            raise CancelledJobError("MIDI generation cancelled")
+
+        def progress(value: float, message: str = ""):
+            if progress_cb:
+                progress_cb(max(0, min(100, int(round(value * 100)))))
+            if step_cb and message:
+                step_cb(message)
+
+        result = generate_midi(params, progress_callback=progress)
+        if cancel_event and cancel_event.is_set():
+            raise CancelledJobError("MIDI generation cancelled")
+        artifacts = []
+        if result.midi_data is not None:
+            artifacts.append(EngineArtifact(
+                kind=ArtifactKind.MIDI,
+                payload=result.midi_data,
+                provenance_path=result.provenance_path,
+                routable=result.can_route,
+            ))
+        return adapt_engine_result(
+            CAP_MIDI_GENERATE,
+            result,
+            artifacts,
+            model_id=model_id,
+        )
+
+    def _on_generation_finished(self, run: EngineRunResult):
+        self._generation_worker = None
+        self._contract_result = run
+        if not run.is_success:
+            self._status.setText(f"MIDI generation failed: {run.error}")
+            self._refresh_capability_state()
+            return
+        result = run.source_result
+        midi_data = result.midi_data
+        self._load_midi_data(midi_data)
+        prefix = "Demo generated" if run.is_demo else "MIDI-LLM generated"
+        self._status.setText(
+            f"{prefix}: {midi_data.track_count} tracks, "
+            f"{midi_data.total_notes} notes, "
+            f"{midi_data.duration:.1f}s"
+        )
+        self._refresh_capability_state()
+
+    def _on_generation_error(self, error: str):
+        self._generation_worker = None
+        self._contract_result = EngineRunResult.failure(
+            CAP_MIDI_GENERATE,
+            error,
+            model_id="midi-llm-1b",
+        )
+        self._status.setText(f"MIDI generation failed: {error}")
+        self._refresh_capability_state()
+
+    def _on_generation_cancelled(self):
+        self._generation_worker = None
+        self._contract_result = EngineRunResult.cancelled(
+            CAP_MIDI_GENERATE,
+            "MIDI generation cancelled",
+            model_id="midi-llm-1b",
+        )
+        self._status.setText("MIDI generation cancelled")
+        self._refresh_capability_state()
+
+    def _on_model_status_changed(self, model_id: str, _status: str):
+        if model_id == "midi-llm-1b":
+            self._refresh_capability_state()
+
+    def _refresh_capability_state(self):
+        if not hasattr(self, "_gen_btn"):
+            return
+        readiness = self._model_mgr.get_capability_readiness(
+            CAP_MIDI_GENERATE,
+            allow_demo=self._demo_checkbox.isChecked(),
+        )
+        if self._generation_worker is not None:
+            self._gen_btn.setText("Cancel Generation")
             self._gen_btn.setEnabled(True)
+            self._gen_btn.setToolTip("Cancel the running MIDI generation job.")
+            return
+        has_prompt = bool(self._prompt.toPlainText().strip())
+        self._gen_btn.setText("Generate MIDI")
+        self._gen_btn.setEnabled(readiness.can_run and has_prompt)
+        self._gen_btn.setToolTip(
+            (
+                f"Produces declared outputs: {readiness.output_summary}."
+                if readiness.can_run and has_prompt
+                else "Enter a composition prompt."
+                if not has_prompt
+                else readiness.remedy
+            )
+        )
+        if not readiness.can_run and not self._status.text():
+            self._status.setText(readiness.remedy)
 
     def _load_midi_data(self, midi_data: MidiData):
         """Load MidiData into all views."""

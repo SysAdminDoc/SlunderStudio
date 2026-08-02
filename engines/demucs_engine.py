@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — Demucs Engine
+Slunder Studio v0.1.29 — Demucs Engine
 Audio stem separation using Demucs (htdemucs) for isolating
 vocals, drums, bass, and other instruments from mixed audio.
 """
@@ -106,7 +106,7 @@ class DemucsEngine:
         return self._model is not None
 
     def load_model(self, model_name: str = "htdemucs",
-                   device: str = "cuda",
+                   device: str = "auto",
                    progress_callback: Optional[Callable] = None):
         """Load a Demucs model."""
         from core.deps import ensure
@@ -115,6 +115,11 @@ class DemucsEngine:
             import torch
             from demucs.pretrained import get_model
             from demucs.apply import BagOfModels
+
+            if device == "auto":
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            elif device == "cuda" and not torch.cuda.is_available():
+                device = "cpu"
 
             if progress_callback:
                 progress_callback(0.1, f"Loading {model_name}...")

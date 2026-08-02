@@ -9,6 +9,7 @@ import json
 import time
 import threading
 import hashlib
+import importlib.util
 from enum import Enum
 from typing import Any, Callable, Optional
 from pathlib import Path
@@ -18,6 +19,14 @@ from PySide6.QtCore import QObject, Signal
 
 from core.settings import Settings, get_config_dir
 from core.trash import TrashEntry, TrashError, TrashManager
+from core.engine_contract import (
+    ActivationOutcome,
+    CapabilityReadiness,
+    EngineActivationResult,
+    ModelReadiness,
+    RunMode,
+    get_capability,
+)
 from core.ace_step_contract import (
     ACE_STEP_CAPABILITIES,
     ACE_STEP_DISPLAY_NAME,
@@ -427,6 +436,42 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
 }
 
 
+MODEL_RUNTIME_PACKAGES: dict[str, tuple[tuple[str, str], ...]] = {
+    ACE_STEP_MODEL_ID: (
+        ("torch", "torch"),
+        ("diffusers", "diffusers"),
+        ("transformers", "transformers"),
+    ),
+    "llama-3.1-8b-q4": (("llama-cpp-python", "llama_cpp"),),
+    "llama-3.2-3b-q4": (("llama-cpp-python", "llama_cpp"),),
+    "qwen-2.5-14b-q4": (("llama-cpp-python", "llama_cpp"),),
+    "midi-llm-1b": (
+        ("torch", "torch"),
+        ("transformers", "transformers"),
+    ),
+    "diffsinger": (("onnxruntime", "onnxruntime"),),
+    "rvc-v2": (("torch", "torch"),),
+    "gpt-sovits-v2": (("torch", "torch"),),
+    "demucs-v4": (
+        ("torch", "torch"),
+        ("torchaudio", "torchaudio"),
+        ("demucs", "demucs"),
+    ),
+    "stable-audio-open": (
+        ("torch", "torch"),
+        ("stable-audio-tools", "stable_audio_tools"),
+    ),
+    "whisper-tiny": (
+        ("torch", "torch"),
+        ("transformers", "transformers"),
+    ),
+    "musicgen-medium": (
+        ("torch", "torch"),
+        ("transformers", "transformers"),
+    ),
+}
+
+
 # ── GPU Utilities ──────────────────────────────────────────────────────────────
 
 def get_gpu_info() -> dict:
@@ -578,6 +623,227 @@ class ModelManager(QObject):
     def get_status(self, model_id: str) -> ModelStatus:
         return self._status.get(model_id, ModelStatus.NOT_DOWNLOADED)
 
+    def get_missing_runtime_packages(self, model_id: str) -> tuple[str, ...]:
+        """Return declared runtime packages that cannot currently be imported."""
+        return tuple(
+            display_name
+            for display_name, module_name in MODEL_RUNTIME_PACKAGES.get(
+                model_id,
+                (),
+            )
+            if importlib.util.find_spec(module_name) is None
+        )
+
+    def get_model_readiness(self, model_id: str) -> ModelReadiness:
+        """Report installation, verification, loadability, and activation separately."""
+        info = self._registry.get(model_id)
+        if info is None:
+            return ModelReadiness(
+                model_id=model_id,
+                installed=False,
+                verified=False,
+                loadable=False,
+                active=False,
+                status="unknown",
+                remedy=f"Unknown model: {model_id}",
+            )
+
+        active = bool(
+            self._current_model_id == model_id
+            and self._current_model is not None
+            and self.get_status(model_id) == ModelStatus.LOADED
+        )
+        missing = self.get_missing_runtime_packages(model_id)
+        if info.pip_managed:
+            installed = not missing
+            verified = installed
+        else:
+            installed = self._is_model_cached(model_id)
+            verified = installed and self.verify_download(
+                model_id,
+                full_hash=False,
+            )[0]
+
+        consent_ready = not (
+            info.requires_remote_code or info.allows_unsafe_weights
+        ) or self.has_executable_model_consent(model_id)
+        loadable = bool(
+            active
+            or (
+                installed
+                and verified
+                and not missing
+                and consent_ready
+            )
+        )
+
+        remedy = ""
+        if active:
+            remedy = ""
+        elif self.get_status(model_id) == ModelStatus.LOADING:
+            remedy = f"Wait for {info.name} activation to finish."
+        elif missing:
+            remedy = (
+                f"Install {', '.join(missing)} and activate {info.name} "
+                "in Model Hub."
+            )
+        elif not installed:
+            remedy = (
+                f"Install and activate {info.name} in Model Hub."
+                if info.pip_managed
+                else f"Download {info.name} in Model Hub."
+            )
+        elif not verified:
+            remedy = f"Re-download {info.name}; its local cache is not verified."
+        elif not consent_ready:
+            remedy = (
+                f"Review and approve the pinned {info.name} revision in Model Hub."
+            )
+        elif self.get_status(model_id) == ModelStatus.ERROR:
+            remedy = f"Retry {info.name} activation in Model Hub."
+        else:
+            remedy = f"Activate {info.name} in Model Hub."
+
+        return ModelReadiness(
+            model_id=model_id,
+            installed=installed,
+            verified=verified,
+            loadable=loadable,
+            active=active,
+            status=self.get_status(model_id).value,
+            missing_packages=missing,
+            remedy=remedy,
+        )
+
+    def get_capability_readiness(
+        self,
+        capability_id: str,
+        *,
+        allow_demo: bool = False,
+        profile_ready: bool = False,
+    ) -> CapabilityReadiness:
+        """Resolve one action to model, explicit demo, or a concrete remedy."""
+        capability = get_capability(capability_id)
+        snapshots = [
+            self.get_model_readiness(model_id)
+            for model_id in capability.model_ids
+        ]
+        active = next((item for item in snapshots if item.active), None)
+        candidate = active or next(
+            (item for item in snapshots if item.loadable),
+            snapshots[0] if snapshots else None,
+        )
+
+        if (
+            capability.requires_activation
+            and not capability.auto_activates
+            and active is None
+        ):
+            if (
+                allow_demo
+                and capability.supports_demo
+                and not capability.demo_requires_activation
+            ):
+                return CapabilityReadiness(
+                    capability=capability,
+                    mode=RunMode.DEMO,
+                    can_run=True,
+                    model_id=candidate.model_id if candidate else "",
+                    profile_ready=profile_ready,
+                )
+            remedy = (
+                candidate.remedy
+                if candidate
+                else f"No model is registered for {capability.label}."
+            )
+            return CapabilityReadiness(
+                capability=capability,
+                mode=RunMode.UNAVAILABLE,
+                can_run=False,
+                model_id=candidate.model_id if candidate else "",
+                profile_ready=profile_ready,
+                remedy=remedy,
+            )
+
+        if capability.profile_requirement and not profile_ready:
+            return CapabilityReadiness(
+                capability=capability,
+                mode=RunMode.UNAVAILABLE,
+                can_run=False,
+                model_id=(active or candidate).model_id if (active or candidate) else "",
+                active_model_id=active.model_id if active else "",
+                profile_ready=False,
+                remedy=f"Select {capability.profile_requirement}.",
+            )
+
+        if not capability.model_output_available:
+            if allow_demo and capability.supports_demo:
+                return CapabilityReadiness(
+                    capability=capability,
+                    mode=RunMode.DEMO,
+                    can_run=True,
+                    model_id=(active or candidate).model_id if (active or candidate) else "",
+                    active_model_id=active.model_id if active else "",
+                    profile_ready=profile_ready,
+                )
+            return CapabilityReadiness(
+                capability=capability,
+                mode=RunMode.UNAVAILABLE,
+                can_run=False,
+                model_id=(active or candidate).model_id if (active or candidate) else "",
+                active_model_id=active.model_id if active else "",
+                profile_ready=profile_ready,
+                remedy=(
+                    f"{capability.label} currently exposes an explicit demo "
+                    "pipeline only; enable its Demo option to continue."
+                ),
+            )
+
+        if active is not None:
+            return CapabilityReadiness(
+                capability=capability,
+                mode=RunMode.MODEL,
+                can_run=True,
+                model_id=active.model_id,
+                active_model_id=active.model_id,
+                profile_ready=profile_ready,
+            )
+
+        if capability.auto_activates and candidate and candidate.loadable:
+            return CapabilityReadiness(
+                capability=capability,
+                mode=RunMode.MODEL,
+                can_run=True,
+                model_id=candidate.model_id,
+                profile_ready=profile_ready,
+            )
+
+        if (
+            allow_demo
+            and capability.supports_demo
+            and not capability.demo_requires_activation
+        ):
+            return CapabilityReadiness(
+                capability=capability,
+                mode=RunMode.DEMO,
+                can_run=True,
+                model_id=candidate.model_id if candidate else "",
+                profile_ready=profile_ready,
+            )
+
+        return CapabilityReadiness(
+            capability=capability,
+            mode=RunMode.UNAVAILABLE,
+            can_run=False,
+            model_id=candidate.model_id if candidate else "",
+            profile_ready=profile_ready,
+            remedy=(
+                candidate.remedy
+                if candidate
+                else f"No model is registered for {capability.label}."
+            ),
+        )
+
     def get_models_by_category(self, category: ModelCategory) -> list[ModelInfo]:
         return [m for m in self._registry.values() if m.category == category]
 
@@ -610,6 +876,7 @@ class ModelManager(QObject):
         self.require_verified_model(model_id)
 
         if self._current_model_id == model_id and self._current_model is not None:
+            self._set_status(model_id, ModelStatus.LOADED)
             return self._current_model
 
         # Unload current model
@@ -639,13 +906,90 @@ class ModelManager(QObject):
             cleanup_gpu()
             raise
 
+    def activate_model(
+        self,
+        model_id: str,
+        *,
+        progress_cb=None,
+        step_cb=None,
+        log_cb=None,
+        cancel_event=None,
+    ) -> EngineActivationResult:
+        """Verify and activate one local model through the shared worker contract."""
+        info = self._registry.get(model_id)
+        if info is None:
+            return EngineActivationResult(
+                model_id=model_id,
+                outcome=ActivationOutcome.FAILED,
+                error=f"Unknown model: {model_id}",
+            )
+        if cancel_event and cancel_event.is_set():
+            return EngineActivationResult(
+                model_id=model_id,
+                outcome=ActivationOutcome.CANCELLED,
+                message="Activation cancelled before loading.",
+            )
+        if progress_cb:
+            progress_cb(5)
+        if step_cb:
+            step_cb(f"Verifying {info.name}...")
+        try:
+            engine = self.load_model(model_id)
+        except Exception as exc:
+            return EngineActivationResult(
+                model_id=model_id,
+                outcome=ActivationOutcome.FAILED,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+        if cancel_event and cancel_event.is_set():
+            self.deactivate_model(model_id)
+            return EngineActivationResult(
+                model_id=model_id,
+                outcome=ActivationOutcome.CANCELLED,
+                message="Activation cancelled; loaded resources were released.",
+            )
+        if progress_cb:
+            progress_cb(100)
+        if step_cb:
+            step_cb(f"{info.name} active.")
+        if log_cb:
+            log_cb(f"Activated model {model_id}.")
+        return EngineActivationResult(
+            model_id=model_id,
+            outcome=ActivationOutcome.ACTIVE,
+            message=f"{info.name} is active.",
+            engine=engine,
+        )
+
+    def deactivate_model(self, model_id: Optional[str] = None) -> EngineActivationResult:
+        """Deactivate the current model, optionally requiring an exact identity."""
+        target = model_id or self._current_model_id or ""
+        if model_id and self._current_model_id not in {None, model_id}:
+            return EngineActivationResult(
+                model_id=model_id,
+                outcome=ActivationOutcome.FAILED,
+                error=(
+                    f"{model_id} is not active; current model is "
+                    f"{self._current_model_id}."
+                ),
+            )
+        self.unload()
+        return EngineActivationResult(
+            model_id=target,
+            outcome=ActivationOutcome.INACTIVE,
+            message=f"{target or 'Model'} is inactive.",
+        )
+
     def unload(self):
         """Unload the current model and free GPU memory."""
         if self._current_model is not None:
             model_id = self._current_model_id
             try:
                 # Try calling model's own cleanup if available
-                if hasattr(self._current_model, "cleanup"):
+                if hasattr(self._current_model, "unload_model"):
+                    self._current_model.unload_model()
+                elif hasattr(self._current_model, "cleanup"):
                     self._current_model.cleanup()
                 elif hasattr(self._current_model, "to"):
                     self._current_model.to("cpu")
@@ -1186,9 +1530,9 @@ class ModelManager(QObject):
         """Check if model download completed successfully (has completion marker)."""
         info = self._registry.get(model_id)
 
-        # Pip-managed models are always considered "downloaded" if the package exists
+        # Pip-managed engines are installed only when their declared runtime imports.
         if info and info.pip_managed:
-            return True
+            return not self.get_missing_runtime_packages(model_id)
 
         ok, _reason = self.verify_download(model_id, full_hash=False)
         return ok

@@ -14,6 +14,17 @@ from PySide6.QtCore import Qt, Signal
 
 from ui.theme import ThemeEngine
 from ui.waveform_widget import WaveformWidget, MiniWaveform
+from core.engine_contract import (
+    ArtifactKind,
+    CAP_SFX_GENERATE,
+    EngineArtifact,
+    EngineBatchResult,
+    EngineRunResult,
+    RunMode,
+    adapt_engine_result,
+)
+from core.model_manager import ModelManager
+from core.workers import CancelledJobError, InferenceWorker
 from engines.sfx_engine import SFXParams, SFXResult, SFX_CATEGORIES
 
 
@@ -122,6 +133,9 @@ class SFXView(QWidget):
         self.toast_mgr = toast_mgr
         self._results: list[SFXResult] = []
         self._cards: list[SFXCard] = []
+        self._model_mgr = ModelManager()
+        self._generation_worker: Optional[InferenceWorker] = None
+        self._contract_batch: Optional[EngineBatchResult] = None
 
         t = ThemeEngine.get_colors()
         layout = QHBoxLayout(self)
@@ -156,6 +170,7 @@ class SFXView(QWidget):
                 padding: 6px; font-size: 12px;
             }}
         """)
+        self._prompt.textChanged.connect(self._refresh_capability_state)
         ctrl_layout.addWidget(self._prompt)
 
         # Negative prompt
@@ -265,7 +280,7 @@ class SFXView(QWidget):
         self._gen_btn.clicked.connect(self._on_generate)
         ctrl_layout.addWidget(self._gen_btn)
 
-        self._demo_checkbox = QCheckBox("Demo synthesis if model is not loaded")
+        self._demo_checkbox = QCheckBox("Enable demo synthesis (no AI model)")
         self._demo_checkbox.setStyleSheet(f"""
             QCheckBox {{
                 color: {t['text_secondary']}; border: none; font-size: 10px;
@@ -274,10 +289,13 @@ class SFXView(QWidget):
                 width: 13px; height: 13px;
             }}
         """)
+        self._demo_checkbox.toggled.connect(self._refresh_capability_state)
         ctrl_layout.addWidget(self._demo_checkbox)
 
         # Status
         self._status = QLabel("")
+        self._status.setWordWrap(True)
+        self._status.setMinimumHeight(28)
         self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
         ctrl_layout.addWidget(self._status)
 
@@ -334,6 +352,8 @@ class SFXView(QWidget):
         right_w = QWidget()
         right_w.setLayout(right)
         layout.addWidget(right_w, 1)
+        self._model_mgr.status_changed.connect(self._on_model_status_changed)
+        self._refresh_capability_state()
 
     # ── Events ─────────────────────────────────────────────────────────────────
 
@@ -350,7 +370,20 @@ class SFXView(QWidget):
             self._prompt.setPlainText(text)
 
     def _on_generate(self):
-        from engines.sfx_engine import generate_sfx
+        if self._generation_worker is not None:
+            self._generation_worker.cancel()
+            self._gen_btn.setEnabled(False)
+            self._status.setText("Cancelling SFX generation...")
+            return
+
+        readiness = self._model_mgr.get_capability_readiness(
+            CAP_SFX_GENERATE,
+            allow_demo=self._demo_checkbox.isChecked(),
+        )
+        if not readiness.can_run:
+            self._status.setText(readiness.remedy)
+            self._refresh_capability_state()
+            return
 
         params = SFXParams(
             prompt=self._prompt.toPlainText().strip(),
@@ -366,52 +399,168 @@ class SFXView(QWidget):
             self._status.setText("Enter a prompt first")
             return
 
-        self._gen_btn.setEnabled(False)
-        self._status.setText("Generating...")
+        self._status.setText(
+            "Generating explicit demo SFX..."
+            if readiness.mode == RunMode.DEMO
+            else "Generating with Stable Audio Open..."
+        )
+        self._generation_worker = InferenceWorker(
+            self._run_generation_batch,
+            params,
+            readiness.model_id,
+            job_kind="sfx_generation",
+            job_label="SFX generation batch",
+            job_inputs={
+                "prompt_chars": len(params.prompt),
+                "duration": params.duration,
+                "batch_size": params.batch_size,
+                "demo": params.allow_demo_output,
+            },
+            job_metadata={
+                "module": "sfx",
+                "capability_id": CAP_SFX_GENERATE,
+            },
+        )
+        self._generation_worker.progress.connect(
+            lambda pct: self._status.setText(f"SFX generation... {pct}%")
+        )
+        self._generation_worker.step_info.connect(self._status.setText)
+        self._generation_worker.finished.connect(self._on_generation_finished)
+        self._generation_worker.error.connect(self._on_generation_error)
+        self._generation_worker.cancelled.connect(self._on_generation_cancelled)
+        self._generation_worker.start()
+        self._refresh_capability_state()
 
-        try:
-            batch_count = params.batch_size
-            success_count = 0
-            demo_count = 0
-            for i in range(batch_count):
-                p = SFXParams(
-                    prompt=params.prompt,
-                    negative_prompt=params.negative_prompt,
-                    duration=params.duration,
-                    cfg_scale=params.cfg_scale,
-                    steps=params.steps,
-                    seed=None,
-                    allow_demo_output=params.allow_demo_output,
+    def _run_generation_batch(
+        self,
+        params: SFXParams,
+        model_id: str,
+        progress_cb=None,
+        step_cb=None,
+        log_cb=None,
+        cancel_event=None,
+    ) -> EngineBatchResult:
+        from engines.sfx_engine import generate_sfx
+
+        runs: list[EngineRunResult] = []
+        for index in range(params.batch_size):
+            if cancel_event and cancel_event.is_set():
+                batch = EngineBatchResult(CAP_SFX_GENERATE, runs)
+                raise CancelledJobError(
+                    "SFX generation cancelled",
+                    outputs=batch.output_paths,
                 )
-                result = generate_sfx(p)
+            item = SFXParams(
+                prompt=params.prompt,
+                negative_prompt=params.negative_prompt,
+                duration=params.duration,
+                cfg_scale=params.cfg_scale,
+                steps=params.steps,
+                seed=None,
+                allow_demo_output=params.allow_demo_output,
+            )
 
-                if result.error:
-                    self._status.setText(f"Error: {result.error}")
-                    continue
+            def progress(value: float, message: str = ""):
+                if progress_cb:
+                    overall = (index + max(0.0, min(1.0, value))) / params.batch_size
+                    progress_cb(int(round(overall * 100)))
+                if step_cb and message:
+                    step_cb(f"{index + 1}/{params.batch_size}: {message}")
 
-                self._results.append(result)
-                self._add_result_card(result)
-                success_count += 1
-                if result.is_demo:
-                    demo_count += 1
+            result = generate_sfx(item, progress_callback=progress)
+            artifacts = []
+            if result.audio is not None or result.file_path:
+                artifacts.append(EngineArtifact(
+                    kind=ArtifactKind.AUDIO,
+                    path=result.file_path or "",
+                    payload=result.audio,
+                    provenance_path=result.provenance_path,
+                    routable=result.can_route,
+                ))
+            runs.append(adapt_engine_result(
+                CAP_SFX_GENERATE,
+                result,
+                artifacts,
+                model_id=model_id,
+            ))
 
-                # Show first result in main waveform
-                if i == 0 and result.audio is not None:
-                    import numpy as np
-                    mono = result.audio[:, 0] if result.audio.ndim == 2 else result.audio
-                    self._main_waveform.load_audio(mono, result.sample_rate)
+        errors = [run.error for run in runs if not run.is_success and run.error]
+        return EngineBatchResult(
+            capability_id=CAP_SFX_GENERATE,
+            runs=runs,
+            error="; ".join(errors),
+        )
 
-            if success_count:
-                suffix = f" ({demo_count} demo)" if demo_count else ""
-                self._status.setText(
-                    f"Generated {success_count}/{batch_count} SFX{suffix} "
-                    f"({params.duration:.1f}s each)"
-                )
+    def _on_generation_finished(self, batch: EngineBatchResult):
+        self._generation_worker = None
+        self._contract_batch = batch
+        successful = batch.successful_runs
+        if not successful:
+            self._status.setText(
+                f"SFX generation failed: {batch.error or 'No output was produced'}"
+            )
+            self._refresh_capability_state()
+            return
 
-        except Exception as e:
-            self._status.setText(f"Error: {e}")
-        finally:
+        for run in successful:
+            result = run.source_result
+            self._results.append(result)
+            self._add_result_card(result)
+        first = successful[0].source_result
+        if first.audio is not None:
+            self._main_waveform.load_audio(first.audio, first.sample_rate)
+        demo_count = sum(run.is_demo for run in successful)
+        suffix = f" ({demo_count} demo)" if demo_count else ""
+        self._status.setText(
+            f"Generated {len(successful)}/{len(batch.runs)} SFX{suffix} "
+            f"({first.duration:.1f}s each)"
+        )
+        self._refresh_capability_state()
+
+    def _on_generation_error(self, error: str):
+        self._generation_worker = None
+        self._contract_batch = EngineBatchResult(
+            capability_id=CAP_SFX_GENERATE,
+            error=error,
+        )
+        self._status.setText(f"SFX generation failed: {error}")
+        self._refresh_capability_state()
+
+    def _on_generation_cancelled(self):
+        self._generation_worker = None
+        self._status.setText("SFX generation cancelled")
+        self._refresh_capability_state()
+
+    def _on_model_status_changed(self, model_id: str, _status: str):
+        if model_id == "stable-audio-open":
+            self._refresh_capability_state()
+
+    def _refresh_capability_state(self):
+        if not hasattr(self, "_gen_btn"):
+            return
+        readiness = self._model_mgr.get_capability_readiness(
+            CAP_SFX_GENERATE,
+            allow_demo=self._demo_checkbox.isChecked(),
+        )
+        if self._generation_worker is not None:
+            self._gen_btn.setText("Cancel Generation")
             self._gen_btn.setEnabled(True)
+            self._gen_btn.setToolTip("Cancel the running SFX generation job.")
+            return
+        has_prompt = bool(self._prompt.toPlainText().strip())
+        self._gen_btn.setText("Generate SFX")
+        self._gen_btn.setEnabled(readiness.can_run and has_prompt)
+        self._gen_btn.setToolTip(
+            (
+                f"Produces declared outputs: {readiness.output_summary}."
+                if readiness.can_run and has_prompt
+                else "Enter an SFX prompt."
+                if not has_prompt
+                else readiness.remedy
+            )
+        )
+        if not readiness.can_run and not self._status.text():
+            self._status.setText(readiness.remedy)
 
     def _add_result_card(self, result: SFXResult):
         card = SFXCard(result)

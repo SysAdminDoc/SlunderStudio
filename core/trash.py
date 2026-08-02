@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 - Recoverable trash/quarantine support.
+Slunder Studio v0.1.29 - Recoverable trash/quarantine support.
 """
 from __future__ import annotations
 

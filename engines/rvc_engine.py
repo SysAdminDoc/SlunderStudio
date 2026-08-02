@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — RVC / GPT-SoVITS Engine
+Slunder Studio v0.1.29 — RVC / GPT-SoVITS Engine
 Voice conversion (RVC v2) and voice cloning (GPT-SoVITS) for transforming
 existing vocals or cloning a target voice from reference audio.
 """
@@ -306,6 +306,7 @@ class RVCEngine:
         self._model = None
         self._index = None
         self._model_path: Optional[str] = None
+        self._base_model_path: Optional[str] = None
         self._profile: Optional[VoiceProfile] = None
         self._device = "cpu"
         self._output_dir = os.path.join(get_config_dir(), "generations", "voice_convert")
@@ -313,7 +314,21 @@ class RVCEngine:
 
     @property
     def is_loaded(self) -> bool:
-        return self._model is not None
+        return self._model is not None or self._base_model_path is not None
+
+    def activate_base_model(self, model_path: str):
+        """Record the verified RVC runtime bundle selected by Model Hub."""
+        path = os.path.abspath(model_path or "")
+        if not path or not os.path.isdir(path):
+            raise RuntimeError("Verified RVC runtime cache is unavailable")
+        self._base_model_path = path
+
+    def prepare_demo_profile(self, profile: VoiceProfile):
+        """Select consent metadata for the explicit non-model demo pipeline."""
+        if not self._base_model_path:
+            raise RuntimeError("Activate the verified RVC runtime in Model Hub first")
+        ensure_voice_profile_allowed(profile, VOICE_OPERATION_CONVERSION)
+        self._profile = profile
 
     def load_model(self, profile: VoiceProfile,
                    device: str = "cuda",
@@ -355,6 +370,7 @@ class RVCEngine:
         self._model = None
         self._index = None
         self._model_path = None
+        self._base_model_path = None
         self._profile = None
         try:
             import torch
@@ -645,6 +661,7 @@ class GPTSoVITSEngine:
         self._gpt_model = None
         self._sovits_model = None
         self._model_path: Optional[str] = None
+        self._base_model_path: Optional[str] = None
         self._profile: Optional[VoiceProfile] = None
         self._device = "cpu"
         self._output_dir = os.path.join(get_config_dir(), "generations", "voice_clone")
@@ -652,7 +669,23 @@ class GPTSoVITSEngine:
 
     @property
     def is_loaded(self) -> bool:
-        return self._sovits_model is not None
+        return self._sovits_model is not None or self._base_model_path is not None
+
+    def activate_base_model(self, model_path: str):
+        """Record the verified GPT-SoVITS bundle selected by Model Hub."""
+        path = os.path.abspath(model_path or "")
+        if not path or not os.path.isdir(path):
+            raise RuntimeError("Verified GPT-SoVITS runtime cache is unavailable")
+        self._base_model_path = path
+
+    def prepare_demo_profile(self, profile: VoiceProfile):
+        """Select consent metadata for the explicit non-model demo pipeline."""
+        if not self._base_model_path:
+            raise RuntimeError(
+                "Activate the verified GPT-SoVITS runtime in Model Hub first"
+            )
+        ensure_voice_profile_allowed(profile, VOICE_OPERATION_CLONE)
+        self._profile = profile
 
     def load_model(self, profile: VoiceProfile, device: str = "cuda",
                    progress_callback: Optional[Callable] = None):
@@ -689,6 +722,7 @@ class GPTSoVITSEngine:
         self._sovits_model = None
         self._gpt_model = None
         self._model_path = None
+        self._base_model_path = None
         self._profile = None
         try:
             import torch
@@ -926,10 +960,13 @@ def get_sovits() -> GPTSoVITSEngine:
     return _sovits
 
 
-def load_model(cache_dir: str = None, **kwargs) -> RVCEngine:
-    """Initialize RVC engine. Called by ModelManager._dynamic_load().
-    Note: actual voice profiles are loaded separately via engine.load_model(profile)."""
+def load_model(cache_dir: str = None, model_id: str = "", **kwargs):
+    """Activate the requested voice engine; profiles are loaded in Vocal Suite."""
     from core.deps import ensure
     ensure("torch")
-    engine = get_rvc()
+    if model_id == "gpt-sovits-v2":
+        engine = get_sovits()
+    else:
+        engine = get_rvc()
+    engine.activate_base_model(cache_dir or "")
     return engine

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.28 — MIDI-LLM Engine
+Slunder Studio v0.1.29 — MIDI-LLM Engine
 Text-to-MIDI generation using fine-tuned language models that output MIDI token sequences.
 Supports prompt-based composition, continuation, and style-conditioned generation.
 """
@@ -50,6 +50,7 @@ class MidiGenParams:
     max_tokens: int = 4096
     seed: Optional[int] = None
     continuation_context: Optional[str] = None  # existing MIDI tokens to continue from
+    allow_demo_output: bool = False
 
 
 @dataclass
@@ -62,6 +63,16 @@ class MidiGenResult:
     error: Optional[str] = None
     provenance: dict = field(default_factory=dict)
     provenance_path: str = ""
+    output_kind: str = "model"
+    can_route: bool = True
+
+    @property
+    def is_success(self) -> bool:
+        return self.error is None and self.midi_data is not None
+
+    @property
+    def is_demo(self) -> bool:
+        return self.output_kind == "demo"
 
 
 # ── Prompt Templates ───────────────────────────────────────────────────────────
@@ -612,7 +623,7 @@ class MidiLLMEngine:
     def load_model(
         self,
         model_path: str,
-        device: str = "cuda",
+        device: str = "auto",
         progress_callback: Optional[Callable] = None,
         *,
         local_files_only: bool = True,
@@ -625,6 +636,11 @@ class MidiLLMEngine:
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
             from core.model_manager import ModelSecurityError
+
+            if device == "auto":
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            elif device == "cuda" and not torch.cuda.is_available():
+                device = "cpu"
 
             local_path = Path(model_path)
             if not local_files_only or not local_path.is_absolute() or not local_path.is_dir():
@@ -696,7 +712,11 @@ class MidiLLMEngine:
     def generate(self, params: MidiGenParams) -> MidiGenResult:
         """Generate MIDI from parameters."""
         if not self.is_loaded:
-            return MidiGenResult(error="Model not loaded")
+            return MidiGenResult(
+                error="MIDI-LLM model not loaded",
+                output_kind="error",
+                can_route=False,
+            )
 
         t0 = time.time()
         try:
@@ -766,7 +786,12 @@ class MidiLLMEngine:
             )
 
         except Exception as e:
-            return MidiGenResult(error=str(e), generation_time=time.time() - t0)
+            return MidiGenResult(
+                error=str(e),
+                generation_time=time.time() - t0,
+                output_kind="error",
+                can_route=False,
+            )
 
     def continue_sequence(self, existing: MidiData, params: MidiGenParams) -> MidiGenResult:
         """Continue an existing MIDI sequence."""
@@ -959,8 +984,18 @@ def generate_midi(params: MidiGenParams,
         if progress_callback:
             progress_callback(1.0, "Done")
         return result
+    if not params.allow_demo_output:
+        return MidiGenResult(
+            error=(
+                "MIDI-LLM is not active. Activate it in Model Hub or explicitly "
+                "enable algorithmic demo generation."
+            ),
+            output_kind="error",
+            can_route=False,
+        )
+
     else:
-        # Fallback to algorithmic generation
+        # Explicitly opted-in algorithmic demo generation.
         if progress_callback:
             progress_callback(0.2, "Generating demo MIDI (no model loaded)...")
         t0 = time.time()
@@ -975,6 +1010,8 @@ def generate_midi(params: MidiGenParams,
             raw_tokens="[algorithmic demo - no model]",
             generation_time=gen_time,
             token_count=0,
+            output_kind="demo",
+            can_route=True,
             provenance={
                 "module": "midi_studio",
                 "operation": "generate_midi",

@@ -24,7 +24,7 @@ from core.model_manager import (
     OfflineModeError,
 )
 from core.settings import Settings
-from core.workers import DownloadWorker
+from core.workers import DownloadWorker, InferenceWorker
 from core.job_state import JobStatus, JobStore
 
 
@@ -167,13 +167,17 @@ class ModelCard(QFrame):
     cancel_requested = Signal(str)
     delete_requested = Signal(str)
     consent_requested = Signal(str)
+    activation_requested = Signal(str)
+    activation_cancel_requested = Signal(str)
+    deactivation_requested = Signal(str)
 
     def __init__(self, info: ModelInfo, parent=None):
         super().__init__(parent)
         self.model_id = info.model_id
         self.info = info
         self.setObjectName("card")
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.setMinimumWidth(320)
         self.setMinimumHeight(140)
         self._build_ui()
 
@@ -327,7 +331,19 @@ class ModelCard(QFrame):
         self._action_btn = QPushButton("Download")
         self._action_btn.setFixedHeight(32)
         self._action_btn.clicked.connect(self._on_action)
-        layout.addWidget(self._action_btn)
+
+        self._delete_btn = QPushButton("Remove")
+        self._delete_btn.setFixedHeight(32)
+        self._delete_btn.setVisible(False)
+        self._delete_btn.clicked.connect(
+            lambda: self.delete_requested.emit(self.model_id)
+        )
+
+        action_row = QHBoxLayout()
+        action_row.setSpacing(6)
+        action_row.addWidget(self._action_btn, 1)
+        action_row.addWidget(self._delete_btn)
+        layout.addLayout(action_row)
 
         self._consent_btn = QPushButton("Review executable model")
         self._consent_btn.setVisible(False)
@@ -343,7 +359,8 @@ class ModelCard(QFrame):
                 (self._rights_label, f"{self.info.name} license status", "Model license, access, and commercial-use status."),
                 (self._progress, f"{self.info.name} download progress", "Current download completion percentage."),
                 (self._cancel_btn, f"Cancel {self.info.name} download", "Cancels the active model download."),
-                (self._action_btn, f"{self.info.name} action", "Downloads, resumes, deletes, or shows model state."),
+                (self._action_btn, f"{self.info.name} action", "Downloads, activates, deactivates, or cancels activation."),
+                (self._delete_btn, f"Remove {self.info.name}", "Moves the installed model cache to recoverable trash."),
                 (
                     self._consent_btn,
                     f"Review {self.info.name} executable model",
@@ -352,6 +369,7 @@ class ModelCard(QFrame):
             ],
             tab_order=[
                 self._action_btn,
+                self._delete_btn,
                 self._consent_btn,
                 self._cancel_btn,
             ],
@@ -363,30 +381,37 @@ class ModelCard(QFrame):
         if status in (
             ModelStatus.NOT_DOWNLOADED, ModelStatus.ERROR, ModelStatus.PARTIAL
         ):
-            self.download_requested.emit(self.model_id)
+            readiness = mgr.get_model_readiness(self.model_id)
+            if self.info.pip_managed or readiness.installed:
+                self.activation_requested.emit(self.model_id)
+            else:
+                self.download_requested.emit(self.model_id)
         elif status == ModelStatus.DOWNLOADED:
-            self.delete_requested.emit(self.model_id)
+            self.activation_requested.emit(self.model_id)
+        elif status == ModelStatus.LOADED:
+            self.deactivation_requested.emit(self.model_id)
+        elif status == ModelStatus.LOADING:
+            self.activation_cancel_requested.emit(self.model_id)
 
     def update_status(self, status: ModelStatus):
         """Update the card visual state based on model status."""
         btn = self._action_btn
-
-        # Pip-managed models
-        if getattr(self.info, "pip_managed", False):
-            self._consent_btn.setVisible(False)
-            self._set_badge("Auto-managed", Palette.GREEN)
-            btn.setText("Installed with engine")
-            btn.setEnabled(False)
-            btn.setVisible(True)
-            self._dl_panel.setVisible(False)
-            return
+        readiness = ModelManager().get_model_readiness(self.model_id)
+        self._delete_btn.setVisible(False)
+        self._delete_btn.setEnabled(False)
 
         if status == ModelStatus.NOT_DOWNLOADED:
-            self._set_badge("Not Downloaded", Palette.OVERLAY0)
-            btn.setText("Download")
+            self._set_badge(
+                "Engine not installed" if self.info.pip_managed else "Not Downloaded",
+                Palette.OVERLAY0,
+            )
+            btn.setText(
+                "Install + Activate" if self.info.pip_managed else "Download"
+            )
             btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
+            btn.setToolTip(readiness.remedy)
 
         elif status == ModelStatus.PARTIAL:
             self._set_badge("Incomplete", Palette.PEACH)
@@ -405,31 +430,56 @@ class ModelCard(QFrame):
             self._speed_label.setText("")
 
         elif status == ModelStatus.DOWNLOADED:
-            self._set_badge("Ready", Palette.GREEN)
-            btn.setText("Delete")
+            self._set_badge(
+                "Runtime missing" if readiness.missing_packages else "Installed",
+                Palette.PEACH if readiness.missing_packages else Palette.GREEN,
+            )
+            btn.setText(
+                "Install + Activate"
+                if readiness.missing_packages
+                else "Activate"
+            )
             btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
+            btn.setToolTip(
+                readiness.remedy
+                if readiness.missing_packages
+                else f"Verify and activate {self.info.name} from local storage."
+            )
+            self._delete_btn.setVisible(not self.info.pip_managed)
+            self._delete_btn.setEnabled(not self.info.pip_managed)
 
         elif status == ModelStatus.LOADED:
             self._set_badge("Active", Palette.BLUE)
-            btn.setText("In Use")
-            btn.setEnabled(False)
+            btn.setText("Deactivate")
+            btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
+            btn.setToolTip(f"Release {self.info.name} and its model resources.")
 
         elif status == ModelStatus.LOADING:
-            self._set_badge("Loading...", Palette.YELLOW)
-            btn.setEnabled(False)
+            self._set_badge("Activating...", Palette.YELLOW)
+            btn.setText("Cancel Activation")
+            btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
 
         elif status == ModelStatus.ERROR:
             self._set_badge("Error", Palette.RED)
-            btn.setText("Retry Download")
+            btn.setText(
+                "Retry Activation"
+                if readiness.installed or self.info.pip_managed
+                else "Retry Download"
+            )
             btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
+            btn.setToolTip(readiness.remedy)
+            self._delete_btn.setVisible(
+                readiness.installed and not self.info.pip_managed
+            )
+            self._delete_btn.setEnabled(self._delete_btn.isVisible())
 
         requires_consent = bool(
             self.info.requires_remote_code or self.info.allows_unsafe_weights
@@ -491,6 +541,7 @@ class ModelHubView(QWidget):
         self.toast_mgr = toast_mgr
         self._cards: dict[str, ModelCard] = {}
         self._workers: dict[str, DownloadWorker] = {}
+        self._activation_workers: dict[str, InferenceWorker] = {}
         self._mgr = ModelManager()
         self._job_store = JobStore()
         self._build_ui()
@@ -574,6 +625,9 @@ class ModelHubView(QWidget):
         self._grid_layout = QGridLayout(self._grid_container)
         self._grid_layout.setSpacing(16)
         self._grid_layout.setContentsMargins(0, 0, 0, 0)
+        for column in range(3):
+            self._grid_layout.setColumnStretch(column, 1)
+            self._grid_layout.setColumnMinimumWidth(column, 320)
 
         col = 0
         row = 0
@@ -583,6 +637,9 @@ class ModelHubView(QWidget):
             card.cancel_requested.connect(self._cancel_download)
             card.delete_requested.connect(self._delete_model)
             card.consent_requested.connect(self._review_execution_consent)
+            card.activation_requested.connect(self._start_activation)
+            card.activation_cancel_requested.connect(self._cancel_activation)
+            card.deactivation_requested.connect(self._deactivate_model)
             self._cards[model_id] = card
             self._grid_layout.addWidget(card, row, col)
             col += 1
@@ -834,6 +891,87 @@ class ModelHubView(QWidget):
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
             self.toast_mgr.error(f"Failed to download {info.name}: {error}")
+
+    # -- Activation Management ---------------------------------------------
+
+    def _start_activation(self, model_id: str):
+        if model_id in self._activation_workers:
+            return
+        info = self._mgr.get_model_info(model_id)
+        if info is None:
+            return
+
+        self._mgr._set_status(model_id, ModelStatus.LOADING)
+        worker = InferenceWorker(
+            self._mgr.activate_model,
+            model_id,
+            job_kind="model_activation",
+            job_label=f"Activate {info.name}",
+            job_inputs={"model_id": model_id},
+            job_metadata={"model_id": model_id},
+        )
+        worker.finished.connect(self._on_activation_finished)
+        worker.error.connect(
+            lambda error, mid=model_id: self._on_activation_error(mid, error)
+        )
+        worker.cancelled.connect(
+            lambda mid=model_id: self._on_activation_cancelled(mid)
+        )
+        self._activation_workers[model_id] = worker
+        worker.start()
+        if self.toast_mgr:
+            self.toast_mgr.info(f"Activating {info.name} from verified local files...")
+
+    def _cancel_activation(self, model_id: str):
+        worker = self._activation_workers.get(model_id)
+        if worker:
+            worker.cancel()
+            if self.toast_mgr:
+                info = self._mgr.get_model_info(model_id)
+                self.toast_mgr.info(f"Cancelling {info.name} activation...")
+
+    def _on_activation_finished(self, result):
+        model_id = getattr(result, "model_id", "")
+        if model_id:
+            self._activation_workers.pop(model_id, None)
+            self._cards[model_id].update_status(self._mgr.get_status(model_id))
+        if getattr(result, "is_success", False):
+            if self.toast_mgr:
+                self.toast_mgr.success(result.message)
+        elif self.toast_mgr:
+            self.toast_mgr.error(result.error or "Model activation failed.")
+        self._update_gpu_display()
+
+    def _on_activation_error(self, model_id: str, error: str):
+        self._activation_workers.pop(model_id, None)
+        self._mgr._set_status(model_id, ModelStatus.ERROR)
+        if self.toast_mgr:
+            info = self._mgr.get_model_info(model_id)
+            self.toast_mgr.error(f"Failed to activate {info.name}: {error}")
+
+    def _on_activation_cancelled(self, model_id: str):
+        self._activation_workers.pop(model_id, None)
+        if self._mgr.current_model_id == model_id:
+            self._mgr.deactivate_model(model_id)
+        status = (
+            ModelStatus.DOWNLOADED
+            if self._mgr.get_model_readiness(model_id).installed
+            else ModelStatus.NOT_DOWNLOADED
+        )
+        self._mgr._set_status(model_id, status)
+        if self.toast_mgr:
+            info = self._mgr.get_model_info(model_id)
+            self.toast_mgr.info(f"{info.name} activation cancelled.")
+
+    def _deactivate_model(self, model_id: str):
+        result = self._mgr.deactivate_model(model_id)
+        if self.toast_mgr:
+            if result.is_success:
+                info = self._mgr.get_model_info(model_id)
+                self.toast_mgr.success(f"{info.name} deactivated.")
+            else:
+                self.toast_mgr.error(result.error)
+        self._update_gpu_display()
 
     def _delete_model(self, model_id: str):
         """Delete a downloaded model's cache."""

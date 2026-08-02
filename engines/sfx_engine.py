@@ -116,7 +116,7 @@ class SFXEngine:
         return self._model is not None
 
     def load_model(self, model_path: str = "stabilityai/stable-audio-open-1.0",
-                   device: str = "cuda",
+                   device: str = "auto",
                    progress_callback: Optional[Callable] = None):
         """Load Stable Audio Open from a verified local snapshot."""
         from core.deps import ensure
@@ -133,6 +133,11 @@ class SFXEngine:
         try:
             import torch
             from stable_audio_tools import get_pretrained_model
+
+            if device == "auto":
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            elif device == "cuda" and not torch.cuda.is_available():
+                device = "cpu"
 
             if progress_callback:
                 progress_callback(0.1, "Loading Stable Audio Open...")
