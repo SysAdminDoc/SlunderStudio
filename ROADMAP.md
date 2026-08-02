@@ -118,29 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Readiness and disk-usage scans run on the GUI thread on every keystroke and status change
-  Category: perf
-  Where: `ui/vocal_suite_view.py:309` and `:849` (`textChanged` -> `_refresh_capability_states`) ->
-    `:2259-2324` -> `core/model_manager.py:662-742` (`get_model_readiness`) -> `:1578-1618`
-    (`verify_download`, which reads the marker and does `rglob("*")` over the cache) and `:651-660`
-    (`find_spec` per missing package); `ui/model_hub.py:732-736` (`_on_status_changed ->
-    _update_disk_display`) -> `core/model_manager.py:1756-1764` (`get_total_disk_usage`, `rglob` +
-    `stat` over the entire models directory)
-  Problem: Every keystroke in the DiffSinger lyrics box or the clone text box resolves readiness for
-    four capabilities; each non-pip candidate does a manifest read plus a recursive directory
-    enumeration of its cache, and each pip-managed model runs `importlib.util.find_spec` scans —
-    all synchronously on the GUI thread. Separately, every model status transition walks the whole
-    multi-gigabyte cache tree to recompute disk usage. Warm-cache this is tens of milliseconds;
-    cold cache or a large HF snapshot layout makes typing visibly laggy.
-  Evidence: Signal wiring and call chain traced through `_is_model_cached ->
-    verify_download(full_hash=False)`.
-  Fix: Debounce the text-driven refresh, and split the cheap "is the input non-empty" check from
-    the model-readiness check (an empty input needs no readiness at all); cache readiness and
-    disk-usage results keyed on status-change events.
-  Acceptance: A test asserting N keystrokes trigger at most one readiness resolution.
-  Confidence: Verified (code path); magnitude needs a repro on a cold cache
-  Effort: M
-
 - [ ] P2 — Twelve views have no accessibility wiring, and their widget stylesheets delete the global focus ring
   Category: a11y
   Where: `ui/seed_explorer.py`, `ui/stem_mixer.py`, `ui/midi_mixer.py`, `ui/midi_studio_view.py`,

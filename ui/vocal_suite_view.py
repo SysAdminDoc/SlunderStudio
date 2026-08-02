@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QComboBox, QSpinBox, QDoubleSpinBox, QFileDialog, QTabWidget,
     QFrame, QLineEdit, QSlider, QGroupBox, QStackedWidget, QCheckBox,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 
 from ui.theme import Palette, ThemeEngine
 from ui.waveform_widget import WaveformWidget
@@ -62,6 +62,10 @@ class VocalSuiteView(QWidget):
         self._stem_worker: Optional[InferenceWorker] = None
         self._model_mgr = ModelManager()
         self._contract_results: dict[str, EngineRunResult] = {}
+        self._capability_refresh_timer = QTimer(self)
+        self._capability_refresh_timer.setSingleShot(True)
+        self._capability_refresh_timer.setInterval(180)
+        self._capability_refresh_timer.timeout.connect(self._refresh_capability_states)
 
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(self)
@@ -307,7 +311,7 @@ class VocalSuiteView(QWidget):
                 padding: 6px; font-size: 12px;
             }}
         """)
-        self._sing_lyrics.textChanged.connect(self._refresh_capability_states)
+        self._sing_lyrics.textChanged.connect(self._schedule_capability_refresh)
         ctrl_layout.addWidget(self._sing_lyrics)
 
         param_style = f"""
@@ -847,7 +851,7 @@ class VocalSuiteView(QWidget):
         self._clone_text.setPlaceholderText("Text to speak in cloned voice...")
         self._clone_text.setMaximumHeight(80)
         self._clone_text.setStyleSheet(param_style)
-        self._clone_text.textChanged.connect(self._refresh_capability_states)
+        self._clone_text.textChanged.connect(self._schedule_capability_refresh)
         ctrl_layout.addWidget(self._clone_text)
 
         # Language
@@ -2301,17 +2305,29 @@ class VocalSuiteView(QWidget):
         if hint:
             self._status.setText(hint)
 
-    def _refresh_capability_states(self, *_args):
+    def _schedule_capability_refresh(self):
+        """Update cheap input gates now and debounce filesystem readiness."""
         if not hasattr(self, "_sing_gen_btn"):
             return
+        self._refresh_capability_states(resolve_readiness=False)
+        self._capability_refresh_timer.start()
 
-        sing_profile = self._selected_voice_profile(self._sing_voice)
-        sing_profile_ready, sing_profile_error = self._profile_ready(sing_profile)
-        singing = self._model_mgr.get_capability_readiness(
-            CAP_VOCAL_SYNTHESIZE,
-            profile_ready=sing_profile_ready,
-        )
+    def _refresh_capability_states(self, *_args, resolve_readiness: bool = True):
+        if not hasattr(self, "_sing_gen_btn"):
+            return
+        if resolve_readiness:
+            self._capability_refresh_timer.stop()
+
         sing_input_ready = bool(self._sing_lyrics.toPlainText().strip())
+        sing_profile_error = ""
+        singing = None
+        if resolve_readiness and sing_input_ready:
+            sing_profile = self._selected_voice_profile(self._sing_voice)
+            sing_profile_ready, sing_profile_error = self._profile_ready(sing_profile)
+            singing = self._model_mgr.get_capability_readiness(
+                CAP_VOCAL_SYNTHESIZE,
+                profile_ready=sing_profile_ready,
+            )
         self._set_action_readiness(
             self._sing_gen_btn,
             singing,
@@ -2320,17 +2336,20 @@ class VocalSuiteView(QWidget):
             self._sing_worker,
         )
 
-        rvc_profile = self._selected_voice_profile(self._rvc_voice)
-        rvc_profile_ready, rvc_profile_error = self._profile_ready(
-            rvc_profile,
-            VOICE_OPERATION_CONVERSION,
-        )
-        rvc = self._model_mgr.get_capability_readiness(
-            CAP_VOCAL_CONVERT,
-            allow_demo=self._rvc_demo_check.isChecked(),
-            profile_ready=rvc_profile_ready,
-        )
         rvc_input_ready = bool(self._rvc_input_label.property("path"))
+        rvc_profile_error = ""
+        rvc = None
+        if resolve_readiness and rvc_input_ready:
+            rvc_profile = self._selected_voice_profile(self._rvc_voice)
+            rvc_profile_ready, rvc_profile_error = self._profile_ready(
+                rvc_profile,
+                VOICE_OPERATION_CONVERSION,
+            )
+            rvc = self._model_mgr.get_capability_readiness(
+                CAP_VOCAL_CONVERT,
+                allow_demo=self._rvc_demo_check.isChecked(),
+                profile_ready=rvc_profile_ready,
+            )
         self._set_action_readiness(
             self._rvc_convert_btn,
             rvc,
@@ -2339,17 +2358,20 @@ class VocalSuiteView(QWidget):
             self._rvc_worker,
         )
 
-        clone_profile = self._selected_voice_profile(self._clone_voice)
-        clone_profile_ready, clone_profile_error = self._profile_ready(
-            clone_profile,
-            VOICE_OPERATION_CLONE,
-        )
-        clone = self._model_mgr.get_capability_readiness(
-            CAP_VOCAL_CLONE,
-            allow_demo=self._clone_demo_check.isChecked(),
-            profile_ready=clone_profile_ready,
-        )
         clone_input_ready = bool(self._clone_text.toPlainText().strip())
+        clone_profile_error = ""
+        clone = None
+        if resolve_readiness and clone_input_ready:
+            clone_profile = self._selected_voice_profile(self._clone_voice)
+            clone_profile_ready, clone_profile_error = self._profile_ready(
+                clone_profile,
+                VOICE_OPERATION_CLONE,
+            )
+            clone = self._model_mgr.get_capability_readiness(
+                CAP_VOCAL_CLONE,
+                allow_demo=self._clone_demo_check.isChecked(),
+                profile_ready=clone_profile_ready,
+            )
         self._set_action_readiness(
             self._clone_gen_btn,
             clone,
@@ -2358,8 +2380,12 @@ class VocalSuiteView(QWidget):
             self._clone_worker,
         )
 
-        stems = self._model_mgr.get_capability_readiness(CAP_STEM_SEPARATE)
         stem_input_ready = bool(self._stem_input_label.property("path"))
+        stems = (
+            self._model_mgr.get_capability_readiness(CAP_STEM_SEPARATE)
+            if resolve_readiness and stem_input_ready
+            else None
+        )
         self._set_action_readiness(
             self._stem_separate_btn,
             stems,
@@ -2388,6 +2414,10 @@ class VocalSuiteView(QWidget):
             button.setText(base_text)
             button.setEnabled(False)
             tooltip = input_remedy
+        elif readiness is None:
+            button.setText(base_text)
+            button.setEnabled(False)
+            tooltip = "Checking model readiness..."
         elif not readiness.can_run:
             button.setText(base_text)
             button.setEnabled(False)

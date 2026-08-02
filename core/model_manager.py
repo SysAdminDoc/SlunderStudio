@@ -581,6 +581,10 @@ class ModelManager(QObject):
         self._status: dict[str, ModelStatus] = {}
         self._current_model_id: Optional[str] = None
         self._current_model: Any = None
+        self._readiness_cache: dict[str, ModelReadiness] = {}
+        self._readiness_cache_state = None
+        self._disk_usage_cache: Optional[float] = None
+        self._disk_usage_cache_path: Optional[str] = None
         self._settings = Settings()
         self._trash = TrashManager()
 
@@ -663,9 +667,17 @@ class ModelManager(QObject):
 
     def get_model_readiness(self, model_id: str) -> ModelReadiness:
         """Report installation, verification, loadability, and activation separately."""
+        cache_state = self._readiness_state_token()
+        if cache_state != self._readiness_cache_state:
+            self._readiness_cache.clear()
+            self._readiness_cache_state = cache_state
+        cached = self._readiness_cache.get(model_id)
+        if cached is not None:
+            return cached
+
         info = self._registry.get(model_id)
         if info is None:
-            return ModelReadiness(
+            readiness = ModelReadiness(
                 model_id=model_id,
                 installed=False,
                 verified=False,
@@ -674,6 +686,8 @@ class ModelManager(QObject):
                 status="unknown",
                 remedy=f"Unknown model: {model_id}",
             )
+            self._readiness_cache[model_id] = readiness
+            return readiness
 
         with self._state_lock:
             active = bool(
@@ -732,7 +746,7 @@ class ModelManager(QObject):
         else:
             remedy = f"Activate {info.name} in Model Hub."
 
-        return ModelReadiness(
+        readiness = ModelReadiness(
             model_id=model_id,
             installed=installed,
             verified=verified,
@@ -742,6 +756,8 @@ class ModelManager(QObject):
             missing_packages=missing,
             remedy=remedy,
         )
+        self._readiness_cache[model_id] = readiness
+        return readiness
 
     def get_capability_readiness(
         self,
@@ -1223,6 +1239,8 @@ class ModelManager(QObject):
             "warning": EXECUTABLE_MODEL_WARNING,
         }
         self._settings.set("model_hub.execution_consents", consents)
+        self._readiness_cache.clear()
+        self._readiness_cache_state = None
 
     def has_executable_model_consent(self, model_id: str) -> bool:
         """Return whether the current exact source revision has recorded consent."""
@@ -1773,13 +1791,23 @@ class ModelManager(QObject):
 
     def get_total_disk_usage(self) -> float:
         """Get total disk usage of all downloaded models in GB."""
-        total = 0.0
         base = Path(self._settings.get("model_hub.cache_dir", str(get_config_dir() / "models")))
+        cache_path = str(base.resolve(strict=False))
+        if (
+            self._disk_usage_cache is not None
+            and self._disk_usage_cache_path == cache_path
+        ):
+            return self._disk_usage_cache
+
+        total = 0.0
         if base.exists():
             for f in base.rglob("*"):
                 if f.is_file():
                     total += f.stat().st_size
-        return total / (1024**3)
+        usage = total / (1024**3)
+        self._disk_usage_cache = usage
+        self._disk_usage_cache_path = cache_path
+        return usage
 
     # ── GPU Status ─────────────────────────────────────────────────────────────
 
@@ -1801,8 +1829,34 @@ class ModelManager(QObject):
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
+    def _readiness_state_token(self):
+        """Return cheap lifecycle state used to invalidate filesystem readiness."""
+        with self._state_lock:
+            statuses = tuple(
+                sorted((model_id, status.value) for model_id, status in self._status.items())
+            )
+            current_model_id = self._current_model_id
+            has_current_model = self._current_model is not None
+        registry = tuple(
+            sorted(
+                (
+                    model_id,
+                    info.revision,
+                    bool(info.pip_managed),
+                    bool(info.requires_remote_code),
+                    bool(info.allows_unsafe_weights),
+                )
+                for model_id, info in self._registry.items()
+            )
+        )
+        return registry, statuses, current_model_id, has_current_model
+
     def _set_status(self, model_id: str, status: ModelStatus):
         with self._state_lock:
             self._status[model_id] = status
+            self._readiness_cache.clear()
+            self._readiness_cache_state = None
+            self._disk_usage_cache = None
+            self._disk_usage_cache_path = None
         # Emitted outside the lock: receivers may call back into the manager.
         self.status_changed.emit(model_id, status.value)

@@ -37,6 +37,8 @@ All notable changes to SlunderStudio will be documented in this file.
   project registration from the worker completion callback.
 - Made waveform mel spectrograms lazy and cached per load, while MiniWaveform thumbnails skip the
   transform and release their full source buffer after building the display data.
+- Debounced Vocal Suite readiness refreshes, skipped model checks for empty inputs, and cached
+  verified readiness and Model Hub disk-usage scans until lifecycle status changes.
 - Marked FluidSynth sine fallbacks as demo renders with an explicit reason and kept MIDI routing buttons disabled for those previews.
 - Repaired AI Producer lyrics generation to use the canonical loaded lyrics model and structured prompts, while labeling template fallback lyrics as demo/degraded output.
 - Marshalled streamed lyrics tokens through an `InferenceWorker` signal and queued connection so the editor is updated only on its GUI thread.
