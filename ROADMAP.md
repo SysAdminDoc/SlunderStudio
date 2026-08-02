@@ -118,23 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — `SeparationResult` has no `is_success`, so failed separations are recorded as completed jobs
-  Category: correctness
-  Where: `engines/demucs_engine.py:30-44` (`SeparationResult`); consumed by
-    `core/workers.py:113-141`
-  Problem: `separate`/`separate_stems` funnel all exceptions into `SeparationResult(error=...)`.
-    The worker's semantic-success check reads `result.is_success`, which `SFXResult`,
-    `MidiGenResult`, `VoiceResult` and `ProducerResult` all implement — but `SeparationResult` does
-    not, so `getattr(..., "is_success", None)` is None and a failed separation is marked
-    `mark_completed` in the durable job ledger with zero outputs, surfacing as a successful job in
-    history and health reports.
-  Evidence: Run stem separation on a corrupt file — `torchaudio.load` raises, an error result is
-    returned, and the job state becomes "completed".
-  Fix: Add `@property def is_success(self): return self.error is None and bool(self.stems)`.
-  Acceptance: A test asserting a separation that fails produces a failed job record.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P2 — FluidSynth's shared synth carries reverb tail and channel state into the next render
   Category: correctness
   Where: `engines/fluidsynth_engine.py:149-194` (`render_to_numpy`), singleton at `:347-354`

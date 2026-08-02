@@ -6,9 +6,34 @@ from pathlib import Path
 from core.job_state import JobLog, JobStatus, JobStore
 from core.workers import DownloadWorker, InferenceWorker, CancelledJobError
 from engines.ace_step_engine import ACEStepEngine, GenerationParams, GenerationResult
+from engines.demucs_engine import SeparationResult, StemResult
 
 
 class JobStateTests(unittest.TestCase):
+    def test_failed_separation_result_marks_job_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp) / "jobs")
+            failed = SeparationResult(error="corrupt audio")
+
+            worker = InferenceWorker(
+                lambda **_kwargs: failed,
+                job_kind="stem_separation",
+                job_label="Failed separation",
+                job_store=store,
+            )
+            worker.run()
+            record = store.get(worker.job_id)
+
+        self.assertFalse(failed.is_success)
+        self.assertIsNotNone(record)
+        self.assertEqual(record.status, JobStatus.FAILED)
+        self.assertEqual(record.error, "corrupt audio")
+
+    def test_separation_with_stems_is_successful(self):
+        result = SeparationResult(stems=[StemResult(name="vocals")])
+
+        self.assertTrue(result.is_success)
+
     def test_stale_active_jobs_become_recoverable_on_startup(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = JobStore(Path(tmp))

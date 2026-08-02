@@ -12,6 +12,8 @@ All notable changes to SlunderStudio will be documented in this file.
   while rejecting recursive or unrelated executable processes.
 - Made the shipped lyric genre, mood, structure, and tag JSON authoritative at runtime, with schema
   validation and generation coverage for edited template assets.
+- Marked failed or empty Demucs separations as unsuccessful so inference workers persist them as
+  failed jobs instead of completed records.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

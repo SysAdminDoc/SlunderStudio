@@ -68,6 +68,11 @@ class SeparationResult:
     model_name: str = ""
     error: Optional[str] = None
 
+    @property
+    def is_success(self) -> bool:
+        """Whether separation produced stems without an error."""
+        return self.error is None and bool(self.stems)
+
     def get_stem(self, name: str) -> Optional[StemResult]:
         for s in self.stems:
             if s.name.lower() == name.lower():
