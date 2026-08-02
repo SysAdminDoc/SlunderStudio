@@ -118,29 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Mood Curve and Seed Explorer are mouse-only, and Seed Explorer signals state by color alone
-  Category: a11y
-  Where: `ui/mood_curve_editor.py:32-64` (`DraggablePoint`), `:128-137`;
-    `ui/seed_explorer.py:33, 56-65, 74-82, 111-115, 271`
-  Problem: `DraggablePoint` control points are `QGraphicsEllipseItem`s movable only by mouse drag,
-    and the view is not focusable for editing — the core "draw your energy arc" interaction is
-    inoperable without a pointer (WCAG 2.1.1); the only keyboard alternative is the coarse preset
-    combo. `SeedCell` is a `QFrame` with no focus policy, and play is triggered solely by
-    `MiniWaveform.mousePressEvent` (`ui/waveform_widget.py:514`), so a keyboard user cannot select
-    or audition any cell. The star button (`:56-65`) is icon-only ("☆", 20x20) with no tooltip and
-    no accessible name. Cell state is encoded purely by border hue (`_update_style`, `:74-82`):
-    generating = BLUE, starred = YELLOW, playing = GREEN with no text or shape change — while
-    "Generating..." and "Failed" do get status text, so "playing" is color-only (WCAG 1.4.1). The
-    `_info` label (`:271`) is used as a live progress readout ("Generated 3/9 variations") with no
-    accessible event, unlike the `_announce_position` pattern already used in the waveform widget.
-  Fix: Make `SeedCell` `StrongFocus` with Enter/Space to play and `S` to star; add arrow-key
-    nudging for curve points; add a tooltip and `set_accessible` on the star; add a "▶ playing"
-    glyph or text to the playing state; reuse `QAccessibleValueChangeEvent` for `_info`.
-  Acceptance: Keyboard-only traversal can reach, audition and star any seed cell and move any curve
-    point; a test asserts the playing state exposes a non-color indicator.
-  Confidence: Verified
-  Effort: M
-
 - [ ] P2 — `{color}44` produces an `#AARRGGBB` string, so stem borders render the wrong hue
   Category: visual
   Where: `ui/stem_mixer.py:61`

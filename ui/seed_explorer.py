@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
 )
 from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QKeyEvent
 
 from ui.theme import Palette
 from ui.accessibility import FOCUS_RING_COLOR, install_accessibility, set_accessible
@@ -35,11 +36,14 @@ class SeedCell(QFrame):
         self._is_starred = False
         self._is_generating = False
         self._is_generated = False
+        self._is_playing = False
 
         self.setFixedSize(140, 110)
         self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._update_style("idle")
         self._setup_ui()
+        self._update_accessibility()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -48,6 +52,7 @@ class SeedCell(QFrame):
 
         self._waveform = MiniWaveform()
         self._waveform.setFixedHeight(50)
+        self._waveform.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._waveform.clicked.connect(self._on_click)
         layout.addWidget(self._waveform)
 
@@ -79,42 +84,68 @@ class SeedCell(QFrame):
         self._set_star_accessibility()
 
     def _set_star_accessibility(self):
+        action = "Unstar" if self._is_starred else "Star"
         set_accessible(
             self._star_btn,
-            "Favorite seed variation",
-            "Adds or removes this variation from the starred export set.",
+            f"{action} seed variation",
+            f"{action}s this variation in the starred export set.",
         )
+        self._star_btn.setToolTip(f"{action} this generated seed variation")
         style = self._star_btn.styleSheet() or ""
         if ":focus" not in style:
             self._star_btn.setStyleSheet(
                 f"{style}\nQPushButton:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}"
             )
 
+    def _update_accessibility(self):
+        status = ""
+        if self._is_playing:
+            status = " Playing."
+        elif self._is_generating:
+            status = " Generating."
+        elif self._status_label.text() == "Failed":
+            status = " Failed."
+        seed = f" Seed {self._seed}." if self._is_generated else ""
+        set_accessible(
+            self,
+            f"Seed variation row {self.row + 1}, column {self.col + 1}",
+            "Press Enter or Space to play this variation. Press S to toggle its "
+            f"favorite state.{seed}{status}",
+        )
+
     def _update_style(self, state: str):
+        focus_style = (
+            f" QFrame:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}"
+        )
         styles = {
-            "idle": f"QFrame {{ background: {Palette.BASE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; }}",
-            "generating": f"QFrame {{ background: {Palette.BASE}; border: 2px solid {Palette.BLUE}; border-radius: 6px; }}",
-            "done": f"QFrame {{ background: {Palette.BASE}; border: 1px solid {Palette.SURFACE1}; border-radius: 6px; }}",
-            "starred": f"QFrame {{ background: {Palette.BASE}; border: 2px solid {Palette.YELLOW}; border-radius: 6px; }}",
-            "playing": f"QFrame {{ background: {Palette.BASE}; border: 2px solid {Palette.GREEN}; border-radius: 6px; }}",
+            "idle": f"QFrame {{ background: {Palette.BASE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; }}{focus_style}",
+            "generating": f"QFrame {{ background: {Palette.BASE}; border: 2px solid {Palette.BLUE}; border-radius: 6px; }}{focus_style}",
+            "done": f"QFrame {{ background: {Palette.BASE}; border: 1px solid {Palette.SURFACE1}; border-radius: 6px; }}{focus_style}",
+            "starred": f"QFrame {{ background: {Palette.BASE}; border: 2px solid {Palette.YELLOW}; border-radius: 6px; }}{focus_style}",
+            "playing": f"QFrame {{ background: {Palette.BASE}; border: 2px solid {Palette.GREEN}; border-radius: 6px; }}{focus_style}",
         }
         self.setStyleSheet(styles.get(state, styles["idle"]))
 
     def set_generating(self):
+        self._is_playing = False
         self._is_generating = True
         self._status_label.setText("Generating...")
         self._update_style("generating")
+        self._update_accessibility()
 
     def set_result(self, audio_path: str, seed: int):
         self._audio_path = audio_path
         self._seed = seed
         self._is_generating = False
         self._is_generated = True
+        self._is_playing = False
         self._seed_label.setText(f"seed: {seed}")
         self._status_label.setText("")
+        self._status_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 10px;")
         self._star_btn.show()
         self._update_style("done")
         self._set_star_accessibility()
+        self._update_accessibility()
 
         # Load waveform
         try:
@@ -123,16 +154,39 @@ class SeedCell(QFrame):
             pass
 
     def set_failed(self, error: str = ""):
+        self._is_playing = False
         self._is_generating = False
         self._status_label.setText("Failed")
         self._status_label.setStyleSheet(f"color: {Palette.RED}; font-size: 10px;")
         self._update_style("idle")
+        self._update_accessibility()
 
     def _on_click(self):
         if self._audio_path:
+            self.setFocus(Qt.FocusReason.OtherFocusReason)
             self.play_requested.emit(self._audio_path)
+            self._is_playing = True
+            self._status_label.setText("▶ Playing")
             self._update_style("playing")
+            self._update_accessibility()
         self.clicked.emit(self.row, self.col)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        """Play or favorite a generated variation without a pointer."""
+        key = event.key()
+        modifiers = event.modifiers()
+        if key in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self._on_click()
+            event.accept()
+            return
+        if key == Qt.Key_S and not modifiers & (
+            Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier
+        ):
+            if self._is_generated:
+                self._toggle_star()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _toggle_star(self):
         self._is_starred = not self._is_starred
@@ -144,11 +198,15 @@ class SeedCell(QFrame):
         )
         self._update_style("starred" if self._is_starred else "done")
         self._set_star_accessibility()
+        self._update_accessibility()
         self.star_toggled.emit(self.row, self.col, self._is_starred)
 
     def reset_playing(self):
         if self._is_generated:
+            self._is_playing = False
+            self._status_label.setText("")
             self._update_style("starred" if self._is_starred else "done")
+            self._update_accessibility()
 
     @property
     def audio_path(self) -> str:
@@ -311,10 +369,28 @@ class SeedExplorer(QWidget):
                 (self._shift_max_spin.findChild(QLineEdit), "Maximum shift value", "Edits the maximum timestep shift."),
                 (self._explore_btn, "Explore seeds", "Generates the configured seed variation grid."),
                 (self._export_btn, "Export starred seeds", "Copies starred audio variations and provenance to a selected folder."),
+                (self._info, "Seed generation status", "Reports generation, playback, and export progress."),
             ],
             tab_order=[],
             include_descendants=False,
         )
+        self._set_cell_tab_order()
+
+    def _set_cell_tab_order(self):
+        """Keep every generated cell in the keyboard traversal order."""
+        controls = [
+            self._grid_combo,
+            self._seed_spin,
+            self._range_spin,
+            self._distance_slider,
+            self._shift_min_spin,
+            self._shift_max_spin,
+            self._explore_btn,
+            self._export_btn,
+        ]
+        cells = [cell for row in self._cells for cell in row]
+        for first, second in zip(controls + cells, controls[1:] + cells):
+            QWidget.setTabOrder(first, second)
 
     def _rebuild_grid(self, index: int = None):
         """Rebuild the grid with new size."""
@@ -340,6 +416,23 @@ class SeedExplorer(QWidget):
                 cell._set_star_accessibility()
                 row.append(cell)
             self._cells.append(row)
+        if hasattr(self, "_explore_btn"):
+            self._set_cell_tab_order()
+
+    def _set_info(self, text: str):
+        """Update the persistent status line and announce its new value."""
+        self._info.setText(text)
+        self._info.setAccessibleDescription(text)
+        try:
+            from PySide6.QtGui import QAccessible, QAccessibleValueChangeEvent
+
+            if QAccessible.isActive():
+                QAccessible.updateAccessibility(
+                    QAccessibleValueChangeEvent(self._info, text)
+                )
+        except Exception:
+            # Accessibility announcements are best-effort and must not break UI updates.
+            pass
 
     def _start_exploration(self):
         """Generate parameters for each grid cell and emit generation request."""
@@ -364,7 +457,7 @@ class SeedExplorer(QWidget):
                     "shift": round(shift, 2),
                 })
 
-        self._info.setText(f"Generating {len(params_list)} variations...")
+        self._set_info(f"Generating {len(params_list)} variations...")
         self.generate_requested.emit(params_list)
 
     def _on_distance_changed(self, value: int):
@@ -382,7 +475,7 @@ class SeedExplorer(QWidget):
             # Count completed
             done = sum(1 for r in self._cells for c in r if c.audio_path)
             total = self._grid_size ** 2
-            self._info.setText(f"Generated {done}/{total} variations")
+            self._set_info(f"Generated {done}/{total} variations")
 
     def set_cell_failed(self, row: int, col: int, error: str = ""):
         if 0 <= row < len(self._cells) and 0 <= col < len(self._cells[row]):
@@ -392,7 +485,8 @@ class SeedExplorer(QWidget):
         """Reset all cells playing state, highlight clicked."""
         for r in self._cells:
             for c in r:
-                c.reset_playing()
+                if (c.row, c.col) != (row, col):
+                    c.reset_playing()
 
     def _export_starred(self):
         """Copy starred audio results and any adjacent provenance sidecars."""
@@ -440,14 +534,14 @@ class SeedExplorer(QWidget):
 
             if copied:
                 detail = f"; skipped {skipped}" if skipped else ""
-                self._info.setText(
+                self._set_info(
                     f"Exported {copied} starred variation(s) to {destination}"
                     f" ({sidecars} provenance sidecar(s){detail})"
                 )
             else:
-                self._info.setText("No starred audio files were available to export")
+                self._set_info("No starred audio files were available to export")
         else:
-            self._info.setText("No starred cells to export")
+            self._set_info("No starred cells to export")
 
     def zoom_into(self, row: int, col: int):
         """Zoom into a cell - re-center seed and narrow ranges."""

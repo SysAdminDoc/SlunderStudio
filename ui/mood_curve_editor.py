@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsPathItem,
 )
 from PySide6.QtCore import Signal, Qt, QPointF, QRectF
-from PySide6.QtGui import QPainterPath, QPen, QBrush, QColor, QLinearGradient
+from PySide6.QtGui import QKeyEvent, QPainterPath, QPen, QBrush, QColor, QLinearGradient
 
 import numpy as np
 
@@ -38,11 +38,15 @@ class DraggablePoint(QGraphicsEllipseItem):
         super().__init__(-size/2, -size/2, size, size, parent)
         self.setPos(x, y)
         self.setFlag(QGraphicsEllipseItem.ItemIsMovable, True)
+        self.setFlag(QGraphicsEllipseItem.ItemIsSelectable, True)
         self.setFlag(QGraphicsEllipseItem.ItemSendsGeometryChanges, True)
         self.setBrush(QBrush(QColor(Palette.BLUE)))
         self.setPen(QPen(QColor(Palette.TEXT), 1.5))
         self.setZValue(10)
         self.setCursor(Qt.SizeAllCursor)
+        self.setToolTip(
+            f"Curve point {index + 1}; use Tab to select points and arrow keys to nudge."
+        )
         self._index = index
         self._callback = callback
         self._scene_width = 1.0
@@ -65,6 +69,31 @@ class DraggablePoint(QGraphicsEllipseItem):
         return super().itemChange(change, value)
 
 
+class MoodCurveView(QGraphicsView):
+    """Graphics canvas with a keyboard route for selecting and nudging points."""
+
+    keyboard_navigation = Signal(int, bool)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        key = event.key()
+        if key in (
+            Qt.Key_Left,
+            Qt.Key_Right,
+            Qt.Key_Up,
+            Qt.Key_Down,
+            Qt.Key_Tab,
+            Qt.Key_Home,
+            Qt.Key_End,
+        ):
+            self.keyboard_navigation.emit(
+                key,
+                bool(event.modifiers() & Qt.ShiftModifier),
+            )
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 class MoodCurveEditor(QWidget):
     """
     Visual energy/mood curve editor for song generation.
@@ -84,6 +113,7 @@ class MoodCurveEditor(QWidget):
         self._reference_path: QGraphicsPathItem = None
         self._fill_item: QGraphicsPathItem = None
         self._duration = 60.0
+        self._selected_point_index = 0
 
         self._setup_ui()
         self._set_preset("Classic Pop Build")
@@ -135,7 +165,9 @@ class MoodCurveEditor(QWidget):
         self._scene = QGraphicsScene(self)
         self._scene.setSceneRect(0, 0, self.SCENE_W, self.SCENE_H)
 
-        self._view = QGraphicsView(self._scene)
+        self._view = MoodCurveView(self._scene)
+        self._view.setFocusPolicy(Qt.StrongFocus)
+        self._view.keyboard_navigation.connect(self._on_keyboard_navigation)
         self._view.setRenderHint(self._view.renderHints())
         self._view.setStyleSheet(
             f"QGraphicsView {{ background: {Palette.MANTLE}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; }}"
@@ -148,6 +180,7 @@ class MoodCurveEditor(QWidget):
         layout.addWidget(self._view)
 
         # Draw grid
+        self._scene.selectionChanged.connect(self._on_selection_changed)
         self._draw_grid()
 
     def _draw_grid(self):
@@ -179,12 +212,84 @@ class MoodCurveEditor(QWidget):
             self._scene.addItem(point)
             self._points.append(point)
 
+        self._selected_point_index = 0
+        self._select_point(self._selected_point_index)
         self._update_curve()
+
+    def _select_point(self, index: int):
+        """Select one control point and expose its current value to assistive tech."""
+        if not self._points:
+            return
+        self._selected_point_index = index % len(self._points)
+        self._scene.clearSelection()
+        self._points[self._selected_point_index].setSelected(True)
+        self._announce_selected_point()
+
+    def _on_selection_changed(self):
+        """Keep keyboard selection aligned when a point is selected with the mouse."""
+        for item in self._scene.selectedItems():
+            if isinstance(item, DraggablePoint):
+                self._selected_point_index = item._index
+                self._announce_selected_point()
+                return
+
+    def _announce_selected_point(self):
+        if not self._points or not hasattr(self, "_view"):
+            return
+        point = self._points[self._selected_point_index]
+        time = point.pos().x() / self.SCENE_W
+        energy = 1.0 - point.pos().y() / self.SCENE_H
+        self._view.setAccessibleDescription(
+            f"Keyboard-focusable canvas. Curve point {self._selected_point_index + 1} "
+            f"of {len(self._points)} selected at {time:.0%} of the song and "
+            f"{energy:.0%} energy. Tab selects another point; arrow keys nudge it."
+        )
+
+    def _on_keyboard_navigation(self, key: int, large_step: bool):
+        """Select points with Tab and move the selected point with the arrow keys."""
+        if not self._points:
+            return
+
+        if key == Qt.Key_Tab:
+            direction = -1 if large_step else 1
+            self._select_point(self._selected_point_index + direction)
+            return
+        if key == Qt.Key_Home:
+            self._select_point(0)
+            return
+        if key == Qt.Key_End:
+            self._select_point(len(self._points) - 1)
+            return
+
+        point = self._points[self._selected_point_index]
+        position = point.pos()
+        x_step = self.SCENE_W / max(1, len(self._points) - 1) / (
+            1 if large_step else 4
+        )
+        y_step = self.SCENE_H / (5 if large_step else 20)
+        x = position.x()
+        y = position.y()
+        if key == Qt.Key_Left:
+            x -= x_step
+        elif key == Qt.Key_Right:
+            x += x_step
+        elif key == Qt.Key_Up:
+            y -= y_step
+        elif key == Qt.Key_Down:
+            y += y_step
+        else:
+            return
+
+        point.setPos(QPointF(x, y))
+        point.setSelected(True)
+        self._announce_selected_point()
 
     def _on_point_moved(self, index: int, pos: QPointF):
         """Called when a control point is dragged."""
+        self._selected_point_index = index
         self._update_curve()
         self.curve_changed.emit(self.get_values())
+        self._announce_selected_point()
 
     def _update_curve(self):
         """Redraw the smooth curve through control points."""

@@ -9,6 +9,8 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
 from engines.audio_analyzer import QualityScore, score_generation_quality
@@ -164,6 +166,49 @@ class SeedExplorerTests(unittest.TestCase):
             self.assertTrue(exported.is_file())
             self.assertTrue(sidecar_path_for(exported).is_file())
             self.assertIn("Exported 1 starred", explorer._info.text())
+
+    def test_seed_cell_keyboard_playing_state_is_textual_and_starred(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "generated.wav")
+            _write_test_wav(source, duration=0.2)
+
+            explorer = SeedExplorer()
+            cell = explorer._cells[0][0]
+            cell.set_result(source, seed=123)
+            played = []
+            explorer.play_requested.connect(played.append)
+
+            cell.keyPressEvent(
+                QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
+            )
+
+            self.assertEqual(played, [source])
+            self.assertIn("Playing", cell._status_label.text())
+            self.assertIn("▶", cell._status_label.text())
+            self.assertIn("Playing", cell.accessibleDescription())
+            self.assertEqual(cell.focusPolicy(), Qt.FocusPolicy.StrongFocus)
+            self.assertIn(":focus", cell.styleSheet())
+
+            cell.keyPressEvent(
+                QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_S, Qt.KeyboardModifier.NoModifier)
+            )
+            self.assertTrue(cell.is_starred)
+            self.assertIn("Unstar", cell._star_btn.accessibleName())
+
+    def test_seed_cells_are_all_focusable_keyboard_targets(self):
+        explorer = SeedExplorer()
+        cells = [cell for row in explorer._cells for cell in row]
+
+        self.assertEqual(len(cells), 9)
+        self.assertTrue(all(cell.focusPolicy() == Qt.FocusPolicy.StrongFocus for cell in cells))
+        self.assertEqual(
+            {cell.accessibleName() for cell in cells},
+            {
+                f"Seed variation row {row + 1}, column {col + 1}"
+                for row in range(3)
+                for col in range(3)
+            },
+        )
 
 
 if __name__ == "__main__":
