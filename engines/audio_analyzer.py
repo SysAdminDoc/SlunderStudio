@@ -627,43 +627,90 @@ class ReferenceLibrary:
 # ── Whisper Integration ───────────────────────────────────────────────────────
 
 _whisper_model = None
+_whisper_processor = None
+_whisper_device = "cpu"
 
 
 def load_model(cache_dir: str = None, model_path: str = None, **kwargs):
     """Load Whisper model for transcription/alignment. Called by ModelManager._dynamic_load()."""
-    global _whisper_model
+    global _whisper_model, _whisper_processor, _whisper_device
     from core.deps import ensure
     ensure("torch")
-    ensure("whisper")  # maps to openai-whisper via _PIP_NAMES
-
-    import whisper
+    ensure("transformers")
 
     from core.model_manager import ModelSecurityError
+    import torch
+    from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
     local = Path(model_path or cache_dir or "")
-    checkpoint = local / "tiny.pt"
-    if not local.is_absolute() or not checkpoint.is_file():
+    safe_weights = tuple(local.glob("*.safetensors")) if local.is_dir() else ()
+    if not local.is_absolute() or not local.is_dir() or not safe_weights:
         raise ModelSecurityError(
-            "Whisper loading will not download executable model data during inference. "
-            "A verified local tiny.pt checkpoint is required."
+            "Whisper loading will not download model data during inference. "
+            "A verified local Transformers snapshot with safetensors weights is required."
         )
 
-    _whisper_model = whisper.load_model("tiny", download_root=str(local))
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    processor = WhisperProcessor.from_pretrained(
+        str(local),
+        local_files_only=True,
+        trust_remote_code=False,
+    )
+    model = WhisperForConditionalGeneration.from_pretrained(
+        str(local),
+        local_files_only=True,
+        trust_remote_code=False,
+        use_safetensors=True,
+    )
+    _whisper_model = model.to(device)
+    _whisper_model.eval()
+    _whisper_processor = processor
+    _whisper_device = device
     return _whisper_model
 
 
 def transcribe_audio(audio_path: str, language: str = None) -> dict:
     """Transcribe audio using loaded Whisper model."""
-    global _whisper_model
+    global _whisper_model, _whisper_processor, _whisper_device
     if _whisper_model is None:
-        load_model()
+        from core.model_manager import ModelManager
+        load_model(cache_dir=str(ModelManager().get_cache_dir("whisper-tiny")))
 
-    options = {}
+    from core.deps import ensure
+    ensure("librosa")
+    import librosa
+    import torch
+
+    audio, _ = librosa.load(audio_path, sr=16000, mono=True)
+    inputs = _whisper_processor(
+        audio,
+        sampling_rate=16000,
+        return_tensors="pt",
+    )
+    input_features = (
+        inputs["input_features"]
+        if isinstance(inputs, dict)
+        else inputs.input_features
+    ).to(_whisper_device)
+
+    generate_kwargs = {}
     if language:
-        options["language"] = language
+        generate_kwargs["forced_decoder_ids"] = (
+            _whisper_processor.get_decoder_prompt_ids(
+                language=language,
+                task="transcribe",
+            )
+        )
 
-    result = _whisper_model.transcribe(audio_path, **options)
+    with torch.no_grad():
+        generated_ids = _whisper_model.generate(input_features, **generate_kwargs)
+    text = _whisper_processor.batch_decode(
+        generated_ids,
+        skip_special_tokens=True,
+    )[0].strip()
+
     return {
-        "text": result.get("text", ""),
-        "segments": result.get("segments", []),
-        "language": result.get("language", ""),
+        "text": text,
+        "segments": [],
+        "language": language or "",
     }

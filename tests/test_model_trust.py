@@ -281,6 +281,102 @@ class ModelTrustTests(unittest.TestCase):
             self.assertFalse(model_kwargs["trust_remote_code"])
             self.assertTrue(model_kwargs["use_safetensors"])
 
+    def test_whisper_loader_uses_registry_transformers_snapshot(self):
+        from engines import audio_analyzer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in (
+                "model.safetensors",
+                "config.json",
+                "preprocessor_config.json",
+                "tokenizer.json",
+            ):
+                (root / name).write_bytes(b"staged")
+
+            processor = MagicMock()
+            model = MagicMock()
+            model.to.return_value = model
+            transformers = types.ModuleType("transformers")
+            processor_loader = MagicMock(return_value=processor)
+            model_loader = MagicMock(return_value=model)
+            torch = types.ModuleType("torch")
+            torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+            transformers.WhisperProcessor = types.SimpleNamespace(
+                from_pretrained=processor_loader,
+            )
+            transformers.WhisperForConditionalGeneration = types.SimpleNamespace(
+                from_pretrained=model_loader,
+            )
+
+            old_model = audio_analyzer._whisper_model
+            old_processor = audio_analyzer._whisper_processor
+            old_device = audio_analyzer._whisper_device
+            try:
+                with patch("core.deps.ensure"), patch.dict(
+                    sys.modules,
+                    {"torch": torch, "transformers": transformers},
+                ):
+                    loaded = audio_analyzer.load_model(cache_dir=tmp)
+
+                self.assertIs(loaded, model)
+                self.assertIs(audio_analyzer._whisper_processor, processor)
+                processor_kwargs = processor_loader.call_args.kwargs
+                model_kwargs = model_loader.call_args.kwargs
+                self.assertTrue(processor_kwargs["local_files_only"])
+                self.assertFalse(processor_kwargs["trust_remote_code"])
+                self.assertTrue(model_kwargs["local_files_only"])
+                self.assertFalse(model_kwargs["trust_remote_code"])
+                self.assertTrue(model_kwargs["use_safetensors"])
+            finally:
+                audio_analyzer._whisper_model = old_model
+                audio_analyzer._whisper_processor = old_processor
+                audio_analyzer._whisper_device = old_device
+
+    def test_whisper_transcription_uses_transformers_processor(self):
+        from engines import audio_analyzer
+
+        processor = MagicMock()
+        features = MagicMock()
+        features.to.return_value = features
+        processor.return_value = {"input_features": features}
+        processor.get_decoder_prompt_ids.return_value = [[1, 2]]
+        processor.batch_decode.return_value = ["  hello world  "]
+        model = MagicMock()
+        model.generate.return_value = object()
+        torch = types.ModuleType("torch")
+        torch.no_grad = MagicMock()
+        librosa = types.ModuleType("librosa")
+        librosa.load = MagicMock(return_value=(object(), 16000))
+
+        old_model = audio_analyzer._whisper_model
+        old_processor = audio_analyzer._whisper_processor
+        old_device = audio_analyzer._whisper_device
+        try:
+            audio_analyzer._whisper_model = model
+            audio_analyzer._whisper_processor = processor
+            audio_analyzer._whisper_device = "cpu"
+            with patch("core.deps.ensure"), patch.dict(
+                sys.modules,
+                {"torch": torch, "librosa": librosa},
+            ):
+                result = audio_analyzer.transcribe_audio("voice.wav", language="en")
+
+            self.assertEqual("hello world", result["text"])
+            self.assertEqual("en", result["language"])
+            self.assertEqual([], result["segments"])
+            processor.get_decoder_prompt_ids.assert_called_once_with(
+                language="en", task="transcribe"
+            )
+            model.generate.assert_called_once_with(
+                features,
+                forced_decoder_ids=[[1, 2]],
+            )
+        finally:
+            audio_analyzer._whisper_model = old_model
+            audio_analyzer._whisper_processor = old_processor
+            audio_analyzer._whisper_device = old_device
+
     def test_rvc_rejects_untrusted_pickle_checkpoint_before_torch_load(self):
         with tempfile.TemporaryDirectory() as tmp:
             checkpoint = Path(tmp) / "voice.pth"

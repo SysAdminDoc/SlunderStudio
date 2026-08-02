@@ -420,6 +420,8 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         tags=["alignment", "transcription", "lyrics sync"],
         revision="169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
+        # The loader uses the repository's safe Transformers checkpoint;
+        # pickle-backed pytorch_model.bin remains excluded.
         ignore_patterns=["*.bin"],
         commercial_use=COMMERCIAL_USE_ALLOWED,
         commercial_use_note="MIT model license.",

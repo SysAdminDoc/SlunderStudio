@@ -118,29 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — whisper-tiny can never load: the loader wants a file the registry's download never produces
-  Category: correctness
-  Where: `engines/audio_analyzer.py:632-651` (`load_model`), `:654-658` (`transcribe_audio`);
-    registry at `core/model_manager.py:410-426`, runtime packages at `:474-477`
-  Problem: The registry downloads `openai/whisper-tiny` from HuggingFace — a Transformers-format
-    repo — with `ignore_patterns=["*.bin"]`, which also excludes `pytorch_model.bin`. The loader
-    then requires `<cache>/tiny.pt`, the OpenAI-CDN checkpoint filename that never appears in an HF
-    snapshot, and raises `ModelSecurityError` unconditionally. `MODEL_RUNTIME_PACKAGES` declares
-    torch and transformers, but the loader imports `whisper` (openai-whisper), so readiness reports
-    "loadable" for an engine whose actual runtime package is never verified.
-    `transcribe_audio`'s lazy `load_model()` call passes no path and so always raises as well.
-  Evidence: Traced download -> activate -> `_dynamic_load` -> `audio_analyzer.load_model` ->
-    `checkpoint.is_file()` False -> raise. The alignment/transcription capability is dead
-    end to end.
-  Fix: Either load via Transformers (`WhisperForConditionalGeneration.from_pretrained(local,
-    local_files_only=True)`) to match the registry source, or point the registry at a source that
-    ships `tiny.pt` and drop the `*.bin` ignore; declare `openai-whisper` in
-    `MODEL_RUNTIME_PACKAGES` if the whisper import is kept.
-  Acceptance: A test that stages the registry's actual downloaded file layout and asserts
-    `load_model` succeeds.
-  Confidence: Verified (loader side; the HF repo layout is well known)
-  Effort: M
-
 - [ ] P2 — Routed reference silently drops tempo through a loop keyed to a widget that does not exist
   Category: correctness
   Where: `ui/song_forge_view.py:606-610` (`receive_reference`)
