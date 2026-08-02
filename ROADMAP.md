@@ -118,24 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Model Hub card descriptions are clipped mid-sentence by a fixed 40px cap
-  Category: visual
-  Where: `ui/model_hub.py:208-211` (`desc.setMaximumHeight(40)` with `setWordWrap(True)` at 12px)
-  Problem: At 12px with word wrap, 40px fits two lines; any three-line description is cut off with
-    a half-rendered third line. The ACE-Step card is a live example: "Official ACE-Step 1.5 XL
-    Turbo Diffusers synthesizer for 48 kHz stereo songs, source repainting, reference covers, and
-    extensions." loses its final word to a sliced line. Because the cap is a maximum rather than an
-    elide, the result is a visually broken half-line rather than a clean truncation.
-  Evidence: Observed in an offscreen render of `ModelHubView` at 1200x800 with real fonts.
-  Fix: Either allow the description to size naturally (the card already has
-    `setMinimumHeight(140)`, and a grid of equal-height cards can be achieved by giving them a
-    common minimum), or elide cleanly with `QFontMetrics.elidedText` and a tooltip carrying the
-    full text.
-  Acceptance: No card shows a partially rendered line of text; long descriptions either wrap fully
-    or end in an ellipsis with the full text available on hover.
-  Confidence: Verified (rendered)
-  Effort: S
-
 - [ ] P2 — Model Hub claims a pinned revision and hashed cache for models that have neither
   Category: correctness
   Where: `ui/model_hub.py:252`

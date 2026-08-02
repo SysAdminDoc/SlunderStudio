@@ -207,9 +207,12 @@ class ModelCard(QFrame):
         # -- Description --
         desc = QLabel(self.info.description)
         desc.setWordWrap(True)
-        desc.setMaximumHeight(40)
+        desc.setToolTip(self.info.description)
+        desc.setAccessibleName(f"{self.info.name} description")
+        desc.setAccessibleDescription(self.info.description)
         desc.setStyleSheet(f"font-size: 12px; color: {Palette.SUBTEXT0};")
         layout.addWidget(desc)
+        self._description_label = desc
 
         # -- Stats row --
         stats = QHBoxLayout()

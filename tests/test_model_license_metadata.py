@@ -57,6 +57,22 @@ class ModelLicenseMetadataTests(unittest.TestCase):
         finally:
             card.deleteLater()
 
+    def test_model_card_description_is_not_clipped_and_has_full_tooltip(self):
+        app = QApplication.instance() or QApplication([])
+        info = BUILTIN_MODELS["stable-audio-open"]
+        card = ModelCard(info)
+        try:
+            description = card._description_label
+            card.resize(320, 500)
+            card.layout().activate()
+            self.assertTrue(description.wordWrap())
+            self.assertGreater(description.height(), 40)
+            self.assertGreater(description.maximumHeight(), 40)
+            self.assertEqual(description.toolTip(), info.description)
+            self.assertEqual(description.accessibleDescription(), info.description)
+        finally:
+            card.deleteLater()
+
     def test_executable_model_consent_dialog_requires_acknowledgement(self):
         app = QApplication.instance() or QApplication([])
         info = BUILTIN_MODELS["musicgen-medium"]
