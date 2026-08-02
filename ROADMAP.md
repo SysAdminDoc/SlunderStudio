@@ -35,13 +35,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Establish feature-level accessibility and responsive-layout gates
-  Why: Muted text fails normal-text contrast, focus indicators are suppressed, custom audio/MIDI controls are mouse-only, and fixed minimum sizing overflows smaller displays.
-  Evidence: `ui/theme.py`, `ui/main_window.py`, `ui/waveform_widget.py`, `ui/piano_roll.py`; WCAG 2.2, Qt accessibility, Ableton accessibility.
-  Touches: theme tokens/styles, navigation/layouts, custom widgets, toast/status announcements, accessibility test harness and documentation.
-  Acceptance: Normal text meets 4.5:1, focus is visible, all core workflows work by keyboard, custom widgets expose roles/states/actions/value changes, timed messages have an accessible alternative, and every major view is usable at 1024×768 and 200% scaling.
-  Complexity: L
-
 - [ ] P1 — Make mastering standards-conformant and non-destructive
   Why: RMS-based loudness and sample-peak limiting are labeled as delivery presets, while Dynamic EQ mutates source arrays without preview or undo.
   Evidence: `core/mastering.py`, `ui/mixer_view.py:576-631`; ITU-R BS.1770-5, EBU R128, LANDR, and Ozone.

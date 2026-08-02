@@ -48,6 +48,16 @@ class WaveformWidget(QWidget):
         self._mode = "waveform"  # waveform or spectrogram
         self._last_error = ""
 
+        # Operable by keyboard: Left/Right seek, PageUp/Down scrub, Home/End
+        # jump, M switches waveform and spectrogram.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAccessibleName("Audio waveform")
+        self.setAccessibleDescription(
+            "Waveform and spectrogram view. Left and Right seek one second, "
+            "Page Up and Page Down seek ten seconds, Home and End jump to the "
+            "start or end, M switches between waveform and spectrogram."
+        )
+
         self._setup_ui()
 
     def _setup_ui(self):
@@ -138,10 +148,12 @@ class WaveformWidget(QWidget):
 
     def _set_mode(self, mode: str):
         self._mode = mode
-        self._stack.setCurrentIndex(0 if mode == "waveform" else 1)
-        if self._show_controls:
+        if HAS_PYQTGRAPH:
+            self._stack.setCurrentIndex(0 if mode == "waveform" else 1)
+        if self._show_controls and hasattr(self, "_waveform_btn"):
             self._waveform_btn.setEnabled(mode != "waveform")
             self._spectro_btn.setEnabled(mode != "spectrogram")
+        self._announce_position()
 
     def load_audio(
         self,
@@ -343,11 +355,86 @@ class WaveformWidget(QWidget):
         self._cursor_line.show()
         self._spectro_cursor.setValue(seconds)
         self._spectro_cursor.show()
+        self._announce_position()
 
     def clear_cursor(self):
         if HAS_PYQTGRAPH:
             self._cursor_line.hide()
             self._spectro_cursor.hide()
+
+    # ── Keyboard operation and screen-reader state ─────────────────────────────
+
+    SEEK_STEP_SECONDS = 1.0
+    SEEK_PAGE_SECONDS = 10.0
+
+    @property
+    def playback_position(self) -> float:
+        return self._playback_pos
+
+    def accessible_state(self) -> str:
+        """One sentence a screen reader can read for the current view."""
+        if not self.has_audio or self._duration <= 0:
+            return "Waveform, no audio loaded"
+        percent = int(round(100 * self._playback_pos / self._duration))
+        return (
+            f"{self._mode.capitalize()} view, position "
+            f"{self._playback_pos:.1f} of {self._duration:.1f} seconds ({percent}%)"
+        )
+
+    def _announce_position(self):
+        """Publish the current value so assistive tech sees the change."""
+        state = self.accessible_state()
+        self.setAccessibleDescription(state)
+        try:
+            from PySide6.QtGui import QAccessible, QAccessibleValueChangeEvent
+
+            if QAccessible.isActive():
+                QAccessible.updateAccessibility(
+                    QAccessibleValueChangeEvent(self, f"{self._playback_pos:.3f}")
+                )
+        except Exception:
+            # Announcements are best-effort; never break playback over them.
+            pass
+
+    def _seek_by(self, delta: float):
+        if self._duration <= 0:
+            return
+        target = min(max(self._playback_pos + delta, 0.0), self._duration)
+        self.set_playback_position(target)
+        self.position_clicked.emit(target / self._duration)
+
+    def _seek_to(self, seconds: float):
+        if self._duration <= 0:
+            return
+        target = min(max(seconds, 0.0), self._duration)
+        self.set_playback_position(target)
+        self.position_clicked.emit(target / self._duration)
+
+    def keyPressEvent(self, event):
+        """Seek and switch views without a mouse."""
+        key = event.key()
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            self._seek_by(
+                self.SEEK_STEP_SECONDS if key == Qt.Key.Key_Right
+                else -self.SEEK_STEP_SECONDS
+            )
+        elif key in (Qt.Key.Key_PageUp, Qt.Key.Key_PageDown):
+            self._seek_by(
+                self.SEEK_PAGE_SECONDS if key == Qt.Key.Key_PageDown
+                else -self.SEEK_PAGE_SECONDS
+            )
+        elif key == Qt.Key.Key_Home:
+            self._seek_to(0.0)
+        elif key == Qt.Key.Key_End:
+            self._seek_to(self._duration)
+        elif key == Qt.Key.Key_M:
+            self._set_mode(
+                "spectrogram" if self._mode == "waveform" else "waveform"
+            )
+        else:
+            super().keyPressEvent(event)
+            return
+        event.accept()
 
     def _on_waveform_click(self, event):
         """Handle click on waveform to seek."""

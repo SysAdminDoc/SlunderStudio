@@ -3,6 +3,8 @@ Slunder Studio — Toast Notification System
 Slide-in from bottom-right, auto-dismiss, no blocking dialogs.
 Supports success/error/warning/info types with color-coded borders.
 """
+import time
+
 from PySide6.QtWidgets import (
     QFrame, QLabel, QHBoxLayout, QWidget, QApplication, QPushButton,
 )
@@ -141,10 +143,45 @@ class ToastManager:
     MARGIN_RIGHT = 16
     MARGIN_BOTTOM = 16
     SPACING = 8
+    # WCAG 2.2 SC 2.2.1: timed messages need a non-timed equivalent. Every
+    # toast is also appended here so it can be reviewed after it disappears.
+    HISTORY_LIMIT = 200
 
     def __init__(self, parent: QWidget):
         self.parent = parent
         self._toasts: list[Toast] = []
+        self._history: list[dict] = []
+        self._history_listeners: list = []
+
+    # ── Non-timed alternative ──────────────────────────────────────────────────
+
+    @property
+    def history(self) -> list[dict]:
+        """Every message shown, newest last. Survives the toast timeout."""
+        return list(self._history)
+
+    def latest_message(self) -> str:
+        if not self._history:
+            return ""
+        entry = self._history[-1]
+        return f"{entry['type'].capitalize()}: {entry['message']}"
+
+    def on_message(self, callback):
+        """Register a listener for the non-timed message log."""
+        self._history_listeners.append(callback)
+
+    def clear_history(self):
+        self._history.clear()
+
+    def _record(self, message: str, toast_type: str):
+        entry = {"message": message, "type": toast_type, "timestamp": time.time()}
+        self._history.append(entry)
+        del self._history[:-self.HISTORY_LIMIT]
+        for callback in list(self._history_listeners):
+            try:
+                callback(entry)
+            except Exception:
+                pass
 
     def show_toast(
         self,
@@ -155,6 +192,7 @@ class ToastManager:
         action_callback=None,
     ):
         """Show a new toast notification."""
+        self._record(message, toast_type)
         toast = Toast(
             message,
             toast_type,

@@ -41,7 +41,7 @@ DEFAULTS = {
         "sample_rate": 48000,
         "bit_depth": 24,
         "gpu_device": 0,
-        "theme_accent": "#9b8cff",
+        "theme_accent": "#a293ff",
         "ui_mode": "simple",
         "experience_level": "beginner",
         "onboarding_complete": False,

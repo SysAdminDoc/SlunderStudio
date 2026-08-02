@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
-from ui.theme import ThemeEngine
+from ui.theme import Palette, ThemeEngine
 from ui.piano_roll import PianoRollWidget
 from ui.midi_mixer import MidiMixer
 from ui.waveform_widget import WaveformWidget
@@ -272,12 +272,12 @@ class MidiStudioView(QWidget):
         self._gen_btn.setFixedHeight(36)
         self._gen_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {t.get('accent', '#9b8cff')};
+                background: {t.get('accent', Palette.BLUE)};
                 color: {t.get('background', '#07111b')}; border: none; border-radius: 5px;
                 font-weight: bold; font-size: 13px;
             }}
             QPushButton:hover {{ background: {t.get('accent_hover', '#79c0ff')}; }}
-            QPushButton:disabled {{ background: {t.get('border', '#1e2733')}; color: {t.get('muted', '#8795a5')}; }}
+            QPushButton:disabled {{ background: {t.get('border', Palette.SURFACE0)}; color: {t.get('muted', Palette.OVERLAY0)}; }}
         """)
         self._gen_btn.clicked.connect(self._on_generate)
         gen_layout.addWidget(self._gen_btn)

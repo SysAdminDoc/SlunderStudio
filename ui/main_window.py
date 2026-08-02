@@ -332,7 +332,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(tr("app.window_title", version=APP_VERSION))
-        self.setMinimumSize(1100, 720)
+        # Must fit a 1024x768 display, and 200% scaling of that.
+        self.setMinimumSize(1024, 640)
         self.resize(1440, 900)
         self.setAcceptDrops(True)
 
@@ -446,6 +447,14 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
+        # Non-timed alternative to toasts (WCAG 2.2 SC 2.2.1): the last
+        # notification stays readable here after the toast disappears.
+        self._last_message_label = QLabel("")
+        self._last_message_label.setObjectName("commandMeta")
+        self._last_message_label.setMinimumWidth(0)
+        layout.addWidget(self._last_message_label)
+        self.toast_mgr.on_message(self._on_toast_message)
+
         self._compute_status_label = QLabel("Checking compute")
         self._compute_status_label.setObjectName("computeStatus")
         layout.addWidget(self._compute_status_label)
@@ -472,7 +481,19 @@ class MainWindow(QMainWindow):
             "Processing privacy status",
             "Reports local processing or strict offline mode.",
         )
+        set_accessible(
+            self._last_message_label,
+            "Last notification",
+            "Keeps the most recent notification readable after its toast closes.",
+        )
         return bar
+
+    def _on_toast_message(self, entry: dict):
+        """Mirror a timed toast into the persistent status line."""
+        text = f"{entry['type'].capitalize()}: {entry['message']}"
+        self._last_message_label.setText(text)
+        self._last_message_label.setToolTip(text)
+        self._last_message_label.setAccessibleDescription(text)
 
     def _build_workspace_header(self) -> QFrame:
         header = QFrame()
