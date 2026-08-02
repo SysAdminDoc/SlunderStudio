@@ -35,13 +35,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Serialize LyricsDB operations
-  Why: A single SQLite connection is shared across GUI and worker threads with `check_same_thread=False` but no operation lock or busy policy.
-  Evidence: `core/lyrics_db.py:80,156-197`.
-  Touches: `core/lyrics_db.py`, connection lifecycle, concurrent database tests.
-  Acceptance: Concurrent reads/writes/imports are serialized or transactionally retried with a bounded busy timeout; stress tests produce no lock errors, partial rows, or cross-thread connection misuse.
-  Complexity: S
-
 - [ ] P1 — Guard ModelManager mutable lifecycle state
   Why: GUI reads and worker writes race on status, current model identity, and loaded objects.
   Evidence: `core/model_manager.py:428-447,499-587,1035-1036`.
