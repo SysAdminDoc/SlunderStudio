@@ -28,6 +28,8 @@ All notable changes to SlunderStudio will be documented in this file.
   declared direct SciPy and tqdm usage, and added import/lock coverage plus a clean-venv suite gate.
 - Extended version consistency to inspect lock-file literals and changed build tests to verify the
   actual PyInstaller command contains its hidden imports.
+- Reconciled Markdown tracking policy: the research notes are local-only while README, CHANGELOG,
+  and the active ROADMAP remain explicit tracked documentation.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

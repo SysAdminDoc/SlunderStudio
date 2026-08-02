@@ -120,20 +120,6 @@ therefore new work, not a pre-existing red build.
 
 ### P3
 
-- [ ] P3 — `RESEARCH.md` is git-tracked despite the all-markdown-except-README ignore rule
-  Category: docs
-  Where: `.gitignore:14-16`; `git ls-files` shows `README.md`, `RESEARCH.md`, `ROADMAP.md`
-  Problem: `.gitignore` declares every `.md` except README local-only, but `RESEARCH.md` (19 KB of
-    research notes) and `ROADMAP.md` were committed anyway, so the ignore rule has no effect on
-    them — `git check-ignore` exits 1 because tracked files win. `CHANGELOG.md`, `CLAUDE.md`,
-    `AGENTS.md` and `LOGO_PROMPTS.md` are correctly ignored. `RESEARCH.md` contradicts the stated
-    policy; `ROADMAP.md` may be intentional given it is the task tracker.
-  Fix: `git rm --cached RESEARCH.md`; then either `git rm --cached ROADMAP.md` or add
-    `!ROADMAP.md` so the ignore file states the actual intent.
-  Acceptance: `git ls-files "*.md"` matches what `.gitignore` says should be tracked.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P3 — Stale duplicated color constants that drift silently from the gated palette
   Category: maintainability
   Where: `ui/accessibility.py:28` (`FOCUS_RING_COLOR = "#f9e2af"` duplicates `Palette.YELLOW`);
