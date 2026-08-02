@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import tempfile
 import unittest
@@ -52,6 +53,10 @@ class PianoRollEditingTests(unittest.TestCase):
         self.assertEqual([note.velocity for note in first], [note.velocity for note in second])
         self.assertTrue(all(1 <= note.velocity <= 127 for note in first))
 
+    @unittest.skipUnless(
+        importlib.util.find_spec("pretty_midi") is not None,
+        "optional pretty-midi dependency is not installed",
+    )
     def test_save_and_load_preserves_control_changes(self):
         track = TrackData(
             name="Synth",

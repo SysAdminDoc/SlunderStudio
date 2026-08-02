@@ -270,7 +270,11 @@ class ModelTrustTests(unittest.TestCase):
             transformers.AutoModelForCausalLM = types.SimpleNamespace(
                 from_pretrained=model_loader
             )
-            with patch.dict(sys.modules, {"transformers": transformers}):
+            torch = types.ModuleType("torch")
+            torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+            torch.float32 = object()
+            torch.float16 = object()
+            with patch.dict(sys.modules, {"transformers": transformers, "torch": torch}):
                 engine.load_model(tmp, device="cpu")
 
             tokenizer_kwargs = tokenizer_loader.call_args.kwargs

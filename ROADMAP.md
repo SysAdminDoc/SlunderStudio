@@ -120,23 +120,6 @@ therefore new work, not a pre-existing red build.
 
 ### P3
 
-- [ ] P3 — `requirements-lock.txt` is not a lock, and it under-declares scipy
-  Category: build
-  Where: `requirements-lock.txt`; `core/mastering.py:301, 397, 453, 481`;
-    `core/audio_buffers.py:118`
-  Problem: The lock pins only the eight top-level packages, with no transitive pins and no hashes.
-    `scipy` is imported directly by core DSP code (`lfilter`, `resample_poly`) yet appears in
-    neither `requirements.txt` nor the lock — it works only because librosa pulls it in
-    transitively, at whatever version pip resolves that day. So `pip install -r
-    requirements-lock.txt` does not reproduce the environment: scipy, numba, llvmlite and numexpr
-    all float. This is the same drift class the optional-AI profiles already solved with hashes.
-  Fix: Declare `scipy>=1.11` explicitly in `requirements.txt`, and regenerate the lock from
-    `pip freeze` (full transitive set) or `pip-compile --generate-hashes`.
-  Acceptance: A fresh venv installed from the lock file runs the suite green, and a test asserts
-    every third-party module imported by `core/` and `engines/` has a matching requirement.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P3 — Version drift the consistency test cannot see, and two tests that assert on source text
   Category: testing
   Where: `requirements-lock.txt:1` ("# Slunder Studio v0.1.30 — Pinned Dependencies") versus

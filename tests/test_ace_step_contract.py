@@ -8,7 +8,10 @@ from unittest import mock
 
 import numpy as np
 import soundfile as sf
-import torch
+try:
+    import torch
+except ImportError:  # Optional ACE-Step engine profile is not in the core lock.
+    torch = None
 
 from core.ace_step_contract import (
     ACE_STEP_ADAPTER,
@@ -44,6 +47,7 @@ class _RecordingPipeline:
         return _PipelineOutput()
 
 
+@unittest.skipUnless(torch is not None, "optional torch dependency is not installed")
 class AceStepContractTests(unittest.TestCase):
     def _source_audio(self, root: Path, seconds: float = 10.0) -> Path:
         path = root / "source.wav"

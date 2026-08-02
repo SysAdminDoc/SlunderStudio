@@ -7,7 +7,9 @@ soundfile>=0.12
 huggingface_hub>=0.20
 pyqtgraph>=0.13
 librosa>=0.10
+scipy>=1.11
 psutil>=5.9
+tqdm>=4.0
 
 # ── Optional: AI Models ─────────────────────────────────────────────
 # Do not install broad AI minimums into the application environment.

@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import tempfile
 import unittest
@@ -64,6 +65,10 @@ class MelodyExtractorTests(unittest.TestCase):
         self.assertEqual(["Hey", "you", "broken-hearted"], [entry["text"] for entry in aligned])
         self.assertEqual(62, aligned[1]["pitch"])
 
+    @unittest.skipUnless(
+        importlib.util.find_spec("pretty_midi") is not None,
+        "optional pretty-midi dependency is not installed",
+    )
     def test_generate_lyric_melody_writes_midi_and_provenance(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -24,6 +24,8 @@ All notable changes to SlunderStudio will be documented in this file.
   formatting, and playback controls; failed file loads now preserve the previously loaded track.
 - Removed the unused `AudioEngine.save_to_file` path so all exports use the shared, diagnosed audio
   export pipeline instead of an undeclared pydub dependency.
+- Replaced the eight-entry dependency stub with a hash-locked transitive Python 3.12 runtime lock,
+  declared direct SciPy and tqdm usage, and added import/lock coverage plus a clean-venv suite gate.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked
