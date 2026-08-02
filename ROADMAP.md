@@ -116,36 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Song Forge Cancel re-arms Generate while the old worker still runs, then the stale worker clobbers the new one
-  Category: reliability
-  Where: `ui/song_forge_view.py:849-863` (`_on_cancel`), `:929-931` (`_on_cancelled`), `:683`
-    (`_on_generate`, no guard), `:933-944` (`_reset_ui`)
-  Problem: `_on_cancel` calls `worker.cancel()` — cooperative, and ACE-Step only checks between
-    steps, which can be tens of seconds — then immediately calls `_reset_ui(clear_worker=False)`,
-    which re-shows Generate and sets `_is_generating = False`. `_on_generate` has no
-    `_is_generating` guard (contrast `_on_seed_explore:1053`, which does have one — the asymmetry
-    shows the guard was intended). Clicking Generate then starts worker B while worker A is still
-    rendering: two concurrent GPU inferences. When A finally honors the cancel, its still-connected
-    `cancelled` signal fires `_on_cancelled`, which sets `self._worker = None` — clearing the
-    reference to worker B. Cancel is a silent no-op from then on (`_on_cancel` tests
-    `if self._worker:`) while still resetting the UI to "Cancelled", and B's still-connected
-    `finished`/`error`/`progress` handlers later stomp whatever is on screen. If A instead dies
-    with a non-`CancelledJobError` exception, its stale `error` connection fires `_on_error`
-    mid-run of B, resetting the UI and permitting a third concurrent start.
-  Evidence: Traced `_on_cancel -> _reset_ui(clear_worker=False) -> _generate_btn.show()`;
-    `_on_generate` builds an `InferenceWorker` unconditionally at `:756-847`; no `disconnect` call
-    exists anywhere in the file, so all five signals of the old worker stay connected to the view.
-  Fix: Do the UI reset in the terminal handlers (`cancelled`/`finished`/`error`), not in
-    `_on_cancel`; keep Generate hidden or disabled until one arrives; guard `_on_generate` with
-    `_is_generating`; identity-check `self.sender()` (or disconnect) before nulling `self._worker`.
-    `ui/vocal_suite_view.py` already implements this pattern correctly across all six of its tabs —
-    copy it.
-  Acceptance: A test that cancels a long-running stub worker and then clicks Generate does not
-    create a second worker while the first is alive; after the first worker's `cancelled` fires,
-    `self._worker` still refers to the live worker (or is None only if no worker is running).
-  Confidence: Verified
-  Effort: S
-
 - [ ] P1 — Mid-session `recover_stale_jobs()` rewrites live RUNNING jobs as "interrupted"
   Category: correctness
   Where: `ui/batch_view.py:371-372` (`refresh_recoverable_jobs`), called from

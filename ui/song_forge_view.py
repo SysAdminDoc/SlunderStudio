@@ -680,7 +680,26 @@ class SongForgeView(QWidget):
         if self._toast:
             self._toast.show_toast("Genre fusion tags applied", "success")
 
+    def _generation_active(self) -> bool:
+        """Return whether a generation is active, including cancellation drain time."""
+        if self._is_generating:
+            return True
+        worker = self._worker
+        return bool(worker and worker.isRunning())
+
+    def _is_current_worker_signal(self) -> bool:
+        """Ignore terminal/progress signals emitted by an obsolete worker."""
+        sender = self.sender()
+        return sender is None or sender is self._worker
+
     def _on_generate(self):
+        if self._generation_active():
+            if self._toast:
+                self._toast.show_toast(
+                    "Wait for the current generation to finish", "warning"
+                )
+            return
+
         lyrics = self._get_lyrics()
         tags = self._get_tags()
 
@@ -847,20 +866,27 @@ class SongForgeView(QWidget):
         self._worker.start()
 
     def _on_cancel(self):
-        if self._worker:
-            self._worker.cancel()
-        self._reset_ui(clear_worker=False)
-        self._batch_view.refresh_recoverable_jobs()
-        self._status.setText("Cancelled")
-        self._set_session_state("Generation cancelled", Palette.YELLOW)
+        worker = self._worker
+        if not worker or not self._generation_active():
+            return
+        worker.cancel()
+        self._cancel_btn.setEnabled(False)
+        self._status.setText("Cancellation requested; finishing current step...")
+        self._set_session_state("Cancellation requested", Palette.YELLOW)
 
     def _on_progress(self, pct: int):
+        if not self._is_current_worker_signal():
+            return
         self._progress.setValue(pct)
 
     def _on_step(self, msg: str):
+        if not self._is_current_worker_signal():
+            return
         self._status.setText(msg)
 
     def _on_finished(self, result: dict):
+        if not self._is_current_worker_signal():
+            return
         self._reset_ui()
         self._batch_view.refresh_recoverable_jobs()
 
@@ -910,6 +936,8 @@ class SongForgeView(QWidget):
                 self._toast.show_toast(f"Song generated in {gen_time:.1f}s", "success")
 
     def _on_error(self, error_msg: str):
+        if not self._is_current_worker_signal():
+            return
         self._reset_ui()
         self._batch_view.refresh_recoverable_jobs()
         self._status.setText(f"Error: {error_msg[:100]}")
@@ -947,6 +975,8 @@ class SongForgeView(QWidget):
         return completed, successes, failures
 
     def _on_cancelled(self):
+        if not self._is_current_worker_signal():
+            return
         worker = self._worker
         partial = getattr(worker, "result", None) if worker else None
 
@@ -967,6 +997,7 @@ class SongForgeView(QWidget):
             self._status.setText(
                 f"Seed exploration cancelled; kept {len(successes)} completed"
             )
+            self._set_session_state("Generation cancelled", Palette.YELLOW)
             return
 
         if isinstance(partial, list):
@@ -986,12 +1017,14 @@ class SongForgeView(QWidget):
                 self._status.setText(
                     f"Generation cancelled; kept {len(batch_results)} completed"
                 )
-        self._worker = None
+        self._reset_ui()
         self._batch_view.refresh_recoverable_jobs()
 
     def _reset_ui(self, clear_worker: bool = True):
         self._is_generating = False
+        self._generate_btn.setEnabled(True)
         self._generate_btn.show()
+        self._cancel_btn.setEnabled(True)
         self._cancel_btn.hide()
         self._progress.hide()
         if clear_worker:
@@ -1109,7 +1142,7 @@ class SongForgeView(QWidget):
 
     def _on_seed_explore(self, params_list: list[dict]):
         """Handle seed explorer grid generation request."""
-        if self._is_generating:
+        if self._generation_active():
             if self._toast:
                 self._toast.show_toast("Wait for the current generation to finish", "warning")
             return
@@ -1180,6 +1213,8 @@ class SongForgeView(QWidget):
 
     def _on_seed_finished(self, result: dict):
         """Handle completed seed explorer generation."""
+        if not self._is_current_worker_signal():
+            return
         self._reset_ui()
         self._batch_view.refresh_recoverable_jobs()
         self._seed_explore_params = []
@@ -1202,6 +1237,8 @@ class SongForgeView(QWidget):
 
     def _on_seed_error(self, error_msg: str):
         """Handle fatal seed explorer worker errors."""
+        if not self._is_current_worker_signal():
+            return
         self._reset_ui()
         self._batch_view.refresh_recoverable_jobs()
         for cell in self._seed_explore_params:

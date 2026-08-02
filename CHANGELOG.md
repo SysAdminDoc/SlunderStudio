@@ -7,6 +7,7 @@ All notable changes to SlunderStudio will be documented in this file.
 - Fixed CUDA VRAM diagnostics to use PyTorch's `total_memory` attribute, so GPU status polling and onboarding no longer crash on CUDA systems.
 - Fixed repeated ACE-Step and lyrics generation by using the canonical model object returned by `ModelManager`, with type validation at the managed-engine boundary.
 - Preserved verified ACE-Step batch and seed-grid outputs on cancellation, recorded them in the job ledger, and kept completed seed cells visible while pending cells are cancelled.
+- Made Song Forge cancellation cooperative at the UI boundary: Generate stays blocked until the worker terminates, and stale worker signals cannot clear or overwrite a newer worker reference.
 - Added a shared engine capability and activation contract so engines declare required models, run modes, and artifact kinds, and placeholder pipelines require an explicit labeled demo opt-in.
 - Corrected the constant-power pan law in both mixers. The duplicated cosine formula left a centred track at 0 dB on both sides instead of -3.01 dB, so panning changed total level; both mixers now share one tested sine/cosine implementation where left^2 + right^2 is 1 at every position.
 - Cancelling an SFX batch now keeps the variations that already finished and were verified on disk, removing only the in-flight partial, and shows the kept results with an explicit prompt to retry the rest. CancelledJobError gained preserved/result fields so any task can distinguish completed work from partials.
