@@ -116,29 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Cancelling an ACE-Step batch or seed grid deletes the variations that already finished
-  Category: correctness
-  Where: `engines/ace_step_engine.py:59-67` (`_raise_if_cancelled`), `:1054` (`generate_batch`),
-    `:1344-1353` and `:1409-1418` (`generate_seed_grid`); surfaced by
-    `ui/song_forge_view.py:849-863`
-  Problem: `CancelledJobError.preserved` was added precisely so completed batch items survive a
-    cancel, and commit `449b582` applied it — but only to SFX. The ACE-Step batch and seed-grid
-    paths still call `_cleanup_output_paths` on all accumulated results and raise
-    `CancelledJobError` with `outputs` only. Per the documented contract in `core/workers.py:17-23`
-    ("A task that passes no `preserved` keeps nothing"), cancelling a 9-cell seed exploration after
-    8 cells rendered deletes all 8 WAVs and their provenance sidecars.
-  Evidence: `_raise_if_cancelled(cancel_event, _result_paths(results))` at
-    `engines/ace_step_engine.py:1054`; an explicit `_cleanup_output_paths([...all results...])`
-    before the re-raise at `:1412-1418`. `ui/song_forge_view.py:852-859` additionally marks every
-    grid cell "Cancelled", including cells that had completed.
-  Fix: Mirror the SFX fix — pass the completed, disk-verified results as `preserved` and stop
-    deleting them locally; leave completed grid cells showing their result.
-  Acceptance: A test modelled on `tests/test_sfx_batch_jobs.py` that cancels a seed grid after N
-    cells complete finds those N files still on disk and listed in the job record's
-    `preserved_paths`.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P1 — Song Forge Cancel re-arms Generate while the old worker still runs, then the stale worker clobbers the new one
   Category: reliability
   Where: `ui/song_forge_view.py:849-863` (`_on_cancel`), `:929-931` (`_on_cancelled`), `:683`

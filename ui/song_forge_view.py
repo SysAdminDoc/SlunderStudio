@@ -849,14 +849,6 @@ class SongForgeView(QWidget):
     def _on_cancel(self):
         if self._worker:
             self._worker.cancel()
-        if self._seed_explore_params:
-            for cell in self._seed_explore_params:
-                self._seed_explorer.set_cell_failed(
-                    int(cell.get("row", 0)),
-                    int(cell.get("col", 0)),
-                    "Cancelled",
-                )
-            self._seed_explore_params = []
         self._reset_ui(clear_worker=False)
         self._batch_view.refresh_recoverable_jobs()
         self._status.setText("Cancelled")
@@ -926,7 +918,74 @@ class SongForgeView(QWidget):
         if self._toast:
             self._toast.show_toast(f"Generation failed: {error_msg[:80]}", "error")
 
+    def _apply_seed_results(self, items: list[dict]):
+        """Render completed seed cells and return their coordinates and counts."""
+        completed = set()
+        successes = []
+        failures = 0
+        for item in items:
+            row = int(item.get("row", 0))
+            col = int(item.get("col", 0))
+            completed.add((row, col))
+            if item.get("error"):
+                failures += 1
+                self._seed_explorer.set_cell_failed(row, col, item["error"])
+                continue
+
+            audio_path = item.get("audio_path", "")
+            if not audio_path or not Path(audio_path).is_file():
+                failures += 1
+                self._seed_explorer.set_cell_failed(row, col, "Output unavailable")
+                continue
+            seed = int(item.get("seed", 0))
+            self._seed_explorer.set_cell_result(row, col, audio_path, seed)
+            successes.append(item)
+
+        if successes:
+            first = successes[0]
+            self._load_output(first["audio_path"], int(first.get("seed", 0)))
+        return completed, successes, failures
+
     def _on_cancelled(self):
+        worker = self._worker
+        partial = getattr(worker, "result", None) if worker else None
+
+        if self._seed_explore_params:
+            items = (
+                partial.get("results", [])
+                if isinstance(partial, dict)
+                else []
+            )
+            completed, successes, _failures = self._apply_seed_results(items)
+            for cell in self._seed_explore_params:
+                key = (int(cell.get("row", 0)), int(cell.get("col", 0)))
+                if key not in completed:
+                    self._seed_explorer.set_cell_failed(*key, "Cancelled")
+            self._seed_explore_params = []
+            self._reset_ui()
+            self._batch_view.refresh_recoverable_jobs()
+            self._status.setText(
+                f"Seed exploration cancelled; kept {len(successes)} completed"
+            )
+            return
+
+        if isinstance(partial, list):
+            batch_results = []
+            for item in partial:
+                if isinstance(item, dict):
+                    batch_results.append(item)
+                elif getattr(item, "audio_path", ""):
+                    batch_results.append({
+                        "audio_path": item.audio_path,
+                        "seed": item.seed,
+                        "generation_time": item.generation_time,
+                    })
+            if batch_results:
+                self._batch_view.set_results(batch_results)
+                self._sub_tabs.setCurrentWidget(self._batch_view)
+                self._status.setText(
+                    f"Generation cancelled; kept {len(batch_results)} completed"
+                )
         self._worker = None
         self._batch_view.refresh_recoverable_jobs()
 
@@ -1130,24 +1189,7 @@ class SongForgeView(QWidget):
             return
 
         results = result.get("results", [])
-        successes = []
-        failures = 0
-        for item in results:
-            row = int(item.get("row", 0))
-            col = int(item.get("col", 0))
-            if item.get("error"):
-                failures += 1
-                self._seed_explorer.set_cell_failed(row, col, item.get("error", "Failed"))
-                continue
-
-            audio_path = item.get("audio_path", "")
-            seed = int(item.get("seed", 0))
-            self._seed_explorer.set_cell_result(row, col, audio_path, seed)
-            successes.append(item)
-
-        if successes:
-            first = successes[0]
-            self._load_output(first.get("audio_path", ""), int(first.get("seed", 0)))
+        _completed, successes, failures = self._apply_seed_results(results)
 
         self._status.setText(
             f"Seed exploration complete: {len(successes)} generated, {failures} failed"

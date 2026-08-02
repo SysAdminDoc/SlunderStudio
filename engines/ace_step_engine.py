@@ -56,15 +56,54 @@ def _result_paths(results: list["GenerationResult"]) -> list[str]:
     return paths
 
 
+def _verified_paths(paths: list[str | Path]) -> list[str]:
+    """Return only output paths that are present as regular files."""
+    return [str(path) for path in paths if path and Path(path).is_file()]
+
+
+def _rethrow_with_preserved_results(
+    error,
+    completed_paths: list[str | Path],
+    result=None,
+):
+    """Propagate cancellation while retaining verified earlier results."""
+    from core.job_state import extract_output_paths
+    from core.workers import CancelledJobError
+
+    completed = [str(path) for path in completed_paths]
+    preserved = _verified_paths(completed)
+    preserved.extend(extract_output_paths(error.preserved))
+    preserved = list(dict.fromkeys(preserved))
+    outputs = extract_output_paths(error.outputs)
+    outputs.extend(completed)
+    outputs = list(dict.fromkeys(outputs))
+    return CancelledJobError(
+        str(error),
+        outputs=outputs,
+        preserved=preserved,
+        result=result if result is not None else error.result,
+    )
+
+
 def _raise_if_cancelled(
     cancel_event: threading.Event = None,
     outputs: Optional[list[str | Path]] = None,
+    preserved: Optional[list[str | Path]] = None,
+    result=None,
 ) -> None:
     if cancel_event and cancel_event.is_set():
         output_paths = [str(path) for path in (outputs or []) if path]
-        _cleanup_output_paths(output_paths)
+        preserved_paths = _verified_paths(preserved or [])
+        _cleanup_output_paths(
+            [path for path in output_paths if path not in set(preserved_paths)]
+        )
         from core.workers import CancelledJobError
-        raise CancelledJobError("Generation cancelled", outputs={"paths": output_paths})
+        raise CancelledJobError(
+            "Generation cancelled",
+            outputs={"paths": output_paths},
+            preserved={"paths": preserved_paths},
+            result=result,
+        )
 
 
 def validate_ace_step_runtime() -> dict[str, str]:
@@ -1051,7 +1090,13 @@ class ACEStepEngine:
         """Generate multiple variations with different random seeds."""
         results = []
         for i in range(count):
-            _raise_if_cancelled(cancel_event, _result_paths(results))
+            paths = _result_paths(results)
+            _raise_if_cancelled(
+                cancel_event,
+                paths,
+                preserved=_verified_paths(paths),
+                result=results,
+            )
 
             if step_cb:
                 step_cb(f"Generating variation {i+1}/{count}...")
@@ -1081,8 +1126,11 @@ class ACEStepEngine:
             except Exception as e:
                 from core.workers import CancelledJobError
                 if isinstance(e, CancelledJobError):
-                    _cleanup_output_paths(_result_paths(results))
-                    raise
+                    raise _rethrow_with_preserved_results(
+                        e,
+                        _result_paths(results),
+                        result=results,
+                    ) from e
                 if step_cb:
                     step_cb(f"Variation {i+1} failed: {e}")
                 continue
@@ -1339,14 +1387,17 @@ def generate_seed_grid(
     results = []
 
     for i, cell in enumerate(params_list):
+        paths = [
+            path
+            for item in results
+            for path in (item.get("audio_path", ""), item.get("provenance_path", ""))
+            if path
+        ]
         _raise_if_cancelled(
             cancel_event,
-            [
-                path
-                for item in results
-                for path in (item.get("audio_path", ""), item.get("provenance_path", ""))
-                if path
-            ],
+            paths,
+            preserved=_verified_paths(paths),
+            result={"results": results, "count": len(results)},
         )
 
         row = int(cell.get("row", 0))
@@ -1406,13 +1457,17 @@ def generate_seed_grid(
         except Exception as exc:
             from core.workers import CancelledJobError
             if isinstance(exc, CancelledJobError):
-                _cleanup_output_paths([
+                paths = [
                     path
                     for item in results
                     for path in (item.get("audio_path", ""), item.get("provenance_path", ""))
                     if path
-                ])
-                raise
+                ]
+                raise _rethrow_with_preserved_results(
+                    exc,
+                    paths,
+                    result={"results": results, "count": len(results)},
+                ) from exc
             message = f"{type(exc).__name__}: {exc}"
             if log_cb:
                 log_cb(f"Seed cell {row},{col} failed: {message}")
