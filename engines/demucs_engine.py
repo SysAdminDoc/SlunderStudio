@@ -18,6 +18,37 @@ from core.settings import get_config_dir
 STEM_NAMES = ["drums", "bass", "other", "vocals"]
 
 
+def _demucs_checkpoint_is_cached(model_name: str, torch_module, pretrained_module) -> bool:
+    """Return whether every checkpoint used by a Demucs model is local."""
+    try:
+        cache_dir = Path(torch_module.hub.get_dir()) / "checkpoints"
+        remote_root = Path(pretrained_module.REMOTE_ROOT)
+        file_list = remote_root / "files.txt"
+        if not file_list.is_file():
+            return False
+
+        remote_files = pretrained_module._parse_remote_files(file_list)
+        if model_name in remote_files:
+            signatures = [model_name]
+        else:
+            import yaml
+
+            bag_file = remote_root / f"{model_name}.yaml"
+            if not bag_file.is_file():
+                return False
+            bag = yaml.safe_load(bag_file.read_text(encoding="utf-8"))
+            signatures = bag.get("models", []) if isinstance(bag, dict) else []
+        if not signatures or not all(signature in remote_files for signature in signatures):
+            return False
+
+        return all(
+            (cache_dir / Path(remote_files[signature]).name).is_file()
+            for signature in signatures
+        )
+    except (AttributeError, KeyError, OSError, TypeError, ValueError, ImportError):
+        return False
+
+
 @dataclass
 class StemResult:
     """Individual stem from separation."""
@@ -109,6 +140,21 @@ class DemucsEngine:
                    device: str = "auto",
                    progress_callback: Optional[Callable] = None):
         """Load a Demucs model."""
+        from core.model_manager import ModelManager, OfflineModeError
+
+        if ModelManager().is_offline:
+            try:
+                import torch
+                from demucs import pretrained
+            except ImportError as exc:
+                raise OfflineModeError(
+                    f"Offline Mode: Demucs checkpoint for {model_name} is not cached"
+                ) from exc
+            if not _demucs_checkpoint_is_cached(model_name, torch, pretrained):
+                raise OfflineModeError(
+                    f"Offline Mode: Demucs checkpoint for {model_name} is not cached"
+                )
+
         from core.deps import ensure
         ensure("torch", "torchaudio", "demucs")
         try:
@@ -367,6 +413,8 @@ def separate_stems(input_path: str,
     Separate audio into stems. Auto-loads model if needed.
     Called by InferenceWorker.
     """
+    from core.model_manager import OfflineModeError
+
     engine = get_demucs()
 
     if not engine.is_loaded or engine._model_name != model_name:
@@ -374,6 +422,8 @@ def separate_stems(input_path: str,
             if progress_callback:
                 progress_callback(0.0, f"Loading {model_name}...")
             engine.load_model(model_name, progress_callback=progress_callback)
+        except OfflineModeError:
+            raise
         except Exception as e:
             return SeparationResult(error=str(e))
 

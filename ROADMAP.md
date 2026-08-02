@@ -116,32 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Demucs auto-load bypasses the offline network boundary and the model trust manifest
-  Category: security
-  Where: `engines/demucs_engine.py:108-145` (`DemucsEngine.load_model`), `:363-380`
-    (`separate_stems` auto-load); triggered unconditionally from
-    `engines/ace_step_engine.py:1215-1220` (`recover_song_vocal_stem`, which runs after every
-    `generate_song`) and `:1287-1295`
-  Problem: `demucs.pretrained.get_model(model_name)` downloads checkpoint weights over the network
-    when they are not already in the torch-hub cache. `separate_stems` auto-loads the model
-    directly on the module singleton, bypassing `ModelManager` entirely — no `is_offline` check and
-    no `HF_HUB_OFFLINE` guard (that guard wraps only `_dynamic_load`,
-    `core/model_manager.py:1138-1169`). So with Offline Mode enabled and demucs weights uncached,
-    completing a Song Forge generation silently starts a network download, violating the v0.1.30
-    "hard network boundary" contract. The v0.1.30 regression tests assert only that
-    `snapshot_download` and `HfApi.model_info` are not called; they do not cover demucs's own
-    downloader. Weights fetched this way also skip the v0.1.7 trust/hash manifest entirely.
-  Evidence: `grep -rn is_offline` shows it consulted only in `engines/ace_step_engine.py`,
-    `ui/model_hub.py` and `core/model_manager.py` — never on any demucs path.
-  Fix: In `DemucsEngine.load_model`, consult `ModelManager().is_offline` and require the checkpoint
-    to already exist in the demucs cache (`demucs.pretrained` exposes the local repo path), raising
-    `OfflineModeError` otherwise.
-  Acceptance: Extend the offline regression test: with offline mode on and no cached checkpoint,
-    `separate_stems` raises `OfflineModeError` and `demucs.pretrained.get_model` is never called.
-  Confidence: Verified (code path); whether a given run actually hits the network depends on cache
-    state
-  Effort: S
-
 - [ ] P1 — Voice-checkpoint trust gate is default-allow, so an unknown extension reaches `torch.load(weights_only=False)`
   Category: security
   Where: `engines/rvc_engine.py:261-287` (`load_voice_checkpoint`); root cause

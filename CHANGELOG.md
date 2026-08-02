@@ -4,6 +4,7 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-07-29
 
+- Enforced the Offline Mode boundary for Demucs auto-loads by requiring all model checkpoints to be present in the local Torch cache before separation.
 - Serialized `JobStore` writes across all in-process workers and throttled durable progress updates without throttling live progress signals.
 - Fixed CUDA VRAM diagnostics to use PyTorch's `total_memory` attribute, so GPU status polling and onboarding no longer crash on CUDA systems.
 - Fixed repeated ACE-Step and lyrics generation by using the canonical model object returned by `ModelManager`, with type validation at the managed-engine boundary.

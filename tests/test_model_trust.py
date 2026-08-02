@@ -18,6 +18,7 @@ from core.model_manager import (
     is_commit_sha,
 )
 from core.voice_bank import VoiceProfile
+from engines.demucs_engine import DemucsEngine, separate_stems
 from engines.midi_llm_engine import MidiLLMEngine
 from engines.rvc_engine import RVCEngine
 
@@ -344,6 +345,35 @@ class ModelTrustTests(unittest.TestCase):
             with self.assertRaises(OfflineModeError):
                 mgr.download_model("ace-step-v1.5")
             mock_sd.assert_not_called()
+
+    @patch("core.model_manager.ModelManager.is_offline", new_callable=lambda: property(lambda self: True))
+    def test_demucs_offline_mode_rejects_uncached_checkpoint_before_get_model(self, _):
+        # Keep the fake torch module below from affecting ModelManager's one-time
+        # runtime-package probe.
+        ModelManager()
+        with tempfile.TemporaryDirectory() as tmp:
+            torch_module = types.ModuleType("torch")
+            torch_module.hub = types.SimpleNamespace(
+                get_dir=lambda: str(Path(tmp) / "torch")
+            )
+            pretrained_module = types.ModuleType("demucs.pretrained")
+            pretrained_module.REMOTE_ROOT = Path(tmp) / "demucs-remote"
+            pretrained_module.get_model = MagicMock()
+            demucs_module = types.ModuleType("demucs")
+            demucs_module.pretrained = pretrained_module
+
+            with patch.dict(
+                sys.modules,
+                {
+                    "torch": torch_module,
+                    "demucs": demucs_module,
+                    "demucs.pretrained": pretrained_module,
+                },
+            ), patch("engines.demucs_engine.get_demucs", return_value=DemucsEngine()):
+                with self.assertRaises(OfflineModeError):
+                    separate_stems(str(Path(tmp) / "input.wav"))
+
+            pretrained_module.get_model.assert_not_called()
 
 
 if __name__ == "__main__":
