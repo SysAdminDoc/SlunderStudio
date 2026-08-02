@@ -14,11 +14,20 @@ from core.job_state import JobLog, JobStore, extract_output_paths
 
 
 class CancelledJobError(RuntimeError):
-    """Raised by long-running tasks after cleaning or reporting partial outputs."""
+    """Raised by long-running tasks after cleaning or reporting partial outputs.
 
-    def __init__(self, message: str = "Job cancelled", outputs: Any = None):
+    `outputs` are the paths the task owns. `preserved` lists the subset that
+    finished and was verified before cancellation: those are kept, only the
+    rest are removed. A task that passes no `preserved` keeps nothing, which
+    matches the old all-or-nothing behaviour.
+    """
+
+    def __init__(self, message: str = "Job cancelled", outputs: Any = None,
+                 preserved: Any = None, result: Any = None):
         super().__init__(message)
         self.outputs = outputs
+        self.preserved = preserved
+        self.result = result
 
 
 class InferenceWorker(QThread):
@@ -132,13 +141,25 @@ class InferenceWorker(QThread):
                 self.finished.emit(self._result)
         except CancelledJobError as e:
             output_paths = extract_output_paths(e.outputs)
-            outputs = {"paths": output_paths} if output_paths else {}
-            self._job_store.cleanup_outputs(output_paths)
+            preserved = extract_output_paths(e.preserved)
+            preserved_set = set(preserved)
+            # Only outputs the task did not vouch for are removed.
+            partial_paths = [p for p in output_paths if p not in preserved_set]
+            outputs = {}
+            if output_paths:
+                outputs["paths"] = output_paths
+            if preserved:
+                outputs["preserved_paths"] = preserved
+            self._job_store.cleanup_outputs(partial_paths)
             if self.job_id:
                 self._job_store.mark_cancelled(self.job_id, outputs=outputs)
             if self._job_log:
-                self._job_log.warn(f"CancelledJobError: {e}")
+                self._job_log.warn(
+                    f"CancelledJobError: {e} "
+                    f"(kept {len(preserved)}, removed {len(partial_paths)})"
+                )
             self.log.emit(str(e))
+            self._result = e.result if e.result is not None else self._result
             self.cancelled.emit()
         except Exception as e:
             tb = traceback.format_exc()
@@ -151,6 +172,11 @@ class InferenceWorker(QThread):
         finally:
             if self._job_log:
                 self._job_log.save()
+
+    @property
+    def result(self) -> Any:
+        """Last result, including the partial batch reported on cancellation."""
+        return self._result
 
     def cancel(self):
         """Request cancellation. Task must check cancel_event.is_set() periodically."""

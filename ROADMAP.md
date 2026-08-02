@@ -34,13 +34,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Run SFX batches as cancellable background jobs
-  Why: Stable Audio inference runs in a synchronous UI-thread loop for the full batch.
-  Evidence: `ui/sfx_view.py:353-415`; commercial and OSS persistent-job patterns.
-  Touches: `ui/sfx_view.py`, SFX engine cancellation, shared workers/jobs, progress and partial-result UI.
-  Acceptance: The window remains responsive; progress identifies the active variation; cancellation waits for worker termination, preserves verified completed results, removes only owned partials, and supports retry.
-  Complexity: M
-
 - [ ] P2 — Run real MIDI generation as a cancellable background job
   Why: MIDI Studio synchronously calls only the demo generator and does not use the installed MIDI model.
   Evidence: `ui/midi_studio_view.py:421-439`; RVC/ACE-Step resource-aware inference patterns.

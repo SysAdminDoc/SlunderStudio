@@ -443,12 +443,31 @@ class SFXView(QWidget):
         from engines.sfx_engine import generate_sfx
 
         runs: list[EngineRunResult] = []
+
+        def _verified_paths() -> list[str]:
+            """Completed variations that are actually readable on disk."""
+            paths = []
+            for run in runs:
+                if not run.is_success:
+                    continue
+                for path in run.output_paths:
+                    if path and os.path.isfile(path):
+                        paths.append(path)
+            return paths
+
         for index in range(params.batch_size):
             if cancel_event and cancel_event.is_set():
-                batch = EngineBatchResult(CAP_SFX_GENERATE, runs)
+                batch = EngineBatchResult(
+                    CAP_SFX_GENERATE, runs,
+                    error=f"Cancelled after {len(runs)} of {params.batch_size}",
+                )
+                verified = _verified_paths()
                 raise CancelledJobError(
-                    "SFX generation cancelled",
+                    f"SFX generation cancelled after {len(runs)} of "
+                    f"{params.batch_size} variation(s); {len(verified)} kept",
                     outputs=batch.output_paths,
+                    preserved=verified,
+                    result=batch,
                 )
             item = SFXParams(
                 prompt=params.prompt,
@@ -527,8 +546,32 @@ class SFXView(QWidget):
         self._refresh_capability_state()
 
     def _on_generation_cancelled(self):
+        """Keep the variations that finished; only the in-flight one is dropped."""
+        worker = self._generation_worker
         self._generation_worker = None
-        self._status.setText("SFX generation cancelled")
+        partial = getattr(worker, "result", None) if worker is not None else None
+        kept = 0
+        if isinstance(partial, EngineBatchResult):
+            self._contract_batch = partial
+            for run in partial.successful_runs:
+                result = run.source_result
+                if result is None:
+                    continue
+                paths = [p for p in run.output_paths if p and os.path.isfile(p)]
+                if run.output_paths and not paths:
+                    continue  # its file did not survive; do not advertise it
+                self._results.append(result)
+                self._add_result_card(result)
+                kept += 1
+            if kept:
+                first = partial.successful_runs[0].source_result
+                if first is not None and first.audio is not None:
+                    self._main_waveform.load_audio(first.audio, first.sample_rate)
+        self._status.setText(
+            f"SFX generation cancelled - kept {kept} completed variation(s). "
+            "Generate again to retry the rest."
+            if kept else "SFX generation cancelled"
+        )
         self._refresh_capability_state()
 
     def _on_model_status_changed(self, model_id: str, _status: str):
