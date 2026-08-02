@@ -35,13 +35,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Guard ModelManager mutable lifecycle state
-  Why: GUI reads and worker writes race on status, current model identity, and loaded objects.
-  Evidence: `core/model_manager.py:428-447,499-587,1035-1036`.
-  Touches: `core/model_manager.py`, model workers/signals, concurrency tests.
-  Acceptance: State transitions are atomic and ordered; stale workers cannot overwrite a newer request; concurrent load/unload/download/cancel stress tests end in one valid observable state.
-  Complexity: M
-
 - [ ] P1 — Move Hugging Face credentials to the OS credential service
   Why: The token is stored in plaintext config and copied into timestamped backups.
   Evidence: `ui/model_hub.py:646-652`, `ui/settings_view.py:186-191`, `core/settings.py:235-244,407-417`; InvokeAI token/config security release.

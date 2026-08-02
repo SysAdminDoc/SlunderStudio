@@ -49,6 +49,16 @@ class ModelSecurityError(RuntimeError):
     pass
 
 
+class StaleModelRequestError(RuntimeError):
+    """Raised when a load finished after a newer load/unload request superseded it."""
+    pass
+
+
+class DownloadInFlightError(RuntimeError):
+    """Raised when a model download is already running for the same model."""
+    pass
+
+
 EXECUTABLE_MODEL_WARNING = (
     "This model revision contains executable repository code or pickle-backed "
     "weights. Loading it can execute code with your user permissions. Review "
@@ -572,6 +582,20 @@ class ModelManager(QObject):
         self._settings = Settings()
         self._trash = TrashManager()
 
+        # Guards every read/write of _status, _current_model_id, _current_model,
+        # and the lifecycle request ticket. Held only for short critical
+        # sections; signals are always emitted outside it.
+        self._state_lock = threading.RLock()
+        # Serializes the expensive part of a load so only one model is ever
+        # being brought onto the GPU at a time.
+        self._load_lock = threading.RLock()
+        # Monotonic ticket. Every load/unload request claims one; a loader whose
+        # ticket is no longer the pending one must discard its result instead of
+        # overwriting a newer request.
+        self._request_counter = 0
+        self._pending_request = 0
+        self._downloads_in_flight: set[str] = set()
+
         # Initialize status for all registered models
         for model_id in self._registry:
             if self._is_model_cached(model_id):
@@ -621,7 +645,8 @@ class ModelManager(QObject):
         return metadata
 
     def get_status(self, model_id: str) -> ModelStatus:
-        return self._status.get(model_id, ModelStatus.NOT_DOWNLOADED)
+        with self._state_lock:
+            return self._status.get(model_id, ModelStatus.NOT_DOWNLOADED)
 
     def get_missing_runtime_packages(self, model_id: str) -> tuple[str, ...]:
         """Return declared runtime packages that cannot currently be imported."""
@@ -648,11 +673,12 @@ class ModelManager(QObject):
                 remedy=f"Unknown model: {model_id}",
             )
 
-        active = bool(
-            self._current_model_id == model_id
-            and self._current_model is not None
-            and self.get_status(model_id) == ModelStatus.LOADED
-        )
+        with self._state_lock:
+            active = bool(
+                self._current_model_id == model_id
+                and self._current_model is not None
+                and self._status.get(model_id) == ModelStatus.LOADED
+            )
         missing = self.get_missing_runtime_packages(model_id)
         if info.pip_managed:
             installed = not missing
@@ -856,55 +882,126 @@ class ModelManager(QObject):
 
     @property
     def current_model_id(self) -> Optional[str]:
-        return self._current_model_id
+        with self._state_lock:
+            return self._current_model_id
 
     @property
     def current_model(self) -> Any:
-        return self._current_model
+        with self._state_lock:
+            return self._current_model
+
+    def lifecycle_snapshot(self) -> dict[str, Any]:
+        """Return one consistent view of the lifecycle state for observers."""
+        with self._state_lock:
+            return {
+                "current_model_id": self._current_model_id,
+                "has_model": self._current_model is not None,
+                "pending_request": self._pending_request,
+                "status": {mid: status.value for mid, status in self._status.items()},
+            }
 
     # ── Model Loading ──────────────────────────────────────────────────────────
+
+    def _claim_request(self) -> int:
+        """Claim the newest lifecycle ticket, superseding any in-flight loader."""
+        with self._state_lock:
+            self._request_counter += 1
+            self._pending_request = self._request_counter
+            return self._pending_request
+
+    def _release_model_object(self, model: Any):
+        """Best-effort teardown of a model object we are about to drop."""
+        if model is None:
+            return
+        try:
+            if hasattr(model, "unload_model"):
+                model.unload_model()
+            elif hasattr(model, "cleanup"):
+                model.cleanup()
+            elif hasattr(model, "to"):
+                model.to("cpu")
+        except Exception:
+            pass
 
     def load_model(self, model_id: str, loader_fn: Optional[Callable] = None) -> Any:
         """
         Load a model onto GPU. Unloads current model first.
         If loader_fn is provided, uses it. Otherwise looks up registry loader.
         Returns the loaded model object.
+
+        Loads are serialized; a load superseded by a newer load or unload
+        request raises StaleModelRequestError instead of installing itself.
         """
         info = self._registry.get(model_id)
         if info is None:
             raise ValueError(f"Unknown model: {model_id}")
         self.require_verified_model(model_id)
 
-        if self._current_model_id == model_id and self._current_model is not None:
+        ticket = self._claim_request()
+
+        with self._state_lock:
+            already = (
+                self._current_model
+                if self._current_model_id == model_id and self._current_model is not None
+                else None
+            )
+        if already is not None:
             self._set_status(model_id, ModelStatus.LOADED)
-            return self._current_model
+            return already
 
-        # Unload current model
-        self.unload()
+        with self._load_lock:
+            with self._state_lock:
+                if self._pending_request != ticket:
+                    raise StaleModelRequestError(
+                        f"Loading {model_id} was superseded by a newer request."
+                    )
+                already = (
+                    self._current_model
+                    if self._current_model_id == model_id
+                    and self._current_model is not None
+                    else None
+                )
+            if already is not None:
+                self._set_status(model_id, ModelStatus.LOADED)
+                return already
 
-        self._set_status(model_id, ModelStatus.LOADING)
-        self.model_loading.emit(model_id)
+            # Unload current model without disturbing our own ticket.
+            self._unload_locked()
 
-        try:
-            if loader_fn is not None:
-                model = loader_fn()
-            else:
-                # Dynamic import from registry
-                model = self._dynamic_load(info)
+            self._set_status(model_id, ModelStatus.LOADING)
+            self.model_loading.emit(model_id)
 
-            self._current_model = model
-            self._current_model_id = model_id
+            try:
+                if loader_fn is not None:
+                    model = loader_fn()
+                else:
+                    # Dynamic import from registry
+                    model = self._dynamic_load(info)
+            except Exception as e:
+                self._set_status(model_id, ModelStatus.ERROR)
+                error_msg = f"{type(e).__name__}: {e}"
+                self.model_error.emit(model_id, error_msg)
+                cleanup_gpu()
+                raise
+
+            with self._state_lock:
+                superseded = self._pending_request != ticket
+                if not superseded:
+                    self._current_model = model
+                    self._current_model_id = model_id
+
+            if superseded:
+                self._release_model_object(model)
+                del model
+                cleanup_gpu()
+                raise StaleModelRequestError(
+                    f"Loading {model_id} was superseded by a newer request."
+                )
+
             self._set_status(model_id, ModelStatus.LOADED)
             self.model_loaded.emit(model_id)
             self._emit_gpu_status()
             return model
-
-        except Exception as e:
-            self._set_status(model_id, ModelStatus.ERROR)
-            error_msg = f"{type(e).__name__}: {e}"
-            self.model_error.emit(model_id, error_msg)
-            cleanup_gpu()
-            raise
 
     def activate_model(
         self,
@@ -935,6 +1032,13 @@ class ModelManager(QObject):
             step_cb(f"Verifying {info.name}...")
         try:
             engine = self.load_model(model_id)
+        except StaleModelRequestError as exc:
+            # A newer activation or an unload replaced this request while it ran.
+            return EngineActivationResult(
+                model_id=model_id,
+                outcome=ActivationOutcome.CANCELLED,
+                message=str(exc),
+            )
         except Exception as exc:
             return EngineActivationResult(
                 model_id=model_id,
@@ -964,14 +1068,16 @@ class ModelManager(QObject):
 
     def deactivate_model(self, model_id: Optional[str] = None) -> EngineActivationResult:
         """Deactivate the current model, optionally requiring an exact identity."""
-        target = model_id or self._current_model_id or ""
-        if model_id and self._current_model_id not in {None, model_id}:
+        with self._state_lock:
+            current_id = self._current_model_id
+        target = model_id or current_id or ""
+        if model_id and current_id not in {None, model_id}:
             return EngineActivationResult(
                 model_id=model_id,
                 outcome=ActivationOutcome.FAILED,
                 error=(
                     f"{model_id} is not active; current model is "
-                    f"{self._current_model_id}."
+                    f"{current_id}."
                 ),
             )
         self.unload()
@@ -982,34 +1088,52 @@ class ModelManager(QObject):
         )
 
     def unload(self):
-        """Unload the current model and free GPU memory."""
-        if self._current_model is not None:
+        """Unload the current model and free GPU memory.
+
+        Claims a new lifecycle ticket first, so a load still in flight is
+        superseded and discards its result rather than resurrecting a model the
+        user just unloaded.
+        """
+        self._claim_request()
+        with self._load_lock:
+            self._unload_locked()
+
+    def unload_if_current(self, model_id: str) -> bool:
+        """Unload only if model_id is the active model. Returns True if unloaded.
+
+        Waits for any in-flight load to settle first, so deleting or
+        quarantining a cache cannot race a load that is about to install it.
+        """
+        with self._load_lock:
+            with self._state_lock:
+                if self._current_model_id != model_id:
+                    return False
+                self._claim_request()
+            self._unload_locked()
+            return True
+
+    def _unload_locked(self):
+        """Unload the current model. Caller must hold _load_lock."""
+        with self._state_lock:
+            model = self._current_model
             model_id = self._current_model_id
-            try:
-                # Try calling model's own cleanup if available
-                if hasattr(self._current_model, "unload_model"):
-                    self._current_model.unload_model()
-                elif hasattr(self._current_model, "cleanup"):
-                    self._current_model.cleanup()
-                elif hasattr(self._current_model, "to"):
-                    self._current_model.to("cpu")
-            except Exception:
-                pass
-
-            del self._current_model
             self._current_model = None
+            self._current_model_id = None
+        if model is None:
+            return
 
-            cleanup_gpu()
+        self._release_model_object(model)
+        del model
+        cleanup_gpu()
 
-            if model_id:
-                if self._is_model_cached(model_id):
-                    self._set_status(model_id, ModelStatus.DOWNLOADED)
-                else:
-                    self._set_status(model_id, ModelStatus.NOT_DOWNLOADED)
-                self.model_unloaded.emit(model_id)
-                self._current_model_id = None
+        if model_id:
+            if self._is_model_cached(model_id):
+                self._set_status(model_id, ModelStatus.DOWNLOADED)
+            else:
+                self._set_status(model_id, ModelStatus.NOT_DOWNLOADED)
+            self.model_unloaded.emit(model_id)
 
-            self._emit_gpu_status()
+        self._emit_gpu_status()
 
     def _dynamic_load(self, info: ModelInfo) -> Any:
         """Load a verified local model while denying loader-initiated network access."""
@@ -1155,6 +1279,28 @@ class ModelManager(QObject):
             raise ValueError(f"Unknown model: {model_id}")
         self._validate_registry_revision(info)
 
+        with self._state_lock:
+            if model_id in self._downloads_in_flight:
+                raise DownloadInFlightError(
+                    f"A download for {info.name} is already running."
+                )
+            self._downloads_in_flight.add(model_id)
+        try:
+            return self._download_model_locked(
+                info,
+                model_id,
+                progress_cb=progress_cb,
+                speed_cb=speed_cb,
+                downloaded_cb=downloaded_cb,
+                cancel_event=cancel_event,
+            )
+        finally:
+            with self._state_lock:
+                self._downloads_in_flight.discard(model_id)
+
+    def _download_model_locked(self, info: ModelInfo, model_id: str, progress_cb=None,
+                               speed_cb=None, downloaded_cb=None, cancel_event=None):
+        """Download body. Only one call per model_id runs at a time."""
         # Pip-managed models (Demucs, DiffSinger) handle their own downloads
         if info.pip_managed:
             self._set_status(model_id, ModelStatus.DOWNLOADED)
@@ -1331,8 +1477,7 @@ class ModelManager(QObject):
         ):
             return None
 
-        if self._current_model_id == model_id:
-            self.unload()
+        self.unload_if_current(model_id)
 
         return self._trash.trash_path(
             path,
@@ -1561,8 +1706,7 @@ class ModelManager(QObject):
         if not cache_path.exists():
             return None
 
-        if self._current_model_id == model_id:
-            self.unload()
+        self.unload_if_current(model_id)
 
         try:
             entry = self._trash.trash_path(
@@ -1624,10 +1768,12 @@ class ModelManager(QObject):
     def get_gpu_status(self) -> dict:
         """Get current GPU status including loaded model info."""
         gpu = get_gpu_info()
-        gpu["current_model"] = self._current_model_id
+        with self._state_lock:
+            current_id = self._current_model_id
+        gpu["current_model"] = current_id
         gpu["current_model_name"] = (
-            self._registry[self._current_model_id].name
-            if self._current_model_id and self._current_model_id in self._registry
+            self._registry[current_id].name
+            if current_id and current_id in self._registry
             else None
         )
         return gpu
@@ -1638,5 +1784,7 @@ class ModelManager(QObject):
     # ── Internal ───────────────────────────────────────────────────────────────
 
     def _set_status(self, model_id: str, status: ModelStatus):
-        self._status[model_id] = status
+        with self._state_lock:
+            self._status[model_id] = status
+        # Emitted outside the lock: receivers may call back into the manager.
         self.status_changed.emit(model_id, status.value)
