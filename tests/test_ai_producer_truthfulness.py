@@ -5,11 +5,12 @@ import unittest
 import wave
 from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, PropertyMock, patch
 
 import numpy as np
 
 from core.job_state import JobStatus, JobStore
+from core.model_manager import ModelManager
 from core.workers import InferenceWorker
 from engines.ai_producer import (
     AIProducer,
@@ -19,6 +20,7 @@ from engines.ai_producer import (
     ProducerResult,
     produce_song,
 )
+from engines.lyrics_engine import LyricsLLM
 
 
 def _write_wav(path: str | Path, *, frames: int = 128, sample_rate: int = 8000) -> str:
@@ -33,6 +35,80 @@ def _write_wav(path: str | Path, *, frames: int = 128, sample_rate: int = 8000) 
 
 
 class AIProducerTruthfulnessTests(unittest.TestCase):
+    def test_lyrics_fallback_is_reported_as_demo_and_degraded(self):
+        producer = AIProducer()
+        brief = self._brief()
+        result = ProducerResult(brief=brief)
+        producer._current_result = result
+        plan = {"genre": "pop", "mood": "bright"}
+
+        with patch.object(
+            ModelManager,
+            "current_model",
+            new_callable=PropertyMock,
+            return_value=None,
+        ):
+            step = producer._run_stage(
+                PipelineStage.LYRICS,
+                result,
+                lambda: producer._generate_lyrics(plan, brief),
+                None,
+                None,
+                None,
+                None,
+            )
+
+        self.assertEqual("complete", step.status)
+        self.assertEqual("demo", result.output_kind)
+        self.assertTrue(result.is_degraded)
+        self.assertIn("Lyrics: explicit demo fallback was used", result.degraded_reasons)
+
+    def test_lyrics_stage_uses_loaded_model_with_built_prompts(self):
+        producer = AIProducer()
+        brief = self._brief()
+        result = ProducerResult(brief=brief)
+        producer._current_result = result
+        plan = {"genre": "pop", "mood": "bright"}
+        engine = LyricsLLM()
+        engine._model = object()
+        engine._backend = "stub"
+        generated = []
+
+        def generate(system_prompt, user_prompt):
+            generated.append((system_prompt, user_prompt))
+            return "[Verse 1]\nModel lyrics"
+
+        engine.generate = generate
+
+        with patch.object(
+            ModelManager,
+            "current_model",
+            new_callable=PropertyMock,
+            return_value=engine,
+        ), patch.object(
+            ModelManager,
+            "current_model_id",
+            new_callable=PropertyMock,
+            return_value="lyrics-test",
+        ):
+            step = producer._run_stage(
+                PipelineStage.LYRICS,
+                result,
+                lambda: producer._generate_lyrics(plan, brief),
+                None,
+                None,
+                None,
+                None,
+            )
+
+        self.assertEqual("complete", step.status)
+        self.assertEqual("model", result.output_kind)
+        self.assertFalse(result.is_degraded)
+        self.assertEqual("[Verse 1]\nModel lyrics", result.lyrics_text)
+        self.assertEqual(1, len(generated))
+        self.assertIn("GENRE: Pop", generated[0][0])
+        self.assertIn("Write song lyrics about: truthful test song", generated[0][1])
+
     def test_required_error_dictionary_stops_dependent_stages(self):
         with tempfile.TemporaryDirectory() as tmp:
             producer = AIProducer()

@@ -116,32 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — AI Producer's lyrics stage: dead model branch, plus placeholder lyrics reported as model output
-  Category: correctness
-  Where: `engines/ai_producer.py:641-664` (`_generate_lyrics`)
-  Problem: Three defects in one function. (a) `engine = LyricsLLM()` is a fresh instance, so
-    `engine.is_loaded` is always False and the model branch can never run even when a lyrics model
-    is active — it should consult `ModelManager().current_model`. (b) If it did run it would crash:
-    `engine.generate(prompt)` passes one positional argument, which binds to `system_prompt` and
-    leaves `user_prompt` missing, and the `str` return is then treated as a dict via
-    `result.get("text", "")` — proof the branch has never executed. (c) The fallback template
-    lyrics are returned as a plain success with no `"demo"`/`"fallback"` marker, so `_run_stage`
-    (`:542-546`) never sets `output_kind="demo"` or a degraded reason. Every AI Producer run
-    therefore takes the fallback and reports outcome "complete" with `output_kind="model"` while
-    the song was built from placeholder text — and `job_metadata()` and provenance record that
-    untruthful result. This is the gap left by the v0.1.30 truthfulness work, which gated only the
-    song-generation stage.
-  Evidence: Traced all three; the dict-vs-str mismatch is dispositive that the branch is dead.
-  Fix: Use `ModelManager().current_model` when it is a loaded `LyricsLLM`, calling
-    `generate(system_prompt, user_prompt)` correctly via `lyrics_templates.build_generation_prompt`;
-    mark the placeholder path `{"lyrics": ..., "fallback": True}` (or gate it behind
-    `brief.demo_fallback`) so the stage reports `output_kind="demo"`.
-  Acceptance: Extend `tests/test_ai_producer_truthfulness.py` — with no lyrics model loaded, the
-    lyrics stage reports `output_kind="demo"` and a degraded reason; with a stub loaded model it
-    calls `generate` with both prompts and reports `output_kind="model"`.
-  Confidence: Verified
-  Effort: M
-
 - [ ] P1 — FluidSynth failure silently ships a sine-wave "render" as a real one
   Category: correctness
   Where: `engines/fluidsynth_engine.py:355-366` (`except Exception: pass`);

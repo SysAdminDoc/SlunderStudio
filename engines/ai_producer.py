@@ -640,28 +640,41 @@ class AIProducer:
 
     def _generate_lyrics(self, plan: dict, brief: ProducerBrief) -> dict:
         """Generate lyrics using the Lyrics Engine."""
-        try:
-            from engines.lyrics_engine import LyricsLLM
-            engine = LyricsLLM()
+        from core.model_manager import ModelManager
+        from engines.lyrics_engine import LyricsLLM
+        from engines.lyrics_templates import build_generation_prompt
 
-            genre = plan.get("genre", "pop")
-            mood = plan.get("mood", "")
-            prompt = f"Write lyrics for a {genre} song. {brief.prompt}"
-            if mood:
-                prompt += f" The mood is {mood}."
+        genre = plan.get("genre", "pop")
+        mood = plan.get("mood", "")
+        manager = ModelManager()
+        engine = manager.current_model
 
-            # If engine has a model loaded, use it
-            if engine.is_loaded:
-                result = engine.generate(prompt)
-                lyrics = result.get("text", "")
-            else:
-                lyrics = f"[Verse 1]\n{brief.prompt}\n\n[Chorus]\n{brief.prompt}\n"
+        if isinstance(engine, LyricsLLM) and engine.is_loaded:
+            system_prompt, user_prompt = build_generation_prompt(
+                user_prompt=brief.prompt,
+                genre_id=genre,
+                mood=mood,
+            )
+            lyrics = engine.generate(system_prompt, user_prompt).strip()
+            self._current_result.lyrics_text = lyrics
+            return {
+                "lyrics": lyrics,
+                "genre": genre,
+                "mood": mood,
+                "model_id": manager.current_model_id or "",
+                "backend": engine.backend or "unknown",
+            }
 
-        except Exception:
-            lyrics = f"[Verse 1]\n{brief.prompt}\n\n[Chorus]\n{brief.prompt}\n"
-
+        lyrics = f"[Verse 1]\n{brief.prompt}\n\n[Chorus]\n{brief.prompt}\n"
         self._current_result.lyrics_text = lyrics
-        return {"lyrics": lyrics}
+        return {
+            "lyrics": lyrics,
+            "genre": genre,
+            "mood": mood,
+            "fallback": True,
+            "demo": True,
+            "note": "No loaded lyrics model; template lyrics used",
+        }
 
     def _select_style(self, plan: dict, brief: ProducerBrief) -> dict:
         """Select style tags for generation."""

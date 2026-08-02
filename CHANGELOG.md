@@ -4,6 +4,7 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-07-29
 
+- Repaired AI Producer lyrics generation to use the canonical loaded lyrics model and structured prompts, while labeling template fallback lyrics as demo/degraded output.
 - Marshalled streamed lyrics tokens through an `InferenceWorker` signal and queued connection so the editor is updated only on its GUI thread.
 - Made voice checkpoint loading default-deny: only safetensors and ONNX bypass explicit trust, while pickle, archive, and unknown extensions stop before `torch.load`.
 - Enforced the Offline Mode boundary for Demucs auto-loads by requiring all model checkpoints to be present in the local Torch cache before separation.
