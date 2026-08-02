@@ -162,7 +162,7 @@ class SettingsView(QWidget):
 
         layout.addWidget(output_group)
 
-        # ── GPU & Models ──
+        # ── GPU and Models ──
         gpu_group = QGroupBox(tr("settings.gpu.group"))
         gpu_layout = QVBoxLayout(gpu_group)
 
@@ -368,7 +368,7 @@ class SettingsView(QWidget):
         layout.addWidget(prod_group)
 
         # ── Cache ──
-        cache_group = QGroupBox("Cache & Storage")
+        cache_group = QGroupBox("Cache and Storage")
         cache_layout = QVBoxLayout(cache_group)
 
         self._max_cache = QDoubleSpinBox()

@@ -45,7 +45,7 @@
       "sample_rate_help": "44.1kHz for CD, 48kHz for modern production"
     },
     "gpu": {
-      "group": "GPU & Models",
+      "group": "GPU and Models",
       "device_index": "GPU Device Index",
       "device_index_help": "Usually 0 for single-GPU systems",
       "offline_mode": "Offline Mode",

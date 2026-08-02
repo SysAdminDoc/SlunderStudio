@@ -10,6 +10,8 @@ All notable changes to SlunderStudio will be documented in this file.
   stem, project-selection, and AI stage hues under Qt stylesheet parsing.
 - Prevented sidebar wordmark clipping by sizing the brand row against the themed label metrics
   at the minimum supported window width.
+- Reworded Settings and related action titles so Qt does not consume ampersands as hidden
+  keyboard mnemonics in visible section headings and buttons.
 - Wired Vocal Suite WAV export, Seed Explorer starred variation export with provenance sidecars,
   SFX card playback, and Stem Mixer per-stem playback to their real audio effects.
 - Prevented failed batch and seed playback loads from replaying stale audio, routed load failures

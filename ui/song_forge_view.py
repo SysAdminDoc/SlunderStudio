@@ -187,7 +187,7 @@ class SongForgeView(QWidget):
         creation_eyebrow = QLabel("CREATION CANVAS")
         creation_eyebrow.setObjectName("pageEyebrow")
         left_layout.addWidget(creation_eyebrow)
-        creation_title = QLabel("Lyrics & direction")
+        creation_title = QLabel("Lyrics and direction")
         creation_title.setObjectName("subheading")
         left_layout.addWidget(creation_title)
 
@@ -432,7 +432,7 @@ class SongForgeView(QWidget):
         session_eyebrow = QLabel("RENDER SESSION")
         session_eyebrow.setObjectName("pageEyebrow")
         session_heading.addWidget(session_eyebrow)
-        session_title = QLabel("Output & variations")
+        session_title = QLabel("Output and variations")
         session_title.setObjectName("subheading")
         session_heading.addWidget(session_title)
         session_header.addLayout(session_heading)

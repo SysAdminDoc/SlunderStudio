@@ -291,7 +291,7 @@ class Settings:
                 self._repair_status.messages.append(
                     f"{key} is still stored in plaintext because no OS credential "
                     f"service is available ({store.status().detail}). Clear it in "
-                    "Settings > GPU & Models, or install a credential service."
+                    "Settings > GPU and Models, or install a credential service."
                 )
                 continue
 

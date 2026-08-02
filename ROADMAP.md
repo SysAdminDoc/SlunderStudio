@@ -118,25 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — `&` in group-box titles is eaten as a Qt mnemonic, rendering "GPU _Models"
-  Category: visual
-  Where: `assets/locales/en.json:48` (`"settings.gpu.group": "GPU & Models"`);
-    `ui/settings_view.py:371` (`QGroupBox("Cache & Storage")`)
-  Problem: `QGroupBox` interprets `&` in its title as a mnemonic marker, so `"GPU & Models"` paints
-    as "GPU " followed by an underlined space and then "Models" — the user sees `GPU _Models` in
-    the Settings page, and "Cache & Storage" is affected the same way. This is the first thing
-    visible when scrolling Settings.
-  Evidence: Reproduced in an offscreen render of `SettingsView` with real fonts — the section
-    header reads "GPU _Models". The catalog value is confirmed correct (`tr("settings.gpu.group")`
-    returns `'GPU & Models'`), so the corruption is purely Qt's mnemonic handling at paint time.
-    These are the only two user-facing strings in the repo containing `&`.
-  Fix: Escape as `&&` in the title, or reword to "GPU and Models" / "Cache and Storage". Prefer
-    rewording so translators never have to know about Qt mnemonics.
-  Acceptance: A test asserting no `QGroupBox`/tab/button title string contains a single unescaped
-    `&`; the rendered header reads "GPU & Models" or "GPU and Models".
-  Confidence: Verified (rendered)
-  Effort: S
-
 - [ ] P2 — Model Hub card descriptions are clipped mid-sentence by a fixed 40px cap
   Category: visual
   Where: `ui/model_hub.py:208-211` (`desc.setMaximumHeight(40)` with `setWordWrap(True)` at 12px)

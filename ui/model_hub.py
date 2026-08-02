@@ -75,7 +75,7 @@ class HFTokenDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(cancel_btn)
 
-        self._save_btn = QPushButton("Save & Download")
+        self._save_btn = QPushButton("Save and Download")
         self._save_btn.setFixedSize(160, 36)
         self._save_btn.setObjectName("accentBtn")
         self._save_btn.clicked.connect(self._accept)
@@ -818,7 +818,7 @@ class ModelHubView(QWidget):
             if self.toast_mgr:
                 self.toast_mgr.error(
                     "Downloads are disabled while Offline Mode is enabled. "
-                    "Disable it in Settings > GPU & Models."
+                    "Disable it in Settings > GPU and Models."
                 )
             return
 

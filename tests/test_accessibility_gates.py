@@ -1,3 +1,5 @@
+import ast
+import json
 import os
 import re
 import unittest
@@ -93,6 +95,47 @@ class ContrastGateTests(unittest.TestCase):
 
         self.assertEqual(offenders, [])
         self.assertEqual(rgba("#f38ba8", 68), "rgba(243, 139, 168, 68)")
+
+    def test_qt_titles_do_not_use_unescaped_ampersand_mnemonics(self):
+        def has_unescaped_ampersand(value: str) -> bool:
+            return re.search(r"(?<!&)&(?!&)", value) is not None
+
+        offenders = []
+        title_calls = {"QGroupBox", "QPushButton", "QToolButton"}
+        for path in (ROOT / "ui").glob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                function_name = (
+                    node.func.id if isinstance(node.func, ast.Name) else ""
+                )
+                if function_name in title_calls and node.args:
+                    title = node.args[0]
+                    if isinstance(title, ast.Constant) and isinstance(title.value, str):
+                        if has_unescaped_ampersand(title.value):
+                            offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+
+        locale = json.loads(
+            (ROOT / "assets" / "locales" / "en.json").read_text(encoding="utf-8")
+        )
+
+        def locale_strings(value):
+            if isinstance(value, dict):
+                for child in value.values():
+                    yield from locale_strings(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from locale_strings(child)
+            elif isinstance(value, str):
+                yield value
+
+        offenders.extend(
+            f"assets/locales/en.json:{value}"
+            for value in locale_strings(locale)
+            if has_unescaped_ampersand(value)
+        )
+        self.assertEqual(offenders, [])
 
 
 class InlineButtonContrastTests(unittest.TestCase):

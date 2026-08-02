@@ -1291,7 +1291,7 @@ class ModelManager(QObject):
         if self.is_offline:
             raise OfflineModeError(
                 "Model downloads are disabled while Offline Mode is enabled. "
-                "Disable Offline Mode in Settings > GPU & Models to download models."
+                "Disable Offline Mode in Settings > GPU and Models to download models."
             )
 
         info = self._registry.get(model_id)
@@ -1392,7 +1392,7 @@ class ModelManager(QObject):
                 if not token:
                     raise PermissionError(
                         f"{info.name} is a gated model.\n"
-                        f"Paste your HF token in Settings > GPU & Models."
+                        f"Paste your HF token in Settings > GPU and Models."
                     )
                 kwargs["token"] = token
 
