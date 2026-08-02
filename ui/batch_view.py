@@ -197,6 +197,8 @@ class BatchView(QWidget):
         self._playing_index = -1
         self._job_store = JobStore()
         self._setup_ui()
+        # Startup recovery is intentionally separate from later banner refreshes.
+        self._job_store.recover_stale_jobs()
         self.refresh_recoverable_jobs()
 
     def _setup_ui(self):
@@ -369,7 +371,6 @@ class BatchView(QWidget):
         self._empty_label.show()
 
     def refresh_recoverable_jobs(self):
-        self._job_store.recover_stale_jobs()
         records = self._job_store.list_records(
             status=JobStatus.RECOVERABLE,
             kind="song_generation",

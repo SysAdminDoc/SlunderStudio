@@ -116,32 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Mid-session `recover_stale_jobs()` rewrites live RUNNING jobs as "interrupted"
-  Category: correctness
-  Where: `ui/batch_view.py:371-372` (`refresh_recoverable_jobs`), called from
-    `ui/song_forge_view.py:861, 873, 922, 931, 1125, 1164`; core at `core/job_state.py:200-216`
-  Problem: `JobStore.recover_stale_jobs()` marks every record in `ACTIVE_STATUSES`
-    (queued/running/cancel_requested) as `RECOVERABLE` with "Interrupted before completion; review
-    or resume." — no kind filter, no age threshold. That is right at startup
-    (`ui/model_hub.py:677`, `ui/batch_view.py:200`), but Song Forge calls it on every finish, error
-    and cancel of its own worker. Any concurrently running job — a Vocal Suite stem separation, an
-    SFX batch, a model download, a model activation — has its ledger record rewritten as
-    "interrupted" while it is actively running. Later `update_progress` calls do not restore the
-    status, so the Batch recovery banner, the Recovery Center, the diagnostics failed-jobs report
-    and retention all see a live job as interrupted until it finishes.
-  Evidence: Traced `SongForgeView._on_finished -> _batch_view.refresh_recoverable_jobs() ->
-    _job_store.recover_stale_jobs()`; `ACTIVE_STATUSES` at `core/job_state.py:34-38` includes
-    `RUNNING`. Worst case is `_on_cancel`, where the just-cancelled record sits in
-    `CANCEL_REQUESTED` and is flipped on the GUI thread while the worker thread concurrently writes
-    `mark_cancelled` through a different `JobStore` instance — see the lost-update finding below.
-  Fix: Call `recover_stale_jobs()` only at startup. Mid-session refreshes should just
-    `list_records(status=RECOVERABLE, kind=...)`. Optionally scope recovery to records older than
-    process start time.
-  Acceptance: A test that starts a job (status RUNNING), triggers
-    `BatchView.refresh_recoverable_jobs()`, and asserts the running record is still RUNNING.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P1 — `JobStore` is per-instance, so concurrent workers silently lose each other's writes
   Category: correctness
   Where: `core/job_state.py:69-82` (per-instance `RLock`), `:290-309` (`_update` = read-all,

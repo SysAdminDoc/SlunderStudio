@@ -547,6 +547,8 @@ class ModelHubView(QWidget):
         self._job_store = JobStore()
         self._build_ui()
         self._connect_signals()
+        # Only the initial page load may classify active records as interrupted.
+        self._job_store.recover_stale_jobs()
         self._refresh_all_cards()
 
     def _build_ui(self):
@@ -674,7 +676,6 @@ class ModelHubView(QWidget):
         self._mgr.gpu_status_changed.connect(self._on_gpu_changed)
 
     def _refresh_all_cards(self):
-        self._job_store.recover_stale_jobs()
         for record in self._recoverable_download_records():
             model_id = record.inputs.get("model_id") or record.metadata.get("model_id")
             if model_id in self._mgr.registry and self._mgr.has_partial_download(model_id):
