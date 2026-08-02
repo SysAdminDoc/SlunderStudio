@@ -4,6 +4,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Added a bounded piano-roll undo history for note deletion, quantize, swing, humanize, and CC
+  lane clearing, with Ctrl+Z and exact note/CC restoration.
 - Made Mood Curve control points and Seed Explorer cells keyboard-operable, with explicit
   selection, playback, favorite, focus, and live-status announcements.
 - Corrected dynamic translucent accent styles to emit RGB-ordered `rgba()` values, preserving

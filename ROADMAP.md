@@ -118,24 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Piano roll destructive edits have no undo
-  Category: ux
-  Where: `ui/piano_roll.py:296-305` (delete selected), `:697-735` (quantize / swing / humanize,
-    which replace all notes), `:529-540` (Clear CC Lane)
-  Problem: All of these mutate or replace `track.notes` / `cc_events` irreversibly; there is no
-    undo stack anywhere in `ui/piano_roll.py`, `ui/midi_studio_view.py` or `ui/mixer_view.py`. One
-    accidental Ctrl+A followed by Delete, or a mis-set swing amount, destroys the composition with
-    no recovery short of re-importing — project versioning helps only if the user happened to
-    snapshot. The mixer received a full non-destructive preview/apply/revert workflow in the
-    hardening pass; the piano roll got nothing equivalent.
-  Fix: Snapshot `track.notes` and `cc_events` (small dataclass lists) into a bounded undo deque
-    before each destructive operation, and route delete, quantize, swing, humanize and clear
-    through it.
-  Acceptance: Extend `tests/test_piano_roll_editing.py` — after each destructive operation, undo
-    restores the exact prior note and CC state.
-  Confidence: Verified
-  Effort: M
-
 - [ ] P2 — Off-palette green action buttons, duplicated in seven files and styled by string replacement
   Category: maintainability
   Where: `#238636`/`#2ea043` blocks at `ui/mixer_view.py:438-443`,

@@ -241,7 +241,7 @@ class AccessibilityBaselineTests(unittest.TestCase):
             for attr in [
                 "_snap_combo", "_velocity_spin", "_swing_spin", "_humanize_spin",
                 "_quantize_btn", "_swing_btn", "_humanize_btn",
-                "_select_all_btn", "_delete_btn",
+                "_select_all_btn", "_delete_btn", "_undo_btn",
             ]:
                 self.assert_accessible(getattr(widget, attr))
         finally:

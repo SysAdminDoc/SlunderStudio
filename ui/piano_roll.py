@@ -3,6 +3,8 @@ Slunder Studio — Piano Roll Widget
 QGraphicsView-based MIDI piano roll editor with note creation, editing,
 selection, quantization, and snap-to-grid.
 """
+from collections import deque
+from copy import deepcopy
 from typing import Optional
 from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsTextItem,
@@ -176,6 +178,7 @@ class PianoRollScene(QGraphicsScene):
     """Scene containing the piano roll grid and notes."""
 
     notes_changed = Signal()
+    edit_started = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -296,6 +299,8 @@ class PianoRollScene(QGraphicsScene):
     def delete_selected(self):
         """Remove selected notes."""
         to_remove = [item for item in self._note_items if item.isSelected()]
+        if to_remove:
+            self.edit_started.emit()
         for item in to_remove:
             if self.track and item.note_data in self.track.notes:
                 self.track.notes.remove(item.note_data)
@@ -341,6 +346,8 @@ class PianoRollScene(QGraphicsScene):
 
 class PianoRollView(QGraphicsView):
     """Scrollable, zoomable piano roll view."""
+
+    undo_requested = Signal()
 
     def __init__(self, scene: PianoRollScene, parent=None):
         super().__init__(scene, parent)
@@ -394,10 +401,15 @@ class PianoRollView(QGraphicsView):
             super().wheelEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
+        if event.key() == Qt.Key_Z and event.modifiers() & Qt.ControlModifier:
+            self.undo_requested.emit()
+            event.accept()
+        elif event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
             self._scene.delete_selected()
+            event.accept()
         elif event.key() == Qt.Key_A and event.modifiers() & Qt.ControlModifier:
             self._scene.select_all()
+            event.accept()
         else:
             super().keyPressEvent(event)
 
@@ -408,6 +420,7 @@ class CCAutomationLane(QWidget):
     """Compact control-change lane editor for the loaded track."""
 
     cc_changed = Signal()
+    edit_started = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -539,11 +552,13 @@ class CCAutomationLane(QWidget):
             return
         controller = int(self._controller_combo.currentData())
         before = len(self._track.cc_events)
-        self._track.cc_events = [
+        filtered_events = [
             event for event in self._track.cc_events
             if event.controller != controller
         ]
-        if len(self._track.cc_events) != before:
+        if len(filtered_events) != before:
+            self.edit_started.emit()
+            self._track.cc_events = filtered_events
             self._refresh()
             self.cc_changed.emit()
 
@@ -565,13 +580,19 @@ class CCAutomationLane(QWidget):
 class PianoRollWidget(QWidget):
     """Complete piano roll widget with toolbar controls."""
 
+    UNDO_LIMIT = 32
     notes_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._scene = PianoRollScene()
         self._view = PianoRollView(self._scene)
+        self._undo_stack: deque[tuple[list[NoteData], list[CCEvent]]] = deque(
+            maxlen=self.UNDO_LIMIT
+        )
         self._scene.notes_changed.connect(self.notes_changed.emit)
+        self._scene.edit_started.connect(self._record_undo)
+        self._view.undo_requested.connect(self.undo)
 
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(self)
@@ -647,6 +668,12 @@ class PianoRollWidget(QWidget):
         self._delete_btn.setStyleSheet(btn_style)
         self._delete_btn.clicked.connect(self._scene.delete_selected)
 
+        self._undo_btn = QPushButton("Undo")
+        self._undo_btn.setStyleSheet(btn_style)
+        self._undo_btn.setToolTip("Undo the last piano-roll edit (Ctrl+Z)")
+        self._undo_btn.setEnabled(False)
+        self._undo_btn.clicked.connect(self.undo)
+
         toolbar.addWidget(snap_label)
         toolbar.addWidget(self._snap_combo)
         toolbar.addWidget(vel_label)
@@ -661,10 +688,12 @@ class PianoRollWidget(QWidget):
         toolbar.addWidget(self._humanize_btn)
         toolbar.addWidget(self._select_all_btn)
         toolbar.addWidget(self._delete_btn)
+        toolbar.addWidget(self._undo_btn)
 
         layout.addLayout(toolbar)
         layout.addWidget(self._view, 1)
         self._automation_lane = CCAutomationLane()
+        self._automation_lane.edit_started.connect(self._record_undo)
         self._automation_lane.cc_changed.connect(self.notes_changed.emit)
         layout.addWidget(self._automation_lane)
 
@@ -681,15 +710,18 @@ class PianoRollWidget(QWidget):
                 (self._humanize_btn, "Humanize velocity", "Randomizes note velocities for a natural feel."),
                 (self._select_all_btn, "Select all notes", "Selects every note in the piano roll."),
                 (self._delete_btn, "Delete selected notes", "Removes all selected notes."),
+                (self._undo_btn, "Undo piano-roll edit", "Restores the most recent destructive piano-roll edit."),
             ],
             tab_order=[
                 self._snap_combo, self._velocity_spin, self._swing_spin, self._humanize_spin,
                 self._quantize_btn, self._swing_btn, self._humanize_btn,
-                self._select_all_btn, self._delete_btn,
+                self._select_all_btn, self._delete_btn, self._undo_btn,
             ],
         )
 
     def load_track(self, track: TrackData, tempo: float = 120.0, bars: int = 16):
+        self._undo_stack.clear()
+        self._undo_btn.setEnabled(False)
         self._scene.load_track(track, tempo, bars)
         self._automation_lane.load_track(track, tempo)
 
@@ -737,7 +769,32 @@ class PianoRollWidget(QWidget):
     def _replace_track_notes(self, notes: list[NoteData]):
         if self._scene.track is None:
             return
+        self._record_undo()
         self._scene.track.notes = notes
         self._scene.load_track(self._scene.track, self._scene.tempo, self._scene.bars)
         self._automation_lane.load_track(self._scene.track, self._scene.tempo)
         self.notes_changed.emit()
+
+    def _record_undo(self):
+        """Save the current note and CC state before a destructive edit."""
+        if self._scene.track is None:
+            return
+        self._undo_stack.append((
+            deepcopy(self._scene.track.notes),
+            deepcopy(self._scene.track.cc_events),
+        ))
+        self._undo_btn.setEnabled(True)
+
+    def undo(self) -> bool:
+        """Restore the most recent piano-roll note and CC snapshot."""
+        if self._scene.track is None or not self._undo_stack:
+            return False
+
+        notes, cc_events = self._undo_stack.pop()
+        self._scene.track.notes = deepcopy(notes)
+        self._scene.track.cc_events = deepcopy(cc_events)
+        self._scene.load_track(self._scene.track, self._scene.tempo, self._scene.bars)
+        self._automation_lane.load_track(self._scene.track, self._scene.tempo)
+        self._undo_btn.setEnabled(bool(self._undo_stack))
+        self.notes_changed.emit()
+        return True

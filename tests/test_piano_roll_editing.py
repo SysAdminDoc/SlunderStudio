@@ -1,11 +1,14 @@
 import os
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeyEvent
 
 from core.midi_utils import (
     CCEvent,
@@ -106,6 +109,68 @@ class PianoRollEditingTests(unittest.TestCase):
             self.assertEqual(99, track.cc_events[0].value)
             self.assertEqual(2, track.cc_events[0].channel)
             self.assertAlmostEqual(1.0, track.cc_events[0].time, places=6)
+        finally:
+            widget.deleteLater()
+
+    def test_destructive_edits_restore_exact_note_and_cc_state(self):
+        widget = PianoRollWidget()
+        track = TrackData(
+            name="Undoable Piano",
+            channel=2,
+            notes=[
+                NoteData(pitch=60, start=0.03, end=0.47, velocity=80, channel=2),
+                NoteData(pitch=62, start=0.25, end=0.7, velocity=110, channel=2),
+            ],
+            cc_events=[
+                CCEvent(controller=1, value=32, time=0.0, channel=2),
+                CCEvent(controller=11, value=96, time=0.5, channel=2),
+            ],
+        )
+
+        def assert_undo_restores(operation):
+            notes_before = deepcopy(track.notes)
+            cc_before = deepcopy(track.cc_events)
+            operation()
+            self.assertTrue(widget.undo())
+            self.assertEqual(notes_before, track.notes)
+            self.assertEqual(cc_before, track.cc_events)
+            self.assertFalse(widget._undo_stack)
+
+        try:
+            widget.load_track(track, tempo=120.0, bars=1)
+            widget._snap_combo.setCurrentText("1/8")
+            assert_undo_restores(widget._on_quantize)
+
+            widget._swing_spin.setValue(50)
+            assert_undo_restores(widget._on_apply_swing)
+
+            widget._humanize_spin.setValue(32)
+            assert_undo_restores(widget._on_humanize_velocity)
+
+            widget._scene._note_items[0].setSelected(True)
+            assert_undo_restores(widget._scene.delete_selected)
+
+            widget._automation_lane._controller_combo.setCurrentText("Expression (CC11)")
+            assert_undo_restores(widget._automation_lane._on_clear_lane)
+
+            widget._on_quantize()
+            event = QKeyEvent(
+                QKeyEvent.Type.KeyPress,
+                Qt.Key.Key_Z,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+            widget._view.keyPressEvent(event)
+            self.assertEqual(
+                [NoteData(pitch=60, start=0.03, end=0.47, velocity=80, channel=2),
+                 NoteData(pitch=62, start=0.25, end=0.7, velocity=110, channel=2)],
+                track.notes,
+            )
+            self.assertEqual(
+                [CCEvent(controller=1, value=32, time=0.0, channel=2),
+                 CCEvent(controller=11, value=96, time=0.5, channel=2)],
+                track.cc_events,
+            )
+            self.assertTrue(event.isAccepted())
         finally:
             widget.deleteLater()
 
