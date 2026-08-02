@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.29 — MIDI Utilities
+Slunder Studio — MIDI Utilities
 Helpers for MIDI parsing, quantization, import/export, and track manipulation.
 Wraps pretty_midi for consistent API across the app.
 """

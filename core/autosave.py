@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.30 — Autosave Coordinator
+Slunder Studio — Autosave Coordinator
 Drives the interval promised by Settings > General > Autosave interval: a dirty
 project is saved and versioned on a timer, and never while another save runs.
 """

@@ -42,13 +42,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
   Acceptance: Normal text meets 4.5:1, focus is visible, all core workflows work by keyboard, custom widgets expose roles/states/actions/value changes, timed messages have an accessible alternative, and every major view is usable at 1024×768 and 200% scaling.
   Complexity: L
 
-- [ ] P1 — Produce reproducible unsigned cross-platform releases
-  Why: Version strings disagree, the build assumes Windows paths/artifacts, optional dependencies are not captured, and signing code contradicts the release policy.
-  Evidence: `README.md`, source headers, `ui/settings_view.py`, `SlunderStudio.spec`, `build/build.py`; PyInstaller and PySide6 deployment guidance.
-  Touches: one version module, build/spec scripts, icon/resource paths, lock profiles, Windows/Linux/macOS build and smoke jobs, release docs.
-  Acceptance: One version source drives UI/docs/artifact metadata; all signing paths are removed; clean Windows, Linux, and macOS builds are unsigned, install/start offline, expose diagnostics, and pass a packaged GUI smoke suite with recorded hashes.
-  Complexity: L
-
 - [ ] P1 — Make mastering standards-conformant and non-destructive
   Why: RMS-based loudness and sample-peak limiting are labeled as delivery presets, while Dynamic EQ mutates source arrays without preview or undo.
   Evidence: `core/mastering.py`, `ui/mixer_view.py:576-631`; ITU-R BS.1770-5, EBU R128, LANDR, and Ozone.

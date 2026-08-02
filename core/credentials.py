@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.30 — OS Credential Store
+Slunder Studio — OS Credential Store
 Secrets live in the operating system credential service, never in config JSON,
 logs, diagnostics, or timestamped backups.
 

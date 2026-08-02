@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.29 — DiffSinger Engine
+Slunder Studio — DiffSinger Engine
 Singing voice synthesis from lyrics + MIDI using DiffSinger/ONNX models.
 Converts phoneme-aligned lyrics into natural singing audio.
 """

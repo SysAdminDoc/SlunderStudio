@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.30 — Theme Engine
+Slunder Studio — Theme Engine
 Ink-and-signal desktop theme with an accessible focus system, restrained surfaces,
 and complete native Qt control styling.
 """

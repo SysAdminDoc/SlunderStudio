@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.30 — Main Window
+Slunder Studio — Main Window
 Studio-shell navigation, contextual workspace header, global transport,
 compute status, and drag-and-drop routing.
 """

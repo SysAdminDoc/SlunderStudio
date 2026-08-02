@@ -7,23 +7,30 @@ Usage:
     python build/build.py
 
 Outputs:
-    dist/SlunderStudio/          (one-folder distribution)
-    dist/SlunderStudio.exe       (Windows one-file, if --onefile)
+    dist/SlunderStudio/                          (one-folder distribution)
+    dist/SlunderStudio[.exe]                     (one-file, if --onefile)
+    dist/SlunderStudio-vX.Y.Z-<platform>.zip     (one-folder archive)
+    dist/SHA256SUMS.txt                          (recorded hashes)
+
+All artifacts are unsigned. There is no signing step and none will be added.
 """
 import os
 import sys
 import subprocess
 import shutil
 import hashlib
+import platform
 import time
 import zipfile
 from pathlib import Path
 
-APP_NAME = "SlunderStudio"
-APP_VERSION = "0.1.30"
-ENTRY_POINT = "main.py"
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from core.version import APP_NAME, APP_VERSION  # noqa: E402 - needs sys.path above
+
+ENTRY_POINT = "main.py"
 
 
 def require_pyinstaller():
@@ -116,10 +123,11 @@ def build(onefile: bool = False, smoke: bool = True):
     if os.path.isfile(runtime_hook):
         cmd.extend(["--runtime-hook", runtime_hook])
 
-    # Icon (if exists)
-    icon_path = os.path.join("assets", "icon.ico")
-    if os.path.isfile(icon_path):
-        cmd.extend(["--icon", icon_path])
+    icon_path = find_icon()
+    if icon_path:
+        cmd.extend(["--icon", str(icon_path)])
+    else:
+        print("No platform icon found; building without one.")
 
     # Version info (Windows)
     if sys.platform == "win32":
@@ -146,8 +154,6 @@ def build(onefile: bool = False, smoke: bool = True):
         print(f"\nBuild failed: expected executable was not created: {exe_path}")
         sys.exit(1)
 
-    sign_executables([exe_path])
-
     if smoke:
         smoke_launch(exe_path)
     else:
@@ -170,6 +176,7 @@ def clean_artifacts():
     """Remove stale distributables before building."""
     paths = [
         onefolder_dir(),
+        dist_dir() / f"{APP_NAME}.app",
         build_dir(),
         onefile_path(),
         onedir_zip_path(),
@@ -198,17 +205,54 @@ def onefolder_dir() -> Path:
     return dist_dir() / APP_NAME
 
 
+def find_icon() -> Path | None:
+    """First existing icon for this platform, checked in assets/ then repo root."""
+    if sys.platform == "win32":
+        names = ("icon.ico", "icon.png")
+    elif sys.platform == "darwin":
+        names = ("icon.icns", "icon.png")
+    else:
+        names = ("icon.png",)
+    for directory in (PROJECT_ROOT / "assets", PROJECT_ROOT):
+        for name in names:
+            candidate = directory / name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def executable_name() -> str:
+    return f"{APP_NAME}.exe" if sys.platform == "win32" else APP_NAME
+
+
 def onefile_path() -> Path:
-    return dist_dir() / f"{APP_NAME}.exe"
+    return dist_dir() / executable_name()
 
 
 def executable_path(onefile: bool) -> Path:
-    return onefile_path() if onefile else onefolder_dir() / f"{APP_NAME}.exe"
+    if onefile:
+        return onefile_path()
+    if sys.platform == "darwin":
+        # --windowed produces an .app bundle; the binary lives inside it.
+        bundle = dist_dir() / f"{APP_NAME}.app"
+        if bundle.is_dir():
+            return bundle / "Contents" / "MacOS" / APP_NAME
+    return onefolder_dir() / executable_name()
+
+
+def platform_tag() -> str:
+    """Stable, human-readable tag for artifact names."""
+    machine = (platform.machine() or "unknown").lower()
+    machine = {"amd64": "x64", "x86_64": "x64", "aarch64": "arm64"}.get(machine, machine)
+    if sys.platform == "win32":
+        return f"win-{machine}"
+    if sys.platform == "darwin":
+        return f"macos-{machine}"
+    return f"{sys.platform}-{machine}"
 
 
 def onedir_zip_path() -> Path:
-    platform_tag = "win64" if sys.platform == "win32" else sys.platform
-    return dist_dir() / f"{APP_NAME}-v{APP_VERSION}-{platform_tag}.zip"
+    return dist_dir() / f"{APP_NAME}-v{APP_VERSION}-{platform_tag()}.zip"
 
 
 def checksum_path() -> Path:
@@ -222,6 +266,8 @@ def spec_path() -> Path:
 def create_onedir_zip() -> Path:
     """Zip the one-folder distribution for release upload."""
     source_dir = onefolder_dir()
+    if sys.platform == "darwin" and (dist_dir() / f"{APP_NAME}.app").is_dir():
+        source_dir = dist_dir() / f"{APP_NAME}.app"
     target = onedir_zip_path()
     if not source_dir.is_dir():
         raise FileNotFoundError(f"One-folder distribution missing: {source_dir}")
@@ -255,61 +301,18 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def sign_executables(exe_paths: list[Path]) -> list[Path]:
-    """Authenticode-sign executables when signing configuration is present."""
-    if sys.platform != "win32":
-        print("Signing skipped: Authenticode signing is Windows-only.")
-        return []
-
-    signtool = os.environ.get("SLUNDER_SIGNTOOL") or shutil.which("signtool")
-    cert_sha1 = os.environ.get("SLUNDER_SIGN_CERT_SHA1", "").strip()
-    cert_file = os.environ.get("SLUNDER_SIGN_CERT_FILE", "").strip()
-    cert_password = os.environ.get("SLUNDER_SIGN_CERT_PASSWORD", "")
-    timestamp_url = os.environ.get("SLUNDER_SIGN_TIMESTAMP_URL", "http://timestamp.digicert.com")
-
-    if not signtool:
-        print("Signing skipped: signtool was not found.")
-        return []
-    if not cert_sha1 and not cert_file:
-        print("Signing skipped: set SLUNDER_SIGN_CERT_SHA1 or SLUNDER_SIGN_CERT_FILE to enable signing.")
-        return []
-
-    signed: list[Path] = []
-    for exe_path in exe_paths:
-        cmd = [
-            signtool,
-            "sign",
-            "/fd",
-            "SHA256",
-            "/tr",
-            timestamp_url,
-            "/td",
-            "SHA256",
-        ]
-        if cert_sha1:
-            cmd.extend(["/sha1", cert_sha1])
-        else:
-            cmd.extend(["/f", cert_file])
-            if cert_password:
-                cmd.extend(["/p", cert_password])
-        cmd.append(str(exe_path))
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(result.stdout)
-            print(result.stderr, file=sys.stderr)
-            raise RuntimeError(f"Signing failed for {exe_path}")
-        signed.append(exe_path)
-        print(f"Signed: {exe_path}")
-    return signed
-
-
 def smoke_launch(exe_path: Path, seconds: float | None = None):
-    """Launch the packaged app and verify it does not recursively spawn."""
-    if sys.platform != "win32":
-        print("Smoke launch skipped: process-count smoke is Windows-only.")
-        return
+    """Launch the packaged app and verify it starts and does not fork-bomb."""
+    seconds = seconds if seconds is not None else float(
+        os.environ.get("SLUNDER_BUILD_SMOKE_SECONDS", "8")
+    )
+    if sys.platform == "win32":
+        _smoke_launch_windows(exe_path, seconds)
+    else:
+        _smoke_launch_posix(exe_path, seconds)
 
-    seconds = seconds if seconds is not None else float(os.environ.get("SLUNDER_BUILD_SMOKE_SECONDS", "8"))
+
+def _smoke_launch_windows(exe_path: Path, seconds: float):
     before = set(process_ids_for_exe(exe_path))
     if before:
         raise RuntimeError(f"Smoke launch blocked: {exe_path} is already running ({sorted(before)})")
@@ -330,7 +333,53 @@ def smoke_launch(exe_path: Path, seconds: float | None = None):
         terminate_process_tree(ids or [process.pid])
 
 
+def _smoke_launch_posix(exe_path: Path, seconds: float):
+    """Start the packaged app offscreen and confirm it stays up without forking."""
+    env = dict(os.environ)
+    env.setdefault("QT_QPA_PLATFORM", "offscreen")
+    process = subprocess.Popen(
+        [str(exe_path)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    )
+    time.sleep(seconds)
+    try:
+        if process.poll() is not None:
+            raise RuntimeError(
+                f"Packaged smoke failed: process exited with {process.returncode}"
+            )
+        count = len(process_ids_for_exe(exe_path))
+        if count > 1:
+            raise RuntimeError(
+                f"Packaged smoke expected one {APP_NAME} process, saw {count}"
+            )
+        print(f"Packaged smoke ok: process_count={max(count, 1)} pid={process.pid}")
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
 def process_ids_for_exe(exe_path: Path) -> list[int]:
+    if sys.platform != "win32":
+        return _process_ids_posix(exe_path)
+    return _process_ids_windows(exe_path)
+
+
+def _process_ids_posix(exe_path: Path) -> list[int]:
+    pgrep = shutil.which("pgrep")
+    if not pgrep:
+        return []
+    result = subprocess.run(
+        [pgrep, "-f", str(exe_path)], capture_output=True, text=True, check=False
+    )
+    return [int(line) for line in result.stdout.split() if line.strip().isdigit()]
+
+
+def _process_ids_windows(exe_path: Path) -> list[int]:
     escaped_path = str(exe_path).replace("'", "''")
     script = (
         f"$exe = [System.IO.Path]::GetFullPath('{escaped_path}'); "
@@ -365,10 +414,10 @@ def terminate_process_tree(process_ids: list[int]):
 
 
 def _create_version_file():
-    """Create Windows version info file."""
-    parts = APP_VERSION.split(".")
-    while len(parts) < 4:
-        parts.append("0")
+    """Create the Windows version-info file from the single version source."""
+    from core.version import version_tuple
+
+    parts = [str(n) for n in version_tuple(4)]
 
     content = f"""
 VSVersionInfo(

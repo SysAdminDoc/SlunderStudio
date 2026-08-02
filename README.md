@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.30-blue)
+![Version](https://img.shields.io/badge/version-0.1.31-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.11--3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -167,7 +167,9 @@ py -3.12 build/build.py           # One-folder distribution
 py -3.12 build/build.py --onefile # Single .exe (Windows)
 ```
 
-The build script removes stale `dist/` outputs before packaging, smoke-launches the Windows executable to verify only one app process starts, and writes `dist/SHA256SUMS.txt` for the distributable artifacts. The default build also creates a release ZIP beside `dist/SlunderStudio/`. To Authenticode-sign executables, install `signtool` and set either `SLUNDER_SIGN_CERT_SHA1` or `SLUNDER_SIGN_CERT_FILE` before building; `SLUNDER_SIGN_TIMESTAMP_URL` overrides the timestamp server when needed.
+The build script removes stale `dist/` outputs before packaging, resolves the platform icon, smoke-launches the packaged executable to verify exactly one app process starts, and writes `dist/SHA256SUMS.txt` for the distributable artifacts. The default build also creates `dist/SlunderStudio-vX.Y.Z-<platform>-<arch>.zip` beside `dist/SlunderStudio/`. Every version string — the window title, settings and project schemas, provenance sidecars, the README badge, artifact names, and the embedded Windows file version — comes from `core/version.py`.
+
+**Releases are unsigned.** There is no code-signing step and none will be added. Windows SmartScreen will warn on first run of an unsigned executable; choose "More info" then "Run anyway", or verify the download against `SHA256SUMS.txt` first.
 
 ## Project Structure
 

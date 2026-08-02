@@ -78,32 +78,29 @@ class BuildArtifactTests(unittest.TestCase):
             self.assertIn(zip_path.name, checksum_text)
             self.assertRegex(checksum_text, r"^[0-9a-f]{64}  ", msg=checksum_text)
 
-    def test_signing_skips_without_certificate_configuration(self):
-        exe = Path("dist/SlunderStudio/SlunderStudio.exe")
-        with mock.patch.object(self.build_script.sys, "platform", "win32"), \
-                mock.patch.object(self.build_script.shutil, "which", return_value="signtool"):
-            with mock.patch.dict(self.build_script.os.environ, {}, clear=True):
-                signed = self.build_script.sign_executables([exe])
-        self.assertEqual(signed, [])
+    def test_release_artifacts_are_unsigned(self):
+        """Signing is policy-excluded; no code signing path may exist."""
+        source = Path(self.build_script.__file__).read_text(encoding="utf-8")
+        for banned in ("signtool", "codesign", "SLUNDER_SIGN", "Authenticode", "notariz"):
+            self.assertNotIn(banned.lower(), source.lower(), banned)
+        self.assertFalse(hasattr(self.build_script, "sign_executables"))
 
-    def test_signing_uses_thumbprint_when_configured(self):
-        exe = Path("dist/SlunderStudio/SlunderStudio.exe")
-        run_result = mock.Mock(returncode=0, stdout="", stderr="")
-        with mock.patch.object(self.build_script.sys, "platform", "win32"), \
-                mock.patch.object(self.build_script.shutil, "which", return_value="signtool"), \
-                mock.patch.object(self.build_script.subprocess, "run", return_value=run_result) as run, \
-                mock.patch.dict(
-                    self.build_script.os.environ,
-                    {"SLUNDER_SIGN_CERT_SHA1": "ABC123"},
-                    clear=True,
-                ):
-            signed = self.build_script.sign_executables([exe])
+    def test_version_comes_from_the_single_source(self):
+        from core.version import APP_VERSION, APP_NAME
 
-        self.assertEqual(signed, [exe])
-        args = run.call_args.args[0]
-        self.assertIn("/sha1", args)
-        self.assertIn("ABC123", args)
-        self.assertEqual(args[-1], str(exe))
+        self.assertEqual(self.build_script.APP_VERSION, APP_VERSION)
+        self.assertEqual(self.build_script.APP_NAME, APP_NAME)
+
+    def test_artifact_names_carry_version_and_platform(self):
+        zip_name = self.build_script.onedir_zip_path().name
+        self.assertIn(self.build_script.APP_VERSION, zip_name)
+        self.assertIn(self.build_script.platform_tag(), zip_name)
+
+    def test_executable_name_matches_the_platform(self):
+        with mock.patch.object(self.build_script.sys, "platform", "win32"):
+            self.assertEqual(self.build_script.executable_name(), "SlunderStudio.exe")
+        with mock.patch.object(self.build_script.sys, "platform", "linux"):
+            self.assertEqual(self.build_script.executable_name(), "SlunderStudio")
 
     def test_smoke_launch_requires_single_process_and_cleans_up(self):
         exe = Path("dist/SlunderStudio/SlunderStudio.exe")
@@ -133,13 +130,38 @@ class BuildArtifactTests(unittest.TestCase):
     def test_process_ids_for_exe_embeds_escaped_powershell_path(self):
         exe = Path("dist/SlunderStudio/SlunderStudio.exe")
         run_result = mock.Mock(returncode=0, stdout="42\n43\n", stderr="")
-        with mock.patch.object(self.build_script.subprocess, "run", return_value=run_result) as run:
+        with mock.patch.object(self.build_script.sys, "platform", "win32"), \
+                mock.patch.object(self.build_script.subprocess, "run", return_value=run_result) as run:
             ids = self.build_script.process_ids_for_exe(exe)
 
         self.assertEqual(ids, [42, 43])
         command = run.call_args.args[0]
         self.assertIn(str(exe), command[3])
         self.assertEqual(len(command), 4)
+
+    def test_posix_smoke_fails_when_the_app_exits_immediately(self):
+        exe = Path("dist/SlunderStudio/SlunderStudio")
+        process = mock.Mock(pid=42)
+        process.poll.return_value = 1
+        process.returncode = 1
+        with mock.patch.object(self.build_script.sys, "platform", "linux"), \
+                mock.patch.object(self.build_script.subprocess, "Popen", return_value=process), \
+                mock.patch.object(self.build_script.time, "sleep"), \
+                mock.patch.object(self.build_script, "process_ids_for_exe", return_value=[42]):
+            with self.assertRaises(RuntimeError):
+                self.build_script.smoke_launch(exe, seconds=0)
+        process.terminate.assert_called_once()
+
+    def test_posix_smoke_passes_for_a_single_live_process(self):
+        exe = Path("dist/SlunderStudio/SlunderStudio")
+        process = mock.Mock(pid=42)
+        process.poll.return_value = None
+        with mock.patch.object(self.build_script.sys, "platform", "linux"), \
+                mock.patch.object(self.build_script.subprocess, "Popen", return_value=process), \
+                mock.patch.object(self.build_script.time, "sleep"), \
+                mock.patch.object(self.build_script, "process_ids_for_exe", return_value=[42]):
+            self.build_script.smoke_launch(exe, seconds=0)
+        process.terminate.assert_called_once()
 
 
 if __name__ == "__main__":

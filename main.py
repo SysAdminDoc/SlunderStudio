@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Slunder Studio v0.1.29
+Slunder Studio
 Offline AI Music Generation Suite
 
 Run: python main.py
@@ -13,7 +13,7 @@ import os
 import traceback
 from typing import Sequence
 
-APP_VERSION = "0.1.29"
+from core.version import APP_VERSION
 
 
 def _is_frozen() -> bool:

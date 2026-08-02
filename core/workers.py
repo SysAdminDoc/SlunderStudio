@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.29 — Threading & Worker System
+Slunder Studio — Threading & Worker System
 InferenceWorker base class, WorkflowQueue for multi-step pipelines,
 cancellation support, and progress aggregation.
 """

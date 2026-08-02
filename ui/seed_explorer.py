@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.29 — Seed Interpolation Explorer
+Slunder Studio — Seed Interpolation Explorer
 2D grid where each cell represents a generation with varying parameters.
 Progressive generation, click to play, star favorites, zoom into regions.
 """

@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.30 — DAWproject Export
+Slunder Studio — DAWproject Export
 Generates cross-DAW .dawproject archives (ZIP containing project.xml,
 metadata.xml, and referenced media files).
 """

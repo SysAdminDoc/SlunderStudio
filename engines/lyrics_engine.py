@@ -1,5 +1,5 @@
 """
-Slunder Studio v0.1.29 — Lyrics Engine
+Slunder Studio — Lyrics Engine
 Verified local GGUF inference through llama-cpp-python.
 Supports streaming token output, model loading via Model Manager, and generation pipeline.
 """
