@@ -55,13 +55,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
   Acceptance: Large-file analysis keeps the UI responsive, reports stage progress, cancels cleanly, caches by content hash plus analyzer version, and never applies a stale result to a newer selection.
   Complexity: S
 
-- [ ] P2 — Use the DiffSinger model's actual frame timing
-  Why: F0 frame-to-time mapping uses an approximation unrelated to the active model hop size.
-  Evidence: `engines/diffsinger_engine.py:255-280`; DiffSinger model/config contract.
-  Touches: `engines/diffsinger_engine.py`, model profile metadata, alignment fixtures.
-  Acceptance: Timing derives from the loaded model sample rate/hop configuration; known pitch events align within one frame across supported profiles and invalid metadata fails explicitly.
-  Complexity: S
-
 - [ ] P2 — Complete UI localization with pseudolocale and RTL gates
   Why: The catalog/helper exist, but most views remain hard-coded English and there is no runtime locale control.
   Evidence: `core/i18n.py`, `assets/locales/en.json`, limited `tr()` call sites; ACE-Step/RVC multilingual UIs and Qt translation support.

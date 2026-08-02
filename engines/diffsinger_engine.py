@@ -64,6 +64,8 @@ class DiffSingerEngine:
         self._session = None
         self._config = None
         self._model_path: Optional[str] = None
+        self._sample_rate = 0
+        self._hop_size = 0
         self._phonemizer = None
         self._output_dir = os.path.join(get_config_dir(), "generations", "vocals")
         os.makedirs(self._output_dir, exist_ok=True)
@@ -81,17 +83,11 @@ class DiffSingerEngine:
             if progress_callback:
                 progress_callback(0.1, "Loading DiffSinger model...")
 
-            # Load config
-            config_path = os.path.join(os.path.dirname(model_path), "dsconfig.yaml")
-            if os.path.isfile(config_path):
-                try:
-                    import yaml
-                    with open(config_path) as f:
-                        self._config = yaml.safe_load(f)
-                except ImportError:
-                    self._config = {}
-            else:
-                self._config = {}
+            self._config = self._read_model_config(model_path)
+            # Frame timing must come from the model, not an assumption.
+            self._sample_rate, self._hop_size = self._resolve_frame_timing(
+                self._config, model_path
+            )
 
             if progress_callback:
                 progress_callback(0.4, "Creating inference session...")
@@ -114,6 +110,88 @@ class DiffSingerEngine:
             self._session = None
             raise RuntimeError(f"Failed to load DiffSinger: {e}") from e
 
+    # ── Model frame timing ─────────────────────────────────────────────────────
+
+    # Keys used by DiffSinger / OpenUtau ONNX model configs.
+    SAMPLE_RATE_KEYS = ("audio_sample_rate", "sample_rate", "sampling_rate")
+    HOP_SIZE_KEYS = ("hop_size", "hop_length", "hop")
+
+    @staticmethod
+    def _read_model_config(model_path: str) -> dict:
+        """Read the model's config from any of its documented filenames."""
+        directory = os.path.dirname(model_path)
+        for name in ("dsconfig.yaml", "dsconfig.yml", "config.yaml", "config.json"):
+            path = os.path.join(directory, name)
+            if not os.path.isfile(path):
+                continue
+            try:
+                if name.endswith(".json"):
+                    import json
+
+                    with open(path, encoding="utf-8") as handle:
+                        data = json.load(handle)
+                else:
+                    import yaml
+
+                    with open(path, encoding="utf-8") as handle:
+                        data = yaml.safe_load(handle)
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                return data
+        return {}
+
+    @classmethod
+    def _resolve_frame_timing(cls, config: dict, model_path: str) -> tuple[int, int]:
+        """Return (sample_rate, hop_size) from the model config.
+
+        Fails explicitly rather than guessing: a wrong hop size silently
+        misplaces every pitch event.
+        """
+        def _lookup(keys):
+            for key in keys:
+                if key in config:
+                    return config[key]
+            return None
+
+        raw_rate = _lookup(cls.SAMPLE_RATE_KEYS)
+        raw_hop = _lookup(cls.HOP_SIZE_KEYS)
+        if raw_rate is None or raw_hop is None:
+            raise RuntimeError(
+                "DiffSinger model config is missing frame timing "
+                f"({', '.join(cls.SAMPLE_RATE_KEYS)} and "
+                f"{', '.join(cls.HOP_SIZE_KEYS)}) for {os.path.basename(model_path)}. "
+                "Reinstall the model with its dsconfig."
+            )
+        try:
+            sample_rate = int(raw_rate)
+            hop_size = int(raw_hop)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"DiffSinger model config has non-numeric frame timing: {exc}"
+            ) from exc
+        if sample_rate <= 0 or hop_size <= 0:
+            raise RuntimeError(
+                "DiffSinger model config declares an invalid frame timing "
+                f"(sample_rate={sample_rate}, hop_size={hop_size})."
+            )
+        return sample_rate, hop_size
+
+    @property
+    def frame_period_sec(self) -> float:
+        """Seconds per model frame, from the loaded model's own configuration."""
+        sample_rate = getattr(self, "_sample_rate", 0)
+        hop_size = getattr(self, "_hop_size", 0)
+        if not sample_rate or not hop_size:
+            raise RuntimeError(
+                "DiffSinger frame timing is unavailable; load a model first."
+            )
+        return hop_size / sample_rate
+
+    def time_to_frame(self, seconds: float) -> int:
+        """Convert a time in seconds to the model's frame index."""
+        return int(round(max(0.0, float(seconds)) / self.frame_period_sec))
+
     def _init_phonemizer(self):
         """Initialize text-to-phoneme converter."""
         try:
@@ -131,6 +209,8 @@ class DiffSingerEngine:
         self._session = None
         self._config = None
         self._model_path = None
+        self._sample_rate = 0
+        self._hop_size = 0
 
     def synthesize(self, params: SingParams,
                    progress_callback: Optional[Callable] = None) -> SingResult:
@@ -247,12 +327,26 @@ class DiffSingerEngine:
 
         return notes
 
+    def build_f0_curve(self, notes: list[dict], n_frames: int) -> np.ndarray:
+        """Frame-aligned F0 curve for the model's own frame rate."""
+        n_frames = max(int(n_frames), 1)
+        f0 = np.zeros((1, n_frames), dtype=np.float32)
+        for note in notes:
+            freq = 440.0 * (2.0 ** ((note["pitch"] - 69) / 12.0))
+            start_frame = self.time_to_frame(note["start"])
+            end_frame = self.time_to_frame(note["end"])
+            start_frame = max(0, min(n_frames - 1, start_frame))
+            end_frame = max(start_frame + 1, min(n_frames, end_frame))
+            f0[0, start_frame:end_frame] = freq
+        return f0
+
     def _prepare_inputs(self, phonemes: list[str], notes: list[dict],
                         params: SingParams) -> dict:
         """Prepare ONNX model inputs."""
-        # This is a simplified input preparation
-        # Real implementation depends on specific DiffSinger model variant
-        n_frames = max(len(phonemes), len(notes)) * 10  # approximate
+        # Frame count follows the model's own frame period, so a note at t
+        # seconds lands on frame round(t / frame_period).
+        total_seconds = max((note["end"] for note in notes), default=0.0)
+        n_frames = max(self.time_to_frame(total_seconds), 1)
 
         inputs = {}
         input_names = [inp.name for inp in self._session.get_inputs()]
@@ -270,15 +364,7 @@ class DiffSingerEngine:
             inputs["durations"] = np.array([durations], dtype=np.int64)
 
         if "f0" in input_names:
-            f0 = np.zeros((1, n_frames), dtype=np.float32)
-            for note in notes:
-                freq = 440.0 * (2.0 ** ((note["pitch"] - 69) / 12.0))
-                start_frame = int(note["start"] / (n_frames * 0.01))
-                end_frame = int(note["end"] / (n_frames * 0.01))
-                start_frame = max(0, min(n_frames - 1, start_frame))
-                end_frame = max(start_frame + 1, min(n_frames, end_frame))
-                f0[0, start_frame:end_frame] = freq
-            inputs["f0"] = f0
+            inputs["f0"] = self.build_f0_curve(notes, n_frames)
 
         if "speedup" in input_names:
             inputs["speedup"] = np.array([10], dtype=np.int64)
