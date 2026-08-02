@@ -131,17 +131,7 @@ class AudioEngine(QObject):
             return loaded
         except Exception:
             logger.exception("Failed to load audio file %s", file_path)
-            self._clear_loaded_audio()
             return False
-
-    def _clear_loaded_audio(self):
-        """Stop playback and discard a track that failed to load."""
-        self.stop()
-        with self._lock:
-            self._audio_data = None
-            self._source_path = None
-            self._loop_start = 0
-            self._loop_end = 0
 
     def load_array(self, data: np.ndarray, sample_rate: int) -> bool:
         """Load a NumPy array for playback. Shape: (samples,) or (samples, channels)."""
@@ -203,49 +193,12 @@ class AudioEngine(QObject):
 
         channels = self._audio_data.shape[1] if self._audio_data.ndim > 1 else 1
 
-        def _callback(outdata, frames, time_info, status):
-            with self._lock:
-                if self._is_paused or not self._is_playing:
-                    outdata[:] = 0
-                    return
-
-                audio_end = len(self._audio_data)
-                if self._loop_enabled and self._loop_end > 0:
-                    audio_end = min(audio_end, self._loop_end)
-
-                remaining = audio_end - self._position
-
-                if remaining <= 0:
-                    if self._loop_enabled:
-                        self._position = self._loop_start
-                        remaining = audio_end - self._position
-                    else:
-                        outdata[:] = 0
-                        self._is_playing = False
-                        raise _sd.CallbackStop()
-
-                end = self._position + frames
-
-                if end > audio_end:
-                    available = audio_end - self._position
-                    chunk = self._audio_data[self._position:self._position + available]
-                    outdata[:available] = chunk * self._volume
-                    outdata[available:] = 0
-
-                    if self._loop_enabled:
-                        self._position = self._loop_start
-                    else:
-                        self._position = audio_end
-                else:
-                    outdata[:] = self._audio_data[self._position:end] * self._volume
-                    self._position = end
-
         try:
             self._stream = _sd.OutputStream(
                 samplerate=self._sample_rate,
                 channels=channels,
                 dtype="float32",
-                callback=_callback,
+                callback=self._callback,
                 blocksize=1024,
             )
             self._stream.start()
@@ -254,6 +207,49 @@ class AudioEngine(QObject):
         except Exception:
             logger.exception("Audio playback failed")
             self._is_playing = False
+
+    def _callback(self, outdata, frames, time_info=None, status=None):
+        """Fill one sounddevice output block from the current transport state."""
+        del time_info, status
+        with self._lock:
+            if self._audio_data is None or self._is_paused or not self._is_playing:
+                outdata[:] = 0
+                return
+
+            audio_end = len(self._audio_data)
+            if self._loop_enabled and self._loop_end > 0:
+                audio_end = min(audio_end, self._loop_end)
+
+            remaining = audio_end - self._position
+            if remaining <= 0:
+                if self._loop_enabled:
+                    self._position = self._loop_start
+                else:
+                    outdata[:] = 0
+                    self._is_playing = False
+                    raise _sd.CallbackStop()
+
+            written = 0
+            while written < frames:
+                remaining = audio_end - self._position
+                if remaining <= 0:
+                    if self._loop_enabled:
+                        self._position = self._loop_start
+                        continue
+                    outdata[written:] = 0
+                    self._position = audio_end
+                    break
+
+                available = min(frames - written, remaining)
+                end = self._position + available
+                outdata[written:written + available] = (
+                    self._audio_data[self._position:end] * self._volume
+                )
+                self._position = end
+                written += available
+
+                if self._loop_enabled and self._position >= audio_end:
+                    self._position = self._loop_start
 
     def pause(self):
         """Pause playback."""

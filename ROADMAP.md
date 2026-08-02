@@ -120,26 +120,6 @@ therefore new work, not a pre-existing red build.
 
 ### P3
 
-- [ ] P3 — `core/audio_engine.py` has no test coverage at all
-  Category: testing
-  Where: `core/audio_engine.py` (entire file); no file under `tests/` imports it
-  Problem: Trash restore, dawproject export and job recovery on restart are all genuinely well
-    covered (`tests/test_recoverable_trash.py`, `tests/test_dawproject_export.py`,
-    `tests/test_job_state.py::test_stale_active_jobs_become_recoverable_on_startup`), but audio
-    playback is not — `grep audio_engine tests/` returns nothing. Untested logic includes the
-    stream `_callback` (loop wrap at `_loop_end`, end-of-buffer zero fill, `CallbackStop`, volume
-    scaling, pause zeroing — `:192-227`), `seek` clamping, `set_loop` region math and
-    `_generate_waveform`. The playback-finished race and the silent `load_file` failure logged
-    above both live in this untested file.
-  Fix: Add `tests/test_audio_engine.py`. Refactor `_callback` into a testable method (or call
-    `play()` with `sounddevice` mocked and drive the captured callback with a preallocated
-    `outdata`), then assert loop wrap-around, tail zero fill, `CallbackStop` at end, pause
-    behavior, `seek` clamping, `format_time`, and `load_file` returning False without mutating
-    previously loaded audio.
-  Acceptance: The new test file passes and covers each behavior above.
-  Confidence: Verified
-  Effort: M
-
 - [ ] P3 — Dead `AudioEngine.save_to_file` duplicates the real export path and needs an undeclared dependency
   Category: maintainability
   Where: `core/audio_engine.py:309-353`

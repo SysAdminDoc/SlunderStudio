@@ -33,17 +33,20 @@ class AudioPlaybackFailureTests(unittest.TestCase):
     def setUpClass(cls):
         cls._app = QApplication.instance() or QApplication([])
 
-    def test_failed_file_load_discards_previous_track(self):
+    def test_failed_file_load_preserves_previous_track(self):
         engine = AudioEngine()
-        engine.load_array(np.zeros((16, 2), dtype=np.float32), 8000)
+        data = np.arange(32, dtype=np.float32).reshape(16, 2)
+        engine.load_array(data, 8000)
+        engine.seek(0.5)
+        before_position = engine.position
 
         with mock.patch.object(audio_engine, "_ensure_audio_libs"), mock.patch.object(
             audio_engine, "_sf", _FailingSoundFile
         ):
             self.assertFalse(engine.load_file("missing.wav"))
 
-        self.assertIsNone(engine._audio_data)
-        self.assertIsNone(engine._source_path)
+        np.testing.assert_array_equal(engine._audio_data, data)
+        self.assertEqual(before_position, engine.position)
 
     def test_callback_end_emits_playback_finished_once(self):
         engine = AudioEngine()
