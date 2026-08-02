@@ -118,25 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — The main status bar is permanently hidden but updated every two seconds
-  Category: maintainability
-  Where: `ui/main_window.py:390-400` (built, then `self._status_bar.hide()`), `:593-619`
-    (`_update_gpu_status` writes `_gpu_status_label`, `_vram_label` and `showMessage`)
-  Problem: `show()` is never called on the status bar anywhere in the repo, and
-    `QStatusBar.showMessage` does not unhide it. The 2-second GPU timer keeps updating three
-    widgets and a message the user can never see, including the VRAM percentage colour coding,
-    "Active model: X" and "CUDA not available — running on CPU". The command bar duplicates part of
-    this, but the active-model name and the VRAM percentage exist only in the dead status bar —
-    and accessibility names are installed on invisible widgets (`:403-412`).
-  Evidence: `grep -n "_status_bar" ui/main_window.py` shows construction, two `addPermanentWidget`
-    calls, `hide()` at `:400`, and three `showMessage` calls — and no `show()`.
-  Fix: Either show the status bar or delete it and move "Active model" and VRAM% into the command
-    bar; stop updating hidden widgets either way.
-  Acceptance: Either the status bar is visible and its content is reachable, or the widgets and
-    their update code are gone; no timer writes to a hidden widget.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P2 — `_clean_pycache()` deletes every bytecode cache on every launch, including when frozen
   Category: perf
   Where: `main.py:106-117`

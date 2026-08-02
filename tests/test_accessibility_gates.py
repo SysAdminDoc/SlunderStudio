@@ -137,6 +137,12 @@ class ContrastGateTests(unittest.TestCase):
         )
         self.assertEqual(offenders, [])
 
+    def test_status_bar_is_visible_and_updated_surface_is_reachable(self):
+        source = (ROOT / "ui" / "main_window.py").read_text(encoding="utf-8")
+        self.assertIn("self._status_bar.show()", source)
+        self.assertNotIn("self._status_bar.hide()", source)
+        self.assertIn("self._status_bar.showMessage", source)
+
 
 class InlineButtonContrastTests(unittest.TestCase):
     _STATE_RULE = re.compile(

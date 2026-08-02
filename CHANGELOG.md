@@ -4,6 +4,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
+  surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked
   colors, and added WCAG coverage for base, hover, and disabled states.
 - Added a bounded piano-roll undo history for note deletion, quantize, swing, humanize, and CC

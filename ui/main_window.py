@@ -388,6 +388,7 @@ class MainWindow(QMainWindow):
 
         # Status bar
         self._status_bar = QStatusBar()
+        self._status_bar.setObjectName("statusBar")
         self.setStatusBar(self._status_bar)
 
         self._gpu_status_label = QLabel(tr("status.gpu_detecting"))
@@ -397,9 +398,14 @@ class MainWindow(QMainWindow):
         self._vram_label = QLabel("")
         self._vram_label.setStyleSheet(f"font-size: 11px; color: {Palette.BLUE};")
         self._status_bar.addPermanentWidget(self._vram_label)
-        self._status_bar.hide()
+        self._status_bar.show()
         self._on_page_selected(0)
         set_accessible(self, tr("app.accessible_name"), tr("app.accessible_description"))
+        set_accessible(
+            self._status_bar,
+            "Application status",
+            "Shows GPU, VRAM, and active model status.",
+        )
         set_accessible(
             self._gpu_status_label,
             tr("status.gpu_accessible_name"),
