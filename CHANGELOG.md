@@ -6,6 +6,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 - Removed the unconditional startup `__pycache__` purge so Python can reuse valid bytecode caches
   on subsequent launches.
+- Cached successful and failed torch availability probes and deferred the initial GPU status update
+  until the UI event loop is running.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

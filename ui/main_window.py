@@ -594,7 +594,6 @@ class MainWindow(QMainWindow):
         self._gpu_timer = QTimer(self)
         self._gpu_timer.timeout.connect(self._update_gpu_status)
         self._gpu_timer.start(2000)
-        self._update_gpu_status()
 
     def _update_gpu_status(self):
         """Update GPU status in the status bar."""

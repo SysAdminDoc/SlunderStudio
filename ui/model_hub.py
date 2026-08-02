@@ -577,6 +577,8 @@ class ModelHubView(QWidget):
         # Only the initial page load may classify active records as interrupted.
         self._job_store.recover_stale_jobs()
         self._refresh_all_cards()
+        # Let the shell paint before the first GPU probe touches torch.
+        QTimer.singleShot(0, self._update_gpu_display)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -711,7 +713,6 @@ class ModelHubView(QWidget):
         for model_id, card in self._cards.items():
             status = self._mgr.get_status(model_id)
             card.update_status(status)
-        self._update_gpu_display()
         self._update_disk_display()
         self._update_recovery_banner()
 

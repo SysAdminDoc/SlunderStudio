@@ -118,23 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — The GPU status poll imports torch on the GUI thread and retries a failed import every two seconds
-  Category: perf
-  Where: `ui/main_window.py:586-591` (`_start_gpu_monitor` calls `_update_gpu_status()`
-    synchronously from `__init__`); `core/model_manager.py:487-505` (`get_gpu_info` does
-    `import torch` per call)
-  Problem: With a torch profile installed, the first status update runs `import torch` — seconds of
-    DLL loading — on the GUI thread before the window's first paint, a visible startup freeze.
-    Without torch, Python does not cache the failed import, so the `sys.path` scan repeats every
-    two seconds for the life of the process.
-  Fix: Resolve torch availability once and cache the result (including a negative sentinel), and
-    run the first poll from the timer rather than synchronously in the constructor; or move the
-    probe to a worker thread.
-  Acceptance: `import torch` happens at most once per process from this path, and not before the
-    main window is shown.
-  Confidence: Verified (code path); the freeze magnitude needs a repro with torch installed
-  Effort: S
-
 - [ ] P2 — `--onefile` builds can never pass the smoke gate
   Category: build
   Where: `build/build.py:315-333` (`_smoke_launch_windows`, `len(ids) != 1`), `:336-357`

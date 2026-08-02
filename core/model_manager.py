@@ -486,11 +486,28 @@ MODEL_RUNTIME_PACKAGES: dict[str, tuple[tuple[str, str], ...]] = {
 
 # ── GPU Utilities ──────────────────────────────────────────────────────────────
 
+_TORCH_MODULE_UNSET = object()
+_torch_module_cache: Any = _TORCH_MODULE_UNSET
+
+
+def _get_torch_module():
+    """Import torch at most once, retaining a failed-import sentinel."""
+    global _torch_module_cache
+    if _torch_module_cache is _TORCH_MODULE_UNSET:
+        try:
+            import torch
+        except (ImportError, OSError):
+            _torch_module_cache = None
+        else:
+            _torch_module_cache = torch
+    return _torch_module_cache
+
+
 def get_gpu_info() -> dict:
     """Get GPU VRAM info. Returns dict with total_gb, used_gb, free_gb, name."""
     try:
-        import torch
-        if torch.cuda.is_available():
+        torch = _get_torch_module()
+        if torch is not None and torch.cuda.is_available():
             props = torch.cuda.get_device_properties(0)
             total = props.total_memory / (1024**3)
             reserved = torch.cuda.memory_reserved(0) / (1024**3)
@@ -519,8 +536,8 @@ def get_gpu_info() -> dict:
 def cleanup_gpu():
     """Aggressive GPU memory cleanup."""
     try:
-        import torch
-        if torch.cuda.is_available():
+        torch = _get_torch_module()
+        if torch is not None and torch.cuda.is_available():
             gc.collect()
             torch.cuda.empty_cache()
             torch.cuda.synchronize()

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from core.audio_export import trim_audio
+from core import model_manager
 from core.job_state import JobStore
 from core.model_manager import get_gpu_info
 from core.project import Project, ProjectAsset
@@ -36,13 +37,29 @@ class GpuProbeTests(unittest.TestCase):
         )
 
     def test_gpu_info_uses_torch_total_memory(self):
-        with mock.patch.dict("sys.modules", {"torch": self.torch}):
+        with mock.patch.object(model_manager, "_torch_module_cache", self.torch):
             info = get_gpu_info()
 
         self.assertTrue(info["available"])
         self.assertEqual(info["name"], "Fake CUDA GPU")
         self.assertEqual(info["total_gb"], 8.0)
         self.assertEqual(info["free_gb"], 6.0)
+
+    def test_gpu_info_caches_a_failed_torch_import(self):
+        with (
+            mock.patch.object(model_manager, "_torch_module_cache", model_manager._TORCH_MODULE_UNSET),
+            mock.patch("builtins.__import__", side_effect=ImportError("torch unavailable")) as importer,
+        ):
+            first = get_gpu_info()
+            second = get_gpu_info()
+
+        torch_imports = [
+            call for call in importer.call_args_list
+            if call.args and call.args[0] == "torch"
+        ]
+        self.assertEqual(1, len(torch_imports))
+        self.assertFalse(first["available"])
+        self.assertFalse(second["available"])
 
     def test_onboarding_system_check_uses_torch_total_memory(self):
         with mock.patch.dict("sys.modules", {"torch": self.torch}):
