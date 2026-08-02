@@ -116,24 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — FluidSynth failure silently ships a sine-wave "render" as a real one
-  Category: correctness
-  Where: `engines/fluidsynth_engine.py:355-366` (`except Exception: pass`);
-    `ui/midi_studio_view.py:736-746`
-  Problem: Any FluidSynth error — bad SoundFont, missing pyfluidsynth DLL, init failure — is
-    swallowed by a bare `except Exception: pass` and the sine fallback runs instead. The UI then
-    reports `"Rendered: {output_path}"`, loads the waveform and enables "Send to Song Forge" /
-    "Add Vocals", routing a beep preview into downstream production. Only the provenance sidecar
-    records `output_kind: demo`. This is exactly the false-success class that v0.1.6 hardened
-    elsewhere ("fail closed unless demo output is explicitly requested").
-  Evidence: The bare except and the unconditional success string, both traced.
-  Fix: Surface the fallback in the status ("Preview render (sine) — FluidSynth unavailable:
-    <reason>") and gate routing behind an explicit demo opt-in, matching the SFX/MIDI contract.
-  Acceptance: Extend `tests/test_demo_output_contract.py` — with FluidSynth raising, the render
-    either fails closed or is labelled demo in the UI status, and the routing buttons stay disabled.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P1 — Three primary buttons do nothing: Vocal Suite "Export WAV", Seed Explorer "Export Starred", and every per-item Play
   Category: ux
   Where: `ui/vocal_suite_view.py:142-153` and `:2169-2171` (`_on_export`);

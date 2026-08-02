@@ -77,6 +77,7 @@ class MidiStudioView(QWidget):
         self._midi_data: Optional[MidiData] = None
         self._rendered_audio = None
         self._current_audio_path: Optional[str] = None
+        self._rendered_output_kind = ""
         self._model_mgr = ModelManager()
         self._generation_worker: Optional[InferenceWorker] = None
         self._contract_result: Optional[EngineRunResult] = None
@@ -618,6 +619,7 @@ class MidiStudioView(QWidget):
         self._update_info()
         self._rendered_audio = None
         self._current_audio_path = None
+        self._rendered_output_kind = ""
         self._to_forge_btn.setEnabled(False)
         self._to_vocals_btn.setEnabled(False)
 
@@ -712,6 +714,11 @@ class MidiStudioView(QWidget):
             return
 
         self._render_btn.setEnabled(False)
+        self._rendered_audio = None
+        self._current_audio_path = None
+        self._rendered_output_kind = ""
+        self._to_forge_btn.setEnabled(False)
+        self._to_vocals_btn.setEnabled(False)
         self._status.setText("Rendering audio...")
 
         try:
@@ -728,22 +735,41 @@ class MidiStudioView(QWidget):
             muted = self._mixer.get_muted_tracks()
             solo = self._mixer.get_solo_track()
 
-            audio = render_midi_to_audio(
+            render_result = render_midi_to_audio(
                 self._midi_data,
                 output_path=output_path,
+                return_metadata=True,
             )
+            if hasattr(render_result, "audio"):
+                audio = render_result.audio
+                output_kind = render_result.output_kind
+                fallback_reason = render_result.fallback_reason
+            else:
+                # Keep compatibility with third-party/test adapters returning
+                # the historical ndarray-only result.
+                audio = render_result
+                output_kind = "export"
+                fallback_reason = ""
 
             self._rendered_audio = audio
             self._current_audio_path = output_path
+            self._rendered_output_kind = output_kind
 
             # Load into waveform view
             if audio is not None and len(audio) > 0:
                 self._waveform.load_audio(audio, 44100)
                 self._tabs.setCurrentIndex(1)  # Switch to rendered audio tab
 
-            self._to_forge_btn.setEnabled(True)
-            self._to_vocals_btn.setEnabled(True)
-            self._status.setText(f"Rendered: {output_path}")
+            is_demo = output_kind == "demo"
+            self._to_forge_btn.setEnabled(not is_demo)
+            self._to_vocals_btn.setEnabled(not is_demo)
+            if is_demo:
+                reason = fallback_reason or "FluidSynth was unavailable"
+                self._status.setText(
+                    f"Preview render (sine) — FluidSynth unavailable: {reason}"
+                )
+            else:
+                self._status.setText(f"Rendered: {output_path}")
 
         except Exception as e:
             self._status.setText(f"Render error: {e}")
@@ -753,11 +779,11 @@ class MidiStudioView(QWidget):
     # ── Cross-Module Routing ───────────────────────────────────────────────────
 
     def _on_send_to_forge(self):
-        if self._current_audio_path:
+        if self._current_audio_path and self._rendered_output_kind != "demo":
             self.send_to_forge.emit(self._current_audio_path)
 
     def _on_send_to_vocals(self):
-        if self._current_audio_path:
+        if self._current_audio_path and self._rendered_output_kind != "demo":
             self.send_to_vocals.emit(self._current_audio_path)
 
     # ── External API ───────────────────────────────────────────────────────────

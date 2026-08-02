@@ -33,6 +33,18 @@ class RenderSettings:
     chorus_level: float = 2.0
 
 
+@dataclass
+class MidiRenderResult:
+    """Audio plus truthful renderer metadata for UI and routing decisions."""
+    audio: np.ndarray
+    output_kind: str = "export"
+    fallback_reason: str = ""
+
+    @property
+    def is_demo(self) -> bool:
+        return self.output_kind == "demo"
+
+
 class FluidSynthEngine:
     """
     FluidSynth wrapper for MIDI-to-audio rendering.
@@ -357,17 +369,32 @@ def get_fluidsynth() -> FluidSynthEngine:
 def render_midi_to_audio(midi_data: MidiData,
                          soundfont_path: Optional[str] = None,
                          output_path: Optional[str] = None,
-                         progress_callback: Optional[Callable] = None) -> np.ndarray:
+                         progress_callback: Optional[Callable] = None,
+                         return_metadata: bool = False) -> np.ndarray | MidiRenderResult:
     """
-    Render MIDI to audio. Uses FluidSynth if available, falls back to sine waves.
+    Render MIDI to audio. Uses FluidSynth if available, otherwise returns an
+    explicitly marked sine-wave preview when metadata is requested.
     Called by InferenceWorker.
     """
+    fallback_reason = ""
+
+    def _result(audio: np.ndarray, output_kind: str = "export"):
+        if return_metadata:
+            return MidiRenderResult(
+                audio=audio,
+                output_kind=output_kind,
+                fallback_reason=fallback_reason,
+            )
+        return audio
+
     # Try FluidSynth
     try:
         engine = get_fluidsynth()
         sf_path = soundfont_path or get_default_soundfont()
 
-        if sf_path and os.path.isfile(sf_path):
+        if not sf_path or not os.path.isfile(sf_path):
+            fallback_reason = "no SoundFont was found"
+        else:
             if not engine.is_ready:
                 engine.initialize(sf_path)
 
@@ -379,11 +406,13 @@ def render_midi_to_audio(midi_data: MidiData,
                 with wave_mod.open(output_path, "r") as wf:
                     frames = wf.readframes(wf.getnframes())
                     audio = np.frombuffer(frames, dtype=np.int16).reshape(-1, 2)
-                    return audio.astype(np.float32) / 32768.0
+                    return _result(audio.astype(np.float32) / 32768.0)
 
-            return engine.render_to_numpy(midi_data, progress_callback=progress_callback)
-    except Exception:
-        pass  # Fall through to simple renderer
+            return _result(
+                engine.render_to_numpy(midi_data, progress_callback=progress_callback)
+            )
+    except Exception as exc:
+        fallback_reason = f"{type(exc).__name__}: {exc}"
 
     # Fallback
     if progress_callback:
@@ -417,4 +446,4 @@ def render_midi_to_audio(midi_data: MidiData,
             output_kind="demo",
         )
 
-    return audio
+    return _result(audio, output_kind="demo")

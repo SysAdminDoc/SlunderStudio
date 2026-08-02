@@ -1,4 +1,5 @@
 import os
+import os
 import tempfile
 import unittest
 import wave
@@ -6,6 +7,11 @@ from unittest.mock import patch
 
 import numpy as np
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtWidgets import QApplication
+
+from core.midi_utils import MidiData
 from engines.rvc_engine import (
     GPTSoVITSEngine,
     RVCEngine,
@@ -14,6 +20,8 @@ from engines.rvc_engine import (
 )
 from engines.sfx_engine import SFXEngine, SFXParams
 from engines.ai_producer import AIProducer, ProducerBrief, PipelineStage
+from engines.fluidsynth_engine import MidiRenderResult, render_midi_to_audio
+from ui.midi_studio_view import MidiStudioView
 
 
 def _write_wav(path: str, duration: float = 12.0, sample_rate: int = 24000):
@@ -28,6 +36,55 @@ def _write_wav(path: str, duration: float = 12.0, sample_rate: int = 24000):
 
 
 class DemoOutputContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._app = QApplication.instance() or QApplication([])
+
+    def test_fluidsynth_failure_marks_sine_preview_as_demo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_path = os.path.join(tmp, "preview.wav")
+            with patch(
+                "engines.fluidsynth_engine.get_fluidsynth",
+                side_effect=RuntimeError("FluidSynth DLL missing"),
+            ):
+                result = render_midi_to_audio(
+                    MidiData(),
+                    output_path=output_path,
+                    return_metadata=True,
+                )
+
+            self.assertIsInstance(result, MidiRenderResult)
+            self.assertTrue(result.is_demo)
+            self.assertIn("FluidSynth DLL missing", result.fallback_reason)
+            self.assertTrue(os.path.isfile(output_path))
+
+    def test_midi_view_disables_routing_for_sine_preview(self):
+        view = MidiStudioView()
+        try:
+            view._midi_data = MidiData()
+            preview = MidiRenderResult(
+                audio=np.zeros((128, 2), dtype=np.float32),
+                output_kind="demo",
+                fallback_reason="RuntimeError: FluidSynth DLL missing",
+            )
+            with tempfile.TemporaryDirectory() as tmp:
+                with patch(
+                    "core.settings.get_config_dir",
+                    return_value=tmp,
+                ), patch(
+                    "engines.fluidsynth_engine.render_midi_to_audio",
+                    return_value=preview,
+                ):
+                    view._on_render()
+
+            self.assertIn("Preview render (sine)", view._status.text())
+            self.assertIn("FluidSynth DLL missing", view._status.text())
+            self.assertFalse(view._to_forge_btn.isEnabled())
+            self.assertFalse(view._to_vocals_btn.isEnabled())
+        finally:
+            view.close()
+            self._app.processEvents()
+
     def test_sfx_requires_explicit_demo_when_model_is_unloaded(self):
         engine = SFXEngine()
 
