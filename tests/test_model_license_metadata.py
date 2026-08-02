@@ -57,6 +57,16 @@ class ModelLicenseMetadataTests(unittest.TestCase):
         finally:
             card.deleteLater()
 
+    def test_model_card_does_not_claim_pinning_for_package_managed_models(self):
+        app = QApplication.instance() or QApplication([])
+        card = ModelCard(BUILTIN_MODELS["diffsinger"])
+        try:
+            self.assertNotIn("Pinned", card._trust_label.text())
+            self.assertIn("Package-managed", card._trust_label.text())
+            self.assertIn("no pinned revision", card._trust_label.text())
+        finally:
+            card.deleteLater()
+
     def test_model_card_description_is_not_clipped_and_has_full_tooltip(self):
         app = QApplication.instance() or QApplication([])
         info = BUILTIN_MODELS["stable-audio-open"]

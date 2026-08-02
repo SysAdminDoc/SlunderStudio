@@ -14,6 +14,8 @@ All notable changes to SlunderStudio will be documented in this file.
   keyboard mnemonics in visible section headings and buttons.
 - Let Model Hub descriptions grow naturally with word wrapping and expose the full copy in a
   tooltip, preventing fixed-height cards from slicing through long descriptions.
+- Made Model Hub trust copy conditional so package-managed models no longer claim a pinned
+  revision or hashed model cache.
 - Wired Vocal Suite WAV export, Seed Explorer starred variation export with provenance sidecars,
   SFX card playback, and Stem Mixer per-stem playback to their real audio effects.
 - Prevented failed batch and seed playback loads from replaying stale audio, routed load failures

@@ -118,24 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Model Hub claims a pinned revision and hashed cache for models that have neither
-  Category: correctness
-  Where: `ui/model_hub.py:252`
-  Problem: The provenance line is
-    `f"Pinned {self.info.revision[:12]} - hashed local cache - reviewed registry source"`. For
-    pip-managed entries with no revision — DiffSinger is one — this renders as
-    "Pinned  - hashed local cache - reviewed registry source", asserting a pinned immutable
-    revision and a hashed cache that do not exist for that model. The whole point of the v0.1.7
-    manifest work is that this line is trustworthy.
-  Evidence: Observed in the rendered Model Hub: the DiffSinger card shows the line with an empty
-    revision and a double space.
-  Fix: Build the line conditionally — omit the "Pinned" clause when `revision` is empty, and say
-    what actually applies to pip-managed models.
-  Acceptance: A test asserting the provenance line for a revision-less registry entry does not
-    contain "Pinned".
-  Confidence: Verified (rendered)
-  Effort: S
-
 - [ ] P2 — Piano roll destructive edits have no undo
   Category: ux
   Where: `ui/piano_roll.py:296-305` (delete selected), `:697-735` (quantize / swing / humanize,

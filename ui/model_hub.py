@@ -251,10 +251,23 @@ class ModelCard(QFrame):
         else:
             self._license_warning = None
 
-        trust_text = (
-            f"Pinned {self.info.revision[:12]} - hashed local cache - "
-            f"{'reviewed registry source' if self.info.trusted_source else 'untrusted source'}"
+        trust_status = (
+            "reviewed registry source"
+            if self.info.trusted_source
+            else "untrusted source"
         )
+        if self.info.revision:
+            trust_text = (
+                f"Pinned {self.info.revision[:12]} - hashed local cache - "
+                f"{trust_status}"
+            )
+        elif self.info.pip_managed:
+            trust_text = (
+                f"Package-managed - no pinned revision or model cache hash - "
+                f"{trust_status}"
+            )
+        else:
+            trust_text = f"No pinned revision or model cache hash - {trust_status}"
         trust = QLabel(trust_text)
         trust.setWordWrap(True)
         trust.setStyleSheet(f"font-size: 10px; color: {Palette.SUBTEXT0};")
