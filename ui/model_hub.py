@@ -23,6 +23,7 @@ from core.model_manager import (
     ModelStatus,
     OfflineModeError,
 )
+from core.credentials import CredentialError
 from core.settings import Settings
 from core.workers import DownloadWorker, InferenceWorker
 from core.job_state import JobStatus, JobStore
@@ -811,9 +812,19 @@ class ModelHubView(QWidget):
             if not token:
                 dlg = HFTokenDialog(info.name, info.source, parent=self)
                 if dlg.exec() == QDialog.DialogCode.Accepted and dlg.token:
-                    Settings().set("model_hub.hf_token", dlg.token)
+                    try:
+                        Settings().set("model_hub.hf_token", dlg.token)
+                    except CredentialError as exc:
+                        if self.toast_mgr:
+                            self.toast_mgr.error(
+                                f"Token not saved: {exc}"
+                            )
+                        return
                     if self.toast_mgr:
-                        self.toast_mgr.success("HuggingFace token saved!")
+                        store = Settings().credential_store
+                        self.toast_mgr.success(
+                            f"HuggingFace token saved to {store.backend_name}."
+                        )
                 else:
                     return
 

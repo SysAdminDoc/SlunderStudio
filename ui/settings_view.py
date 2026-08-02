@@ -16,7 +16,8 @@ from ui.accessibility import install_accessibility
 from core.diagnostics import export_health_report
 from core.i18n import language_code_from_label, language_combo_items, language_label, tr
 from core.mastering import LUFS_TARGETS
-from core.settings import Settings, APP_VERSION
+from core.credentials import CredentialError
+from core.settings import Settings, APP_VERSION, SECRET_SETTING_KEYS
 
 
 class SettingRow(QHBoxLayout):
@@ -191,6 +192,11 @@ class SettingsView(QWidget):
             self._hf_token,
             tr("settings.gpu.hf_token_help"),
         ))
+
+        self._credential_status = QLabel()
+        self._credential_status.setWordWrap(True)
+        self._credential_status.setObjectName("credentialStatus")
+        gpu_layout.addWidget(self._credential_status)
 
         layout.addWidget(gpu_group)
 
@@ -468,11 +474,28 @@ class SettingsView(QWidget):
             for w in _widgets:
                 w.blockSignals(False)
         self._update_repair_status()
+        self._refresh_credential_status()
 
     def _save(self, key: str, value):
         """Save a setting and show toast."""
-        self._settings.set(key, value)
+        try:
+            self._settings.set(key, value)
+        except CredentialError as exc:
+            if self.toast_mgr:
+                self.toast_mgr.error(f"{key} was not saved: {exc}")
+            self._update_repair_status()
+            self._refresh_credential_status()
+            return
         self._update_repair_status()
+        if key in SECRET_SETTING_KEYS:
+            self._refresh_credential_status()
+            if self.toast_mgr:
+                store = self._settings.credential_store
+                self.toast_mgr.success(
+                    f"Saved to {store.backend_name}."
+                    if value else "Stored secret cleared."
+                )
+            return
         # Toast for important changes only
         if self.toast_mgr and key in (
             "general.audio_format",
@@ -494,6 +517,26 @@ class SettingsView(QWidget):
         self._update_repair_status()
         if self.toast_mgr:
             self.toast_mgr.warning(tr("settings.messages.reset"))
+
+    def _refresh_credential_status(self):
+        """Name the credential service in use, or state plainly that there is none."""
+        status = self._settings.credential_backend_status()
+        if status.get("available"):
+            text = (
+                f"Secrets are stored in {status.get('name')}. "
+                "They are never written to config JSON, backups, or diagnostics."
+            )
+            self._credential_status.setProperty("state", "ok")
+        else:
+            detail = (status.get("detail") or "").strip()
+            lead = "No OS credential service is available, so secrets cannot be stored."
+            text = lead if detail in ("", lead) else f"{lead} {detail}"
+            self._credential_status.setProperty("state", "warning")
+        self._credential_status.setText(text)
+        color = Palette.SUBTEXT0 if status.get("available") else Palette.YELLOW
+        self._credential_status.setStyleSheet(
+            f"color: {color}; font-size: 11px; padding: 2px 0;"
+        )
 
     def _update_repair_status(self):
         status = self._settings.repair_status

@@ -35,13 +35,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Move Hugging Face credentials to the OS credential service
-  Why: The token is stored in plaintext config and copied into timestamped backups.
-  Evidence: `ui/model_hub.py:646-652`, `ui/settings_view.py:186-191`, `core/settings.py:235-244,407-417`; InvokeAI token/config security release.
-  Touches: credential abstraction, Settings, Model Hub, config migration/redaction, diagnostics and backup tests.
-  Acceptance: New tokens never enter JSON, logs, diagnostics, or backups; Windows Credential Manager, macOS Keychain, and Linux Secret Service are supported with a clear unavailable-backend state; legacy copies are detected and removed after confirmed migration.
-  Complexity: M
-
 - [ ] P1 — Add interval autosave and restorable project versions
   Why: Settings promise an autosave interval, snapshots are list-only, and users cannot compare or restore a version.
   Evidence: `core/settings.py:42`, `core/project.py:465-488`, `ui/project_manager.py:248-275`; Suno Studio, Udio Sessions, Moises, and Ableton recovery.

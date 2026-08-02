@@ -16,6 +16,12 @@ APP_NAME = "SlunderStudio"
 APP_VERSION = "0.1.30"
 SETTINGS_SCHEMA_VERSION = 3
 
+# Settings keys whose values are secrets. They are never written to config
+# JSON; reads and writes go to the OS credential service instead.
+SECRET_SETTING_KEYS: dict[str, str] = {
+    "model_hub.hf_token": "huggingface-token",
+}
+
 
 @dataclass
 class RepairStatus:
@@ -181,6 +187,9 @@ class Settings:
         self._callbacks: list = []
         self._config_path = get_config_dir() / "config.json"
         self._repair_status = RepairStatus()
+        # Secret keys whose plaintext could not be moved into a credential
+        # service; their JSON copy is preserved so the user can still act on it.
+        self._unmigrated_secrets: set[str] = set()
         self.load()
 
     def load(self):
@@ -219,10 +228,116 @@ class Settings:
             self._data["model_hub"]["cache_dir"] = str(get_default_cache_dir())
             should_save = True
 
+        if self._migrate_secrets():
+            should_save = True
+
         self._data["schema_version"] = SETTINGS_SCHEMA_VERSION
         self._data["version"] = APP_VERSION
         if should_save:
             self.save(create_backup=False)
+
+    # ── Secret migration ───────────────────────────────────────────────────────
+
+    def _migrate_secrets(self) -> bool:
+        """Move plaintext secrets out of config JSON into the OS credential store.
+
+        The plaintext copy — and the copies inside timestamped backups — are only
+        removed once the credential service confirms the value can be read back.
+        """
+        changed = False
+        store = self.credential_store
+        self._unmigrated_secrets = set()
+        for key, account in SECRET_SETTING_KEYS.items():
+            keys = key.split(".")
+            target = self._data
+            for part in keys[:-1]:
+                if not isinstance(target, dict) or part not in target:
+                    target = None
+                    break
+                target = target[part]
+            if not isinstance(target, dict):
+                continue
+            plaintext = target.get(keys[-1])
+            if not isinstance(plaintext, str) or not plaintext.strip():
+                # An empty placeholder is still a key we do not want in JSON.
+                if keys[-1] in target:
+                    target.pop(keys[-1], None)
+                    changed = True
+                continue
+
+            plaintext = plaintext.strip()
+            try:
+                store.set_secret(account, plaintext)
+                confirmed = store.get_secret(account) == plaintext
+            except Exception as exc:
+                confirmed = False
+                self._repair_status.messages.append(
+                    f"Could not move {key} into the OS credential service: {exc}"
+                )
+
+            if not confirmed:
+                self._unmigrated_secrets.add(key)
+                self._repair_status.status = "error"
+                self._repair_status.messages.append(
+                    f"{key} is still stored in plaintext because no OS credential "
+                    f"service is available ({store.status().detail}). Clear it in "
+                    "Settings > GPU & Models, or install a credential service."
+                )
+                continue
+
+            target.pop(keys[-1], None)
+            changed = True
+            self._repair_status.status = (
+                "migrated" if self._repair_status.status == "ok"
+                else self._repair_status.status
+            )
+            self._repair_status.messages.append(
+                f"Moved {key} into {store.backend_name} and removed the plaintext copy."
+            )
+            removed = self._purge_secret_from_backups(key)
+            if removed:
+                self._repair_status.messages.append(
+                    f"Removed {key} from {removed} settings backup(s)."
+                )
+        return changed
+
+    def _purge_secret_from_backups(self, key: str) -> int:
+        """Strip a secret key from existing timestamped config backups."""
+        backup_dir = self._config_path.parent / "backups"
+        if not backup_dir.is_dir():
+            return 0
+        keys = key.split(".")
+        cleaned = 0
+        for path in sorted(backup_dir.glob(f"{self._config_path.name}.*")):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, IOError, OSError, UnicodeDecodeError):
+                self._repair_status.messages.append(
+                    f"Backup {path.name} could not be read; delete it manually if it "
+                    f"may contain {key}."
+                )
+                continue
+            target = data
+            for part in keys[:-1]:
+                if not isinstance(target, dict) or part not in target:
+                    target = None
+                    break
+                target = target[part]
+            if not isinstance(target, dict) or keys[-1] not in target:
+                continue
+            target.pop(keys[-1], None)
+            try:
+                tmp = path.with_name(path.name + ".tmp")
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                os.replace(tmp, path)
+                cleaned += 1
+            except (IOError, OSError) as exc:
+                self._repair_status.messages.append(
+                    f"Could not rewrite backup {path.name}: {exc}"
+                )
+        return cleaned
 
     @property
     def repair_status(self) -> dict:
@@ -238,6 +353,11 @@ class Settings:
         try:
             self._data["schema_version"] = SETTINGS_SCHEMA_VERSION
             self._data["version"] = APP_VERSION
+            # Belt and braces: no secret reaches the JSON file or a backup unless
+            # it is a legacy value we could not move into a credential service.
+            for secret_key in SECRET_SETTING_KEYS:
+                if secret_key not in self._unmigrated_secrets:
+                    self._strip_secret_key(secret_key)
             self._config_path.parent.mkdir(parents=True, exist_ok=True)
             if create_backup:
                 backup = self._backup_file(self._config_path, "pre-save")
@@ -251,11 +371,76 @@ class Settings:
             self._repair_status.status = "error"
             self._repair_status.messages.append(f"Config save failed: {exc}")
 
+    # ── Secrets ────────────────────────────────────────────────────────────────
+
+    @property
+    def credential_store(self):
+        from core.credentials import get_credential_store
+        return get_credential_store()
+
+    def credential_backend_status(self) -> dict:
+        """Report which OS credential service is in use, or why none is."""
+        return self.credential_store.status().as_dict()
+
+    def get_secret(self, key: str, default: str = "") -> str:
+        account = SECRET_SETTING_KEYS.get(key)
+        if account is None:
+            raise KeyError(f"{key} is not a registered secret setting")
+        stored = self.credential_store.get_secret(account)
+        if stored:
+            return stored
+        if key in self._unmigrated_secrets:
+            # Migration failed for lack of a credential service. The plaintext
+            # copy stays readable so the user can use or clear it.
+            return self._read_plain_key(key) or default
+        return default
+
+    def _read_plain_key(self, key: str) -> str:
+        value = self._data
+        for part in key.split("."):
+            if not isinstance(value, dict) or part not in value:
+                return ""
+            value = value[part]
+        return value if isinstance(value, str) else ""
+
+    def set_secret(self, key: str, value: str):
+        """Store a secret in the OS credential service. Never touches JSON."""
+        account = SECRET_SETTING_KEYS.get(key)
+        if account is None:
+            raise KeyError(f"{key} is not a registered secret setting")
+        store = self.credential_store
+        old = self.get_secret(key, "")
+        value = (value or "").strip()
+        if value:
+            store.set_secret(account, value)
+        else:
+            store.delete_secret(account)
+        # Any stale plaintext copy is authoritative no longer.
+        self._unmigrated_secrets.discard(key)
+        self._strip_secret_key(key)
+        if old != value:
+            self._notify(key, value, old)
+
+    def _strip_secret_key(self, key: str) -> bool:
+        """Remove a secret key from in-memory config. Returns True if present."""
+        keys = key.split(".")
+        target = self._data
+        for k in keys[:-1]:
+            if not isinstance(target, dict) or k not in target:
+                return False
+            target = target[k]
+        if isinstance(target, dict) and keys[-1] in target:
+            target.pop(keys[-1], None)
+            return True
+        return False
+
     def get(self, key: str, default: Any = None) -> Any:
         """
         Get a setting by dotted key path.
         Example: settings.get('lyrics.temperature') -> 0.8
         """
+        if key in SECRET_SETTING_KEYS:
+            return self.get_secret(key, default if isinstance(default, str) else "")
         keys = key.split(".")
         value = self._data
         for k in keys:
@@ -270,6 +455,11 @@ class Settings:
         Set a setting by dotted key path. Auto-saves and fires callbacks.
         Example: settings.set('lyrics.temperature', 0.9)
         """
+        if key in SECRET_SETTING_KEYS:
+            self.set_secret(key, value)
+            if save:
+                self.save()
+            return
         keys = key.split(".")
         target = self._data
         for k in keys[:-1]:
@@ -302,10 +492,13 @@ class Settings:
             self._notify(section, self._data[section], None)
 
     def reset_all(self):
-        """Reset all settings to defaults."""
+        """Reset all settings to defaults, including stored secrets."""
         self._data = copy.deepcopy(DEFAULTS)
         self._data["general"]["output_dir"] = str(get_default_output_dir())
         self._data["model_hub"]["cache_dir"] = str(get_default_cache_dir())
+        store = self.credential_store
+        for account in SECRET_SETTING_KEYS.values():
+            store.delete_secret(account)
         self.save()
         self._notify("*", self._data, None)
 

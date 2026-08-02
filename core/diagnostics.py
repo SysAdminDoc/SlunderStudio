@@ -99,7 +99,9 @@ def collect_health_report(
             "private_job_inputs_included": bool(include_private),
             "hf_tokens_redacted": True,
             "local_paths_redacted": True,
+            "secrets_in_os_credential_service": True,
         },
+        "credential_service": _credential_service_info(settings),
         "app": _app_info(replacements),
         "schemas": {
             "settings": SETTINGS_SCHEMA_VERSION,
@@ -388,6 +390,27 @@ def _crash_log_info(
     except OSError:
         info["read_error"] = True
     return info
+
+
+def _credential_service_info(settings: Settings) -> dict[str, Any]:
+    """Report the credential backend without ever touching the secret itself."""
+    try:
+        status = settings.credential_backend_status()
+    except Exception as exc:
+        return {"available": False, "name": "unknown", "detail": f"{type(exc).__name__}: {exc}"}
+    stored = {}
+    from core.settings import SECRET_SETTING_KEYS
+    for key in SECRET_SETTING_KEYS:
+        try:
+            stored[key] = bool(settings.get_secret(key))
+        except Exception:
+            stored[key] = False
+    return {
+        "available": bool(status.get("available")),
+        "name": status.get("name", "unknown"),
+        "detail": status.get("detail", ""),
+        "secrets_present": stored,
+    }
 
 
 def _redaction_replacements(settings: Settings) -> list[tuple[str, str]]:

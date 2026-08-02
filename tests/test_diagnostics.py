@@ -17,6 +17,7 @@ from core.diagnostics import (
     format_health_report_text,
     redact_text,
 )
+from core.credentials import MemoryCredentialStore
 from core.job_state import JobStore
 from core.model_manager import ModelManager
 from core.settings import Settings
@@ -183,6 +184,11 @@ class DiagnosticsTests(unittest.TestCase):
         stack.enter_context(mock.patch("core.model_manager.get_config_dir", return_value=config_dir))
         stack.enter_context(mock.patch("core.diagnostics.get_config_dir", return_value=config_dir))
         stack.enter_context(mock.patch("core.diagnostics.get_trash_dir", return_value=trash_dir))
+        # Never write test secrets into the real OS credential service.
+        stack.enter_context(mock.patch(
+            "core.credentials.get_credential_store",
+            return_value=MemoryCredentialStore(),
+        ))
         return stack
 
 
