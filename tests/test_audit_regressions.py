@@ -14,6 +14,7 @@ from core.model_manager import get_gpu_info
 from core.project import Project, ProjectAsset
 from core.settings import Settings
 from core.voice_bank import VoiceBank, VoiceProfile
+from core.workers import InferenceWorker
 from engines.ai_producer import AIProducer, ProducerBrief, PipelineStage
 from engines.ace_step_engine import ACEStepEngine, GenerationResult, generate_song
 from engines.lyrics_engine import LyricsLLM, generate_lyrics
@@ -231,12 +232,94 @@ class AiProducerPipelineShortCircuitTests(unittest.TestCase):
 
 
 class JobStoreLockInstanceTests(unittest.TestCase):
-    def test_separate_stores_have_separate_locks(self):
+    def test_stores_share_the_process_job_lock(self):
         with tempfile.TemporaryDirectory() as tmp1:
             with tempfile.TemporaryDirectory() as tmp2:
                 store1 = JobStore(Path(tmp1))
                 store2 = JobStore(Path(tmp2))
-                self.assertIsNot(store1._lock, store2._lock)
+                self.assertIs(store1._lock, store2._lock)
+
+    def test_concurrent_store_updates_do_not_lose_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store_a = JobStore(root)
+            store_b = JobStore(root)
+            job_a = store_a.create("generation", "A")
+            job_b = store_b.create("generation", "B")
+            store_a.mark_running(job_a.id)
+            store_b.mark_running(job_b.id)
+
+            progress_read = threading.Event()
+            release_progress = threading.Event()
+            complete_read = threading.Event()
+            errors: list[BaseException] = []
+            original_a_read = store_a._read
+            original_b_read = store_b._read
+
+            def blocked_progress_read():
+                records = original_a_read()
+                progress_read.set()
+                if not release_progress.wait(timeout=2):
+                    raise AssertionError("timed out waiting to release progress update")
+                return records
+
+            def observed_complete_read():
+                complete_read.set()
+                return original_b_read()
+
+            store_a._read = blocked_progress_read
+            store_b._read = observed_complete_read
+
+            def run_progress():
+                try:
+                    store_a.update_progress(job_a.id, 45, "progress")
+                except BaseException as exc:  # pragma: no cover - surfaced below
+                    errors.append(exc)
+
+            def run_complete():
+                try:
+                    store_b.mark_completed(job_b.id, {"path": "B.wav"})
+                except BaseException as exc:  # pragma: no cover - surfaced below
+                    errors.append(exc)
+
+            progress_thread = threading.Thread(target=run_progress)
+            complete_thread = threading.Thread(target=run_complete)
+            progress_thread.start()
+            self.assertTrue(progress_read.wait(timeout=2))
+            complete_thread.start()
+            self.assertFalse(complete_read.wait(timeout=0.2))
+            release_progress.set()
+            progress_thread.join(timeout=2)
+            complete_thread.join(timeout=2)
+
+            self.assertFalse(progress_thread.is_alive())
+            self.assertFalse(complete_thread.is_alive())
+            self.assertEqual(errors, [])
+            self.assertEqual(store_a.get(job_a.id).status, "running")
+            self.assertEqual(store_b.get(job_b.id).status, "completed")
+
+
+class JobProgressPersistenceTests(unittest.TestCase):
+    def test_worker_throttles_ledger_progress_but_emits_every_tick(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp))
+            worker = InferenceWorker(
+                lambda **_kwargs: None,
+                job_kind="song_generation",
+                job_label="Progress throttle",
+                job_store=store,
+            )
+            emitted: list[int] = []
+            worker.progress.connect(emitted.append)
+
+            with mock.patch("core.workers.time.monotonic", side_effect=[10.0, 10.01, 10.11]):
+                with mock.patch.object(store, "update_progress", wraps=store.update_progress) as update:
+                    worker._emit_progress(10)
+                    worker._emit_progress(20)
+                    worker._emit_progress(30)
+
+            self.assertEqual([call.args[1] for call in update.call_args_list], [10, 30])
+            self.assertEqual(emitted, [10, 20, 30])
 
 
 if __name__ == "__main__":

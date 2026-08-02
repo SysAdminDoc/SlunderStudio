@@ -37,6 +37,11 @@ ACTIVE_STATUSES = {
     JobStatus.CANCEL_REQUESTED,
 }
 
+# All JobStore instances in this process may point at the same ledger.  A
+# process-wide re-entrant lock keeps read-modify-write updates atomic across
+# workers and views that each construct their own store instance.
+_JOB_STORE_LOCK = threading.RLock()
+
 
 @dataclass
 class JobRecord:
@@ -74,7 +79,7 @@ class JobStore:
         root: Optional[Path] = None,
         cleanup_roots: Optional[Iterable[Path | str]] = None,
     ):
-        self._lock = threading.RLock()
+        self._lock = _JOB_STORE_LOCK
         self.root = Path(root) if root is not None else get_config_dir() / "jobs"
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "jobs.json"
@@ -112,13 +117,14 @@ class JobStore:
         status: Optional[str | Iterable[str]] = None,
         kind: Optional[str] = None,
     ) -> list[JobRecord]:
-        records = self._read()
-        if status is not None:
-            statuses = {status} if isinstance(status, str) else set(status)
-            records = [record for record in records if record.status in statuses]
-        if kind is not None:
-            records = [record for record in records if record.kind == kind]
-        return sorted(records, key=lambda record: record.updated_at, reverse=True)
+        with self._lock:
+            records = self._read()
+            if status is not None:
+                statuses = {status} if isinstance(status, str) else set(status)
+                records = [record for record in records if record.status in statuses]
+            if kind is not None:
+                records = [record for record in records if record.kind == kind]
+            return sorted(records, key=lambda record: record.updated_at, reverse=True)
 
     def mark_running(self, job_id: str, message: str = "") -> Optional[JobRecord]:
         return self._update(

@@ -4,6 +4,7 @@ InferenceWorker base class, WorkflowQueue for multi-step pipelines,
 cancellation support, and progress aggregation.
 """
 import threading
+import time
 import traceback
 from typing import Any, Callable, Optional
 from collections import deque
@@ -11,6 +12,9 @@ from collections import deque
 from PySide6.QtCore import QThread, Signal, QObject, QTimer
 
 from core.job_state import JobLog, JobStore, extract_output_paths
+
+
+JOB_PROGRESS_PERSIST_INTERVAL = 0.1
 
 
 class CancelledJobError(RuntimeError):
@@ -69,6 +73,7 @@ class InferenceWorker(QThread):
         self._job_store = job_store or JobStore()
         self._job_record = None
         self.job_id = ""
+        self._last_job_progress_persisted_at = 0.0
         self._job_log: Optional[JobLog] = None
         if job_kind:
             self._job_record = self._job_store.create(
@@ -190,7 +195,10 @@ class InferenceWorker(QThread):
 
     def _emit_progress(self, pct: int):
         if self.job_id:
-            self._job_store.update_progress(self.job_id, pct)
+            now = time.monotonic()
+            if now - self._last_job_progress_persisted_at >= JOB_PROGRESS_PERSIST_INTERVAL:
+                self._job_store.update_progress(self.job_id, pct)
+                self._last_job_progress_persisted_at = now
         self.progress.emit(pct)
 
     def _emit_step(self, message: str):
@@ -250,6 +258,7 @@ class DownloadWorker(QThread):
         self.model_id = model_id
         self._cancel_event = threading.Event()
         self._job_store = job_store or JobStore()
+        self._last_job_progress_persisted_at = 0.0
         self._job_record = self._job_store.create(
             "model_download",
             model_name or model_id,
@@ -301,7 +310,10 @@ class DownloadWorker(QThread):
         self._job_store.request_cancel(self.job_id)
 
     def _emit_progress(self, pct: int):
-        self._job_store.update_progress(self.job_id, pct)
+        now = time.monotonic()
+        if now - self._last_job_progress_persisted_at >= JOB_PROGRESS_PERSIST_INTERVAL:
+            self._job_store.update_progress(self.job_id, pct)
+            self._last_job_progress_persisted_at = now
         self.progress.emit(pct)
 
 

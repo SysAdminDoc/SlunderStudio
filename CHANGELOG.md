@@ -4,6 +4,7 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-07-29
 
+- Serialized `JobStore` writes across all in-process workers and throttled durable progress updates without throttling live progress signals.
 - Fixed CUDA VRAM diagnostics to use PyTorch's `total_memory` attribute, so GPU status polling and onboarding no longer crash on CUDA systems.
 - Fixed repeated ACE-Step and lyrics generation by using the canonical model object returned by `ModelManager`, with type validation at the managed-engine boundary.
 - Preserved verified ACE-Step batch and seed-grid outputs on cancellation, recorded them in the job ledger, and kept completed seed cells visible while pending cells are cancelled.

@@ -116,30 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — `JobStore` is per-instance, so concurrent workers silently lose each other's writes
-  Category: correctness
-  Where: `core/job_state.py:69-82` (per-instance `RLock`), `:290-309` (`_update` = read-all,
-    mutate, write-all); instances constructed per worker at `core/workers.py:69` and `:252`, and
-    per view at `ui/model_hub.py:547`, `ui/batch_view.py:198`
-  Problem: `JobStore` is not a singleton, so each worker and view builds its own and the
-    `threading.RLock` guards nothing across threads. Every `create`/`_update` reads the whole
-    `jobs.json`, mutates one record and rewrites the file. Two workers running at once — fully
-    supported, e.g. a model download plus a generation — interleave read/write cycles and revert
-    each other's status and progress writes. A `mark_completed` can be overwritten by the other
-    worker's in-flight `update_progress` snapshot, leaving a finished job permanently "running",
-    which then feeds the recovery logic above and the Model Hub PARTIAL heuristics
-    (`ui/model_hub.py:678-681`). Every progress tick also rewrites the entire indent=2 ledger from
-    a worker thread, and that cost grows with job history.
-  Evidence: Structural — no shared lock object and no file locking; `_write` is atomic per write
-    (`os.replace`), so the failure mode is lost updates rather than a corrupt file.
-  Fix: Make the store (or at minimum its lock plus cached record list) process-wide via a
-    module-level singleton, apply updates by id inside one lock, and throttle progress persistence.
-  Acceptance: A test driving two `JobStore()` instances from two threads — one looping
-    `update_progress` on job A while the other calls `mark_completed` on job B — ends with both
-    records correct.
-  Confidence: Verified (structural; a live repro needs two concurrent jobs)
-  Effort: M
-
 - [ ] P1 — Demucs auto-load bypasses the offline network boundary and the model trust manifest
   Category: security
   Where: `engines/demucs_engine.py:108-145` (`DemucsEngine.load_model`), `:363-380`
