@@ -116,30 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Checked and hover button states put white text on light fills, far below WCAG AA
-  Category: a11y
-  Where: `ui/stem_mixer.py:99-110` (`QPushButton:checked {{ background: {color}; color: white; }}`)
-    and `ui/mixer_view.py:164`; green hover at `ui/mixer_view.py:442`,
-    `ui/midi_studio_view.py:333`, `ui/stem_mixer.py:237`, `ui/vocal_suite_view.py:149`,
-    `ui/vocal_suite_view.py:1079`
-  Problem: Hand-styled Mute/Solo/Play buttons paint 9-12px bold white text on pastel checked
-    backgrounds. The active state — the one the user most needs to read — is the unreadable one.
-    Measured with the repo's own `ui/contrast.py`: white on `#f9e2af` 1.27, `#a6e3a1` 1.49,
-    `#fab387` 1.77, `#cba6f7` 2.03, `#89b4fa` 2.11, `#f38ba8` 2.32, `#d29922` (mixer Solo) 2.52,
-    `#2ea043` (green hover) 3.37. The threshold for non-large text is 4.5. Mixer Mute
-    (`#da3633`, 4.61) scrapes by; Solo does not.
-  Evidence: Ratios computed directly with `ui.contrast.contrast_ratio` against the literals in
-    those files. These literals sit outside the Palette, which is exactly why
-    `tests/test_accessibility_gates.py` — which iterates Palette token pairs — never saw them.
-  Fix: Use the theme's own convention of dark text on light accents: `color: {Palette.CRUST}` on
-    checked. Measured that way the same six stem colors give 14.95, 12.78, 10.74, 9.35, 9.02 and
-    8.21.
-  Acceptance: Extend `tests/test_accessibility_gates.py` to scan `ui/*.py` for
-    `color: white` (and raw hex text colors) inside `:checked`/`:hover` blocks and assert each
-    passes 4.5:1 against its declared background.
-  Confidence: Verified (ratios measured, not estimated)
-  Effort: S
-
 - [ ] P1 — Single-instance lock: `os.kill(pid, 0)` is not a liveness probe on Windows, and the guard disables itself after 5 minutes
   Category: reliability
   Where: `main.py:273-304` (`_acquire_lock`), specifically `:283-291`

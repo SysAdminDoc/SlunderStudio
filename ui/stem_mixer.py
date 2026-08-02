@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, Signal
 
 import numpy as np
 
-from ui.theme import ThemeEngine
+from ui.theme import Palette, ThemeEngine
 from ui.waveform_widget import MiniWaveform
 from core.panning import pan_gains
 
@@ -106,7 +106,7 @@ class StemStrip(QFrame):
                     font-size: 9px; font-weight: bold;
                 }}
                 QPushButton:hover {{ background: {t['surface_hover']}; }}
-                QPushButton:checked {{ background: {color}; color: white; border: none; }}
+                QPushButton:checked {{ background: {color}; color: {Palette.CRUST}; border: none; }}
             """)
 
         btn_row.addWidget(self._mute_btn)
@@ -234,7 +234,7 @@ class StemMixer(QWidget):
                 border-radius: 4px; padding: 5px 12px;
                 font-size: 11px; font-weight: bold;
             }}
-            QPushButton:hover {{ background: #2ea043; }}
+                QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
             QPushButton:disabled {{ background: {t['border']}; color: #555; }}
         """)
         self._remix_btn.setEnabled(False)

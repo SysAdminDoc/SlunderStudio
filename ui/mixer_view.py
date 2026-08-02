@@ -150,18 +150,24 @@ class MixerTrackStrip(QFrame):
                 font-size: 9px; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
-            QPushButton:checked {{ color: white; border: none; }}
+                QPushButton:checked {{ color: {Palette.CRUST}; border: none; }}
         """
         self._mute_btn = QPushButton("M")
         self._mute_btn.setFixedSize(24, 20)
         self._mute_btn.setCheckable(True)
-        self._mute_btn.setStyleSheet(btn_style + "QPushButton:checked { background: #da3633; }")
+        self._mute_btn.setStyleSheet(
+            btn_style
+            + f"QPushButton:checked {{ background: #da3633; color: white; }}"
+        )
         self._mute_btn.clicked.connect(self._on_mute)
 
         self._solo_btn = QPushButton("S")
         self._solo_btn.setFixedSize(24, 20)
         self._solo_btn.setCheckable(True)
-        self._solo_btn.setStyleSheet(btn_style + "QPushButton:checked { background: #d29922; }")
+        self._solo_btn.setStyleSheet(
+            btn_style
+            + f"QPushButton:checked {{ background: #d29922; color: {Palette.CRUST}; }}"
+        )
         self._solo_btn.clicked.connect(self._on_solo)
 
         self._remove_btn = QPushButton("X")
@@ -439,7 +445,7 @@ class MixerView(QWidget):
                 border-radius: 5px; padding: 6px 16px;
                 font-weight: bold; font-size: 12px;
             }}
-            QPushButton:hover {{ background: #2ea043; }}
+            QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
             QPushButton:disabled {{ background: {t['border']}; color: #555; }}
         """)
         self._master_btn.setEnabled(False)

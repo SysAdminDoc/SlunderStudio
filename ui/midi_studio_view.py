@@ -331,7 +331,7 @@ class MidiStudioView(QWidget):
                 border-radius: 5px; padding: 6px 12px;
                 font-size: 11px; font-weight: bold;
             }}
-            QPushButton:hover {{ background: #2ea043; }}
+            QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
         """)
         self._render_btn.clicked.connect(self._on_render)
 

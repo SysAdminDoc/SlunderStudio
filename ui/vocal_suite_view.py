@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
-from ui.theme import ThemeEngine
+from ui.theme import Palette, ThemeEngine
 from ui.waveform_widget import WaveformWidget
 from ui.stem_mixer import StemMixer
 from ui.accessibility import install_accessibility
@@ -147,7 +147,7 @@ class VocalSuiteView(QWidget):
                 border-radius: 5px; padding: 6px 14px;
                 font-size: 11px; font-weight: bold;
             }}
-            QPushButton:hover {{ background: #2ea043; }}
+                QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
             QPushButton:disabled {{ background: {t['border']}; color: #555; }}
         """)
         self._export_btn.setEnabled(False)
@@ -1077,7 +1077,7 @@ class VocalSuiteView(QWidget):
                 border-radius: 5px; padding: 8px 16px;
                 font-weight: bold; font-size: 11px;
             }}
-            QPushButton:hover {{ background: #2ea043; }}
+                QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
             QPushButton:disabled {{ background: {t['border']}; color: #555; }}
         """)
         self._stem_separate_btn.setEnabled(False)

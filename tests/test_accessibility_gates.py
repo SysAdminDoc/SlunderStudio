@@ -22,6 +22,7 @@ from ui.accessibility import FOCUS_RING_COLOR
 from ui.theme import Palette, build_stylesheet
 from ui.toast import ToastManager
 from ui.waveform_widget import WaveformWidget
+from ui.stem_mixer import STEM_COLORS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,6 +80,59 @@ class ContrastGateTests(unittest.TestCase):
             if "#9b8cff" in text or "#8795a5" in text:
                 offenders.append(str(path.relative_to(ROOT)))
         self.assertEqual(offenders, [])
+
+
+class InlineButtonContrastTests(unittest.TestCase):
+    _STATE_RULE = re.compile(
+        r"QPushButton(?P<state>:(?:checked|hover))\s*\{\{?"
+        r"(?P<body>(?:[^{}]|\{[^{}]*\})*)\}\}?",
+        re.S,
+    )
+    _COLOR = re.compile(
+        r"\b(?P<property>background|color)\s*:\s*"
+        r"(?P<value>#[0-9a-fA-F]{6}|white|\{Palette\.[A-Z0-9_]+\})"
+    )
+
+    @staticmethod
+    def _resolve_color(value: str) -> str | None:
+        if value.lower() == "white":
+            return "#ffffff"
+        if value.startswith("{Palette."):
+            token_name = value[len("{Palette."):-1]
+            return getattr(Palette, token_name)
+        if value.startswith("#"):
+            return value
+        return None
+
+    def test_inline_checked_and_hover_colors_meet_wcag(self):
+        failures = []
+        for path in (ROOT / "ui").glob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            for match in self._STATE_RULE.finditer(source):
+                declarations = {
+                    item.group("property"): self._resolve_color(item.group("value"))
+                    for item in self._COLOR.finditer(match.group("body"))
+                }
+                background = declarations.get("background")
+                foreground = declarations.get("color")
+                if not background or not foreground:
+                    continue
+                ratio = contrast_ratio(foreground, background)
+                if ratio < NORMAL_TEXT_RATIO:
+                    failures.append(
+                        f"{path.relative_to(ROOT)} {match.group('state')}: "
+                        f"{foreground} on {background}={ratio:.2f}"
+                    )
+
+        self.assertEqual(failures, [])
+
+    def test_stem_checked_colors_meet_wcag(self):
+        failures = [
+            f"{name}: {contrast_ratio(Palette.CRUST, color):.2f}:1"
+            for name, color in STEM_COLORS.items()
+            if contrast_ratio(Palette.CRUST, color) < NORMAL_TEXT_RATIO
+        ]
+        self.assertEqual(failures, [])
 
 
 class WaveformKeyboardTests(unittest.TestCase):
