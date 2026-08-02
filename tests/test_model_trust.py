@@ -304,6 +304,33 @@ class ModelTrustTests(unittest.TestCase):
 
             self.assertIn("unsafe local checkpoint", str(ctx.exception))
 
+    def test_rvc_rejects_untrusted_unknown_checkpoint_extensions_before_torch_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            torch_module = types.ModuleType("torch")
+            torch_module.load = MagicMock()
+            for suffix in (".pkl", ".unknown"):
+                with self.subTest(suffix=suffix):
+                    checkpoint = Path(tmp) / f"voice{suffix}"
+                    checkpoint.write_bytes(b"not a real checkpoint")
+                    profile = VoiceProfile(
+                        name="Untrusted",
+                        engine="rvc",
+                        model_path=str(checkpoint),
+                        trusted=False,
+                        owner_name="Singer",
+                        consent_status="confirmed",
+                        consent_source="Self-recorded / my voice",
+                        consent_scope="Clone + conversion",
+                        language="en",
+                        permitted_uses=["voice-conversion"],
+                    )
+
+                    with patch.dict(sys.modules, {"torch": torch_module}):
+                        with self.assertRaises(RuntimeError):
+                            RVCEngine().load_model(profile, device="cpu")
+
+            torch_module.load.assert_not_called()
+
 
     def test_offline_mode_blocks_download_model(self):
         mgr = ModelManager()

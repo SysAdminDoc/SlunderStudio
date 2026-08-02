@@ -14,7 +14,15 @@ from pathlib import Path
 
 from core.settings import get_config_dir
 
-UNSAFE_CHECKPOINT_EXTENSIONS = {".bin", ".ckpt", ".pth", ".pt"}
+UNSAFE_CHECKPOINT_EXTENSIONS = {
+    ".bin",
+    ".ckpt",
+    ".pth",
+    ".pt",
+    ".pkl",
+    ".pickle",
+    ".zip",
+}
 SAFER_CHECKPOINT_EXTENSIONS = {".onnx", ".safetensors"}
 VOICE_OPERATION_CLONE = "voice-clone"
 VOICE_OPERATION_CONVERSION = "voice-conversion"

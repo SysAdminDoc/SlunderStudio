@@ -116,29 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Voice-checkpoint trust gate is default-allow, so an unknown extension reaches `torch.load(weights_only=False)`
-  Category: security
-  Where: `engines/rvc_engine.py:261-287` (`load_voice_checkpoint`); root cause
-    `core/voice_bank.py:17` (`UNSAFE_CHECKPOINT_EXTENSIONS = {".bin", ".ckpt", ".pth", ".pt"}`)
-  Problem: The gate demands `profile.trusted` only for extensions in that deny-set. Anything else
-    that is not `.safetensors`/`.onnx` falls through to `torch.load(path, weights_only=False)` —
-    full pickle deserialization, arbitrary code execution — with no trust check at all. `.pkl` and
-    `.pickle` are absent from the set even though `core/model_manager.py:68`
-    (`PICKLE_WEIGHT_EXTENSIONS`) classifies them as pickle-backed, and `core/voice_bank.py` does no
-    extension allow-listing when a profile is created (`model_path` is any string).
-  Evidence: A voice profile whose `model_path` ends in `.pkl`, `.pickle`, `.zip` or any novel
-    extension loads through `RVCEngine.load_model -> load_voice_checkpoint` with `trusted=False`
-    and executes the pickle payload. This is a default-allow hole in the v0.1.7 hardening, which
-    the changelog describes as "blocks unsafe pickle formats unless the local profile is explicitly
-    trusted".
-  Fix: Invert to default-deny: require trust for every extension not in an explicit
-    `SAFER_CHECKPOINT_EXTENSIONS` allow-list (`.safetensors`, `.onnx`). At minimum add `.pkl`,
-    `.pickle` and `.zip` to the unsafe set.
-  Acceptance: Extend `tests/test_model_trust.py` — an untrusted profile pointing at `voice.pkl`
-    (and at `voice.unknown`) raises rather than loading, and `torch.load` is never reached.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P1 — Lyrics token streaming writes to a QWidget from the worker thread
   Category: reliability
   Where: `ui/lyrics_view.py:523, 547, 574` (`token_cb=self._editor.append_token`);

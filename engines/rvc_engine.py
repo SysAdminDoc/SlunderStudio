@@ -15,7 +15,6 @@ from core.provenance import file_sha256, write_provenance_sidecar
 from core.settings import get_config_dir
 from core.voice_bank import (
     SAFER_CHECKPOINT_EXTENSIONS,
-    UNSAFE_CHECKPOINT_EXTENSIONS,
     VOICE_OPERATION_CLONE,
     VOICE_OPERATION_CONVERSION,
     VoiceProfile,
@@ -260,12 +259,12 @@ def assess_clone_reference(
 
 def load_voice_checkpoint(profile: VoiceProfile, path: str, device: str):
     """
-    Load a voice checkpoint while enforcing local trust for pickle-backed formats.
-    PyTorch pickle checkpoints can execute code during deserialization, so local
-    .pth/.pt/.ckpt/.bin files must be explicitly trusted in the voice profile.
+    Load a voice checkpoint while enforcing local trust for executable formats.
+    Only safetensors and ONNX are safe-by-extension; every other format must be
+    explicitly trusted before it can reach pickle-backed torch.load.
     """
     ext = os.path.splitext(path)[1].lower()
-    if ext in UNSAFE_CHECKPOINT_EXTENSIONS and not profile.trusted:
+    if ext not in SAFER_CHECKPOINT_EXTENSIONS and not profile.trusted:
         raise RuntimeError(
             f"{os.path.basename(path)} is an unsafe local checkpoint format. "
             "Mark this voice profile as trusted before loading it, or use a safetensors/ONNX model."
