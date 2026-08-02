@@ -26,6 +26,8 @@ All notable changes to SlunderStudio will be documented in this file.
   export pipeline instead of an undeclared pydub dependency.
 - Replaced the eight-entry dependency stub with a hash-locked transitive Python 3.12 runtime lock,
   declared direct SciPy and tqdm usage, and added import/lock coverage plus a clean-venv suite gate.
+- Extended version consistency to inspect lock-file literals and changed build tests to verify the
+  actual PyInstaller command contains its hidden imports.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

@@ -22,8 +22,28 @@ class BuildArtifactTests(unittest.TestCase):
         self.build_script = load_build_script()
 
     def test_numpy_private_exception_module_is_bundled(self):
-        source = Path(self.build_script.__file__).read_text(encoding="utf-8")
-        self.assertIn('"numpy._core._exceptions"', source)
+        command = self.build_script.build_command(onefile=False)
+        hidden_imports = {
+            command[index + 1]
+            for index, value in enumerate(command[:-1])
+            if value == "--hidden-import"
+        }
+        self.assertIn("numpy._core._exceptions", hidden_imports)
+
+    def test_dynamic_engine_imports_reach_pyinstaller_command(self):
+        command = self.build_script.build_command(onefile=False)
+        hidden_imports = {
+            command[index + 1]
+            for index, value in enumerate(command[:-1])
+            if value == "--hidden-import"
+        }
+        self.assertTrue(
+            {
+                "engines.ace_step_engine",
+                "engines.lyrics_templates",
+                "core.audio_export",
+            }.issubset(hidden_imports)
+        )
 
     def test_clean_artifacts_removes_stale_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:

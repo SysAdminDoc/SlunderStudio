@@ -53,6 +53,44 @@ def build(onefile: bool = False, smoke: bool = True):
     os.chdir(PROJECT_ROOT)
     clean_artifacts()
 
+    cmd = build_command(onefile=onefile)
+
+    print(f"Building {APP_NAME} v{APP_VERSION}...")
+    print(f"Command: {' '.join(cmd)}")
+    print()
+
+    result = subprocess.run(cmd)
+
+    if result.returncode != 0:
+        print(f"\nBuild failed with exit code {result.returncode}")
+        sys.exit(1)
+
+    exe_path = executable_path(onefile)
+    if not exe_path.is_file():
+        print(f"\nBuild failed: expected executable was not created: {exe_path}")
+        sys.exit(1)
+
+    if smoke:
+        smoke_launch(exe_path, onefile=onefile)
+    else:
+        print("Smoke launch skipped by --no-smoke.")
+
+    artifacts = [exe_path]
+    if not onefile:
+        artifacts.append(create_onedir_zip())
+
+    checksum_path = write_checksums(artifacts)
+    if onefile:
+        print(f"\nBuild successful: {exe_path}")
+    else:
+        print(f"\nBuild successful: {onefolder_dir()}/")
+        print(f"Run: {exe_path}")
+    print(f"Checksums: {checksum_path}")
+
+
+def build_command(onefile: bool = False) -> list[str]:
+    """Construct the exact PyInstaller command used by :func:`build`."""
+
     # Collect data files
     datas = [
         ("assets/locales", "assets/locales"),
@@ -96,7 +134,6 @@ def build(onefile: bool = False, smoke: bool = True):
         "soundfile",
     ]
 
-    # Build command
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name", APP_NAME,
@@ -139,37 +176,7 @@ def build(onefile: bool = False, smoke: bool = True):
     # Entry point
     cmd.append(ENTRY_POINT)
 
-    print(f"Building {APP_NAME} v{APP_VERSION}...")
-    print(f"Command: {' '.join(cmd)}")
-    print()
-
-    result = subprocess.run(cmd)
-
-    if result.returncode != 0:
-        print(f"\nBuild failed with exit code {result.returncode}")
-        sys.exit(1)
-
-    exe_path = executable_path(onefile)
-    if not exe_path.is_file():
-        print(f"\nBuild failed: expected executable was not created: {exe_path}")
-        sys.exit(1)
-
-    if smoke:
-        smoke_launch(exe_path, onefile=onefile)
-    else:
-        print("Smoke launch skipped by --no-smoke.")
-
-    artifacts = [exe_path]
-    if not onefile:
-        artifacts.append(create_onedir_zip())
-
-    checksum_path = write_checksums(artifacts)
-    if onefile:
-        print(f"\nBuild successful: {exe_path}")
-    else:
-        print(f"\nBuild successful: {onefolder_dir()}/")
-        print(f"Run: {exe_path}")
-    print(f"Checksums: {checksum_path}")
+    return cmd
 
 
 def clean_artifacts():

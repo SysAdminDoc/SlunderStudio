@@ -48,6 +48,14 @@ class VersionConsistencyTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn(f"badge/version-{APP_VERSION}-blue", readme)
 
+    def test_lock_version_literals_match_the_single_source(self):
+        lock = (ROOT / "requirements-lock.txt").read_text(encoding="utf-8")
+        versions = re.findall(r"Slunder Studio v(\d+\.\d+\.\d+)", lock)
+        self.assertTrue(
+            all(version == APP_VERSION for version in versions),
+            f"requirements-lock version literals drifted: {versions}",
+        )
+
     def test_changelog_has_an_entry_for_this_version_or_unreleased(self):
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertTrue(
@@ -74,6 +82,22 @@ class VersionConsistencyTests(unittest.TestCase):
         self.assertEqual(build_script.APP_VERSION, APP_VERSION)
         self.assertEqual(build_script.APP_NAME, APP_NAME)
         self.assertIn(APP_VERSION, build_script.onedir_zip_path().name)
+
+    def test_build_command_contains_the_runtime_hidden_imports(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "slunder_build_for_command_test", ROOT / "build" / "build.py"
+        )
+        build_script = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(build_script)
+        command = build_script.build_command(onefile=False)
+        hidden_imports = {
+            command[index + 1]
+            for index, value in enumerate(command[:-1])
+            if value == "--hidden-import"
+        }
+        self.assertIn("numpy._core._exceptions", hidden_imports)
 
 
 if __name__ == "__main__":

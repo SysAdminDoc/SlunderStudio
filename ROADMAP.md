@@ -120,23 +120,6 @@ therefore new work, not a pre-existing red build.
 
 ### P3
 
-- [ ] P3 — Version drift the consistency test cannot see, and two tests that assert on source text
-  Category: testing
-  Where: `requirements-lock.txt:1` ("# Slunder Studio v0.1.30 — Pinned Dependencies") versus
-    `core/version.py:14` (`0.1.31`); `tests/test_version_consistency.py:12-16`;
-    `tests/test_version_consistency.py:24-26`; `tests/test_build_artifacts.py:24-26`
-  Problem: The consistency suite scans only `*.py`, the README badge and the CHANGELOG, so
-    non-Python files carrying version strings drift silently — the lock header is a live instance,
-    already one release behind. Separately, `test_numpy_private_exception_module_is_bundled` and
-    the build-artifact test assert on source-text substrings of `build.py`, so they pass even if
-    the hidden-import list never reaches the PyInstaller command line.
-  Fix: Extend the consistency test to assert any `Slunder Studio v\d+\.\d+\.\d+` literal in
-    `requirements-lock.txt` equals `APP_VERSION` (or drop the version from that header); change the
-    two build tests to assert against the constructed `cmd` list rather than the file's text.
-  Acceptance: The extended tests fail on today's `v0.1.30` header and pass once it is corrected.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P3 — `RESEARCH.md` is git-tracked despite the all-markdown-except-README ignore rule
   Category: docs
   Where: `.gitignore:14-16`; `git ls-files` shows `README.md`, `RESEARCH.md`, `ROADMAP.md`
