@@ -19,7 +19,7 @@ from engines.rvc_engine import VoiceResult
 from ui.ai_producer_view import AIProducerView
 from ui.midi_studio_view import MidiStudioView
 from ui.vocal_suite_view import VocalSuiteView
-from ui.waveform_widget import WaveformWidget
+from ui.waveform_widget import MiniWaveform, WaveformWidget
 
 
 class WaveformContractTests(unittest.TestCase):
@@ -68,6 +68,41 @@ class WaveformContractTests(unittest.TestCase):
             self.assertEqual(0.0, widget.duration)
             self.assertIn("not found", widget.last_error.lower())
             self.assertIn("Error:", widget._info_label.text())
+        finally:
+            widget.close()
+
+    def test_mini_waveform_skips_spectrogram_and_releases_source_audio(self):
+        mini = MiniWaveform()
+        try:
+            audio = np.sin(np.linspace(0, 20 * np.pi, 4096)).astype(np.float32)
+            with patch("librosa.feature.melspectrogram") as melspectrogram:
+                self.assertTrue(mini.load_audio(audio, 8000))
+
+            melspectrogram.assert_not_called()
+            self.assertTrue(mini._waveform.has_audio)
+            self.assertIsNone(mini._waveform._audio_data)
+        finally:
+            mini.close()
+
+    def test_spectrogram_is_lazy_and_cached_for_each_load(self):
+        widget = WaveformWidget()
+        try:
+            import librosa
+
+            audio = np.sin(np.linspace(0, 20 * np.pi, 4096)).astype(np.float32)
+            original = librosa.feature.melspectrogram
+            with patch(
+                "librosa.feature.melspectrogram",
+                side_effect=original,
+            ) as melspectrogram:
+                self.assertTrue(widget.load_audio(audio, 8000))
+                melspectrogram.assert_not_called()
+
+                widget._set_mode("spectrogram")
+                self.assertEqual(1, melspectrogram.call_count)
+                widget._set_mode("waveform")
+                widget._set_mode("spectrogram")
+                self.assertEqual(1, melspectrogram.call_count)
         finally:
             widget.close()
 

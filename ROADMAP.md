@@ -118,27 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Every waveform load computes a full-track mel spectrogram on the GUI thread, including 60px thumbnails
-  Category: perf
-  Where: `ui/waveform_widget.py:293` (`_display_audio` calls `_update_spectrogram`
-    unconditionally), `:306-347`, `:482-506` (`MiniWaveform`)
-  Problem: `_display_audio` always runs `librosa.feature.melspectrogram` plus `power_to_db` over
-    the full-resolution mono signal — even when the widget is in waveform mode and the spectrogram
-    is never opened, and even for `MiniWaveform`, which is a fixed 60px-high thumbnail whose
-    spectrogram view is unreachable (`show_controls=False`). `MiniWaveform` is used per mixer
-    strip, per SFX card, per batch card and per seed cell, so populating a batch grid pays N full
-    mel spectrograms up front — and again on every dynamic-EQ preview toggle, which reloads each
-    strip's waveform (`ui/mixer_view.py:736-742`). Each widget also retains its full `_audio_data`
-    array, so a large grid holds many full-length float32 copies alive.
-  Evidence: The call is unconditional; `MiniWaveform` wraps the full widget.
-  Fix: Compute the spectrogram lazily on first switch to spectrogram mode and cache it per load;
-    skip it entirely when `show_controls=False`; drop `_audio_data` after building the display
-    arrays in thumbnail mode.
-  Acceptance: A test asserting `melspectrogram` is not called during `MiniWaveform.load_audio`, and
-    is called at most once when the spectrogram view is opened twice.
-  Confidence: Verified
-  Effort: M
-
 - [ ] P2 — Readiness and disk-usage scans run on the GUI thread on every keystroke and status change
   Category: perf
   Where: `ui/vocal_suite_view.py:309` and `:849` (`textChanged` -> `_refresh_capability_states`) ->

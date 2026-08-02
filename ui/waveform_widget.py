@@ -41,6 +41,8 @@ class WaveformWidget(QWidget):
     def __init__(self, parent=None, show_controls: bool = True):
         super().__init__(parent)
         self._audio_data = None
+        self._has_audio = False
+        self._spectrogram_ready = False
         self._sample_rate = 48000
         self._duration = 0.0
         self._playback_pos = 0.0  # seconds
@@ -148,6 +150,8 @@ class WaveformWidget(QWidget):
 
     def _set_mode(self, mode: str):
         self._mode = mode
+        if mode == "spectrogram":
+            self._ensure_spectrogram()
         if HAS_PYQTGRAPH:
             self._stack.setCurrentIndex(0 if mode == "waveform" else 1)
         if self._show_controls and hasattr(self, "_waveform_btn"):
@@ -262,7 +266,9 @@ class WaveformWidget(QWidget):
         return np.ascontiguousarray(data)
 
     def _display_audio(self, audio: np.ndarray, sample_rate: int) -> None:
-        self._audio_data = audio
+        self._audio_data = audio if self._show_controls else None
+        self._has_audio = True
+        self._spectrogram_ready = False
         self._sample_rate = sample_rate
         self._last_error = ""
 
@@ -278,19 +284,16 @@ class WaveformWidget(QWidget):
         max_points = 10000
         if len(mono) > max_points:
             step = int(np.ceil(len(mono) / max_points))
-            display = mono[::step]
+            display = mono[::step].copy()
         else:
             step = 1
-            display = mono
+            display = mono.copy()
 
         time_axis = np.arange(len(display), dtype=np.float64) * step / sample_rate
 
         self._waveform_curve.setData(time_axis, display)
         self._waveform_plot.setXRange(0, self._duration)
         self._waveform_plot.setYRange(-1, 1)
-
-        # Update spectrogram
-        self._update_spectrogram(mono, sample_rate)
 
         if self._show_controls:
             dur_str = f"{self._duration:.1f}s"
@@ -302,6 +305,20 @@ class WaveformWidget(QWidget):
                 else f"{channels} ch"
             )
             self._info_label.setText(f"{dur_str} | {sr_str} | {ch_str}")
+
+        if self._mode == "spectrogram":
+            self._ensure_spectrogram()
+
+    def _ensure_spectrogram(self):
+        """Build the mel image only when the full waveform enters that view."""
+        if self._spectrogram_ready or not self._show_controls:
+            return
+        if self._audio_data is None:
+            return
+        audio = self._audio_data
+        mono = audio.mean(axis=1, dtype=np.float32) if audio.ndim == 2 else audio
+        self._update_spectrogram(mono, self._sample_rate)
+        self._spectrogram_ready = True
 
     def _update_spectrogram(self, mono: np.ndarray, sr: int):
         """Compute and display mel spectrogram."""
@@ -458,6 +475,8 @@ class WaveformWidget(QWidget):
             self._cursor_line.hide()
             self._spectro_cursor.hide()
         self._audio_data = None
+        self._has_audio = False
+        self._spectrogram_ready = False
         self._duration = 0.0
         self._last_error = ""
         self._set_info("")
@@ -472,7 +491,9 @@ class WaveformWidget(QWidget):
 
     @property
     def has_audio(self) -> bool:
-        return self._audio_data is not None
+        # The thumbnail intentionally releases its source buffer after the
+        # waveform display arrays are built, so retain a separate state bit.
+        return self._has_audio or self._audio_data is not None
 
     @property
     def last_error(self) -> str:
