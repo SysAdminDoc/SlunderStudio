@@ -35,13 +35,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Add interval autosave and restorable project versions
-  Why: Settings promise an autosave interval, snapshots are list-only, and users cannot compare or restore a version.
-  Evidence: `core/settings.py:42`, `core/project.py:465-488`, `ui/project_manager.py:248-275`; Suno Studio, Udio Sessions, Moises, and Ableton recovery.
-  Touches: `core/project.py`, autosave coordinator, `ui/project_manager.py`, settings, project migration/retention tests.
-  Acceptance: Dirty projects autosave at the configured interval; manual/automatic versions can be previewed and restored after an automatic pre-restore snapshot; retention is bounded and crash/restart tests recover the selected state.
-  Complexity: L
-
 - [ ] P1 — Establish feature-level accessibility and responsive-layout gates
   Why: Muted text fails normal-text contrast, focus indicators are suppressed, custom audio/MIDI controls are mouse-only, and fixed minimum sizing overflows smaller displays.
   Evidence: `ui/theme.py`, `ui/main_window.py`, `ui/waveform_widget.py`, `ui/piano_roll.py`; WCAG 2.2, Qt accessibility, Ableton accessibility.

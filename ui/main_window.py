@@ -344,6 +344,7 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._start_gpu_monitor()
+        self._start_autosave()
 
     def _build_ui(self):
         # Central widget
@@ -439,9 +440,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(separator)
 
         interval = int(self._settings.get("general.auto_save_interval", 60) or 60)
-        autosave = QLabel(f"Autosave interval  \u00b7  {interval}s")
-        autosave.setObjectName("commandMeta")
-        layout.addWidget(autosave)
+        self._autosave_label = QLabel(f"Autosave interval  \u00b7  {interval}s")
+        self._autosave_label.setObjectName("commandMeta")
+        layout.addWidget(self._autosave_label)
 
         layout.addStretch()
 
@@ -661,8 +662,42 @@ class MainWindow(QMainWindow):
 
     # ── Window Events ──────────────────────────────────────────────────────────
 
+    def _start_autosave(self):
+        """Honour the configured autosave interval for the open project."""
+        from core.autosave import AutosaveCoordinator
+
+        self._autosave = AutosaveCoordinator(settings=self._settings, parent=self)
+        self._autosave.autosaved.connect(self._on_autosaved)
+        self._autosave.autosave_failed.connect(
+            lambda reason: self.toast_mgr.error(f"Autosave failed: {reason}")
+        )
+        self._autosave.start()
+        self._refresh_autosave_label()
+
+    def _on_autosaved(self, version: int, description: str):
+        self.toast_mgr.info(f"Autosaved v{version} — {description}")
+        if hasattr(self, "_project_mgr_view"):
+            from core.project import get_project_manager
+            project = get_project_manager().current
+            if project is not None:
+                self._project_mgr_view.load_project(project)
+
+    def _refresh_autosave_label(self):
+        if not hasattr(self, "_autosave_label"):
+            return
+        if self._autosave.enabled:
+            self._autosave_label.setText(
+                f"Autosave interval  ·  {self._autosave.interval_seconds}s"
+            )
+        else:
+            self._autosave_label.setText("Autosave  ·  off")
+
     def closeEvent(self, event):
         """Clean up on close."""
+        if hasattr(self, "_autosave"):
+            self._autosave.stop()
+            # A dirty project must not be lost because the window closed.
+            self._autosave.tick()
         AudioEngine().cleanup()
         self._gpu_timer.stop()
         self._model_mgr.unload()

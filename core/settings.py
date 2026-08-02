@@ -46,6 +46,8 @@ DEFAULTS = {
         "experience_level": "beginner",
         "onboarding_complete": False,
         "auto_save_interval": 60,
+        "auto_save_enabled": True,
+        "max_project_versions": 20,
         "max_cache_gb": 20.0,
         "trash_retention_days": 30,
     },

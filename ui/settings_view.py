@@ -387,6 +387,26 @@ class SettingsView(QWidget):
             lambda v: self._save("general.auto_save_interval", v))
         cache_layout.addLayout(SettingRow("Auto-Save Interval", self._autosave_interval))
 
+        self._autosave_enabled = QCheckBox("Autosave the open project on the interval")
+        self._autosave_enabled.toggled.connect(
+            lambda v: self._save("general.auto_save_enabled", v))
+        cache_layout.addLayout(SettingRow(
+            "Autosave",
+            self._autosave_enabled,
+            "Saves and versions the open project only when it has unsaved changes.",
+        ))
+
+        self._max_versions = QSpinBox()
+        self._max_versions.setRange(1, 200)
+        self._max_versions.setFixedWidth(120)
+        self._max_versions.valueChanged.connect(
+            lambda v: self._save("general.max_project_versions", v))
+        cache_layout.addLayout(SettingRow(
+            "Kept Project Versions",
+            self._max_versions,
+            "Oldest autosaves are pruned first; pre-restore versions are always kept.",
+        ))
+
         layout.addWidget(cache_group)
 
         layout.addStretch()
@@ -408,6 +428,7 @@ class SettingsView(QWidget):
             self._batch_count, self._default_duration, self._default_bpm,
             self._mastering_target, self._auto_eq, self._auto_compress,
             self._max_cache, self._autosave_interval,
+            self._autosave_enabled, self._max_versions,
         ]
         for w in _widgets:
             w.blockSignals(True)
@@ -469,6 +490,8 @@ class SettingsView(QWidget):
             self._auto_compress.setChecked(s.get("production.mastering_auto_compress", True))
             self._max_cache.setValue(s.get("general.max_cache_gb", 20.0))
             self._autosave_interval.setValue(s.get("general.auto_save_interval", 60))
+            self._autosave_enabled.setChecked(s.get("general.auto_save_enabled", True))
+            self._max_versions.setValue(s.get("general.max_project_versions", 20))
 
         finally:
             for w in _widgets:
@@ -583,6 +606,8 @@ class SettingsView(QWidget):
                 (self._auto_compress, "Automatic mastering compression", "Toggles automatic bus compression."),
                 (self._max_cache, "Maximum cache size", "Controls cache cleanup threshold."),
                 (self._autosave_interval, "Auto-save interval", "Controls project auto-save frequency."),
+                (self._autosave_enabled, "Autosave enabled", "Enables interval autosave for the open project."),
+                (self._max_versions, "Kept project versions", "Limits how many project versions are retained."),
                 (self._reset_btn, "Reset settings", "Resets all settings to defaults."),
                 (self._health_private_inputs, "Include private job inputs", "Includes job prompt and input fields in the health report."),
                 (self._export_health_btn, "Export health report", "Saves a redacted diagnostics bundle."),
@@ -613,6 +638,8 @@ class SettingsView(QWidget):
                 self._auto_compress,
                 self._max_cache,
                 self._autosave_interval,
+                self._autosave_enabled,
+                self._max_versions,
                 self._reset_btn,
                 self._health_private_inputs,
                 self._export_health_btn,

@@ -4,6 +4,7 @@ Save, load, and manage music projects with auto-save, version history,
 and asset tracking across all modules.
 """
 import os
+import hashlib
 import json
 import re
 import threading
@@ -53,6 +54,14 @@ class ProjectAsset:
             self.created_at = time.time()
 
 
+VERSION_KIND_MANUAL = "manual"
+VERSION_KIND_AUTO = "auto"
+VERSION_KIND_PRE_RESTORE = "pre-restore"
+
+# Versions that exist so a restore can be undone are never pruned automatically.
+PROTECTED_VERSION_KINDS = frozenset({VERSION_KIND_PRE_RESTORE})
+
+
 @dataclass
 class ProjectVersion:
     """A saved snapshot of the project state."""
@@ -60,6 +69,23 @@ class ProjectVersion:
     timestamp: float = 0.0
     description: str = ""
     auto_save: bool = False
+    # Empty means "derive from auto_save" — older snapshots only carried that flag.
+    kind: str = ""
+
+    def __post_init__(self):
+        if self.kind not in (
+            VERSION_KIND_MANUAL, VERSION_KIND_AUTO, VERSION_KIND_PRE_RESTORE
+        ):
+            self.kind = VERSION_KIND_AUTO if self.auto_save else VERSION_KIND_MANUAL
+        self.auto_save = self.kind == VERSION_KIND_AUTO
+
+    @property
+    def label(self) -> str:
+        return {
+            VERSION_KIND_MANUAL: "manual",
+            VERSION_KIND_AUTO: "auto",
+            VERSION_KIND_PRE_RESTORE: "pre-restore",
+        }.get(self.kind, self.kind)
 
 
 @dataclass
@@ -145,6 +171,8 @@ class ProjectManager:
         self._trash = TrashManager()
         self._repair_status: dict[str, ProjectRepairStatus] = {}
         self._last_repair_status = ProjectRepairStatus()
+        # Fingerprint of the open project as last written to disk.
+        self._saved_fingerprint = ""
         os.makedirs(self._projects_dir, exist_ok=True)
         self._load_index()
 
@@ -366,7 +394,13 @@ class ProjectManager:
         }
         self._save_index()
         self._current = project
+        self._saved_fingerprint = self._state_fingerprint(project)
         return project
+
+    def close(self):
+        """Close the open project without saving."""
+        self._current = None
+        self._saved_fingerprint = ""
 
     def open(self, project_id: str) -> Optional[Project]:
         self._last_repair_status = ProjectRepairStatus()
@@ -403,41 +437,10 @@ class ProjectManager:
                 )
                 self._repair_status[project_id] = self._last_repair_status
 
-            project = Project(
-                schema_version=data.get("schema_version", PROJECT_SCHEMA_VERSION),
-                app_version=data.get("app_version", APP_VERSION),
-                id=data.get("id", project_id),
-                name=data.get("name", ""),
-                description=data.get("description", ""),
-                created_at=data.get("created_at", 0),
-                updated_at=data.get("updated_at", 0),
-                tempo=data.get("tempo", 120),
-                key=data.get("key", "C major"),
-                tags=data.get("tags", []),
-                lyrics_text=data.get("lyrics_text", ""),
-                notes=data.get("notes", ""),
-                mixer_state=data.get("mixer_state", {}),
-            )
-
-            # Reconstruct time_signature from list
-            ts = data.get("time_signature", [4, 4])
-            project.time_signature = tuple(ts) if isinstance(ts, list) else ts
-
-            # Load assets
-            for a_data in data.get("assets", []):
-                project.assets.append(ProjectAsset(**{
-                    k: v for k, v in a_data.items()
-                    if k in ProjectAsset.__dataclass_fields__
-                }))
-
-            # Load versions
-            for v_data in data.get("versions", []):
-                project.versions.append(ProjectVersion(**{
-                    k: v for k, v in v_data.items()
-                    if k in ProjectVersion.__dataclass_fields__
-                }))
+            project = self._project_from_data(data, project_id)
 
             self._current = project
+            self._saved_fingerprint = self._state_fingerprint(project)
             if migrated or recovery_messages:
                 self._save_project(project, create_backup=False)
             return project
@@ -496,7 +499,7 @@ class ProjectManager:
         self._save_index()
 
         if self._current and self._current.id == project_id:
-            self._current = None
+            self.close()
         return entry
 
     def restore_deleted_project(self, trash_entry_id: str) -> bool:
@@ -520,14 +523,11 @@ class ProjectManager:
         self._save_index()
         return True
 
-    def _save_project(self, project: Project, create_backup: bool = True):
-        project_dir = os.path.join(self._projects_dir, project.id)
-        os.makedirs(project_dir, exist_ok=True)
-        project.schema_version = PROJECT_SCHEMA_VERSION
-        project.app_version = APP_VERSION
-
-        data = {
-            "schema_version": project.schema_version,
+    @staticmethod
+    def _serializable(project: Project) -> dict:
+        """The exact JSON payload written for a project."""
+        return {
+            "schema_version": PROJECT_SCHEMA_VERSION,
             "app_version": project.app_version,
             "id": project.id,
             "name": project.name,
@@ -545,6 +545,46 @@ class ProjectManager:
             "versions": [asdict(v) for v in project.versions],
         }
 
+    @staticmethod
+    def _project_from_data(data: dict, project_id: str) -> Project:
+        """Build a Project from a stored payload (current file or a snapshot)."""
+        project = Project(
+            schema_version=data.get("schema_version", PROJECT_SCHEMA_VERSION),
+            app_version=data.get("app_version", APP_VERSION),
+            id=data.get("id", project_id),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            created_at=data.get("created_at", 0),
+            updated_at=data.get("updated_at", 0),
+            tempo=data.get("tempo", 120),
+            key=data.get("key", "C major"),
+            tags=data.get("tags", []),
+            lyrics_text=data.get("lyrics_text", ""),
+            notes=data.get("notes", ""),
+            mixer_state=data.get("mixer_state", {}),
+        )
+        ts = data.get("time_signature", [4, 4])
+        project.time_signature = tuple(ts) if isinstance(ts, list) else ts
+        for a_data in data.get("assets", []):
+            project.assets.append(ProjectAsset(**{
+                k: v for k, v in a_data.items()
+                if k in ProjectAsset.__dataclass_fields__
+            }))
+        for v_data in data.get("versions", []):
+            project.versions.append(ProjectVersion(**{
+                k: v for k, v in v_data.items()
+                if k in ProjectVersion.__dataclass_fields__
+            }))
+        return project
+
+    def _save_project(self, project: Project, create_backup: bool = True):
+        project_dir = os.path.join(self._projects_dir, project.id)
+        os.makedirs(project_dir, exist_ok=True)
+        project.schema_version = PROJECT_SCHEMA_VERSION
+        project.app_version = APP_VERSION
+
+        data = self._serializable(project)
+
         meta_path = os.path.join(project_dir, "project.json")
         if create_backup:
             backup = self._backup_file(Path(meta_path), "pre-save")
@@ -557,6 +597,8 @@ class ProjectManager:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp_path, meta_path)
+        if self._current is project:
+            self._saved_fingerprint = self._state_fingerprint(project)
 
     # ── Listing ────────────────────────────────────────────────────────────────
 
@@ -652,30 +694,190 @@ class ProjectManager:
 
     # ── Version History ────────────────────────────────────────────────────────
 
-    def create_version(self, description: str = "", auto_save: bool = False) -> bool:
-        if self._current is None:
-            return False
+    def version_dir(self, project_id: str, version: int) -> Path:
+        return Path(self._projects_dir) / project_id / "versions" / f"v{version}"
 
+    def max_versions(self) -> int:
+        """Retention cap for stored versions, from settings."""
+        from core.settings import Settings
+        try:
+            value = int(Settings().get("general.max_project_versions", 20) or 20)
+        except (TypeError, ValueError):
+            value = 20
+        return max(1, value)
+
+    def create_version(self, description: str = "", auto_save: bool = False,
+                       kind: Optional[str] = None) -> Optional[ProjectVersion]:
+        """Persist the project, then snapshot exactly what was written."""
+        if self._current is None:
+            return None
+
+        kind = kind or (VERSION_KIND_AUTO if auto_save else VERSION_KIND_MANUAL)
+        next_version = max(
+            (v.version for v in self._current.versions), default=0
+        ) + 1
         ver = ProjectVersion(
-            version=self._current.version_count + 1,
+            version=next_version,
             timestamp=time.time(),
-            description=description or f"Version {self._current.version_count + 1}",
-            auto_save=auto_save,
+            description=description or f"Version {next_version}",
+            kind=kind,
         )
         self._current.versions.append(ver)
 
-        # Save snapshot
+        # Write the project first so the snapshot is the state being versioned,
+        # not the previous save.
+        if not self.save():
+            self._current.versions.remove(ver)
+            return None
+
         project_dir = os.path.join(self._projects_dir, self._current.id)
-        ver_dir = os.path.join(project_dir, "versions", f"v{ver.version}")
-        os.makedirs(ver_dir, exist_ok=True)
+        ver_dir = self.version_dir(self._current.id, ver.version)
+        try:
+            ver_dir.mkdir(parents=True, exist_ok=True)
+            src = os.path.join(project_dir, "project.json")
+            if os.path.isfile(src):
+                shutil.copy2(src, ver_dir / "project.json")
+        except OSError as exc:
+            print(f"[Slunder Studio] Failed to write version snapshot: {exc}")
+            self._current.versions.remove(ver)
+            self.save()
+            return None
 
-        # Copy current project.json as snapshot
-        src = os.path.join(project_dir, "project.json")
-        if os.path.isfile(src):
-            shutil.copy2(src, os.path.join(ver_dir, "project.json"))
-
+        self.prune_versions()
         self.save()
-        return True
+        return ver
+
+    def get_version(self, version: int) -> Optional[ProjectVersion]:
+        if self._current is None:
+            return None
+        for ver in self._current.versions:
+            if ver.version == version:
+                return ver
+        return None
+
+    def read_version_payload(self, version: int) -> Optional[dict]:
+        """Load a stored snapshot for preview or restore."""
+        if self._current is None:
+            return None
+        path = self.version_dir(self._current.id, version) / "project.json"
+        if not path.is_file():
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    def version_preview(self, version: int) -> Optional[dict]:
+        """Summarize a stored version without changing the open project."""
+        data = self.read_version_payload(version)
+        if data is None:
+            return None
+        ver = self.get_version(version)
+        assets = data.get("assets") or []
+        return {
+            "version": version,
+            "kind": ver.kind if ver else VERSION_KIND_MANUAL,
+            "timestamp": (ver.timestamp if ver else data.get("updated_at", 0.0)),
+            "description": ver.description if ver else "",
+            "name": data.get("name", ""),
+            "tempo": data.get("tempo", 0.0),
+            "key": data.get("key", ""),
+            "notes": data.get("notes", ""),
+            "lyrics_text": data.get("lyrics_text", ""),
+            "asset_count": len(assets),
+            "asset_names": [a.get("name", "") for a in assets if isinstance(a, dict)],
+            "mixer_track_count": len((data.get("mixer_state") or {}).get("tracks", []) or []),
+        }
+
+    def restore_version(self, version: int) -> Optional[Project]:
+        """Restore a stored version after snapshotting the current state first."""
+        if self._current is None:
+            return None
+        data = self.read_version_payload(version)
+        if data is None:
+            return None
+
+        project_id = self._current.id
+        pre = self.create_version(
+            description=f"Before restoring v{version}",
+            kind=VERSION_KIND_PRE_RESTORE,
+        )
+        if pre is None:
+            return None
+
+        # Version history and identity survive a restore; content does not.
+        history = list(self._current.versions)
+        restored = self._project_from_data(data, project_id)
+        restored.id = project_id
+        restored.created_at = self._current.created_at
+        restored.versions = history
+        restored.updated_at = time.time()
+        self._current = restored
+        if not self.save():
+            return None
+        return restored
+
+    def prune_versions(self) -> list[int]:
+        """Bound stored versions. Auto-saves go first; pre-restore never goes."""
+        if self._current is None:
+            return []
+        cap = self.max_versions()
+        versions = sorted(self._current.versions, key=lambda v: v.version)
+        if len(versions) <= cap:
+            return []
+
+        newest = versions[-1]
+        removable = [
+            v for v in versions
+            if v is not newest and v.kind not in PROTECTED_VERSION_KINDS
+        ]
+        # Oldest auto-saves first, then oldest manual versions.
+        removable.sort(key=lambda v: (0 if v.kind == VERSION_KIND_AUTO else 1, v.version))
+        drop_count = len(versions) - cap
+        dropped = removable[:drop_count]
+
+        removed: list[int] = []
+        for ver in dropped:
+            path = self.version_dir(self._current.id, ver.version)
+            try:
+                if path.is_dir():
+                    shutil.rmtree(path)
+            except OSError as exc:
+                print(f"[Slunder Studio] Failed to prune version {ver.version}: {exc}")
+                continue
+            self._current.versions.remove(ver)
+            removed.append(ver.version)
+        return removed
+
+    # ── Dirty tracking and autosave ────────────────────────────────────────────
+
+    @staticmethod
+    def _state_fingerprint(project: Project) -> str:
+        payload = ProjectManager._serializable(project)
+        # Timestamps and the version list are bookkeeping, not user content.
+        payload.pop("updated_at", None)
+        payload.pop("versions", None)
+        payload.pop("app_version", None)
+        blob = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+    @property
+    def is_dirty(self) -> bool:
+        """True when the open project differs from what is on disk."""
+        if self._current is None:
+            return False
+        return self._state_fingerprint(self._current) != self._saved_fingerprint
+
+    def autosave(self) -> Optional[ProjectVersion]:
+        """Save a dirty project and record an automatic version. No-op if clean."""
+        if self._current is None or not self.is_dirty:
+            return None
+        stamp = time.strftime("%H:%M:%S", time.localtime())
+        return self.create_version(
+            description=f"Autosave {stamp}", kind=VERSION_KIND_AUTO
+        )
 
     # ── Asset Management ───────────────────────────────────────────────────────
 

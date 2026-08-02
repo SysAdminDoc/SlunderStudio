@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QScrollArea, QLineEdit, QTextEdit, QFileDialog,
     QListWidget, QListWidgetItem, QStackedWidget, QInputDialog,
-    QDialog, QPlainTextEdit,
+    QDialog, QPlainTextEdit, QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -106,9 +106,10 @@ class ProjectCard(QFrame):
 class ProjectDetailPanel(QWidget):
     """Shows details of the currently open project."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, toast_mgr=None):
         super().__init__(parent)
         t = ThemeEngine.get_colors()
+        self.toast_mgr = toast_mgr
         self._asset_by_id: dict[str, ProjectAsset] = {}
 
         layout = QVBoxLayout(self)
@@ -170,7 +171,15 @@ class ProjectDetailPanel(QWidget):
         self._version_list = QListWidget()
         self._version_list.setMaximumHeight(120)
         self._version_list.setStyleSheet(self._asset_list.styleSheet())
+        self._version_list.currentItemChanged.connect(self._on_version_selected)
         layout.addWidget(self._version_list)
+
+        self._version_preview = QLabel("Select a version to preview it.")
+        self._version_preview.setWordWrap(True)
+        self._version_preview.setStyleSheet(
+            f"color: {t['text_secondary']}; font-size: 11px; padding: 2px 0;"
+        )
+        layout.addWidget(self._version_preview)
 
         # Action buttons
         btn_row = QHBoxLayout()
@@ -205,8 +214,14 @@ class ProjectDetailPanel(QWidget):
         self._provenance_btn.setEnabled(False)
         self._provenance_btn.clicked.connect(self._on_open_provenance)
 
+        self._restore_btn = QPushButton("Restore Version")
+        self._restore_btn.setStyleSheet(btn_style)
+        self._restore_btn.setEnabled(False)
+        self._restore_btn.clicked.connect(self._on_restore_version)
+
         btn_row.addWidget(self._save_btn)
         btn_row.addWidget(self._snapshot_btn)
+        btn_row.addWidget(self._restore_btn)
         btn_row.addWidget(self._import_btn)
         btn_row.addWidget(self._provenance_btn)
         btn_row.addStretch()
@@ -243,11 +258,18 @@ class ProjectDetailPanel(QWidget):
 
         # Versions
         self._version_list.clear()
-        for ver in reversed(project.versions):
+        for ver in sorted(project.versions, key=lambda v: v.version, reverse=True):
             ts = time.strftime("%b %d %I:%M %p", time.localtime(ver.timestamp))
-            auto = " (auto)" if ver.auto_save else ""
-            item = QListWidgetItem(f"v{ver.version} - {ts}{auto}: {ver.description}")
+            item = QListWidgetItem(
+                f"v{ver.version} - {ts} ({ver.label}): {ver.description}"
+            )
+            item.setData(Qt.UserRole, ver.version)
             self._version_list.addItem(item)
+        self._restore_btn.setEnabled(False)
+        self._version_preview.setText(
+            "Select a version to preview it." if project.versions
+            else "No saved versions yet."
+        )
 
     def clear(self):
         self._name_label.setText("No Project Open")
@@ -271,9 +293,71 @@ class ProjectDetailPanel(QWidget):
                                             "Description for this version:")
             if ok:
                 mgr.current.notes = self._notes.toPlainText()
-                mgr.save()
-                mgr.create_version(desc or "Manual save")
+                version = mgr.create_version(desc or "Manual save")
+                if version is None and self.toast_mgr:
+                    self.toast_mgr.error("Could not write the version snapshot.")
+                elif version is not None and self.toast_mgr:
+                    self.toast_mgr.success(f"Saved version v{version.version}.")
                 self.load_project(mgr.current)
+
+    def _selected_version(self) -> Optional[int]:
+        item = self._version_list.currentItem()
+        if item is None:
+            return None
+        value = item.data(Qt.UserRole)
+        return int(value) if value is not None else None
+
+    def _on_version_selected(self, current, previous):
+        version = self._selected_version()
+        if version is None:
+            self._restore_btn.setEnabled(False)
+            self._version_preview.setText("Select a version to preview it.")
+            return
+        preview = get_project_manager().version_preview(version)
+        if preview is None:
+            self._restore_btn.setEnabled(False)
+            self._version_preview.setText(
+                f"v{version} snapshot file is missing; it cannot be previewed or restored."
+            )
+            return
+        assets = preview["asset_names"][:4]
+        asset_summary = ", ".join(a for a in assets if a) or "none"
+        if preview["asset_count"] > len(assets):
+            asset_summary += f", +{preview['asset_count'] - len(assets)} more"
+        self._version_preview.setText(
+            f"v{version} ({preview['kind']}) - {preview['name']} - "
+            f"{preview['tempo']:.0f} BPM, {preview['key']} - "
+            f"{preview['asset_count']} asset(s): {asset_summary} - "
+            f"{preview['mixer_track_count']} mixer track(s)"
+        )
+        self._restore_btn.setEnabled(True)
+
+    def _on_restore_version(self):
+        mgr = get_project_manager()
+        version = self._selected_version()
+        if mgr.current is None or version is None:
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Restore Version",
+            f"Restore v{version}? The current state is snapshotted first so this "
+            "can be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        restored = mgr.restore_version(version)
+        if restored is None:
+            if self.toast_mgr:
+                self.toast_mgr.error(f"Could not restore v{version}.")
+            return
+        self.load_project(restored)
+        if self.toast_mgr:
+            self.toast_mgr.success(
+                f"Restored v{version}. The previous state was saved as a "
+                "pre-restore version."
+            )
 
     def _on_import_asset(self):
         mgr = get_project_manager()
@@ -434,7 +518,7 @@ class ProjectManagerView(QWidget):
         layout.addWidget(left_w)
 
         # ── Right: Project Detail ──────────────────────────────────────────
-        self._detail = ProjectDetailPanel()
+        self._detail = ProjectDetailPanel(toast_mgr=toast_mgr)
         layout.addWidget(self._detail, 1)
 
         # Load initial project list
