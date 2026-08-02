@@ -241,15 +241,7 @@ class StemMixer(QWidget):
         title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 13px;")
 
         self._remix_btn = QPushButton("Export Remix")
-        self._remix_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: #238636; color: white; border: none;
-                border-radius: 4px; padding: 5px 12px;
-                font-size: 11px; font-weight: bold;
-            }}
-                QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
-            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
-        """)
+        self._remix_btn.setProperty("class", "success")
         self._remix_btn.setEnabled(False)
         self._remix_btn.clicked.connect(self.remix_requested.emit)
 

@@ -145,15 +145,7 @@ class VocalSuiteView(QWidget):
         self._to_mixer_btn.clicked.connect(self._on_send_to_mixer)
 
         self._export_btn = QPushButton(tr("vocal.actions.export_wav"))
-        self._export_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: #238636; color: white; border: none;
-                border-radius: 5px; padding: 6px 14px;
-                font-size: 11px; font-weight: bold;
-            }}
-                QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
-            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
-        """)
+        self._export_btn.setProperty("class", "success")
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export)
 
@@ -1075,15 +1067,7 @@ class VocalSuiteView(QWidget):
         """)
 
         self._stem_separate_btn = QPushButton("Separate Stems")
-        self._stem_separate_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: #238636; color: white; border: none;
-                border-radius: 5px; padding: 8px 16px;
-                font-weight: bold; font-size: 11px;
-            }}
-                QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
-            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
-        """)
+        self._stem_separate_btn.setProperty("class", "success")
         self._stem_separate_btn.setEnabled(False)
         self._stem_separate_btn.clicked.connect(self._on_separate)
 

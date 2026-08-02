@@ -237,6 +237,18 @@ QPushButton[class="secondary"]:hover {{
     background-color: {p.SURFACE1};
     border-color: {p.SURFACE2};
 }}
+QPushButton[class="success"] {{
+    background-color: {p.GREEN};
+    color: {p.CRUST};
+}}
+QPushButton[class="success"]:hover {{
+    background-color: {p.TEAL};
+    color: {p.CRUST};
+}}
+QPushButton[class="success"]:disabled {{
+    background-color: {p.SURFACE0};
+    color: {p.OVERLAY0};
+}}
 QPushButton#dangerBtn,
 QPushButton[class="danger"] {{
     background-color: {p.RED};

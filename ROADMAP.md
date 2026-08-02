@@ -118,31 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Off-palette green action buttons, duplicated in seven files and styled by string replacement
-  Category: maintainability
-  Where: `#238636`/`#2ea043` blocks at `ui/mixer_view.py:438-443`,
-    `ui/midi_studio_view.py:329-333`, `ui/stem_mixer.py:233-238`, `ui/vocal_suite_view.py:145-150`
-    and `:1075-1080`, `ui/sfx_view.py:109`, `ui/project_manager.py:201`; checked colors
-    `#da3633`/`#d29922` at `ui/mixer_view.py:158, 164`
-  Problem: These are retired GitHub-dark colors rather than `Palette.GREEN` (`#72df9d`), so they
-    bypass the contrast gate entirely — `failing_text_pairs()` iterates only Palette tokens, which
-    is exactly how the failing hover and checked ratios above slipped past a hardened gate. The
-    disabled state `color: #555` on `t['border']` measures 2.06:1: WCAG-exempt for disabled
-    controls but effectively invisible when themed disabled tokens are available (OVERLAY0 on
-    SURFACE0 exceeds 5.5). Worse, two sites style by string surgery —
-    `ui/sfx_view.py:109` does `btn_style.replace(t['background'], '#238636').replace(t['text'],
-    'white')` and `ui/project_manager.py:201` does `.replace(t['surface'] + ';', '#238636;')` —
-    which silently no-op if the template string changes by one character. They already have a live
-    side effect: the `:hover` rule is not replaced, so these green primary buttons flip to a dark
-    background on hover, losing their color exactly when the user reaches for them.
-  Fix: Add a `QPushButton[class="success"]` rule to `build_stylesheet()` using `Palette.GREEN` with
-    `Palette.CRUST` text, matching the existing danger and secondary patterns; delete all seven
-    inline blocks and both `.replace()` hacks. The contrast gate then covers them permanently.
-  Acceptance: A test asserting no `ui/*.py` contains `#238636`, `#2ea043`, `#da3633` or `#d29922`,
-    and that the success button style passes 4.5:1 in base, hover and disabled states.
-  Confidence: Verified
-  Effort: M
-
 - [ ] P2 — The main status bar is permanently hidden but updated every two seconds
   Category: maintainability
   Where: `ui/main_window.py:390-400` (built, then `self._status_bar.hide()`), `:593-619`

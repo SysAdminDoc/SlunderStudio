@@ -326,14 +326,7 @@ class MidiStudioView(QWidget):
         self._chart_btn.clicked.connect(self._on_export_chart)
 
         self._render_btn = QPushButton("Render Audio")
-        self._render_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: #238636; color: white; border: none;
-                border-radius: 5px; padding: 6px 12px;
-                font-size: 11px; font-weight: bold;
-            }}
-            QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
-        """)
+        self._render_btn.setProperty("class", "success")
         self._render_btn.clicked.connect(self._on_render)
 
         action_row.addWidget(self._import_btn)

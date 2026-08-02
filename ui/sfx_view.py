@@ -108,7 +108,7 @@ class SFXCard(QFrame):
         self._play_btn.clicked.connect(lambda: self.play_requested.emit(self.result))
 
         self._use_btn = QPushButton("Use Demo" if result.is_demo else "Use")
-        self._use_btn.setStyleSheet(btn_style.replace(t['background'], '#238636').replace(t['text'], 'white'))
+        self._use_btn.setProperty("class", "success")
         self._use_btn.setEnabled(result.can_route)
         self._use_btn.clicked.connect(lambda: self.use_requested.emit(self.result))
 

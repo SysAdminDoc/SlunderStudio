@@ -182,6 +182,37 @@ class InlineButtonContrastTests(unittest.TestCase):
 
         self.assertEqual(failures, [])
 
+    def test_retired_action_colors_are_not_in_view_sources(self):
+        retired_colors = ("#238636", "#2ea043", "#da3633", "#d29922")
+        offenders = []
+        for path in (ROOT / "ui").glob("*.py"):
+            source = path.read_text(encoding="utf-8").lower()
+            for color in retired_colors:
+                if color in source:
+                    offenders.append(f"{path.relative_to(ROOT)} contains {color}")
+        self.assertEqual(offenders, [])
+
+    def test_success_button_states_meet_wcag(self):
+        stylesheet = build_stylesheet()
+        expected_states = {
+            "QPushButton[class=\"success\"]": (Palette.GREEN, Palette.CRUST),
+            "QPushButton[class=\"success\"]:hover": (Palette.TEAL, Palette.CRUST),
+            "QPushButton[class=\"success\"]:disabled": (Palette.SURFACE0, Palette.OVERLAY0),
+        }
+        for selector, (background, foreground) in expected_states.items():
+            with self.subTest(selector=selector):
+                match = re.search(
+                    rf"{re.escape(selector)}\s*\{{(?P<body>[^{{}}]*)\}}",
+                    stylesheet,
+                )
+                self.assertIsNotNone(match, f"missing {selector} rule")
+                body = match.group("body")
+                self.assertIn(f"background-color: {background};", body)
+                self.assertIn(f"color: {foreground};", body)
+                self.assertGreaterEqual(
+                    contrast_ratio(foreground, background), NORMAL_TEXT_RATIO
+                )
+
     def test_stem_checked_colors_meet_wcag(self):
         failures = [
             f"{name}: {contrast_ratio(Palette.CRUST, color):.2f}:1"

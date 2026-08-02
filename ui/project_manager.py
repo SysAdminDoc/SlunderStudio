@@ -210,7 +210,7 @@ class ProjectDetailPanel(QWidget):
         """
 
         self._save_btn = QPushButton("Save")
-        self._save_btn.setStyleSheet(btn_style.replace(t['surface'] + ';', '#238636;').replace(t['text'] + ';', 'white;'))
+        self._save_btn.setProperty("class", "success")
         self._save_btn.clicked.connect(self._on_save)
 
         self._snapshot_btn = QPushButton("Save Version")

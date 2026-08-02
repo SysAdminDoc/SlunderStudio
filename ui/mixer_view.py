@@ -274,7 +274,7 @@ class MixerTrackStrip(QFrame):
         self._mute_btn.setCheckable(True)
         self._mute_btn.setStyleSheet(
             btn_style
-            + f"QPushButton:checked {{ background: #da3633; color: white; }}"
+            + f"QPushButton:checked {{ background: {Palette.RED}; color: {Palette.CRUST}; }}"
         )
         self._mute_btn.clicked.connect(self._on_mute)
 
@@ -283,7 +283,7 @@ class MixerTrackStrip(QFrame):
         self._solo_btn.setCheckable(True)
         self._solo_btn.setStyleSheet(
             btn_style
-            + f"QPushButton:checked {{ background: #d29922; color: {Palette.CRUST}; }}"
+            + f"QPushButton:checked {{ background: {Palette.YELLOW}; color: {Palette.CRUST}; }}"
         )
         self._solo_btn.clicked.connect(self._on_solo)
 
@@ -566,15 +566,7 @@ class MixerView(QWidget):
         master_layout.addWidget(self._ref_btn)
 
         self._master_btn = QPushButton("Master + Export")
-        self._master_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: #238636; color: white; border: none;
-                border-radius: 5px; padding: 6px 16px;
-                font-weight: bold; font-size: 12px;
-            }}
-            QPushButton:hover {{ background: #2ea043; color: {Palette.CRUST}; }}
-            QPushButton:disabled {{ background: {t['border']}; color: #555; }}
-        """)
+        self._master_btn.setProperty("class", "success")
         self._master_btn.setEnabled(False)
         self._master_btn.clicked.connect(self._on_master_export)
         master_layout.addWidget(self._master_btn)
