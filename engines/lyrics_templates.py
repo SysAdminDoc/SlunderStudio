@@ -6,10 +6,7 @@ Two-stage prompting: plan → generate.
 import json
 import random
 from dataclasses import dataclass, field
-from typing import Optional
 from pathlib import Path
-
-from core.settings import Settings
 
 
 # ── Structure Tags (ACE-Step compatible) ───────────────────────────────────────
@@ -343,6 +340,66 @@ GENRE_TEMPLATES: dict[str, GenreTemplate] = {
         style_tags=["cinematic", "orchestral", "epic", "dramatic"],
     ),
 }
+
+
+_TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "assets" / "templates"
+
+
+def _read_template_json(path: Path):
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Unable to load lyric template asset: {path}") from exc
+
+
+def _load_template_bundle(
+    template_dir: Path,
+) -> tuple[list[str], dict[str, str], list[str], dict[str, GenreTemplate]]:
+    moods = _read_template_json(template_dir / "_moods.json")
+    structures = _read_template_json(template_dir / "_structures.json")
+    structure_tags = _read_template_json(template_dir / "_tags.json")
+    if not isinstance(moods, list) or not all(isinstance(mood, str) for mood in moods):
+        raise RuntimeError("Lyric mood asset must be a list of strings")
+    if not isinstance(structures, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in structures.items()
+    ):
+        raise RuntimeError("Lyric structure asset must be a string map")
+    if not isinstance(structure_tags, list) or not all(
+        isinstance(tag, str) for tag in structure_tags
+    ):
+        raise RuntimeError("Lyric structure-tag asset must be a list of strings")
+
+    templates: dict[str, GenreTemplate] = {}
+    for path in sorted(template_dir.glob("*.json")):
+        if path.name.startswith("_"):
+            continue
+        data = _read_template_json(path)
+        if not isinstance(data, dict) or data.get("id") != path.stem:
+            raise RuntimeError(f"Lyric genre asset has an invalid id: {path}")
+        try:
+            template = GenreTemplate(**data)
+        except TypeError as exc:
+            raise RuntimeError(f"Lyric genre asset has an invalid schema: {path}") from exc
+        templates[template.id] = template
+    if not templates:
+        raise RuntimeError(f"No lyric genre assets found in {template_dir}")
+    return moods, structures, structure_tags, templates
+
+
+def reload_template_bundle(template_dir: Path | str | None = None) -> None:
+    """Load the shipped lyric assets, optionally replacing them for a test or tool."""
+    global MOODS, STANDARD_STRUCTURES, STRUCTURE_TAGS, GENRE_TEMPLATES
+    directory = Path(template_dir) if template_dir is not None else _TEMPLATE_DIR
+    (
+        MOODS,
+        STANDARD_STRUCTURES,
+        STRUCTURE_TAGS,
+        GENRE_TEMPLATES,
+    ) = _load_template_bundle(directory)
+
+
+reload_template_bundle()
 
 
 # ── System Prompts ─────────────────────────────────────────────────────────────

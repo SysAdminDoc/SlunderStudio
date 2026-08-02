@@ -118,23 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — `assets/templates/` ships in every build but nothing reads it
-  Category: build
-  Where: `build/build.py:59`, `SlunderStudio.spec:8`, `assets/templates/*.json` (34 tracked files)
-  Problem: The only reference to `assets/templates` in the entire codebase is the build script's
-    `--add-data` line. All genre, mood and structure data actually comes from hardcoded Python in
-    `engines/lyrics_templates.py` (`GENRE_TEMPLATES`, `MOODS`, `STANDARD_STRUCTURES`). Editing the
-    JSON silently does nothing, so `assets/templates/trap.json` and the `GENRE_TEMPLATES["trap"]`
-    entry can diverge with no error, and the dead payload ships in every artifact.
-  Evidence: `grep -r "templates"` across `core/`, `engines/`, `ui/` and `tests/` finds only
-    `engines.lyrics_templates` imports; no loader ever constructs a path into `assets/templates`.
-  Fix: Either delete the directory along with the `--add-data` and spec entries, or make
-    `lyrics_templates.py` genuinely load from it and add a consistency test.
-  Acceptance: Either the directory is gone from the repo and the bundle, or a test proves editing a
-    template JSON changes generation behavior.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P2 — `SeparationResult` has no `is_success`, so failed separations are recorded as completed jobs
   Category: correctness
   Where: `engines/demucs_engine.py:30-44` (`SeparationResult`); consumed by
