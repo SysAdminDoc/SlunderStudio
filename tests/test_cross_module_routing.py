@@ -179,6 +179,14 @@ class RouteEndToEndTests(unittest.TestCase):
         self.assertEqual(reference.source_module, "vocal_suite")
         self.assertEqual(reference.tempo, 150.0)
 
+    def test_song_forge_reference_context_reaches_generation_tags(self):
+        artifact = self.window._on_vocal_to_forge(str(self.audio_path))
+
+        self.assertIsNotNone(artifact)
+        tags = self.window._song_forge_view._get_tags()
+        self.assertIn("150 bpm", tags.lower())
+        self.assertIn("A minor", tags)
+
     def test_route_to_vocal_suite_selects_the_file(self):
         artifact = self.window._on_send_to_vocals(str(self.audio_path))
         self.assertIsNotNone(artifact)

@@ -164,6 +164,7 @@ class SongForgeView(QWidget):
         self._is_generating = False
         self._worker = None
         self._seed_explore_params: list[dict] = []
+        self._routed_reference_context_tags: list[str] = []
         self._setup_ui()
 
     def _setup_ui(self):
@@ -603,11 +604,12 @@ class SongForgeView(QWidget):
         self._ref_panel.load_reference_file(artifact.path)
         if artifact.lyrics:
             self.set_lyrics(artifact.lyrics)
+        context_tags = []
         if artifact.tempo:
-            for attr in ("_duration_spin", "_bpm_spin"):
-                widget = getattr(self, attr, None)
-                if widget is not None and attr == "_bpm_spin":
-                    widget.setValue(int(artifact.tempo))
+            context_tags.append(f"{artifact.tempo:g} bpm")
+        if artifact.musical_key:
+            context_tags.append(artifact.musical_key)
+        self._routed_reference_context_tags = context_tags
         if self._toast:
             self._toast.show_toast(
                 f"Reference from {artifact.source_module}: "
@@ -632,8 +634,21 @@ class SongForgeView(QWidget):
             manual = self._quick_tags.text().strip()
             browser = self._tag_browser.get_tags()
             parts = [p for p in [manual, browser] if p]
-            return ", ".join(parts)
-        return self._tag_browser.get_tags()
+            base = ", ".join(parts)
+        else:
+            base = self._tag_browser.get_tags()
+
+        existing = {
+            tag.strip().casefold()
+            for tag in base.split(",")
+            if tag.strip()
+        }
+        tags = [base] if base else []
+        for tag in self._routed_reference_context_tags:
+            if tag.casefold() not in existing:
+                tags.append(tag)
+                existing.add(tag.casefold())
+        return ", ".join(tags)
 
     def _on_tags_changed(self, tags: str):
         """Sync tag browser selection to quick mode input."""
@@ -767,6 +782,12 @@ class SongForgeView(QWidget):
             "lyrics_chars": len(lyrics),
             "style_tags": tags[:240],
         }
+        routed_reference = self.routed_reference
+        if routed_reference:
+            if routed_reference.tempo:
+                job_inputs["reference_tempo"] = routed_reference.tempo
+            if routed_reference.musical_key:
+                job_inputs["reference_key"] = routed_reference.musical_key
 
         is_cover = cover_mode == "Cover"
         is_extend = cover_mode == "Extend"

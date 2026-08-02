@@ -118,25 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Routed reference silently drops tempo through a loop keyed to a widget that does not exist
-  Category: correctness
-  Where: `ui/song_forge_view.py:606-610` (`receive_reference`)
-  Problem: The docstring promises "Carries tempo, key and lyrics across rather than discarding
-    them", but the tempo block iterates `("_duration_spin", "_bpm_spin")` and acts only when
-    `attr == "_bpm_spin"` — and `_bpm_spin` does not exist anywhere in the repo, so
-    `getattr` returns None and `setValue` can never be reached. The condition simultaneously
-    excludes `_duration_spin`. Tempo carried by `RoutedArtifact` (populated in
-    `core/routing.py:139-142` specifically to preserve it) is discarded, and `musical_key` is never
-    consumed at all. This sits inside the new cross-module routing feature (commit `458b5a1`).
-  Evidence: `grep -rn "_bpm_spin" --include=*.py .` returns exactly lines 607 and 609 and nothing
-    else.
-  Fix: Delete the dead loop; append tempo and key to the style-tag prompt (for example
-    "128 bpm, A minor") or store them on the view for the generation parameters.
-  Acceptance: Extend `tests/test_cross_module_routing.py` — after `receive_reference` with an
-    artifact carrying tempo and key, both are observable in the generation parameters.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P2 — MIDI Studio to Vocal Suite routes are provenance-labelled "song_forge"
   Category: correctness
   Where: `ui/main_window.py:699-711` (`_on_send_to_vocals`), connected from both `:528`
