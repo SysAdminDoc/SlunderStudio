@@ -49,6 +49,10 @@ class ReferencePanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._analysis = None
+        self._worker = None
+        # Monotonic token so a result from a superseded file is discarded.
+        self._analysis_token = 0
+        self._pending_path = ""
         self.setAcceptDrops(True)
         self._setup_ui()
 
@@ -167,7 +171,20 @@ class ReferencePanel(QWidget):
         self._use_tags_btn.clicked.connect(self._on_use_tags)
         btn_row.addWidget(self._use_tags_btn)
 
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setFixedHeight(32)
+        self._cancel_btn.setProperty("class", "secondary")
+        self._cancel_btn.setVisible(False)
+        self._cancel_btn.clicked.connect(self.cancel_analysis)
+        btn_row.addWidget(self._cancel_btn)
+
         layout.addLayout(btn_row)
+
+        self._progress_label = QLabel("")
+        self._progress_label.setStyleSheet(
+            f"color: {Palette.SUBTEXT0}; font-size: 11px;"
+        )
+        layout.addWidget(self._progress_label)
 
     def _browse_file(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -193,25 +210,96 @@ class ReferencePanel(QWidget):
         self._analyze_file(file_path)
 
     def _analyze_file(self, file_path: str):
-        """Run analysis on the dropped/selected file."""
+        """Analyze off the GUI thread; a newer selection supersedes this one."""
         from pathlib import Path
+
+        from core.workers import InferenceWorker
+        from engines.audio_analyzer import analyze_track
+
+        self.cancel_analysis()
+
+        self._pending_path = str(file_path)
+        self._analysis_token += 1
+        token = self._analysis_token
+
         self._drop_zone.setText(f"Analyzing: {Path(file_path).name}...")
         self._drop_zone.setStyleSheet(
             f"QLabel {{ background: {Palette.MANTLE}; border: 2px solid {Palette.BLUE}; border-radius: 8px; "
             f"color: {Palette.BLUE}; font-size: 12px; }}"
         )
+        self._cancel_btn.setVisible(True)
 
-        # Run analysis (would use InferenceWorker in production)
-        try:
-            from core.deps import ensure
-            ensure("librosa")
-            from engines.audio_analyzer import analyze_track
-            analysis = analyze_track(file_path)
-            self._display_analysis(analysis, Path(file_path).name)
-        except ImportError:
-            self._drop_zone.setText("Audio analysis unavailable — restart to retry")
-        except Exception as e:
-            self._drop_zone.setText(f"Analysis failed: {str(e)[:50]}")
+        worker = InferenceWorker(
+            analyze_track,
+            str(file_path),
+            job_kind="reference_analysis",
+            job_label=Path(file_path).name,
+        )
+        worker.step_info.connect(
+            lambda text, t=token: self._on_analysis_step(t, text)
+        )
+        worker.progress.connect(
+            lambda pct, t=token: self._on_analysis_progress(t, pct)
+        )
+        worker.finished.connect(
+            lambda result, t=token, p=str(file_path): self._on_analysis_done(t, p, result)
+        )
+        worker.error.connect(
+            lambda message, t=token: self._on_analysis_error(t, message)
+        )
+        worker.cancelled.connect(lambda t=token: self._on_analysis_cancelled(t))
+        self._worker = worker
+        worker.start()
+
+    def cancel_analysis(self):
+        """Stop any in-flight analysis and wait for the worker to exit."""
+        worker = getattr(self, "_worker", None)
+        if worker is None:
+            return
+        if worker.isRunning():
+            worker.cancel()
+            worker.wait(10000)
+        self._worker = None
+        self._cancel_btn.setVisible(False)
+
+    def _is_current(self, token: int) -> bool:
+        """A result from a superseded selection must never be applied."""
+        return token == self._analysis_token
+
+    def _on_analysis_step(self, token: int, text: str):
+        if self._is_current(token):
+            self._progress_label.setText(text)
+
+    def _on_analysis_progress(self, token: int, percent: int):
+        if self._is_current(token):
+            self._progress_label.setText(
+                f"{self._progress_label.text().split(' - ')[0]} - {percent}%"
+            )
+
+    def _on_analysis_done(self, token: int, file_path: str, analysis):
+        from pathlib import Path
+
+        self._cancel_btn.setVisible(False)
+        self._progress_label.setText("")
+        if not self._is_current(token) or analysis is None:
+            return
+        self._display_analysis(analysis, Path(file_path).name)
+
+    def _on_analysis_error(self, token: int, message: str):
+        self._cancel_btn.setVisible(False)
+        self._progress_label.setText("")
+        if not self._is_current(token):
+            return
+        if "librosa" in message.lower() or "import" in message.lower():
+            self._drop_zone.setText("Audio analysis unavailable - install librosa")
+        else:
+            self._drop_zone.setText(f"Analysis failed: {message[:60]}")
+
+    def _on_analysis_cancelled(self, token: int):
+        self._cancel_btn.setVisible(False)
+        self._progress_label.setText("")
+        if self._is_current(token):
+            self._drop_zone.setText("Analysis cancelled")
 
     def _display_analysis(self, analysis, filename: str):
         """Show analysis results in the panel."""

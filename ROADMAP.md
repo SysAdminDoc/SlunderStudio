@@ -48,13 +48,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
   Acceptance: A loaded model is used when selected; demo mode is explicit; generation is responsive/cancellable; mute/solo affects preview/export; fixed-seed fixtures are deterministic for the pinned runtime.
   Complexity: M
 
-- [ ] P2 — Run reference analysis as a cancellable background job
-  Why: Librosa analysis runs synchronously and freezes the GUI on large files.
-  Evidence: `ui/reference_panel.py:191-210`; PySide thread-affinity guidance.
-  Touches: `ui/reference_panel.py`, `engines/audio_analyzer.py`, shared workers, cache and cancellation tests.
-  Acceptance: Large-file analysis keeps the UI responsive, reports stage progress, cancels cleanly, caches by content hash plus analyzer version, and never applies a stale result to a newer selection.
-  Complexity: S
-
 - [ ] P2 — Complete UI localization with pseudolocale and RTL gates
   Why: The catalog/helper exist, but most views remain hard-coded English and there is no runtime locale control.
   Evidence: `core/i18n.py`, `assets/locales/en.json`, limited `tr()` call sites; ACE-Step/RVC multilingual UIs and Qt translation support.

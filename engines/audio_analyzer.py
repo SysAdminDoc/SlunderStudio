@@ -3,7 +3,11 @@ Slunder Studio — Audio Analyzer
 Reference track analysis: BPM, key, energy envelope, spectral features,
 genre estimation, and song structure detection via librosa.
 """
+import hashlib
 import json
+import threading
+from collections import OrderedDict
+
 import numpy as np
 from typing import Optional, Callable
 from pathlib import Path
@@ -238,18 +242,90 @@ def infer_clap_style_tags(analysis: AudioAnalysis, limit: int = 5) -> tuple[list
 
 # ── Main Analysis Function ─────────────────────────────────────────────────────
 
+# Bump when the analysis changes shape or meaning; cached results keyed on an
+# older version are ignored rather than silently reused.
+ANALYZER_VERSION = 2
+_ANALYSIS_CACHE: "OrderedDict[str, AudioAnalysis]" = OrderedDict()
+_ANALYSIS_CACHE_LIMIT = 32
+_ANALYSIS_CACHE_LOCK = threading.Lock()
+
+
+def _raise_if_cancelled(cancel_event, file_path: str):
+    """Cancellation is a distinct outcome, not a partial result."""
+    if cancel_event is not None and cancel_event.is_set():
+        from core.workers import CancelledJobError
+
+        raise CancelledJobError(
+            "Reference analysis cancelled",
+            outputs={"file_path": file_path},
+        )
+
+
+def analysis_cache_key(file_path: str) -> str:
+    """Content hash plus analyzer version, so edits and upgrades both miss."""
+    digest = hashlib.sha256()
+    digest.update(str(ANALYZER_VERSION).encode("utf-8"))
+    with open(file_path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def cached_analysis(cache_key: str) -> Optional["AudioAnalysis"]:
+    with _ANALYSIS_CACHE_LOCK:
+        analysis = _ANALYSIS_CACHE.get(cache_key)
+        if analysis is not None:
+            _ANALYSIS_CACHE.move_to_end(cache_key)
+        return analysis
+
+
+def store_analysis(cache_key: str, analysis: "AudioAnalysis") -> None:
+    with _ANALYSIS_CACHE_LOCK:
+        _ANALYSIS_CACHE[cache_key] = analysis
+        _ANALYSIS_CACHE.move_to_end(cache_key)
+        while len(_ANALYSIS_CACHE) > _ANALYSIS_CACHE_LIMIT:
+            _ANALYSIS_CACHE.popitem(last=False)
+
+
+def clear_analysis_cache() -> None:
+    with _ANALYSIS_CACHE_LOCK:
+        _ANALYSIS_CACHE.clear()
+
+
 def analyze_track(
     file_path: str,
     progress_cb: Callable = None,
     step_cb: Callable = None,
     log_cb: Callable = None,
     cancel_event=None,
+    use_cache: bool = True,
     **kwargs,
 ) -> AudioAnalysis:
     """
     Analyze an audio file and extract production fingerprint.
     Returns AudioAnalysis with all features.
+
+    Results are cached by content hash plus analyzer version, so re-selecting
+    the same file is instant while an edited file or an analyzer upgrade both
+    force a fresh analysis. Cancellation raises CancelledJobError.
     """
+    cache_key = ""
+    if use_cache:
+        try:
+            cache_key = analysis_cache_key(file_path)
+        except OSError:
+            cache_key = ""
+        if cache_key:
+            hit = cached_analysis(cache_key)
+            if hit is not None:
+                if step_cb:
+                    step_cb("Using cached analysis")
+                if progress_cb:
+                    progress_cb(100)
+                return hit
+
+    _raise_if_cancelled(cancel_event, file_path)
+
     from core.deps import ensure
     ensure("librosa")
     import librosa
@@ -267,8 +343,7 @@ def analyze_track(
     analysis.sample_rate = sr
     analysis.duration = librosa.get_duration(y=y, sr=sr)
 
-    if cancel_event and cancel_event.is_set():
-        return analysis
+    _raise_if_cancelled(cancel_event, file_path)
 
     # BPM detection
     if step_cb:
@@ -285,8 +360,7 @@ def analyze_track(
     analysis.bpm_confidence = min(1.0, len(analysis.beat_times) / (analysis.duration / 2))
     analysis.suggested_tempo_tag = _bpm_to_tag(analysis.bpm)
 
-    if cancel_event and cancel_event.is_set():
-        return analysis
+    _raise_if_cancelled(cancel_event, file_path)
 
     # Key detection
     if step_cb:
@@ -296,8 +370,7 @@ def analyze_track(
 
     analysis.key, analysis.key_confidence = _detect_key(y, sr)
 
-    if cancel_event and cancel_event.is_set():
-        return analysis
+    _raise_if_cancelled(cancel_event, file_path)
 
     # Energy envelope
     if step_cb:
@@ -315,8 +388,7 @@ def analyze_track(
     analysis.energy_mean = float(np.mean(rms))
     analysis.energy_std = float(np.std(rms))
 
-    if cancel_event and cancel_event.is_set():
-        return analysis
+    _raise_if_cancelled(cancel_event, file_path)
 
     # Spectral centroid (brightness)
     if step_cb:
@@ -333,8 +405,7 @@ def analyze_track(
     onset_times = librosa.frames_to_time(onsets, sr=sr)
     analysis.onset_density = len(onset_times) / max(1.0, analysis.duration)
 
-    if cancel_event and cancel_event.is_set():
-        return analysis
+    _raise_if_cancelled(cancel_event, file_path)
 
     # Structure detection via self-similarity
     if step_cb:
@@ -375,8 +446,7 @@ def analyze_track(
         # Structure detection can fail on very short or unusual audio
         analysis.sections = [{"start": 0, "end": analysis.duration, "label": "Full Track"}]
 
-    if cancel_event and cancel_event.is_set():
-        return analysis
+    _raise_if_cancelled(cancel_event, file_path)
 
     # Genre estimation
     if step_cb:
@@ -398,6 +468,8 @@ def analyze_track(
     if progress_cb:
         progress_cb(100)
 
+    if cache_key:
+        store_analysis(cache_key, analysis)
     return analysis
 
 
