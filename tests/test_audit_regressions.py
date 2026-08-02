@@ -15,6 +15,8 @@ from core.project import Project, ProjectAsset
 from core.settings import Settings
 from core.voice_bank import VoiceBank, VoiceProfile
 from engines.ai_producer import AIProducer, ProducerBrief, PipelineStage
+from engines.ace_step_engine import ACEStepEngine, GenerationResult, generate_song
+from engines.lyrics_engine import LyricsLLM, generate_lyrics
 from ui.onboarding import check_system
 
 
@@ -48,6 +50,74 @@ class GpuProbeTests(unittest.TestCase):
         self.assertTrue(checks["cuda"])
         self.assertEqual(checks["gpu_name"], "Fake CUDA GPU")
         self.assertEqual(checks["vram_gb"], 8.0)
+
+
+class _CachedModelManager:
+    def __init__(self):
+        self.model = None
+        self.calls = 0
+
+    def load_model(self, _model_id, loader_fn):
+        self.calls += 1
+        if self.model is None:
+            self.model = loader_fn()
+        return self.model
+
+
+class ManagedGenerationReuseTests(unittest.TestCase):
+    def test_song_generation_uses_cached_engine_on_second_call(self):
+        manager = _CachedModelManager()
+
+        def load(engine):
+            engine._model_loaded = True
+
+        def generate(engine, _params, **_kwargs):
+            if not engine._model_loaded:
+                raise RuntimeError("unloaded engine was used")
+            return GenerationResult(audio_path="song.wav", duration=1.0)
+
+        with (
+            mock.patch("core.model_manager.ModelManager", return_value=manager),
+            mock.patch.object(ACEStepEngine, "load", load),
+            mock.patch.object(ACEStepEngine, "generate", generate),
+            mock.patch(
+                "engines.ace_step_engine.recover_song_vocal_stem", return_value={}
+            ),
+        ):
+            first = generate_song("lyrics")
+            second = generate_song("lyrics")
+
+        self.assertEqual(manager.calls, 2)
+        self.assertEqual(first["audio_path"], "song.wav")
+        self.assertEqual(second["audio_path"], "song.wav")
+
+    def test_lyrics_generation_uses_cached_llm_on_second_call(self):
+        manager = _CachedModelManager()
+        settings = mock.Mock()
+        settings.get.side_effect = lambda _key, default=None: default
+
+        def load(llm, model_id=None, **_kwargs):
+            llm._model = object()
+            llm._backend = "stub"
+            llm._model_id = model_id
+
+        def generate(llm, *_args, **_kwargs):
+            if not llm.is_loaded:
+                raise RuntimeError("unloaded LLM was used")
+            return "cached lyrics"
+
+        with (
+            mock.patch("engines.lyrics_engine.ModelManager", return_value=manager),
+            mock.patch("engines.lyrics_engine.Settings", return_value=settings),
+            mock.patch.object(LyricsLLM, "load", load),
+            mock.patch.object(LyricsLLM, "generate", generate),
+        ):
+            first = generate_lyrics("dark song")
+            second = generate_lyrics("dark song")
+
+        self.assertEqual(manager.calls, 2)
+        self.assertEqual(first["lyrics"], "cached lyrics")
+        self.assertEqual(second["lyrics"], "cached lyrics")
 
 
 class ThreadSafeSingletonTests(unittest.TestCase):

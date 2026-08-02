@@ -1152,6 +1152,21 @@ class ACEStepEngine:
 
 # -- High-Level Functions for InferenceWorker ----------------------------------
 
+def _load_managed_engine(model_manager) -> ACEStepEngine:
+    """Load ACE-Step through ModelManager and use its canonical engine object."""
+    requested_engine = ACEStepEngine()
+
+    def _loader():
+        requested_engine.load()
+        return requested_engine
+
+    engine = model_manager.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
+    if not isinstance(engine, ACEStepEngine):
+        raise TypeError(
+            f"ModelManager returned {type(engine).__name__} for {ACE_STEP_MODEL_ID}"
+        )
+    return engine
+
 def generate_song(
     lyrics: str,
     style_tags: str = "",
@@ -1177,13 +1192,7 @@ def generate_song(
 
     from core.model_manager import ModelManager
     mgr = ModelManager()
-    engine = ACEStepEngine()
-
-    def _loader():
-        engine.load()
-        return engine
-
-    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
+    engine = _load_managed_engine(mgr)
 
     if cancel_event and cancel_event.is_set():
         return {"cancelled": True}
@@ -1258,13 +1267,7 @@ def generate_song_batch(
 
     from core.model_manager import ModelManager
     mgr = ModelManager()
-    engine = ACEStepEngine()
-
-    def _loader():
-        engine.load()
-        return engine
-
-    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
+    engine = _load_managed_engine(mgr)
 
     if cancel_event and cancel_event.is_set():
         return {"cancelled": True}
@@ -1330,13 +1333,7 @@ def generate_seed_grid(
 
     from core.model_manager import ModelManager
     mgr = ModelManager()
-    engine = ACEStepEngine()
-
-    def _loader():
-        engine.load()
-        return engine
-
-    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
+    engine = _load_managed_engine(mgr)
 
     total = max(1, len(params_list))
     results = []
@@ -1458,13 +1455,7 @@ def generate_cover(
 
     from core.model_manager import ModelManager
     mgr = ModelManager()
-    engine = ACEStepEngine()
-
-    def _loader():
-        engine.load()
-        return engine
-
-    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
+    engine = _load_managed_engine(mgr)
 
     if cancel_event and cancel_event.is_set():
         return {"cancelled": True}
@@ -1528,13 +1519,7 @@ def generate_extend(
 
     from core.model_manager import ModelManager
     mgr = ModelManager()
-    engine = ACEStepEngine()
-
-    def _loader():
-        engine.load()
-        return engine
-
-    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
+    engine = _load_managed_engine(mgr)
 
     if cancel_event and cancel_event.is_set():
         return {"cancelled": True}
@@ -1595,13 +1580,7 @@ def generate_repaint(
 
     from core.model_manager import ModelManager
     mgr = ModelManager()
-    engine = ACEStepEngine()
-
-    def _loader():
-        engine.load()
-        return engine
-
-    mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)
+    engine = _load_managed_engine(mgr)
 
     if cancel_event and cancel_event.is_set():
         return {"cancelled": True}

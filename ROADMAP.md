@@ -114,44 +114,6 @@ therefore new work, not a pre-existing red build.
 
 ### P0
 
-- [ ] P0 — Every generate call after the first fails: `load_model`'s return value is discarded
-  Category: correctness
-  Where: `engines/ace_step_engine.py:1180-1213` (`generate_song`), and the identical pattern at
-    `:1259-1285` (`generate_song_batch`), `:1331-1341` (`generate_seed_grid`), `:1459-1492`
-    (`generate_cover`), `:1529-1558` (`generate_extend`), `:1596-1629` (`generate_repaint`);
-    `engines/lyrics_engine.py:366-404` (`generate_lyrics`), `:446-472` (`generate_lyrics_quick`).
-    Interacts with `core/model_manager.py:940-966`.
-  Problem: Each of these eight functions builds a fresh local engine (`engine = ACEStepEngine()` /
-    `llm = LyricsLLM()`), passes a closure loader to `mgr.load_model(model_id, loader_fn=_loader)`,
-    and throws the return value away. `ModelManager.load_model` short-circuits when the requested
-    model is already current and returns the cached engine **without ever invoking `loader_fn`**
-    (`core/model_manager.py:942-949`, `:953-966`). The local engine is therefore never loaded, and
-    the very next line uses it: `engine.generate()` raises
-    `RuntimeError("ACE-Step model not loaded. Call load() first.")`
-    (`engines/ace_step_engine.py:642`, `:830`) and `llm.generate()` raises
-    `RuntimeError("No model loaded. Call load() first.")` (`engines/lyrics_engine.py:156`).
-  Evidence: Two mainstream triggers, both confirmed by tracing. (a) The user activates the model in
-    Model Hub, which routes through `_dynamic_load` to the module-level
-    `ace_step_engine.load_model()` (`engines/ace_step_engine.py:1644-1648`) and installs a
-    *different* engine instance as `_current_model` — then the first Generate click fails.
-    (b) The user generates twice in one session: the second call takes the `already is not None`
-    early return and fails. `ACEStepEngine` is a plain class, not a singleton (verified: no
-    `__new__`/`_instance`), so the local instance and the cached one are genuinely different
-    objects. Nothing unloads in between — `unload()` runs only in `ui/main_window.py:784`
-    `closeEvent` and on Model Hub deactivate. `regenerate_section`
-    (`engines/lyrics_engine.py:505-518`) does it correctly (`current = mgr.load_model(...)`),
-    which confirms the intended usage. No test covers the reuse path.
-  Fix: Capture and use the return value in all eight functions —
-    `engine = mgr.load_model(ACE_STEP_MODEL_ID, loader_fn=_loader)` — and assert the returned
-    object is the expected engine type before use. AI Producer's `_generate_song` inherits the fix
-    through `generate_song`.
-  Acceptance: A test that calls `generate_song` (or `generate_lyrics`) twice against a stubbed
-    ModelManager whose second `load_model` returns the cached engine without calling `loader_fn`
-    completes both runs; and a test that pre-populates `_current_model` via the module-level
-    `load_model()` then calls `generate_song` succeeds on the first attempt.
-  Confidence: Verified
-  Effort: S
-
 ### P1
 
 - [ ] P1 — Cancelling an ACE-Step batch or seed grid deletes the variations that already finished

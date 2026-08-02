@@ -330,6 +330,20 @@ def default_lyrics_language(settings: Settings | None = None) -> str:
     return normalize_language_code(active_settings.get("lyrics.default_language", "en"))
 
 
+def _load_managed_lyrics(model_manager, model_id: str) -> LyricsLLM:
+    """Load lyrics through ModelManager and use its canonical LLM object."""
+    requested_llm = LyricsLLM()
+
+    def _loader():
+        requested_llm.load(model_id=model_id)
+        return requested_llm
+
+    llm = model_manager.load_model(model_id, loader_fn=_loader)
+    if not isinstance(llm, LyricsLLM):
+        raise TypeError(f"ModelManager returned {type(llm).__name__} for {model_id}")
+    return llm
+
+
 def generate_lyrics(
     prompt: str,
     genre_id: str = "pop",
@@ -364,13 +378,7 @@ def generate_lyrics(
         log_cb(f"Loading model: {model_id}")
 
     mgr = ModelManager()
-    llm = LyricsLLM()
-
-    def _loader():
-        llm.load(model_id=model_id)
-        return llm
-
-    mgr.load_model(model_id, loader_fn=_loader)
+    llm = _load_managed_lyrics(mgr, model_id)
 
     if cancel_event and cancel_event.is_set():
         return {"lyrics": "", "cancelled": True}
@@ -444,13 +452,7 @@ def generate_lyrics_quick(
         step_cb("Loading lyrics model...")
 
     mgr = ModelManager()
-    llm = LyricsLLM()
-
-    def _loader():
-        llm.load(model_id=model_id)
-        return llm
-
-    mgr.load_model(model_id, loader_fn=_loader)
+    llm = _load_managed_lyrics(mgr, model_id)
 
     if cancel_event and cancel_event.is_set():
         return {"lyrics": "", "cancelled": True}
