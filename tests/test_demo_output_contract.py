@@ -21,6 +21,7 @@ from engines.rvc_engine import (
 from engines.sfx_engine import SFXEngine, SFXParams
 from engines.ai_producer import AIProducer, ProducerBrief, PipelineStage
 from engines.fluidsynth_engine import MidiRenderResult, render_midi_to_audio
+from engines.diffsinger_engine import DiffSingerEngine, SingParams
 from ui.midi_studio_view import MidiStudioView
 
 
@@ -143,6 +144,16 @@ class DemoOutputContractTests(unittest.TestCase):
             self.assertFalse(result.can_route)
             self.assertEqual(result.output_kind, "error")
 
+    def test_diffsinger_without_dictionary_fails_closed(self):
+        engine = DiffSingerEngine()
+        engine._session = object()
+        engine._sample_rate = 24000
+        engine._hop_size = 256
+
+        with self.assertRaises(RuntimeError) as ctx:
+            engine.synthesize(SingParams(lyrics="la"))
+
+        self.assertIn("phoneme dictionary", str(ctx.exception))
 
     def test_ai_producer_stops_on_song_failure_without_demo_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:

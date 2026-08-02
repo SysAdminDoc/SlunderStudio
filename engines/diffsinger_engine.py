@@ -6,6 +6,7 @@ Converts phoneme-aligned lyrics into natural singing audio.
 import os
 import time
 import json
+import re
 from typing import Optional, Callable
 from dataclasses import asdict, dataclass, field
 
@@ -68,6 +69,7 @@ class DiffSingerEngine:
         self._model_path: Optional[str] = None
         self._sample_rate = 0
         self._hop_size = 0
+        self._phoneme_dictionary: Optional[dict[str, int]] = None
         self._phonemizer = None
         self._output_dir = os.path.join(get_config_dir(), "generations", "vocals")
         os.makedirs(self._output_dir, exist_ok=True)
@@ -90,6 +92,7 @@ class DiffSingerEngine:
             self._sample_rate, self._hop_size = self._resolve_frame_timing(
                 self._config, model_path
             )
+            self._phoneme_dictionary = self._load_phoneme_dictionary(model_path)
 
             if progress_callback:
                 progress_callback(0.4, "Creating inference session...")
@@ -110,6 +113,7 @@ class DiffSingerEngine:
 
         except Exception as e:
             self._session = None
+            self._phoneme_dictionary = None
             raise RuntimeError(f"Failed to load DiffSinger: {e}") from e
 
     # ── Model frame timing ─────────────────────────────────────────────────────
@@ -179,6 +183,86 @@ class DiffSingerEngine:
             )
         return sample_rate, hop_size
 
+    @staticmethod
+    def _parse_phoneme_dictionary(path: str) -> dict[str, int]:
+        """Read common DiffSinger/OpenUtau phoneme dictionary layouts."""
+        with open(path, encoding="utf-8-sig") as handle:
+            text = handle.read()
+        stripped = text.lstrip()
+        if path.lower().endswith(".json") or stripped.startswith(("{", "[")):
+            data = json.loads(text)
+            if isinstance(data, dict):
+                pairs = list(data.items())
+            elif isinstance(data, list):
+                pairs = ((value, index) for index, value in enumerate(data))
+            else:
+                pairs = ()
+            result = {}
+            for symbol, token_id in pairs:
+                try:
+                    symbol_text = str(symbol).strip()
+                    value = int(token_id)
+                except (TypeError, ValueError):
+                    continue
+                if symbol_text:
+                    result[symbol_text] = value
+            return result
+
+        result: dict[str, int] = {}
+        next_index = 0
+        for line in text.splitlines():
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            parts = [part for part in re.split(r"[\s,]+", line) if part]
+            if len(parts) >= 2:
+                try:
+                    first_id = int(parts[0])
+                except ValueError:
+                    first_id = None
+                try:
+                    second_id = int(parts[1])
+                except ValueError:
+                    second_id = None
+                if first_id is not None:
+                    symbol, token_id = parts[1], first_id
+                elif second_id is not None:
+                    symbol, token_id = parts[0], second_id
+                else:
+                    continue
+            else:
+                symbol, token_id = parts[0], next_index
+            next_index = max(next_index, token_id + 1)
+            result[symbol] = token_id
+        return result
+
+    @classmethod
+    def _load_phoneme_dictionary(cls, model_path: str) -> dict[str, int]:
+        """Require a real model-side phoneme-to-ID dictionary."""
+        directory = os.path.dirname(model_path)
+        names = (
+            "dsdict.txt",
+            "dsdict",
+            "phonemes.txt",
+            "phonemes.json",
+            "dsdict.json",
+        )
+        for name in names:
+            path = os.path.join(directory, name)
+            if not os.path.isfile(path):
+                continue
+            try:
+                dictionary = cls._parse_phoneme_dictionary(path)
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+                raise RuntimeError(f"Could not read phoneme dictionary {name}: {exc}") from exc
+            if dictionary:
+                return dictionary
+            raise RuntimeError(f"Phoneme dictionary {name} is empty")
+        raise RuntimeError(
+            "DiffSinger model is missing a phoneme dictionary "
+            "(dsdict.txt or phonemes.txt)."
+        )
+
     @property
     def frame_period_sec(self) -> float:
         """Seconds per model frame, from the loaded model's own configuration."""
@@ -213,12 +297,17 @@ class DiffSingerEngine:
         self._model_path = None
         self._sample_rate = 0
         self._hop_size = 0
+        self._phoneme_dictionary = None
 
     def synthesize(self, params: SingParams,
                    progress_callback: Optional[Callable] = None) -> SingResult:
         """Synthesize singing voice from parameters."""
         if not self.is_loaded:
             return SingResult(error="DiffSinger model not loaded")
+        if not self._phoneme_dictionary:
+            raise RuntimeError(
+                "DiffSinger phoneme dictionary is unavailable; refusing to run inference."
+            )
 
         t0 = time.time()
 
@@ -358,13 +447,24 @@ class DiffSingerEngine:
 
         # Common DiffSinger inputs
         if "tokens" in input_names:
-            # Phoneme tokens (simplified mapping)
-            import hashlib as _hl
-            token_ids = [int.from_bytes(_hl.md5(p.encode()).digest()[:2], "big") % 256 for p in phonemes]
+            token_ids = []
+            for phoneme in phonemes:
+                if phoneme in self._phoneme_dictionary:
+                    token_ids.append(self._phoneme_dictionary[phoneme])
+                    continue
+                folded = [
+                    value for key, value in self._phoneme_dictionary.items()
+                    if key.casefold() == phoneme.casefold()
+                ]
+                if len(folded) != 1:
+                    raise RuntimeError(
+                        f"Phoneme {phoneme!r} is missing from the model dictionary."
+                    )
+                token_ids.append(folded[0])
             inputs["tokens"] = np.array([token_ids], dtype=np.int64)
 
         if "durations" in input_names:
-            dur_per_phone = n_frames // max(len(phonemes), 1)
+            dur_per_phone = max(1, n_frames // max(len(phonemes), 1))
             durations = [dur_per_phone] * len(phonemes)
             inputs["durations"] = np.array([durations], dtype=np.int64)
 

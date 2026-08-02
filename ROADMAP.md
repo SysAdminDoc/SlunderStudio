@@ -118,29 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — DiffSinger conditions real inference on md5-derived fake phoneme IDs and still labels it `output_kind="model"`
-  Category: correctness
-  Where: `engines/diffsinger_engine.py:343-364` (`_prepare_inputs`; tokens `:355-359`, durations
-    `:361-364`); result labelled at `:277`
-  Problem: Token IDs are computed as `md5(phoneme)[:2] % 256`, which cannot correspond to any real
-    model's phoneme vocabulary. A genuinely loaded ONNX model therefore synthesizes
-    noise-conditioned audio that is routed and provenance-stamped as real model output. Unlike RVC,
-    GPT-SoVITS and SFX — all of which fail closed behind `allow_demo_output` per v0.1.6 —
-    DiffSinger has no demo gate at all; this is the one placeholder inference path the demo-output
-    contract missed. Separately, `durations` floor-divides to 0 frames per phoneme whenever
-    `len(phonemes) > n_frames` (short notes plus the character-split fallback), which will produce
-    model-side shape errors.
-  Evidence: `synthesize_vocals` (`:446-462`) runs the real ONNX session with these inputs; nothing
-    marks the result demo or blocks routing — `ui/vocal_suite_view.py` and
-    `engines/melody_extractor.render_diffsinger_from_melody` both save it.
-  Fix: Load the model's real phoneme dictionary (the `dsdict`/`phonemes.txt` shipped beside
-    `dsconfig.yaml`) and fail closed when it is unavailable, mirroring the v0.1.6 contract; clamp
-    per-phoneme durations to at least 1 frame.
-  Acceptance: Extend `tests/test_demo_output_contract.py` — synthesis without a phoneme dictionary
-    raises rather than returning `output_kind="model"`.
-  Confidence: Verified (the mapping cannot be valid)
-  Effort: L
-
 - [ ] P2 — Generated SFX is never trimmed to the requested duration
   Category: correctness
   Where: `engines/sfx_engine.py:195-248` (`SFXEngine.generate`)

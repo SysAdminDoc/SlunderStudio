@@ -19,6 +19,8 @@ All notable changes to SlunderStudio will be documented in this file.
   markers when cancellation races with a finished download.
 - Made DiffSinger use the loaded model's declared sample rate for pitch/gender processing, duration,
   result metadata, provenance parameters, and WAV headers.
+- Required model-side DiffSinger phoneme dictionaries, replaced fake token IDs with declared IDs,
+  and clamped generated phoneme durations to at least one frame.
 - Marked FluidSynth sine fallbacks as demo renders with an explicit reason and kept MIDI routing buttons disabled for those previews.
 - Repaired AI Producer lyrics generation to use the canonical loaded lyrics model and structured prompts, while labeling template fallback lyrics as demo/degraded output.
 - Marshalled streamed lyrics tokens through an `InferenceWorker` signal and queued connection so the editor is updated only on its GUI thread.

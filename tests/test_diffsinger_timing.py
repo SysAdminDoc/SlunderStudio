@@ -140,6 +140,8 @@ class FrameTimingTests(unittest.TestCase):
 
         engine._session = _Session()
         engine._model_path = str(self.model)
+        engine._phonemizer = lambda _lyrics: ["la"]
+        engine._phoneme_dictionary = {"la": 7}
         params = SingParams(
             lyrics="la",
             notes=notes((60, 0.0, 0.25)),
@@ -171,6 +173,40 @@ class FrameTimingTests(unittest.TestCase):
         output = engine.save_output(result, name="model-rate")
         with wave.open(output, "rb") as handle:
             self.assertEqual(24000, handle.getframerate())
+
+    def test_dictionary_ids_replace_hash_tokens_and_durations_are_clamped(self):
+        engine = self._engine({"audio_sample_rate": 24000, "hop_size": 256})
+
+        class _Input:
+            def __init__(self, name):
+                self.name = name
+
+        class _Session:
+            def get_inputs(self):
+                return [_Input("tokens"), _Input("durations")]
+
+        engine._session = _Session()
+        engine._phoneme_dictionary = {"a": 11, "b": 23, "SP": 2}
+        inputs = engine._prepare_inputs(
+            ["a", "b", "a"],
+            notes((60, 0.0, 0.01)),
+            SingParams(),
+        )
+
+        np.testing.assert_array_equal(inputs["tokens"], [[11, 23, 11]])
+        self.assertTrue(np.all(inputs["durations"] >= 1))
+
+    def test_text_dictionary_supports_comments_and_both_column_orders(self):
+        dictionary = self.root / "dsdict.txt"
+        dictionary.write_text(
+            "# symbol id\nSP 2\n11 a\n\nb\n",
+            encoding="utf-8",
+        )
+
+        self.assertEqual(
+            {"SP": 2, "a": 11, "b": 12},
+            DiffSingerEngine._parse_phoneme_dictionary(str(dictionary)),
+        )
 
 
 if __name__ == "__main__":
