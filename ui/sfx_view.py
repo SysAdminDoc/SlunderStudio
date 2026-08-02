@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 from ui.theme import ThemeEngine
+from ui.accessibility import install_accessibility
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.engine_contract import (
     ArtifactKind,
@@ -102,24 +103,34 @@ class SFXCard(QFrame):
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
 
-        play_btn = QPushButton("Play")
-        play_btn.setStyleSheet(btn_style)
-        play_btn.clicked.connect(lambda: self.play_requested.emit(self.result))
+        self._play_btn = QPushButton("Play")
+        self._play_btn.setStyleSheet(btn_style)
+        self._play_btn.clicked.connect(lambda: self.play_requested.emit(self.result))
 
-        use_btn = QPushButton("Use Demo" if result.is_demo else "Use")
-        use_btn.setStyleSheet(btn_style.replace(t['background'], '#238636').replace(t['text'], 'white'))
-        use_btn.setEnabled(result.can_route)
-        use_btn.clicked.connect(lambda: self.use_requested.emit(self.result))
+        self._use_btn = QPushButton("Use Demo" if result.is_demo else "Use")
+        self._use_btn.setStyleSheet(btn_style.replace(t['background'], '#238636').replace(t['text'], 'white'))
+        self._use_btn.setEnabled(result.can_route)
+        self._use_btn.clicked.connect(lambda: self.use_requested.emit(self.result))
 
-        del_btn = QPushButton("X")
-        del_btn.setFixedSize(20, 20)
-        del_btn.setStyleSheet(btn_style)
-        del_btn.clicked.connect(lambda: self.delete_requested.emit(self))
+        self._delete_btn = QPushButton("X")
+        self._delete_btn.setFixedSize(20, 20)
+        self._delete_btn.setStyleSheet(btn_style)
+        self._delete_btn.clicked.connect(lambda: self.delete_requested.emit(self))
 
-        btn_col.addWidget(play_btn)
-        btn_col.addWidget(use_btn)
-        btn_col.addWidget(del_btn)
+        btn_col.addWidget(self._play_btn)
+        btn_col.addWidget(self._use_btn)
+        btn_col.addWidget(self._delete_btn)
         layout.addLayout(btn_col)
+
+        install_accessibility(
+            self,
+            "SFX variation",
+            named_controls=[
+                (self._play_btn, "Play sound effect", "Plays this generated sound effect."),
+                (self._use_btn, "Use sound effect", "Routes this sound effect to the mixer."),
+                (self._delete_btn, "Delete sound effect", "Removes this generated sound effect."),
+            ],
+        )
 
 
 # ── SFX View ───────────────────────────────────────────────────────────────────
@@ -355,6 +366,23 @@ class SFXView(QWidget):
         layout.addWidget(right_w, 1)
         self._model_mgr.status_changed.connect(self._on_model_status_changed)
         self._refresh_capability_state()
+        install_accessibility(
+            self,
+            "SFX Generator",
+            named_controls=[
+                (self._prompt, "SFX prompt", "Describes the sound effect to generate."),
+                (self._neg_prompt, "SFX negative prompt", "Describes sounds to avoid."),
+                (self._category, "SFX category", "Selects a sound effect category."),
+                (self._preset_combo, "SFX preset", "Selects a category prompt preset."),
+                (self._duration, "SFX duration", "Sets the generated sound duration in seconds."),
+                (self._steps, "SFX diffusion steps", "Sets the number of synthesis steps."),
+                (self._cfg, "SFX guidance scale", "Sets synthesis guidance strength."),
+                (self._batch, "SFX batch size", "Sets how many variations to generate."),
+                (self._gen_btn, "Generate sound effects", "Generates the requested sound effect variations."),
+                (self._demo_checkbox, "Enable SFX demo synthesis", "Allows a local demo fallback without the AI model."),
+                (self._clear_btn, "Clear generated sound effects", "Removes all generated sound effect cards."),
+            ],
+        )
 
     # ── Events ─────────────────────────────────────────────────────────────────
 
@@ -365,6 +393,13 @@ class SFXView(QWidget):
             self._preset_combo.setVisible(True)
         else:
             self._preset_combo.setVisible(False)
+        install_accessibility(
+            self,
+            "SFX Generator",
+            named_controls=[
+                (self._preset_combo, "SFX preset", "Selects a category prompt preset."),
+            ],
+        )
 
     def _on_preset_selected(self, text: str):
         if text:

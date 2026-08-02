@@ -353,6 +353,7 @@ class PianoRollView(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setProperty("accessibility_canvas", True)
 
         t = ThemeEngine.get_colors()
         bg = t.get("background", "#0d1117")
@@ -367,6 +368,13 @@ class PianoRollView(QGraphicsView):
         # Center on middle C
         middle_c_y = (MAX_PITCH - 60) * NOTE_HEIGHT
         self.centerOn(0, middle_c_y)
+        install_accessibility(
+            self,
+            "Piano roll canvas",
+            named_controls=[
+                (self, "Piano roll canvas", "Keyboard-operable canvas for selecting and editing notes."),
+            ],
+        )
 
     def wheelEvent(self, event: QWheelEvent):
         """Zoom with Ctrl+scroll, scroll otherwise."""

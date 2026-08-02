@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ui.theme import Palette, ThemeEngine
+from ui.accessibility import install_accessibility
 from ui.waveform_widget import WaveformWidget
 from engines.ai_producer import (
     ProducerBrief, ProducerResult, PipelineStage, PIPELINE_ORDER,
@@ -511,6 +512,25 @@ class AIProducerView(QWidget):
         layout.addWidget(right_w, 1)
         self._model_mgr.status_changed.connect(self._on_model_status_changed)
         self._refresh_capability_state()
+        install_accessibility(
+            self,
+            "AI Producer",
+            named_controls=[
+                (self._prompt, "Producer brief", "Describes the song for the AI producer pipeline."),
+                (self._genre, "Producer genre", "Selects the song genre."),
+                (self._mood, "Producer mood", "Selects the song mood."),
+                (self._duration, "Producer duration", "Sets the target song duration in seconds."),
+                (self._vocals, "Producer vocals", "Selects the vocal arrangement."),
+                (self._master_preset, "Producer mastering preset", "Selects the mastering preset for the final song."),
+                (self._sfx_check, "Add producer sound effects", "Includes sound effects in the generated production."),
+                (self._demo_fallback_check, "Enable producer demo fallback", "Allows a declared demo fallback when production cannot complete."),
+                (self._produce_btn, "Produce song", "Runs the complete AI producer pipeline."),
+                (self._cancel_btn, "Cancel production", "Cancels the running producer pipeline."),
+                (self._retry_btn, "Retry production", "Retries the producer pipeline."),
+                (self._lyrics_preview, "Generated lyrics preview", "Shows the lyrics produced by the pipeline."),
+                (self._export_btn, "Export produced song", "Exports the verified producer result."),
+            ],
+        )
 
     # ── Production ─────────────────────────────────────────────────────────────
 

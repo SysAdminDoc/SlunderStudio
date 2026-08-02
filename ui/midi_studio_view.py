@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 from ui.theme import Palette, ThemeEngine
+from ui.accessibility import install_accessibility
 from ui.piano_roll import PianoRollWidget
 from ui.midi_mixer import MidiMixer
 from ui.waveform_widget import WaveformWidget
@@ -422,6 +423,31 @@ class MidiStudioView(QWidget):
         main_layout.addWidget(right_widget, 1)
         self._model_mgr.status_changed.connect(self._on_model_status_changed)
         self._refresh_capability_state()
+        install_accessibility(
+            self,
+            "MIDI Studio",
+            named_controls=[
+                (self._prompt, "MIDI composition prompt", "Describes the composition to generate."),
+                (self._style_input, "MIDI style", "Adds style guidance for MIDI generation."),
+                (self._key_combo, "MIDI key", "Selects the generated composition key."),
+                (self._tempo_spin, "MIDI tempo", "Sets the generated tempo in beats per minute."),
+                (self._bars_spin, "MIDI bars", "Sets the number of generated bars."),
+                (self._time_sig, "MIDI time signature", "Selects the generated time signature."),
+                (self._inst_combo, "MIDI instrument preset", "Selects a starting instrument arrangement."),
+                (self._progression_combo, "Chord progression", "Selects the generated chord progression."),
+                (self._groove_combo, "Drum groove", "Selects the generated drum groove."),
+                (self._chart_lyrics, "Chord chart lyrics", "Adds optional lyrics to the exported chord chart."),
+                (self._demo_checkbox, "Enable MIDI demo", "Allows algorithmic MIDI generation without an AI model."),
+                (self._gen_btn, "Generate MIDI", "Generates a MIDI composition from the current settings."),
+                (self._import_btn, "Import MIDI", "Loads a MIDI file into the studio."),
+                (self._export_btn, "Export MIDI", "Saves the current MIDI composition."),
+                (self._chart_btn, "Export chord chart", "Saves a chord chart for the current composition."),
+                (self._render_btn, "Render MIDI audio", "Renders the current MIDI composition to audio."),
+                (self._to_forge_btn, "Send MIDI audio to Song Forge", "Routes rendered audio to Song Forge."),
+                (self._to_vocals_btn, "Send MIDI audio to Vocal Suite", "Routes rendered audio to Vocal Suite."),
+                (self._tabs, "MIDI workspace tabs", "Switches between the piano roll and rendered audio."),
+            ],
+        )
 
     # ── Generation ─────────────────────────────────────────────────────────────
 

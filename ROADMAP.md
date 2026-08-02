@@ -118,34 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Twelve views have no accessibility wiring, and their widget stylesheets delete the global focus ring
-  Category: a11y
-  Where: `ui/seed_explorer.py`, `ui/stem_mixer.py`, `ui/midi_mixer.py`, `ui/midi_studio_view.py`,
-    `ui/mood_curve_editor.py`, `ui/sfx_view.py`, `ui/project_manager.py`, `ui/lyrics_view.py`,
-    `ui/lyrics_editor.py`, `ui/ai_producer_view.py`, `ui/reference_panel.py`, `ui/onboarding.py` —
-    none of them import `install_accessibility` or `set_accessible`
-  Problem: Two compounding effects. First, no accessible names, descriptions or deliberate tab
-    order on any control in these views; `tests/test_accessibility_baseline.py` covers only
-    Sidebar, Transport, Song Forge, Vocal Suite, Model Hub, Settings, Mixer, Batch and Piano Roll,
-    so this residual gap is untracked (ROADMAP tracks only the i18n gap). Second and worse, these
-    views set widget-level stylesheets that define border and color for all states without a
-    `:focus` rule (for example `ui/midi_mixer.py:195-199`, `ui/stem_mixer.py:100-110`,
-    `ui/sfx_view.py:92-102`, `ui/project_manager.py:188-198`, `ui/seed_explorer.py:58-61`). Under
-    Qt's cascade, widget-origin properties override the application stylesheet's
-    `QPushButton:focus` rule, so every one of these buttons has no visible focus indicator at all
-    (WCAG 2.4.7). The wired views escape this only because
-    `ui/accessibility.py::_install_focus_ring` appends a widget-level `:focus` rule. Related:
-    `PianoRollView` (`ui/piano_roll.py:359-365`) accepts Delete and Ctrl+A but its stylesheet has
-    no `:focus` state and `QGraphicsView` is absent from `FOCUS_STYLES`, so the keyboard-target
-    canvas gives no focus cue.
-  Fix: Call `install_accessibility(...)` in each view's `__init__` — the helper fixes both names
-    and focus rings — and add a `QGraphicsView` focus style for the piano roll and mood curve.
-  Acceptance: Extend `tests/test_accessibility_baseline.py` to cover these twelve views: every
-    focusable control has an accessible name, and a computed-style check confirms a visible focus
-    indicator.
-  Confidence: Verified
-  Effort: M
-
 - [ ] P2 — Mood Curve and Seed Explorer are mouse-only, and Seed Explorer signals state by color alone
   Category: a11y
   Where: `ui/mood_curve_editor.py:32-64` (`DraggablePoint`), `:128-137`;

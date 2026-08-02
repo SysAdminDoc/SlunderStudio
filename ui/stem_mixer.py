@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, Signal
 import numpy as np
 
 from ui.theme import Palette, ThemeEngine
+from ui.accessibility import install_accessibility
 from ui.waveform_widget import MiniWaveform
 from core.panning import pan_gains
 
@@ -164,6 +165,18 @@ class StemStrip(QFrame):
             self._waveform.load_audio(mono, sample_rate)
         layout.addWidget(self._waveform, 1)
 
+        install_accessibility(
+            self,
+            f"{stem_name.title()} stem",
+            named_controls=[
+                (self._mute_btn, f"Mute {stem_name}", "Mutes this stem in the remix."),
+                (self._solo_btn, f"Solo {stem_name}", "Solos this stem in the remix."),
+                (self._play_btn, f"Play {stem_name}", "Plays this stem preview."),
+                (self._vol_slider, f"{stem_name.title()} volume", "Adjusts the volume of this stem."),
+                (self._pan_slider, f"{stem_name.title()} pan", "Positions this stem in the stereo field."),
+            ],
+        )
+
     def _on_mute(self):
         self._muted = self._mute_btn.isChecked()
         self.mute_changed.emit(self.stem_name, self._muted)
@@ -259,6 +272,14 @@ class StemMixer(QWidget):
 
         self._scroll.setWidget(self._container)
         layout.addWidget(self._scroll, 1)
+
+        install_accessibility(
+            self,
+            "Stem Mixer",
+            named_controls=[
+                (self._remix_btn, "Export stem remix", "Exports a mix of the loaded stems."),
+            ],
+        )
 
     def load_stems(self, stems: list, sample_rate: int = 44100):
         """

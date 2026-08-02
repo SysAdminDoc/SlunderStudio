@@ -17,7 +17,10 @@ from PySide6.QtWidgets import (
     QListWidget,
     QPlainTextEdit,
     QProgressBar,
+    QGraphicsView,
+    QTabBar,
     QPushButton,
+    QToolButton,
     QSlider,
     QSpinBox,
     QTabWidget,
@@ -40,10 +43,12 @@ CONTROL_TYPES = (
     QTabWidget,
     QListWidget,
     QProgressBar,
+    QTabBar,
 )
 
 FOCUS_STYLES = {
     QPushButton: f"QPushButton:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
+    QToolButton: f"QToolButton:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
     QCheckBox: f"QCheckBox:focus {{ color: {FOCUS_RING_COLOR}; }}",
     QLineEdit: f"QLineEdit:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
     QTextEdit: f"QTextEdit:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
@@ -53,6 +58,9 @@ FOCUS_STYLES = {
     QDoubleSpinBox: f"QDoubleSpinBox:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
     QSlider: f"QSlider:focus {{ border: 1px solid {FOCUS_RING_COLOR}; border-radius: 4px; }}",
     QListWidget: f"QListWidget:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
+    QGraphicsView: f"QGraphicsView:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
+    QTabBar: f"QTabBar::tab:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
+    QTabWidget: f"QTabWidget:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
 }
 
 
@@ -69,14 +77,25 @@ def install_accessibility(
     context: str,
     named_controls: Iterable[tuple[QWidget | None, str, str]] = (),
     tab_order: Sequence[QWidget | None] | None = None,
+    include_descendants: bool = True,
 ) -> list[QWidget]:
     """Apply baseline accessibility to a view and return interactive controls."""
     set_accessible(root, context, f"{context} workspace")
 
+    named_controls = tuple(named_controls)
     for widget, name, description in named_controls:
         set_accessible(widget, name, description)
 
-    controls = _interactive_controls(root)
+    if include_descendants:
+        controls = _interactive_controls(root)
+    else:
+        controls = [
+            widget
+            for widget, _name, _description in named_controls
+            if widget is not None and _is_focusable(widget)
+        ]
+        if _is_accessibility_control(root) and _is_focusable(root):
+            controls.insert(0, root)
     for control in controls:
         if not control.accessibleName():
             set_accessible(control, _fallback_name(control, context), _fallback_description(control))
@@ -100,10 +119,34 @@ def set_tab_order(widgets: Sequence[QWidget]) -> None:
 
 def _interactive_controls(root: QWidget) -> list[QWidget]:
     controls: list[QWidget] = []
-    for widget in root.findChildren(QWidget):
-        if isinstance(widget, CONTROL_TYPES) and _is_focusable(widget):
+    for widget in (root, *root.findChildren(QWidget)):
+        if _inside_unmanaged_graphics_view(widget, root):
+            continue
+        if _is_accessibility_control(widget) and _is_focusable(widget):
             controls.append(widget)
     return controls
+
+
+def _is_accessibility_control(widget: QWidget) -> bool:
+    return (
+        isinstance(widget, CONTROL_TYPES)
+        or (
+            isinstance(widget, QGraphicsView)
+            and widget.property("accessibility_canvas") is True
+        )
+    )
+
+
+def _inside_unmanaged_graphics_view(widget: QWidget, root: QWidget) -> bool:
+    parent = widget.parentWidget()
+    while parent is not None and parent is not root:
+        if (
+            isinstance(parent, QGraphicsView)
+            and parent.property("accessibility_canvas") is not True
+        ):
+            return True
+        parent = parent.parentWidget()
+    return False
 
 
 def _is_focusable(widget: QWidget) -> bool:
@@ -148,6 +191,8 @@ def _fallback_description(widget: QWidget) -> str:
         return "Selectable list"
     if isinstance(widget, QProgressBar):
         return "Progress indicator"
+    if isinstance(widget, QGraphicsView):
+        return "Keyboard-operable canvas"
     if isinstance(widget, QAbstractButton):
         return "Action button"
     return "Interactive control"

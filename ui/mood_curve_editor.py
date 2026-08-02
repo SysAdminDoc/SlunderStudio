@@ -14,6 +14,7 @@ from PySide6.QtGui import QPainterPath, QPen, QBrush, QColor, QLinearGradient
 import numpy as np
 
 from ui.theme import Palette
+from ui.accessibility import install_accessibility
 
 # ── Preset Curves ──────────────────────────────────────────────────────────────
 
@@ -86,6 +87,15 @@ class MoodCurveEditor(QWidget):
 
         self._setup_ui()
         self._set_preset("Classic Pop Build")
+        install_accessibility(
+            self,
+            "Mood curve editor",
+            named_controls=[
+                (self._preset_combo, "Mood curve preset", "Selects a starting energy curve."),
+                (self._reset_btn, "Reset mood curve", "Resets the curve to flat energy."),
+                (self._view, "Mood curve canvas", "Keyboard-focusable canvas for editing the song energy curve."),
+            ],
+        )
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -106,12 +116,12 @@ class MoodCurveEditor(QWidget):
         self._preset_combo.currentTextChanged.connect(self._set_preset)
         ctrl.addWidget(self._preset_combo)
 
-        reset_btn = QPushButton("Reset")
-        reset_btn.setFixedWidth(60)
-        reset_btn.setFixedHeight(26)
-        reset_btn.setProperty("class", "secondary")
-        reset_btn.clicked.connect(lambda: self._set_preset("Flat Energy"))
-        ctrl.addWidget(reset_btn)
+        self._reset_btn = QPushButton("Reset")
+        self._reset_btn.setFixedWidth(60)
+        self._reset_btn.setFixedHeight(26)
+        self._reset_btn.setProperty("class", "secondary")
+        self._reset_btn.clicked.connect(lambda: self._set_preset("Flat Energy"))
+        ctrl.addWidget(self._reset_btn)
 
         ctrl.addStretch()
 
@@ -133,6 +143,7 @@ class MoodCurveEditor(QWidget):
         self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._view.setFixedHeight(self.SCENE_H + 20)
+        self._view.setProperty("accessibility_canvas", True)
 
         layout.addWidget(self._view)
 

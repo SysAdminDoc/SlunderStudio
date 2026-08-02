@@ -12,6 +12,7 @@ from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
 from ui.theme import Palette
+from ui.accessibility import install_accessibility
 from ui.waveform_widget import WaveformWidget
 
 
@@ -55,6 +56,17 @@ class ReferencePanel(QWidget):
         self._pending_path = ""
         self.setAcceptDrops(True)
         self._setup_ui()
+        install_accessibility(
+            self,
+            "Reference track",
+            named_controls=[
+                (self._browse_btn, "Browse reference track", "Selects an audio reference track for analysis."),
+                (self._match_btn, "Match reference track", "Uses the analysis to configure matching generation."),
+                (self._use_tags_btn, "Use reference tags", "Sends extracted reference tags to the generation form."),
+                (self._cancel_btn, "Cancel reference analysis", "Cancels the running reference analysis."),
+                (self._asset_list if hasattr(self, "_asset_list") else None, "Reference library", "Selects a saved reference track."),
+            ],
+        )
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)

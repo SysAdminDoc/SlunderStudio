@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 
 from core.settings import APP_VERSION
+from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 
 
@@ -116,6 +117,7 @@ class WelcomePage(QWidget):
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color: {t['text_secondary']}; font-size: 12px; line-height: 1.6;")
         layout.addWidget(desc)
+        install_accessibility(self, "Onboarding welcome")
 
 
 class SystemCheckPage(QWidget):
@@ -148,6 +150,7 @@ class SystemCheckPage(QWidget):
         self._summary.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
         layout.addWidget(self._summary)
         layout.addStretch()
+        install_accessibility(self, "Onboarding system check")
 
     def run_checks(self):
         t = ThemeEngine.get_colors()
@@ -280,6 +283,7 @@ class ModelGuidePage(QWidget):
         note.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
         layout.addWidget(note)
         layout.addStretch()
+        install_accessibility(self, "Onboarding model guide")
 
 
 class QuickStartPage(QWidget):
@@ -333,6 +337,7 @@ class QuickStartPage(QWidget):
             layout.addWidget(row_frame)
 
         layout.addStretch()
+        install_accessibility(self, "Onboarding quick start")
 
 
 # ── Onboarding Dialog ──────────────────────────────────────────────────────────
@@ -419,6 +424,15 @@ class OnboardingWizard(QDialog):
 
         layout.addWidget(nav)
         self._update_nav()
+        install_accessibility(
+            self,
+            "Onboarding wizard",
+            named_controls=[
+                (self._pages, "Onboarding pages", "Switches between onboarding steps."),
+                (self._back_btn, "Back in onboarding", "Returns to the previous onboarding step."),
+                (self._next_btn, "Continue onboarding", "Advances to the next onboarding step."),
+            ],
+        )
 
     def _next_page(self):
         idx = self._pages.currentIndex()
@@ -453,6 +467,14 @@ class OnboardingWizard(QDialog):
                 lbl.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
             else:
                 lbl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        install_accessibility(
+            self,
+            "Onboarding wizard",
+            named_controls=[
+                (self._back_btn, "Back in onboarding", "Returns to the previous onboarding step."),
+                (self._next_btn, "Continue onboarding", "Advances to the next onboarding step."),
+            ],
+        )
 
     def _finish(self):
         from core.settings import Settings

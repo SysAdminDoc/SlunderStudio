@@ -17,6 +17,7 @@ from PySide6.QtGui import (
 )
 
 from ui.theme import Palette
+from ui.accessibility import install_accessibility
 
 
 # ── Syntax Highlighter ─────────────────────────────────────────────────────────
@@ -102,17 +103,17 @@ class LyricsEditor(QWidget):
 
         toolbar.addStretch()
 
-        copy_btn = QPushButton("Copy")
-        copy_btn.setObjectName("ghostBtn")
-        copy_btn.setFixedHeight(28)
-        copy_btn.clicked.connect(self._copy_to_clipboard)
-        toolbar.addWidget(copy_btn)
+        self._copy_btn = QPushButton("Copy")
+        self._copy_btn.setObjectName("ghostBtn")
+        self._copy_btn.setFixedHeight(28)
+        self._copy_btn.clicked.connect(self._copy_to_clipboard)
+        toolbar.addWidget(self._copy_btn)
 
-        clear_btn = QPushButton("Clear")
-        clear_btn.setObjectName("ghostBtn")
-        clear_btn.setFixedHeight(28)
-        clear_btn.clicked.connect(self._clear)
-        toolbar.addWidget(clear_btn)
+        self._clear_btn = QPushButton("Clear")
+        self._clear_btn.setObjectName("ghostBtn")
+        self._clear_btn.setFixedHeight(28)
+        self._clear_btn.clicked.connect(self._clear)
+        toolbar.addWidget(self._clear_btn)
 
         self._forge_btn = QPushButton("\U0001f3b6 Send to Song Forge")
         self._forge_btn.setFixedHeight(30)
@@ -151,6 +152,17 @@ class LyricsEditor(QWidget):
         self._status.setObjectName("caption")
         self._status.setStyleSheet(f"color: {Palette.BLUE}; font-size: 11px;")
         layout.addWidget(self._status)
+
+        install_accessibility(
+            self,
+            "Lyrics editor",
+            named_controls=[
+                (self._copy_btn, "Copy lyrics", "Copies the current lyrics to the clipboard."),
+                (self._clear_btn, "Clear lyrics", "Clears the lyrics editor."),
+                (self._forge_btn, "Send lyrics to Song Forge", "Routes the current lyrics to Song Forge."),
+                (self._editor, "Lyrics text", "Edits lyrics and their section markers."),
+            ],
+        )
 
     # ── Properties ─────────────────────────────────────────────────────────────
 

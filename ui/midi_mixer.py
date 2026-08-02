@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 from core.midi_utils import MidiData, TrackData, GM_PROGRAMS, get_program_name
+from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 
 
@@ -162,6 +163,18 @@ class TrackStrip(QFrame):
         # Click to select
         self.mousePressEvent = lambda e: self.select_requested.emit(self.track_idx)
 
+        install_accessibility(
+            self,
+            f"MIDI track {track_idx + 1}",
+            named_controls=[
+                (self._program_combo, f"{track.name} instrument", "Selects the General MIDI instrument for this track."),
+                (self._volume_slider, f"{track.name} volume", "Adjusts this MIDI track's volume."),
+                (self._pan_slider, f"{track.name} pan", "Positions this MIDI track in the stereo field."),
+                (self._mute_btn, f"Mute {track.name}", "Mutes this MIDI track."),
+                (self._solo_btn, f"Solo {track.name}", "Solos this MIDI track."),
+            ],
+        )
+
     def set_selected(self, selected: bool):
         self._selected = selected
         self.setStyleSheet(self._selected_style if selected else self._base_style)
@@ -177,11 +190,13 @@ class TrackStrip(QFrame):
     def _on_mute(self):
         self._muted = self._mute_btn.isChecked()
         self._mute_btn.setStyleSheet(self._mute_style(self._muted))
+        install_accessibility(self, f"MIDI track {self.track_idx + 1}")
         self.mute_changed.emit(self.track_idx, self._muted)
 
     def _on_solo(self):
         self._soloed = self._solo_btn.isChecked()
         self._solo_btn.setStyleSheet(self._solo_style(self._soloed))
+        install_accessibility(self, f"MIDI track {self.track_idx + 1}")
         self.solo_changed.emit(self.track_idx, self._soloed)
 
     def _mute_style(self, active: bool) -> str:
@@ -269,6 +284,14 @@ class MidiMixer(QWidget):
 
         self._scroll.setWidget(self._strip_container)
         layout.addWidget(self._scroll, 1)
+
+        install_accessibility(
+            self,
+            "MIDI Mixer",
+            named_controls=[
+                (self._add_track_btn, "Add MIDI track", "Adds an empty MIDI track to the mixer."),
+            ],
+        )
 
     def load_midi(self, midi_data: MidiData):
         """Load all tracks from MidiData into mixer."""

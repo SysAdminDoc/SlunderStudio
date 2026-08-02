@@ -10,10 +10,12 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel,
     QSpinBox, QDoubleSpinBox, QFrame, QScrollArea, QComboBox,
     QSlider, QFileDialog,
+    QLineEdit,
 )
 from PySide6.QtCore import Signal, Qt
 
 from ui.theme import Palette
+from ui.accessibility import FOCUS_RING_COLOR, install_accessibility, set_accessible
 from ui.waveform_widget import MiniWaveform
 from core.provenance import sidecar_path_for
 
@@ -74,6 +76,19 @@ class SeedCell(QFrame):
         self._status_label.setAlignment(Qt.AlignCenter)
         self._status_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 10px;")
         layout.addWidget(self._status_label)
+        self._set_star_accessibility()
+
+    def _set_star_accessibility(self):
+        set_accessible(
+            self._star_btn,
+            "Favorite seed variation",
+            "Adds or removes this variation from the starred export set.",
+        )
+        style = self._star_btn.styleSheet() or ""
+        if ":focus" not in style:
+            self._star_btn.setStyleSheet(
+                f"{style}\nQPushButton:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}"
+            )
 
     def _update_style(self, state: str):
         styles = {
@@ -99,6 +114,7 @@ class SeedCell(QFrame):
         self._status_label.setText("")
         self._star_btn.show()
         self._update_style("done")
+        self._set_star_accessibility()
 
         # Load waveform
         try:
@@ -127,6 +143,7 @@ class SeedCell(QFrame):
             f" QPushButton:hover {{ color: {Palette.YELLOW}; }}"
         )
         self._update_style("starred" if self._is_starred else "done")
+        self._set_star_accessibility()
         self.star_toggled.emit(self.row, self.col, self._is_starred)
 
     def reset_playing(self):
@@ -278,6 +295,27 @@ class SeedExplorer(QWidget):
 
         self._rebuild_grid(1)  # Start with 3x3
 
+        install_accessibility(
+            self,
+            "Seed Explorer",
+            named_controls=[
+                (self._grid_combo, "Grid size", "Selects the number of seed variations in each dimension."),
+                (self._seed_spin, "Center seed", "Sets the seed at the center of the exploration grid."),
+                (self._seed_spin.findChild(QLineEdit), "Center seed value", "Edits the center seed value."),
+                (self._range_spin, "Seed range", "Sets the seed distance across the exploration grid."),
+                (self._range_spin.findChild(QLineEdit), "Seed range value", "Edits the seed range value."),
+                (self._distance_slider, "Seed distance", "Adjusts how far variations can drift from the center seed."),
+                (self._shift_min_spin, "Minimum timestep shift", "Sets the lowest timestep shift for generated variations."),
+                (self._shift_min_spin.findChild(QLineEdit), "Minimum shift value", "Edits the minimum timestep shift."),
+                (self._shift_max_spin, "Maximum timestep shift", "Sets the highest timestep shift for generated variations."),
+                (self._shift_max_spin.findChild(QLineEdit), "Maximum shift value", "Edits the maximum timestep shift."),
+                (self._explore_btn, "Explore seeds", "Generates the configured seed variation grid."),
+                (self._export_btn, "Export starred seeds", "Copies starred audio variations and provenance to a selected folder."),
+            ],
+            tab_order=[],
+            include_descendants=False,
+        )
+
     def _rebuild_grid(self, index: int = None):
         """Rebuild the grid with new size."""
         sizes = [2, 3, 4]
@@ -299,6 +337,7 @@ class SeedExplorer(QWidget):
                 cell.play_requested.connect(self.play_requested.emit)
                 cell.clicked.connect(self._on_cell_clicked)
                 self._grid_layout.addWidget(cell, r, c + 1)  # +1 for Y-axis label
+                cell._set_star_accessibility()
                 row.append(cell)
             self._cells.append(row)
 

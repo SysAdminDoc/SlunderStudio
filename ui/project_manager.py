@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 from ui.theme import ThemeEngine
+from ui.accessibility import install_accessibility
 from core.project import ProjectManager, Project, ProjectAsset, get_project_manager
 from core.provenance import read_provenance_sidecar
 
@@ -94,6 +95,17 @@ class ProjectCard(QFrame):
 
         layout.addWidget(open_btn)
         layout.addWidget(del_btn)
+
+        self._open_btn = open_btn
+        self._delete_btn = del_btn
+        install_accessibility(
+            self,
+            f"Project {project_info.get('name', 'Untitled')}",
+            named_controls=[
+                (self._open_btn, "Open project", "Opens this project in the studio."),
+                (self._delete_btn, "Delete project", "Moves this project to recoverable trash."),
+            ],
+        )
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -226,6 +238,21 @@ class ProjectDetailPanel(QWidget):
         btn_row.addWidget(self._provenance_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
+
+        install_accessibility(
+            self,
+            "Project details",
+            named_controls=[
+                (self._notes, "Project notes", "Edits notes saved with the current project."),
+                (self._asset_list, "Project assets", "Lists assets in the current project."),
+                (self._version_list, "Project versions", "Lists saved project versions."),
+                (self._save_btn, "Save project", "Saves the current project data."),
+                (self._snapshot_btn, "Save project version", "Creates a version snapshot."),
+                (self._restore_btn, "Restore project version", "Restores the selected version."),
+                (self._import_btn, "Import project asset", "Imports an asset into the project."),
+                (self._provenance_btn, "Open asset provenance", "Opens provenance for the selected asset."),
+            ],
+        )
 
     def load_project(self, project: Project):
         """Display project details."""
@@ -523,6 +550,15 @@ class ProjectManagerView(QWidget):
 
         # Load initial project list
         self._refresh_list()
+        install_accessibility(
+            self,
+            "Project library",
+            named_controls=[
+                (self._new_btn, "New project", "Creates a new project."),
+                (self._rescan_btn, "Rescan projects", "Rebuilds the project index from project folders."),
+                (self._search, "Search projects", "Filters the project library by name."),
+            ],
+        )
 
     def _refresh_list(self):
         """Reload project list from ProjectManager."""

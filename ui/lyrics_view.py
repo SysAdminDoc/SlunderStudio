@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, Slot
 
 from ui.theme import Palette
+from ui.accessibility import install_accessibility
 from ui.lyrics_editor import LyricsEditor
 from core.settings import Settings
 from core.i18n import (
@@ -58,6 +59,14 @@ class GenrePicker(QWidget):
         layout.addWidget(self._list, 1)
 
         self._populate()
+        install_accessibility(
+            self,
+            "Genre picker",
+            named_controls=[
+                (self._search, "Search genres", "Filters the available genres."),
+                (self._list, "Genre list", "Selects a genre for guided lyrics generation."),
+            ],
+        )
 
     def _populate(self):
         for genre in get_genre_list():
@@ -148,6 +157,16 @@ class HistoryPanel(QWidget):
 
         self._current_filter = "all"
         self._refresh()
+        install_accessibility(
+            self,
+            "Lyrics history",
+            named_controls=[
+                (self._search, "Search lyrics history", "Filters saved lyrics entries."),
+                (self._all_btn, "Show all lyrics history", "Shows all saved lyrics entries."),
+                (self._fav_btn, "Show favorite lyrics", "Shows only favorite lyrics entries."),
+                (self._list, "Lyrics history list", "Selects a saved lyrics entry."),
+            ],
+        )
 
     def _set_filter(self, mode: str):
         self._current_filter = mode
@@ -209,6 +228,34 @@ class LyricsView(QWidget):
         self._current_genre = "pop"
         self._build_ui()
         self._connect_signals()
+        self._install_accessibility()
+
+    def _install_accessibility(self):
+        install_accessibility(
+            self,
+            "Lyrics workspace",
+            named_controls=[
+                (self._mode_tabs, "Lyrics mode tabs", "Switches between quick, guided, and pro lyrics generation."),
+                (self._quick_input, "Quick lyrics prompt", "Describes the lyrics to generate in quick mode."),
+                (self._quick_generate, "Generate quick lyrics", "Generates lyrics from the quick prompt."),
+                (self._theme_input, "Guided lyrics theme", "Sets the theme for guided lyrics generation."),
+                (self._mood_combo, "Lyrics mood", "Selects the mood for guided lyrics generation."),
+                (self._structure_combo, "Lyrics structure", "Selects the structure for guided lyrics generation."),
+                (self._lang_combo, "Lyrics language", "Selects the language for generated lyrics."),
+                (self._guided_generate, "Generate guided lyrics", "Generates lyrics from guided settings."),
+                (self._system_prompt, "Lyrics system prompt", "Sets the system instructions for pro lyrics generation."),
+                (self._user_prompt, "Pro lyrics prompt", "Sets the user prompt for pro lyrics generation."),
+                (self._pro_temp, "Lyrics temperature", "Adjusts pro lyrics sampling temperature."),
+                (self._pro_top_p, "Lyrics top p", "Adjusts pro lyrics nucleus sampling."),
+                (self._pro_top_k, "Lyrics top k", "Adjusts pro lyrics top-k sampling."),
+                (self._pro_repeat, "Lyrics repeat penalty", "Adjusts repetition control for pro lyrics."),
+                (self._pro_max_tokens, "Lyrics maximum tokens", "Sets the maximum pro lyrics length."),
+                (self._pro_generate, "Generate pro lyrics", "Generates lyrics from the pro settings."),
+                (self._cancel_btn, "Cancel lyrics generation", "Cancels the running lyrics generation job."),
+                (self._regen_btn, "Regenerate lyrics", "Runs the current lyrics workflow again."),
+            ],
+        )
+        self._mode_tabs.currentChanged.connect(lambda _index: self._install_accessibility())
 
     def _build_ui(self):
         layout = QHBoxLayout(self)
