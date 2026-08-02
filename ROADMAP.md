@@ -118,28 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — DiffSinger renders at the model's sample rate but labels and writes the file at `params.sample_rate`
-  Category: correctness
-  Where: `engines/diffsinger_engine.py:215-283` (`synthesize`; specifically `:244-249`, `:259`,
-    `:266-268`) and `:395-413` (`save_output`, which uses `result.sample_rate`)
-  Problem: The frame-timing fix correctly derives `self._sample_rate`/`self._hop_size` from the
-    model config (`:88-89`, `:144-178`) and uses them for frame indexing, but the vocoder's output
-    is then post-processed (`_pitch_shift`, `_apply_gender`), measured for `duration`, and written
-    to WAV using `params.sample_rate` — `SingParams`' default 44100, which no caller ever sets
-    (`ui/vocal_suite_view.py:1126`, `engines/melody_extractor.py:247-251`). For any model whose
-    `audio_sample_rate` is not 44100 — 24 kHz DiffSinger acoustic models are common — the output
-    plays about 1.84x too fast and a fifth too high. The engine explicitly refuses to guess frame
-    timing yet still assumes the output rate.
-  Evidence: Read the function; `self._sample_rate` is used for framing and never for output.
-  Fix: Set `result.sample_rate = self._sample_rate` and pass it to `_pitch_shift`, `_apply_gender`
-    and the duration computation; drop `sample_rate` from `SingParams` or treat it explicitly as a
-    resample target.
-  Acceptance: Extend `tests/test_diffsinger_timing.py` — with a stub config declaring
-    `audio_sample_rate: 24000`, the result's `sample_rate` is 24000 and the written WAV header
-    matches.
-  Confidence: Verified (code path); audible impact depends on the model's declared rate
-  Effort: S
-
 - [ ] P2 — DiffSinger conditions real inference on md5-derived fake phoneme IDs and still labels it `output_kind="model"`
   Category: correctness
   Where: `engines/diffsinger_engine.py:343-364` (`_prepare_inputs`; tokens `:355-359`, durations

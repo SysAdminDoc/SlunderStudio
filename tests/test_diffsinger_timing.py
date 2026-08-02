@@ -2,11 +2,13 @@ import json
 import os
 import tempfile
 import unittest
+import wave
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
-from engines.diffsinger_engine import DiffSingerEngine
+from engines.diffsinger_engine import DiffSingerEngine, SingParams
 
 
 def notes(*spans):
@@ -122,6 +124,53 @@ class FrameTimingTests(unittest.TestCase):
         engine.unload_model()
         with self.assertRaises(RuntimeError):
             _ = engine.frame_period_sec
+
+    def test_synthesis_and_wav_export_use_model_sample_rate(self):
+        engine = self._engine({"audio_sample_rate": 24000, "hop_size": 256})
+
+        class _Input:
+            name = "f0"
+
+        class _Session:
+            def get_inputs(self):
+                return [_Input()]
+
+            def run(self, _outputs, _inputs):
+                return [np.zeros(240, dtype=np.float32)]
+
+        engine._session = _Session()
+        engine._model_path = str(self.model)
+        params = SingParams(
+            lyrics="la",
+            notes=notes((60, 0.0, 0.25)),
+            pitch_shift=1,
+            gender=0.5,
+        )
+        shifted = np.zeros(240, dtype=np.float32)
+        with (
+            mock.patch.object(
+                engine, "_pitch_shift", return_value=shifted
+            ) as pitch_shift,
+            mock.patch.object(
+                engine, "_apply_gender", return_value=shifted
+            ) as apply_gender,
+        ):
+            result = engine.synthesize(params)
+
+        self.assertIsNone(result.error)
+        self.assertEqual(24000, result.sample_rate)
+        self.assertAlmostEqual(240 / 24000, result.duration)
+        self.assertEqual(1, pitch_shift.call_count)
+        np.testing.assert_array_equal(pitch_shift.call_args.args[0], shifted)
+        self.assertEqual((1, 24000), pitch_shift.call_args.args[1:])
+        self.assertEqual(1, apply_gender.call_count)
+        np.testing.assert_array_equal(apply_gender.call_args.args[0], shifted)
+        self.assertEqual((0.5, 24000), apply_gender.call_args.args[1:])
+
+        engine._output_dir = str(self.root)
+        output = engine.save_output(result, name="model-rate")
+        with wave.open(output, "rb") as handle:
+            self.assertEqual(24000, handle.getframerate())
 
 
 if __name__ == "__main__":

@@ -32,6 +32,8 @@ class SingParams:
     velocity: float = 1.0  # dynamics
     vibrato_depth: float = 0.5
     vibrato_rate: float = 5.5  # Hz
+    # Retained for compatibility with callers that serialize SingParams. The
+    # loaded model's declared rate is authoritative for generated audio.
     sample_rate: int = 44100
 
 
@@ -239,14 +241,15 @@ class DiffSingerEngine:
             # Run inference
             output = self._session.run(None, inputs)
             audio = output[0].squeeze().astype(np.float32)
+            output_sample_rate = self._sample_rate
 
             # Post-process
             if params.pitch_shift != 0:
-                audio = self._pitch_shift(audio, params.pitch_shift, params.sample_rate)
+                audio = self._pitch_shift(audio, params.pitch_shift, output_sample_rate)
 
             # Apply gender shift
             if params.gender != 0.0:
-                audio = self._apply_gender(audio, params.gender, params.sample_rate)
+                audio = self._apply_gender(audio, params.gender, output_sample_rate)
 
             if progress_callback:
                 progress_callback(0.9, "Finalizing...")
@@ -256,15 +259,17 @@ class DiffSingerEngine:
             if peak > 0:
                 audio = audio / peak * 0.95
 
-            duration = len(audio) / params.sample_rate
+            duration = len(audio) / output_sample_rate
             gen_time = time.time() - t0
 
             if progress_callback:
                 progress_callback(1.0, "Done")
 
+            parameters = asdict(params)
+            parameters["sample_rate"] = output_sample_rate
             return SingResult(
                 audio=audio,
-                sample_rate=params.sample_rate,
+                sample_rate=output_sample_rate,
                 duration=duration,
                 generation_time=gen_time,
                 provenance={
@@ -273,7 +278,7 @@ class DiffSingerEngine:
                     "model_id": "diffsinger",
                     "model_hash": _safe_file_hash(self._model_path),
                     "lyrics": params.lyrics,
-                    "parameters": asdict(params),
+                    "parameters": parameters,
                     "output_kind": "model",
                     "extra": {"model_path": self._model_path or ""},
                 },
