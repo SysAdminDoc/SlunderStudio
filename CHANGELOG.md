@@ -12,6 +12,8 @@ All notable changes to SlunderStudio will be documented in this file.
   override in generation parameters.
 - Raised contrast for checked stem controls and green hover states, with automated WCAG checks for
   inline button colors and the dynamic stem palette.
+- Replaced the Windows single-instance `os.kill` probe and five-minute cutoff with an age-independent
+  `psutil.pid_exists` check for reliable stale-lock recovery.
 - Marked FluidSynth sine fallbacks as demo renders with an explicit reason and kept MIDI routing buttons disabled for those previews.
 - Repaired AI Producer lyrics generation to use the canonical loaded lyrics model and structured prompts, while labeling template fallback lyrics as demo/degraded output.
 - Marshalled streamed lyrics tokens through an `InferenceWorker` signal and queued connection so the editor is updated only on its GUI thread.

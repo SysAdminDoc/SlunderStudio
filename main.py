@@ -281,15 +281,15 @@ def _acquire_lock() -> bool:
 
     try:
         if os.path.isfile(lock_file):
-            age = __import__("time").time() - os.path.getmtime(lock_file)
-            if age < 300:
-                try:
-                    with open(lock_file) as f:
-                        pid = int(f.read().strip())
-                    os.kill(pid, 0)
+            try:
+                with open(lock_file) as f:
+                    pid = int(f.read().strip())
+                import psutil
+
+                if pid > 0 and psutil.pid_exists(pid):
                     return False
-                except (ValueError, OSError, ProcessLookupError):
-                    pass
+            except (ValueError, OSError, ImportError):
+                pass
 
         with open(lock_file, "w") as f:
             f.write(str(os.getpid()))

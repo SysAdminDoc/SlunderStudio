@@ -116,31 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Single-instance lock: `os.kill(pid, 0)` is not a liveness probe on Windows, and the guard disables itself after 5 minutes
-  Category: reliability
-  Where: `main.py:273-304` (`_acquire_lock`), specifically `:283-291`
-  Problem: Two defects. (a) The liveness probe is `os.kill(pid, 0)`. On Windows CPython, signal 0
-    is `CTRL_C_EVENT`, so this routes to `GenerateConsoleCtrlEvent` rather than a process query —
-    its success or failure depends on console and process-group membership, not on whether the
-    process is alive. Measured on this machine (Python 3.12): a live `pythonw` process returns no
-    error (correct by luck), a nonexistent pid raises `WinError 87`, and a live process in its own
-    group also returns no error. For a console-attached instance the call can deliver a real Ctrl+C
-    to the target's process group. It is the wrong API for the job in every case. (b) The pid check
-    only runs when the lockfile is younger than 300 s (`age < 300`); the mtime is written once at
-    startup and never refreshed, so after five minutes of uptime the guard silently stops checking
-    and happily allows a duplicate instance — two processes sharing one SQLite lyrics DB, one job
-    ledger and one settings file.
-  Evidence: Probed directly: `os.kill(live_pythonw_pid, 0)` returned without error and the process
-    survived; `os.kill(999999, 0)` raised `[WinError 87] The parameter is incorrect`. `grep` shows
-    no `os.utime` refresh of the lockfile anywhere.
-  Fix: Probe with `psutil.pid_exists(pid)` (psutil is already a core requirement) or
-    `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)`; drop the mtime-age shortcut entirely and rely
-    on the pid check plus a stale-pid fallback.
-  Acceptance: A test that writes a lockfile containing a dead pid returns True (lock acquired), one
-    containing the current pid returns False, and neither path depends on file age.
-  Confidence: Verified (probed on this machine)
-  Effort: S
-
 - [ ] P1 — Model Hub Cancel does not stop the download, and Resume is then a silent no-op
   Category: ux
   Where: `ui/model_hub.py:870-880` (`_cancel_download`), `:794-797` (`_start_download` early
