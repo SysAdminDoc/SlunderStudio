@@ -975,6 +975,15 @@ class ModelHubView(QWidget):
         if model_id:
             self._activation_workers.pop(model_id, None)
             self._cards[model_id].update_status(self._mgr.get_status(model_id))
+        cancelled = getattr(result, "cancelled", False)
+        if callable(cancelled):
+            cancelled = cancelled()
+        is_cancelled = getattr(result, "is_cancelled", False)
+        if callable(is_cancelled):
+            is_cancelled = is_cancelled()
+        if cancelled or is_cancelled:
+            self._on_activation_cancelled(model_id)
+            return
         if getattr(result, "is_success", False):
             if self.toast_mgr:
                 self.toast_mgr.success(result.message)

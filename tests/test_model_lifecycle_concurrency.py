@@ -1,7 +1,9 @@
 import os
+import tempfile
 import threading
 import time
 import unittest
+from pathlib import Path
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -16,6 +18,9 @@ from core.model_manager import (
     ModelStatus,
     StaleModelRequestError,
 )
+from core.engine_contract import ActivationOutcome, EngineActivationResult
+from core.job_state import JobStatus, JobStore
+from core.workers import InferenceWorker
 
 
 class _FakeEngine:
@@ -216,6 +221,33 @@ class ModelLifecycleConcurrencyTests(unittest.TestCase):
         self.assertFalse(result.is_success)
         self.assertTrue(result.cancelled)
         self.assertIsNone(self.mgr.current_model_id)
+
+    def test_semantic_activation_cancellation_marks_worker_cancelled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp) / "jobs", cleanup_roots=[Path(tmp)])
+            activation = EngineActivationResult(
+                model_id="alpha",
+                outcome=ActivationOutcome.CANCELLED,
+                message="Activation superseded",
+            )
+            worker = InferenceWorker(
+                lambda **_kwargs: activation,
+                job_kind="model_activation",
+                job_label="Activate alpha",
+                job_store=store,
+            )
+            cancelled = []
+            finished = []
+            worker.cancelled.connect(lambda: cancelled.append(True))
+            worker.finished.connect(lambda _result: finished.append(True))
+
+            worker.run()
+
+            record = store.get(worker.job_id)
+            self.assertEqual(JobStatus.CANCELLED, record.status)
+            self.assertEqual("", record.error)
+            self.assertEqual([True], cancelled)
+            self.assertEqual([], finished)
 
     def test_loading_a_second_model_releases_the_first(self):
         first = self.mgr.load_model("alpha", self._loader("alpha"))

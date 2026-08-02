@@ -17,6 +17,17 @@ from core.job_state import JobLog, JobStore, extract_output_paths
 JOB_PROGRESS_PERSIST_INTERVAL = 0.1
 
 
+def _result_is_cancelled(result: Any) -> bool:
+    """Accept either the typed cancellation property or its method variant."""
+    for name in ("cancelled", "is_cancelled"):
+        value = getattr(result, name, False)
+        if callable(value):
+            value = value()
+        if value:
+            return True
+    return False
+
+
 class CancelledJobError(RuntimeError):
     """Raised by long-running tasks after cleaning or reporting partial outputs.
 
@@ -103,7 +114,7 @@ class InferenceWorker(QThread):
             output_paths = extract_output_paths(self._result)
             outputs = {"paths": output_paths} if output_paths else {}
             result_metadata = _extract_job_metadata(self._result)
-            if self._cancel_event.is_set():
+            if self._cancel_event.is_set() or _result_is_cancelled(self._result):
                 self._job_store.cleanup_outputs(output_paths)
                 if self.job_id:
                     self._job_store.mark_cancelled(

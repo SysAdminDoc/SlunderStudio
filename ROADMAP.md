@@ -118,27 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — A superseded model activation is reported to the user as a failure
-  Category: correctness
-  Where: `ui/model_hub.py:944-953` (`_on_activation_finished`); `core/model_manager.py:1035-1041`;
-    `core/workers.py:113-129`; `core/engine_contract.py:95-104`
-  Problem: When a newer activation or unload supersedes one in flight, `activate_model` returns
-    `ActivationOutcome.CANCELLED` by normal return — the cancel event is not set. `InferenceWorker`
-    treats a falsy `is_success` as semantic failure, so the job ledger records
-    `mark_failed(..., "Task returned an unsuccessful result")` and `finished` fires;
-    `_on_activation_finished` then shows `result.error or "Model activation failed."`, and `error`
-    is empty for CANCELLED — so a benign supersede surfaces as "Model activation failed." and is
-    picked up by the diagnostics recent-failures report.
-  Evidence: `EngineActivationResult.is_success` covers `{ACTIVE, INACTIVE}` only; `core/workers.py`
-    has no `cancelled`/`is_cancelled` check on the semantic-failure branch.
-  Fix: In `core/workers.py`, treat a result whose `cancelled`/`is_cancelled` property is true as a
-    cancellation (`mark_cancelled`, emit `cancelled`); or branch on it in `_on_activation_finished`
-    and show an informational toast.
-  Acceptance: Extend `tests/test_model_lifecycle_concurrency.py` — a superseded activation produces
-    a cancelled job record, not a failed one, and no error toast.
-  Confidence: Verified (the trigger needs a supersede race)
-  Effort: S
-
 - [ ] P2 — Playback-finished detection is a ~21 ms race, so the transport can stick in "playing"
   Category: reliability
   Where: `core/audio_engine.py:192-227` (stream callback), `:357-366` (`_emit_position`)

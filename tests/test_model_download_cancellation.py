@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from core.job_state import JobStatus, JobStore
+from core.engine_contract import ActivationOutcome, EngineActivationResult
 from core.model_manager import ModelManager, ModelStatus
 from core.workers import CancelledJobError, DownloadWorker
 from ui.model_hub import ModelHubView
@@ -134,6 +135,29 @@ class ModelDownloadCancellationTests(unittest.TestCase):
         card.set_download_stopping.assert_called_once_with()
         self.assertIn(model_id, view._stopping_downloads)
         self.assertIn("still stopping", toast.messages[-1])
+
+    def test_semantic_activation_cancel_does_not_show_failure_toast(self):
+        model_id = "llama-3.1-8b-q4"
+        toast = _ToastRecorder()
+        view = ModelHubView.__new__(ModelHubView)
+        view._activation_workers = {model_id: mock.Mock()}
+        view._cards = {model_id: mock.Mock()}
+        view.toast_mgr = toast
+        view._mgr = mock.Mock()
+        view._mgr.get_status.return_value = ModelStatus.DOWNLOADED
+        view._mgr.current_model_id = None
+        view._mgr.get_model_readiness.return_value = SimpleNamespace(installed=True)
+        view._update_gpu_display = mock.Mock()
+
+        result = EngineActivationResult(
+            model_id=model_id,
+            outcome=ActivationOutcome.CANCELLED,
+            message="Activation superseded",
+        )
+        view._on_activation_finished(result)
+
+        self.assertNotIn("failed", " ".join(toast.messages).lower())
+        self.assertIn("activation cancelled", toast.messages[-1].lower())
 
 
 if __name__ == "__main__":
