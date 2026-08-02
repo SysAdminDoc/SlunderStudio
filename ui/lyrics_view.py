@@ -520,7 +520,6 @@ class LyricsView(QWidget):
         self._run_generation(
             generate_lyrics_quick,
             description,
-            token_cb=self._editor.append_token,
         )
 
     def _generate_guided(self):
@@ -544,7 +543,6 @@ class LyricsView(QWidget):
             mood=mood,
             language=language,
             structure_override=structure,
-            token_cb=self._editor.append_token,
         )
 
     def _generate_pro(self):
@@ -571,7 +569,6 @@ class LyricsView(QWidget):
             top_k=self._pro_top_k.value(),
             repeat_penalty=self._pro_repeat.value(),
             max_tokens=self._pro_max_tokens.value(),
-            token_cb=self._editor.append_token,
         )
 
     def _regenerate(self):
@@ -621,7 +618,7 @@ class LyricsView(QWidget):
 
     def _run_generation(self, gen_fn, prompt: str, **kwargs):
         """Run a generation function on a worker thread."""
-        token_cb = kwargs.pop("token_cb", None)
+        token_emitter = None
 
         def _task(
             progress_cb=None, step_cb=None, log_cb=None,
@@ -633,7 +630,7 @@ class LyricsView(QWidget):
                 step_cb=step_cb,
                 log_cb=log_cb,
                 cancel_event=cancel_event,
-                token_cb=token_cb,
+                token_cb=token_emitter,
                 **kwargs,
             )
 
@@ -641,6 +638,11 @@ class LyricsView(QWidget):
         self._editor.start_streaming()
 
         self._worker = InferenceWorker(_task)
+        self._worker.token.connect(
+            self._editor.append_token,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        token_emitter = self._worker.token.emit
         self._worker.progress.connect(self._progress.setValue)
         self._worker.finished.connect(self._on_generation_complete)
         self._worker.error.connect(self._on_generation_error)

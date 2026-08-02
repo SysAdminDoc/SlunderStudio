@@ -49,6 +49,7 @@ class InferenceWorker(QThread):
     progress = Signal(int)
     step_info = Signal(str)
     log = Signal(str)
+    token = Signal(str)
     finished = Signal(object)
     error = Signal(str)
     cancelled = Signal()

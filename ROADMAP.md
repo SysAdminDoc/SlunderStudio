@@ -116,24 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Lyrics token streaming writes to a QWidget from the worker thread
-  Category: reliability
-  Where: `ui/lyrics_view.py:523, 547, 574` (`token_cb=self._editor.append_token`);
-    `ui/lyrics_editor.py:179-186`
-  Problem: `token_cb` is handed to the task and called synchronously from inside
-    `InferenceWorker.run()` on the QThread — `engines/lyrics_engine.py:202-203, 272-273` invoke it
-    per token. `append_token` drives a `QTextCursor` on a `QPlainTextEdit` off the GUI thread. Qt
-    widgets are not thread-safe; this is intermittent-crash and corrupted-paint territory, during
-    the feature's most visible moment.
-  Evidence: Every other callback (progress, step, log) is marshalled through signals in
-    `core/workers.py`; `token_cb` uniquely bypasses that.
-  Fix: Add a `Signal(str)` on the worker, emit tokens through it (queued connection by default
-    across threads), and connect it to `append_token`.
-  Acceptance: A test asserting `append_token` is only ever invoked on the thread that owns the
-    widget (record `threading.get_ident()` inside the slot and compare to the main thread).
-  Confidence: Verified (code path traced; the crash itself is timing-dependent)
-  Effort: S
-
 - [ ] P1 — AI Producer's lyrics stage: dead model branch, plus placeholder lyrics reported as model output
   Category: correctness
   Where: `engines/ai_producer.py:641-664` (`_generate_lyrics`)

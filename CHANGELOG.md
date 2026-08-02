@@ -4,6 +4,7 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-07-29
 
+- Marshalled streamed lyrics tokens through an `InferenceWorker` signal and queued connection so the editor is updated only on its GUI thread.
 - Made voice checkpoint loading default-deny: only safetensors and ONNX bypass explicit trust, while pickle, archive, and unknown extensions stop before `torch.load`.
 - Enforced the Offline Mode boundary for Demucs auto-loads by requiring all model checkpoints to be present in the local Torch cache before separation.
 - Serialized `JobStore` writes across all in-process workers and throttled durable progress updates without throttling live progress signals.
