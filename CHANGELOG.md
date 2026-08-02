@@ -8,6 +8,8 @@ All notable changes to SlunderStudio will be documented in this file.
   on subsequent launches.
 - Cached successful and failed torch availability probes and deferred the initial GPU status update
   until the UI event loop is running.
+- Fixed onefile smoke validation to accept only the expected PyInstaller bootloader parent and child,
+  while rejecting recursive or unrelated executable processes.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

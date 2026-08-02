@@ -127,6 +127,41 @@ class BuildArtifactTests(unittest.TestCase):
 
         terminate.assert_called_once_with([42, 43])
 
+    def test_onefile_smoke_accepts_bootloader_parent_and_child(self):
+        exe = Path("dist/SlunderStudio.exe")
+        process = mock.Mock(pid=42)
+        with mock.patch.object(self.build_script.sys, "platform", "win32"), \
+                mock.patch.object(self.build_script.subprocess, "Popen", return_value=process), \
+                mock.patch.object(self.build_script.time, "sleep"), \
+                mock.patch.object(self.build_script, "process_ids_for_exe", return_value=[]), \
+                mock.patch.object(
+                    self.build_script,
+                    "process_tree_for_exe",
+                    return_value={42: 1, 43: 42},
+                ), \
+                mock.patch.object(self.build_script, "terminate_process_tree") as terminate:
+            self.build_script.smoke_launch(exe, seconds=0, onefile=True)
+
+        terminate.assert_called_once_with([42, 43])
+
+    def test_onefile_smoke_rejects_recursive_processes(self):
+        exe = Path("dist/SlunderStudio.exe")
+        process = mock.Mock(pid=42)
+        with mock.patch.object(self.build_script.sys, "platform", "win32"), \
+                mock.patch.object(self.build_script.subprocess, "Popen", return_value=process), \
+                mock.patch.object(self.build_script.time, "sleep"), \
+                mock.patch.object(self.build_script, "process_ids_for_exe", return_value=[]), \
+                mock.patch.object(
+                    self.build_script,
+                    "process_tree_for_exe",
+                    return_value={42: 1, 43: 42, 44: 43},
+                ), \
+                mock.patch.object(self.build_script, "terminate_process_tree") as terminate:
+            with self.assertRaises(RuntimeError):
+                self.build_script.smoke_launch(exe, seconds=0, onefile=True)
+
+        terminate.assert_called_once_with([42, 43, 44])
+
     def test_process_ids_for_exe_embeds_escaped_powershell_path(self):
         exe = Path("dist/SlunderStudio/SlunderStudio.exe")
         run_result = mock.Mock(returncode=0, stdout="42\n43\n", stderr="")

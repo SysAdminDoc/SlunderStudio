@@ -169,7 +169,7 @@ py -3.12 build/build.py           # One-folder distribution
 py -3.12 build/build.py --onefile # Single .exe (Windows)
 ```
 
-The build script removes stale `dist/` outputs before packaging, resolves the platform icon, smoke-launches the packaged executable to verify exactly one app process starts, and writes `dist/SHA256SUMS.txt` for the distributable artifacts. The default build also creates `dist/SlunderStudio-vX.Y.Z-<platform>-<arch>.zip` beside `dist/SlunderStudio/`. Every version string — the window title, settings and project schemas, provenance sidecars, the README badge, artifact names, and the embedded Windows file version — comes from `core/version.py`.
+The build script removes stale `dist/` outputs before packaging, resolves the platform icon, smoke-launches the packaged executable to verify one onedir process or the expected onefile bootloader-parent/child tree, and writes `dist/SHA256SUMS.txt` for the distributable artifacts. The default build also creates `dist/SlunderStudio-vX.Y.Z-<platform>-<arch>.zip` beside `dist/SlunderStudio/`. Every version string — the window title, settings and project schemas, provenance sidecars, the README badge, artifact names, and the embedded Windows file version — comes from `core/version.py`.
 
 **Releases are unsigned.** There is no code-signing step and none will be added. Windows SmartScreen will warn on first run of an unsigned executable; choose "More info" then "Run anyway", or verify the download against `SHA256SUMS.txt` first.
 

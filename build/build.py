@@ -155,7 +155,7 @@ def build(onefile: bool = False, smoke: bool = True):
         sys.exit(1)
 
     if smoke:
-        smoke_launch(exe_path)
+        smoke_launch(exe_path, onefile=onefile)
     else:
         print("Smoke launch skipped by --no-smoke.")
 
@@ -301,18 +301,23 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def smoke_launch(exe_path: Path, seconds: float | None = None):
+def smoke_launch(
+    exe_path: Path,
+    seconds: float | None = None,
+    *,
+    onefile: bool = False,
+):
     """Launch the packaged app and verify it starts and does not fork-bomb."""
     seconds = seconds if seconds is not None else float(
         os.environ.get("SLUNDER_BUILD_SMOKE_SECONDS", "8")
     )
     if sys.platform == "win32":
-        _smoke_launch_windows(exe_path, seconds)
+        _smoke_launch_windows(exe_path, seconds, onefile=onefile)
     else:
-        _smoke_launch_posix(exe_path, seconds)
+        _smoke_launch_posix(exe_path, seconds, onefile=onefile)
 
 
-def _smoke_launch_windows(exe_path: Path, seconds: float):
+def _smoke_launch_windows(exe_path: Path, seconds: float, *, onefile: bool = False):
     before = set(process_ids_for_exe(exe_path))
     if before:
         raise RuntimeError(f"Smoke launch blocked: {exe_path} is already running ({sorted(before)})")
@@ -324,16 +329,29 @@ def _smoke_launch_windows(exe_path: Path, seconds: float):
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     time.sleep(seconds)
-    ids = process_ids_for_exe(exe_path)
+    ids: list[int] = []
     try:
-        if len(ids) != 1:
-            raise RuntimeError(f"Packaged smoke expected one {APP_NAME}.exe process, saw {len(ids)}: {ids}")
-        print(f"Packaged smoke ok: process_count=1 pid={ids[0]}")
+        if onefile:
+            tree = process_tree_for_exe(exe_path)
+            ids = sorted(tree)
+            parent_pid, child_pid = validate_onefile_process_tree(tree, process.pid)
+            print(
+                "Packaged smoke ok: process_count=2 "
+                f"parent_pid={parent_pid} child_pid={child_pid}"
+            )
+        else:
+            ids = process_ids_for_exe(exe_path)
+            if len(ids) != 1:
+                raise RuntimeError(
+                    f"Packaged smoke expected one {APP_NAME}.exe process, "
+                    f"saw {len(ids)}: {ids}"
+                )
+            print(f"Packaged smoke ok: process_count=1 pid={ids[0]}")
     finally:
         terminate_process_tree(ids or [process.pid])
 
 
-def _smoke_launch_posix(exe_path: Path, seconds: float):
+def _smoke_launch_posix(exe_path: Path, seconds: float, *, onefile: bool = False):
     """Start the packaged app offscreen and confirm it stays up without forking."""
     env = dict(os.environ)
     env.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -349,12 +367,20 @@ def _smoke_launch_posix(exe_path: Path, seconds: float):
             raise RuntimeError(
                 f"Packaged smoke failed: process exited with {process.returncode}"
             )
-        count = len(process_ids_for_exe(exe_path))
-        if count > 1:
-            raise RuntimeError(
-                f"Packaged smoke expected one {APP_NAME} process, saw {count}"
+        if onefile:
+            tree = process_tree_for_exe(exe_path)
+            parent_pid, child_pid = validate_onefile_process_tree(tree, process.pid)
+            print(
+                "Packaged smoke ok: process_count=2 "
+                f"parent_pid={parent_pid} child_pid={child_pid}"
             )
-        print(f"Packaged smoke ok: process_count={max(count, 1)} pid={process.pid}")
+        else:
+            count = len(process_ids_for_exe(exe_path))
+            if count > 1:
+                raise RuntimeError(
+                    f"Packaged smoke expected one {APP_NAME} process, saw {count}"
+                )
+            print(f"Packaged smoke ok: process_count={max(count, 1)} pid={process.pid}")
     finally:
         process.terminate()
         try:
@@ -367,6 +393,28 @@ def process_ids_for_exe(exe_path: Path) -> list[int]:
     if sys.platform != "win32":
         return _process_ids_posix(exe_path)
     return _process_ids_windows(exe_path)
+
+
+def process_tree_for_exe(exe_path: Path) -> dict[int, int]:
+    """Return matching process IDs and their parent IDs."""
+    if sys.platform != "win32":
+        return _process_tree_posix(exe_path)
+    return _process_tree_windows(exe_path)
+
+
+def validate_onefile_process_tree(tree: dict[int, int], root_pid: int) -> tuple[int, int]:
+    """Require exactly one PyInstaller bootloader child under the launched process."""
+    if root_pid not in tree or len(tree) != 2:
+        raise RuntimeError(
+            f"Packaged onefile smoke expected one parent and child rooted at {root_pid}, "
+            f"saw {tree}"
+        )
+    children = [pid for pid, parent_pid in tree.items() if parent_pid == root_pid]
+    if len(children) != 1:
+        raise RuntimeError(
+            f"Packaged onefile smoke expected one child of {root_pid}, saw {tree}"
+        )
+    return root_pid, children[0]
 
 
 def _process_ids_posix(exe_path: Path) -> list[int]:
@@ -401,6 +449,53 @@ def _process_ids_windows(exe_path: Path) -> list[int]:
         if line.isdigit():
             ids.append(int(line))
     return ids
+
+
+def _process_tree_windows(exe_path: Path) -> dict[int, int]:
+    escaped_path = str(exe_path).replace("'", "''")
+    script = (
+        f"$exe = [System.IO.Path]::GetFullPath('{escaped_path}'); "
+        f"Get-CimInstance Win32_Process -Filter \"name = '{APP_NAME}.exe'\" | "
+        "Where-Object { $_.ExecutablePath -eq $exe } | "
+        "ForEach-Object { \"$($_.ProcessId)|$($_.ParentProcessId)\" }"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Unable to inspect running {APP_NAME} processes: {result.stderr.strip()}")
+    tree: dict[int, int] = {}
+    for line in result.stdout.splitlines():
+        parts = line.strip().split("|", 1)
+        if len(parts) == 2 and all(part.isdigit() for part in parts):
+            tree[int(parts[0])] = int(parts[1])
+    return tree
+
+
+def _process_tree_posix(exe_path: Path) -> dict[int, int]:
+    ids = process_ids_for_exe(exe_path)
+    if not ids:
+        return {}
+    ps = shutil.which("ps")
+    if not ps:
+        raise RuntimeError("Unable to inspect packaged process parents: ps is unavailable")
+    result = subprocess.run(
+        [ps, "-o", "pid=,ppid=", "-p", ",".join(str(pid) for pid in ids)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Unable to inspect packaged process parents: {result.stderr.strip()}")
+    tree: dict[int, int] = {}
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and all(part.isdigit() for part in parts):
+            tree[int(parts[0])] = int(parts[1])
+    return tree
 
 
 def terminate_process_tree(process_ids: list[int]):

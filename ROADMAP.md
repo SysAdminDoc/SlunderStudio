@@ -118,23 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — `--onefile` builds can never pass the smoke gate
-  Category: build
-  Where: `build/build.py:315-333` (`_smoke_launch_windows`, `len(ids) != 1`), `:336-357`
-    (`_smoke_launch_posix`, `count > 1`)
-  Problem: A PyInstaller onefile executable runs as a bootloader parent plus a re-spawned child of
-    the same executable — two live processes sharing one `ExecutablePath` for the app's whole
-    lifetime. The smoke check demands exactly one, so `py build/build.py --onefile` (a supported
-    flag, and the stated single-file packaging goal) fails the gate on every successful build,
-    indistinguishable from a genuine fork bomb. Onedir passes only because it is single-process.
-  Fix: In onefile mode expect exactly two processes (parent plus child), or match on process-tree
-    shape rather than a raw count of matching executables.
-  Acceptance: `py build/build.py --onefile` completes and its smoke check passes, while a real
-    recursive spawn still fails it.
-  Confidence: Likely (the code path is certain; the process count is documented PyInstaller onefile
-    behavior) — confirm with one real `--onefile` run before changing the gate
-  Effort: S
-
 - [ ] P2 — `assets/templates/` ships in every build but nothing reads it
   Category: build
   Where: `build/build.py:59`, `SlunderStudio.spec:8`, `assets/templates/*.json` (34 tracked files)
