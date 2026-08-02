@@ -350,6 +350,7 @@ def generate_lyrics(
     mood: str = "",
     language: str = "en",
     structure_override: str = "",
+    system_prompt_override: str = "",
     model_id: str = None,
     progress_cb: Callable = None,
     step_cb: Callable = None,
@@ -387,13 +388,17 @@ def generate_lyrics(
         backend_name = llm.backend or "unknown"
         step_cb(f"Generating lyrics ({backend_name})...")
 
-    system_prompt, user_prompt = build_generation_prompt(
-        user_prompt=prompt,
-        genre_id=genre_id,
-        mood=mood,
-        language=language,
-        structure_override=structure_override,
-    )
+    if system_prompt_override.strip():
+        system_prompt = system_prompt_override.strip()
+        user_prompt = prompt
+    else:
+        system_prompt, user_prompt = build_generation_prompt(
+            user_prompt=prompt,
+            genre_id=genre_id,
+            mood=mood,
+            language=language,
+            structure_override=structure_override,
+        )
 
     if log_cb:
         log_cb(f"Genre: {genre_id}, Mood: {mood}, Backend: {llm.backend}")
@@ -425,6 +430,7 @@ def generate_lyrics(
             "repeat_penalty": repeat_penalty,
             "max_tokens": max_tokens,
             "structure_override": structure_override,
+            "system_prompt_override": system_prompt_override,
         },
     }
 

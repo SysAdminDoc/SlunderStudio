@@ -8,6 +8,8 @@ All notable changes to SlunderStudio will be documented in this file.
   SFX card playback, and Stem Mixer per-stem playback to their real audio effects.
 - Prevented failed batch and seed playback loads from replaying stale audio, routed load failures
   through application logging and an error toast, and made missing output sizes nonfatal.
+- Preserved Lyrics Pro system-prompt edits through the high-level generation API and recorded the
+  override in generation parameters.
 - Marked FluidSynth sine fallbacks as demo renders with an explicit reason and kept MIDI routing buttons disabled for those previews.
 - Repaired AI Producer lyrics generation to use the canonical loaded lyrics model and structured prompts, while labeling template fallback lyrics as demo/degraded output.
 - Marshalled streamed lyrics tokens through an `InferenceWorker` signal and queued connection so the editor is updated only on its GUI thread.

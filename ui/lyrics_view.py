@@ -569,6 +569,7 @@ class LyricsView(QWidget):
             top_k=self._pro_top_k.value(),
             repeat_penalty=self._pro_repeat.value(),
             max_tokens=self._pro_max_tokens.value(),
+            system_prompt_override=system,
         )
 
     def _regenerate(self):

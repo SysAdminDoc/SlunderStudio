@@ -116,23 +116,6 @@ therefore new work, not a pre-existing red build.
 
 ### P1
 
-- [ ] P1 — Lyrics Pro mode silently discards the user's system prompt
-  Category: correctness
-  Where: `ui/lyrics_view.py:550-575` (`_generate_pro`)
-  Problem: The Pro tab's headline feature is a raw system-prompt editor. `_generate_pro` collects
-    `system` (falling back to `BASE_SYSTEM_PROMPT`) and then never passes it —
-    `_run_generation(generate_lyrics, user, temperature=..., ...)` takes no system argument, and
-    `generate_lyrics` (`engines/lyrics_engine.py:382-394`) unconditionally rebuilds its own system
-    prompt via `build_generation_prompt`. Everything the user writes in that box is dropped with no
-    warning; leftover `**kwargs` are swallowed too.
-  Evidence: Read both functions; there is no parameter through which the override could travel.
-  Fix: Add a `system_prompt_override` parameter to `generate_lyrics` and pass it from Pro mode, or
-    bypass template building entirely when an override is present.
-  Acceptance: A test asserting the string typed into the Pro system box reaches
-    `LyricsLLM.generate` as `system_prompt`.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P1 — Checked and hover button states put white text on light fills, far below WCAG AA
   Category: a11y
   Where: `ui/stem_mixer.py:99-110` (`QPushButton:checked {{ background: {color}; color: white; }}`)
