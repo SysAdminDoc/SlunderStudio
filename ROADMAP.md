@@ -118,25 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — The app's own wordmark is clipped in the sidebar
-  Category: visual
-  Where: `ui/main_window.py:75` (`self.setFixedWidth(196)`), `:80-92` (brand row);
-    `ui/theme.py:91-96` (`QLabel#brand`)
-  Problem: The sidebar is a fixed 196px. After margins (8+8), brand-row margins (4+4), the 30px
-    brand mark and 9px spacing, the label has 133px. "SLUNDER STUDIO" at `font-size: 16px;
-    font-weight: 800; letter-spacing: 1px` needs roughly 149px, so the wordmark renders as
-    "SLUNDER STUDI" — the product name is truncated in the primary chrome at every window size.
-  Evidence: Reproduced in an offscreen render of `MainWindow` at 1280x800 with real Segoe UI
-    loaded, and confirmed by measurement: `QFontMetrics.horizontalAdvance("SLUNDER STUDIO")` is
-    127px at 15px bold, scaling to about 135px at 16px, plus 14px of letter spacing, against 133px
-    available.
-  Fix: Widen the sidebar slightly, drop the letter-spacing, reduce the brand font size, or let the
-    label elide with a tooltip. Whichever is chosen, add the check below so it cannot regress.
-  Acceptance: A test asserting the brand label's `sizeHint().width()` fits the space the layout
-    grants it at the 1024px minimum window width.
-  Confidence: Verified (rendered and measured)
-  Effort: S
-
 - [ ] P2 — `&` in group-box titles is eaten as a Qt mnemonic, rendering "GPU _Models"
   Category: visual
   Where: `assets/locales/en.json:48` (`"settings.gpu.group": "GPU & Models"`);

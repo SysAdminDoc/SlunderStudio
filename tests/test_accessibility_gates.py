@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from ui.contrast import (
     NON_TEXT_RATIO,
@@ -271,6 +271,35 @@ class ResponsiveLayoutTests(unittest.TestCase):
                 if value > TARGET_WIDTH:
                     offenders.append(f"{path.relative_to(ROOT)}:{lineno}={value}")
         self.assertEqual(offenders, [], "controls wider than 1024px: " + ", ".join(offenders))
+
+    def test_sidebar_wordmark_fits_its_brand_row(self):
+        from ui.main_window import Sidebar
+
+        previous_stylesheet = self._app.styleSheet()
+        self._app.setStyleSheet(build_stylesheet())
+        sidebar = Sidebar()
+        try:
+            brand = sidebar.findChild(QLabel, "brand")
+            self.assertIsNotNone(brand)
+            brand.ensurePolished()
+            brand_row = sidebar.layout().itemAt(0).layout()
+            brand_row_margins = brand_row.getContentsMargins()
+            sidebar_margins = sidebar.layout().getContentsMargins()
+            brand_mark = brand_row.itemAt(0).widget()
+            available = (
+                sidebar.width()
+                - sidebar_margins[0]
+                - sidebar_margins[2]
+                - brand_row_margins[0]
+                - brand_row_margins[2]
+                - brand_mark.width()
+                - brand_row.spacing()
+            )
+
+            self.assertGreaterEqual(available, brand.sizeHint().width())
+        finally:
+            sidebar.deleteLater()
+            self._app.setStyleSheet(previous_stylesheet)
 
 
 if __name__ == "__main__":

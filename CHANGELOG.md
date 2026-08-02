@@ -8,6 +8,8 @@ All notable changes to SlunderStudio will be documented in this file.
   selection, playback, favorite, focus, and live-status announcements.
 - Corrected dynamic translucent accent styles to emit RGB-ordered `rgba()` values, preserving
   stem, project-selection, and AI stage hues under Qt stylesheet parsing.
+- Prevented sidebar wordmark clipping by sizing the brand row against the themed label metrics
+  at the minimum supported window width.
 - Wired Vocal Suite WAV export, Seed Explorer starred variation export with provenance sidecars,
   SFX card playback, and Stem Mixer per-stem playback to their real audio effects.
 - Prevented failed batch and seed playback loads from replaying stale audio, routed load failures

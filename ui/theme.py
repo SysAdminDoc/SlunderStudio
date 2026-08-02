@@ -102,9 +102,9 @@ QWidget#sidebar {{
 }}
 QLabel#brand {{
     color: {p.TEXT};
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 800;
-    letter-spacing: 1px;
+    letter-spacing: 0px;
 }}
 QLabel#brandMark {{
     background-color: {accent};
