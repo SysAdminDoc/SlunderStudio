@@ -4,6 +4,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Removed the unconditional startup `__pycache__` purge so Python can reuse valid bytecode caches
+  on subsequent launches.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

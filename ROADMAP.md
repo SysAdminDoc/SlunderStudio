@@ -118,24 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — `_clean_pycache()` deletes every bytecode cache on every launch, including when frozen
-  Category: perf
-  Where: `main.py:106-117`
-  Problem: Every startup walks the whole project tree and removes every `__pycache__`, so each
-    launch re-parses and re-compiles roughly a hundred modules — precisely the cost `.pyc` caching
-    exists to avoid, and Python's own mtime/hash invalidation already handles the stale-bytecode
-    concern the comment cites. It also runs in the frozen build, where it is a pure wasted walk of
-    the `_internal` tree, and if a virtualenv ever lives in the repo root the walk will delete
-    site-packages caches for PySide6, librosa and numba too. Combined with Phase 1 eagerly
-    importing all core packages (`main.py:35-42`, where the librosa import alone costs seconds via
-    numba), cold start pays the maximum price every single run.
-  Fix: Delete the function, or gate it behind an explicit `--clean-bytecode` flag and never run it
-    when `_is_frozen()`.
-  Acceptance: Startup no longer removes `__pycache__` directories; a second launch is measurably
-    faster than the first.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P2 — The GPU status poll imports torch on the GUI thread and retries a failed import every two seconds
   Category: perf
   Where: `ui/main_window.py:586-591` (`_start_gpu_monitor` calls `_update_gpu_status()`

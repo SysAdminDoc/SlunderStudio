@@ -102,21 +102,6 @@ def _show_dependency_diagnostics_tk(
 _BOOTSTRAP_MISSING = _phase1_bootstrap()
 
 
-# Clean stale bytecode — prevents old .pyc from overriding updated .py files
-def _clean_pycache():
-    import shutil
-    root = os.path.dirname(os.path.abspath(__file__))
-    for dirpath, dirnames, _ in os.walk(root):
-        for d in dirnames:
-            if d == "__pycache__":
-                try:
-                    shutil.rmtree(os.path.join(dirpath, d))
-                except OSError:
-                    pass
-
-_clean_pycache()
-
-
 # ── Phase 2: GUI Splash + Remaining Dependencies ─────────────────────────────
 
 from PySide6.QtWidgets import (  # noqa: E402
