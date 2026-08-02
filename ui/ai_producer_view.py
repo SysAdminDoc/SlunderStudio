@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 
 from ui.theme import Palette, ThemeEngine, rgba
 from ui.accessibility import install_accessibility
+from ui.widgets import ElidedLabel
 from ui.waveform_widget import WaveformWidget
 from engines.ai_producer import (
     ProducerBrief, ProducerResult, PipelineStage, PIPELINE_ORDER,
@@ -96,8 +97,7 @@ class StageIndicator(QFrame):
         layout.addWidget(self._name_label, 1)
 
         # Status indicator
-        self._status_label = QLabel("")
-        self._status_label.setFixedWidth(60)
+        self._status_label = ElidedLabel("", minimum_width=60)
         self._status_label.setAlignment(Qt.AlignRight)
         self._status_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         layout.addWidget(self._status_label)

@@ -14,6 +14,7 @@ import numpy as np
 
 from ui.theme import Palette, ThemeEngine, rgba
 from ui.accessibility import install_accessibility
+from ui.widgets import ElidedLabel
 from ui.waveform_widget import MiniWaveform
 from core.panning import pan_gains
 
@@ -126,8 +127,7 @@ class StemStrip(QFrame):
         self._vol_slider.setValue(100)
         self._vol_slider.setFixedHeight(14)
         self._vol_slider.valueChanged.connect(self._on_volume)
-        self._vol_label = QLabel("100%")
-        self._vol_label.setFixedWidth(32)
+        self._vol_label = ElidedLabel("100%", minimum_width=32)
         self._vol_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
         vol_row.addWidget(vol_l)
         vol_row.addWidget(self._vol_slider)
@@ -145,8 +145,7 @@ class StemStrip(QFrame):
         self._pan_slider.setValue(0)
         self._pan_slider.setFixedHeight(14)
         self._pan_slider.valueChanged.connect(self._on_pan)
-        self._pan_label = QLabel("C")
-        self._pan_label.setFixedWidth(32)
+        self._pan_label = ElidedLabel("C", minimum_width=32)
         self._pan_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
         pan_row.addWidget(pan_l)
         pan_row.addWidget(self._pan_slider)

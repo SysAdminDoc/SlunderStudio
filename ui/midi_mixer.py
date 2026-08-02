@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, Signal
 from core.midi_utils import MidiData, TrackData, GM_PROGRAMS, get_program_name
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
+from ui.widgets import ElidedLabel
 
 
 # ── Track Strip ────────────────────────────────────────────────────────────────
@@ -107,8 +108,7 @@ class TrackStrip(QFrame):
         self._volume_slider.setFixedHeight(16)
         self._volume_slider.valueChanged.connect(
             lambda v: self.volume_changed.emit(self.track_idx, v))
-        self._vol_value = QLabel("100")
-        self._vol_value.setFixedWidth(24)
+        self._vol_value = ElidedLabel("100", minimum_width=24)
         self._vol_value.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 10px;")
         self._volume_slider.valueChanged.connect(lambda v: self._vol_value.setText(str(v)))
 
@@ -129,8 +129,7 @@ class TrackStrip(QFrame):
         self._pan_slider.setFixedHeight(16)
         self._pan_slider.valueChanged.connect(
             lambda v: self.pan_changed.emit(self.track_idx, v))
-        self._pan_value = QLabel("C")
-        self._pan_value.setFixedWidth(24)
+        self._pan_value = ElidedLabel("C", minimum_width=24)
         self._pan_value.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 10px;")
         self._pan_slider.valueChanged.connect(self._update_pan_label)
 

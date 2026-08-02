@@ -35,9 +35,10 @@ class HFTokenDialog(QDialog):
     def __init__(self, model_name: str, repo_id: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("HuggingFace Token")
-        self.setFixedSize(480, 240)
+        self.setMinimumSize(480, 240)
         self.token = ""
         self._build_ui(model_name, repo_id)
+        self.resize(480, 240)
 
     def _build_ui(self, model_name: str, repo_id: str):
         layout = QVBoxLayout(self)
@@ -66,6 +67,12 @@ class HFTokenDialog(QDialog):
         self._token_input.setFixedHeight(38)
         layout.addWidget(self._token_input)
 
+        self._error_label = QLabel("")
+        self._error_label.setWordWrap(True)
+        self._error_label.setStyleSheet(f"color: {Palette.RED};")
+        self._error_label.setVisible(False)
+        layout.addWidget(self._error_label)
+
         layout.addStretch()
 
         btn_row = QHBoxLayout()
@@ -88,8 +95,10 @@ class HFTokenDialog(QDialog):
             self.token = t
             self.accept()
         else:
-            self._token_input.setPlaceholderText("Must start with hf_...")
+            self._error_label.setText("Token must start with hf_...")
+            self._error_label.setVisible(True)
             self._token_input.setStyleSheet(f"border: 1px solid {Palette.RED};")
+            self.adjustSize()
 
 
 class ExecutableModelConsentDialog(QDialog):

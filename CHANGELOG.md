@@ -16,6 +16,8 @@ All notable changes to SlunderStudio will be documented in this file.
   failed jobs instead of completed records.
 - Reset shared FluidSynth state around renders to prevent reverb tails leaking into the next job,
   and fixed mono rendering to downmix the synthesizer's stereo frames safely.
+- Replaced fixed-width dynamic labels with resize-aware ellipsis and full-value tooltips, and let
+  invalid HuggingFace token errors expand their dialog instead of clipping.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

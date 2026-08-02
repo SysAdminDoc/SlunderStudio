@@ -118,26 +118,6 @@ therefore new work, not a pre-existing red build.
 
 ### P2
 
-- [ ] P2 — Fixed pixel widths clip user data today and will clip harder once translated
-  Category: ux
-  Where: `ui/mixer_view.py:92-93` (track-name `QLabel`, `setFixedWidth(80)`, 11px bold, no elide
-    and no tooltip); `ui/ai_producer_view.py:98-99` (stage status label, `setFixedWidth(60)`,
-    10px); `ui/onboarding.py:183, 259, 324` (model/step names, fixed 110-140px);
-    `ui/model_hub.py:38` (HF-token dialog `setFixedSize(480, 240)`, so validation and error text
-    growth at `:91` cannot expand the dialog); `ui/stem_mixer.py:129, 148` and
-    `ui/midi_mixer.py:110, 132` (value labels fixed 24-32px, where "L100" is already at the limit)
-  Problem: These carry user or dynamic data — track names derived from filenames such as
-    "vocals_recovered", stage status plus duration strings — and clip silently with no tooltip
-    fallback. The existing i18n roadmap item mentions pseudolocale clipping generically; these are
-    the concrete cases that clip in English today, independent of translation.
-  Fix: Use `setMinimumWidth` plus `QFontMetrics.elidedText` with a tooltip carrying the full string
-    for data labels; replace `setFixedSize` on the dialog with `setMinimumSize` and let the layout
-    size it.
-  Acceptance: A test asserting a long track name renders elided with a tooltip rather than clipped,
-    and that the token dialog grows to fit an error message.
-  Confidence: Verified (code); exact pixel repro Likely
-  Effort: M
-
 - [ ] P2 — Toasts do not reposition on resize, clip long paths, and use a duration independent of length
   Category: ux
   Where: `ui/toast.py:88, 212-226, 228-243`; `ui/main_window.py` (no `resizeEvent` override)

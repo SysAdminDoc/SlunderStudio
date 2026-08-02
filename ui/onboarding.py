@@ -18,6 +18,7 @@ from PySide6.QtGui import QFont
 from core.settings import APP_VERSION
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
+from ui.widgets import ElidedLabel
 
 
 # ── System Check ───────────────────────────────────────────────────────────────
@@ -182,8 +183,7 @@ class SystemCheckPage(QWidget):
                 f"color: {Palette.GREEN}; font-weight: bold; font-size: 11px;"
                 if ok else f"color: {Palette.YELLOW}; font-weight: bold; font-size: 11px;"
             )
-            name = QLabel(f"{label}:")
-            name.setFixedWidth(110)
+            name = ElidedLabel(f"{label}:", minimum_width=110)
             name.setStyleSheet(f"color: {t['text']}; font-size: 12px; border: none;")
             val = QLabel(str(value))
             val.setStyleSheet(f"color: {t['text']}; font-size: 12px; font-weight: bold; border: none;")
@@ -258,8 +258,7 @@ class ModelGuidePage(QWidget):
                 f"color: {t['text_secondary']}; background: {t['border']}; "
                 f"border-radius: 3px; font-size: 8px; padding: 2px;"
             )
-            n = QLabel(name)
-            n.setFixedWidth(140)
+            n = ElidedLabel(name, minimum_width=140)
             n.setStyleSheet(f"color: {t['text']}; font-size: 12px; font-weight: bold; border: none;")
             d = QLabel(desc)
             d.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
@@ -324,8 +323,7 @@ class QuickStartPage(QWidget):
                 background: {t['accent']}; color: white; border-radius: 12px;
                 font-size: 11px; font-weight: bold;
             """)
-            n = QLabel(name)
-            n.setFixedWidth(110)
+            n = ElidedLabel(name, minimum_width=110)
             n.setStyleSheet(f"color: {t['text']}; font-size: 12px; font-weight: bold; border: none;")
             d = QLabel(desc)
             d.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")

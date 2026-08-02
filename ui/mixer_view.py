@@ -17,6 +17,7 @@ import numpy as np
 
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
+from ui.widgets import ElidedLabel
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.workers import InferenceWorker
 from core.panning import pan_gains
@@ -206,8 +207,8 @@ class MixerTrackStrip(QFrame):
         layout.setSpacing(6)
 
         # Track name
-        name_label = QLabel(name)
-        name_label.setFixedWidth(80)
+        name_label = ElidedLabel(name, minimum_width=80)
+        self._name_label = name_label
         name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 11px;")
         layout.addWidget(name_label)
 
