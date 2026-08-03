@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added dedicated direct coverage for worker cancellation, preserved outputs, semantic failures,
+  progress throttling, autosave branches, MIDI transforms, settings persistence, and style-tag
+  search/favorites.
 - Added PortAudio output-device selection in Settings. Device names include their host API,
   selections persist by stable host/API identity, the list refreshes without a restart, and
   unavailable devices visibly fall back to the system default during playback.

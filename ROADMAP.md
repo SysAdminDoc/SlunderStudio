@@ -81,20 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Test `core/workers.py` directly
-  Why: It is the threading spine of the whole application and has no dedicated test file.
-  Evidence: `tests/` has 69 files; `core/workers.py` is exercised only incidentally through engine
-    tests. Untested logic includes cancellation semantics, the `CancelledJobError` preserved-output
-    partitioning at `:159-180`, semantic-failure detection at `:130-146`, and progress-persistence
-    throttling at `:208-214`. `core/autosave.py`, `core/midi_utils.py` and `core/settings.py` also
-    have no dedicated file. `engines/style_tags.py` (189 lines, backing Song Forge's tag search at
-    `ui/song_forge_view.py:19,46`) is the only source module **no test imports at all**.
-  Touches: `tests/`.
-  Acceptance: Dedicated tests exist for `core/workers.py` covering cancel-during-run, preserved
-    outputs on cancel, failure classification and progress throttling; and for `core/autosave.py`,
-    `core/midi_utils.py`, `core/settings.py` and `engines/style_tags.py`.
-  Complexity: M
-
 ### P2
 
 - [ ] P2 — Run real MIDI generation as a cancellable background job
