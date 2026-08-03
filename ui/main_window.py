@@ -100,7 +100,7 @@ class Sidebar(QWidget):
         brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         brand_mark.setFixedSize(30, 30)
         brand_row.addWidget(brand_mark)
-        brand = QLabel("SLUNDER STUDIO")
+        brand = QLabel(tr("shell.sidebar.brand"))
         brand.setObjectName("brand")
         brand_row.addWidget(brand, 1)
         layout.addLayout(brand_row)
@@ -138,10 +138,10 @@ class Sidebar(QWidget):
         engine_layout = QVBoxLayout(engine_frame)
         engine_layout.setContentsMargins(10, 8, 10, 8)
         engine_layout.setSpacing(2)
-        engine_status = QLabel("\u25cf  LOCAL ENGINE")
+        engine_status = QLabel(tr("shell.sidebar.local_engine"))
         engine_status.setObjectName("computeStatus")
         engine_layout.addWidget(engine_status)
-        engine_note = QLabel("Private by default")
+        engine_note = QLabel(tr("shell.sidebar.private_by_default"))
         engine_note.setObjectName("transportMeta")
         engine_layout.addWidget(engine_note)
         layout.addWidget(engine_frame)
@@ -196,10 +196,10 @@ class TransportBar(QWidget):
         track_meta = QVBoxLayout()
         track_meta.setContentsMargins(0, 0, 12, 0)
         track_meta.setSpacing(1)
-        self._track_title = QLabel("GLOBAL OUTPUT")
+        self._track_title = QLabel(tr("shell.transport.global_output"))
         self._track_title.setObjectName("transportTitle")
         track_meta.addWidget(self._track_title)
-        self._track_detail = QLabel("No audio loaded")
+        self._track_detail = QLabel(tr("shell.transport.no_audio"))
         self._track_detail.setObjectName("transportMeta")
         track_meta.addWidget(self._track_detail)
         layout.addLayout(track_meta)
@@ -240,7 +240,7 @@ class TransportBar(QWidget):
         layout.addWidget(self._loop_btn)
 
         # Volume
-        vol_icon = QLabel("VOL")
+        vol_icon = QLabel(tr("shell.transport.volume"))
         vol_icon.setObjectName("transportMeta")
         layout.addWidget(vol_icon)
 
@@ -364,6 +364,9 @@ class MainWindow(QMainWindow):
         self._notification_log_dialog = None
 
         self._build_ui()
+        from ui.i18n_runtime import apply_pseudolocale
+
+        apply_pseudolocale(self)
         self._start_gpu_monitor()
         self._start_autosave()
 
@@ -424,8 +427,8 @@ class MainWindow(QMainWindow):
         set_accessible(self, tr("app.accessible_name"), tr("app.accessible_description"))
         set_accessible(
             self._status_bar,
-            "Application status",
-            "Shows GPU, VRAM, active model, and audio output status.",
+            tr("shell.accessibility.status_name"),
+            tr("shell.accessibility.status_description"),
         )
         set_accessible(
             self._gpu_status_label,
@@ -453,10 +456,10 @@ class MainWindow(QMainWindow):
         project_stack = QVBoxLayout()
         project_stack.setSpacing(0)
         project_stack.setContentsMargins(0, 0, 0, 0)
-        project_hint = QLabel("ACTIVE PROJECT")
+        project_hint = QLabel(tr("shell.command.active_project"))
         project_hint.setObjectName("commandMeta")
         project_stack.addWidget(project_hint)
-        self._project_label = QLabel("No project open")
+        self._project_label = QLabel(tr("shell.command.no_project"))
         self._project_label.setObjectName("projectName")
         project_stack.addWidget(self._project_label)
         layout.addLayout(project_stack)
@@ -468,7 +471,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(separator)
 
         interval = int(self._settings.get("general.auto_save_interval", 60) or 60)
-        self._autosave_label = QLabel(f"Autosave interval  \u00b7  {interval}s")
+        self._autosave_label = QLabel(
+            tr("shell.command.autosave_interval", seconds=interval)
+        )
         self._autosave_label.setObjectName("commandMeta")
         layout.addWidget(self._autosave_label)
 
@@ -482,46 +487,47 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._last_message_label)
         self.toast_mgr.on_message(self._on_toast_message)
 
-        self._notification_button = QPushButton("Notifications")
+        self._notification_button = QPushButton(tr("shell.command.notifications"))
         self._notification_button.setFixedHeight(30)
         self._notification_button.clicked.connect(self._show_notification_log)
         layout.addWidget(self._notification_button)
 
-        self._compute_status_label = QLabel("Checking compute")
+        self._compute_status_label = QLabel(tr("shell.command.checking_compute"))
         self._compute_status_label.setObjectName("computeStatus")
         layout.addWidget(self._compute_status_label)
 
         offline = bool(self._settings.get("model_hub.offline_mode", False))
         self._local_status_label = QLabel(
-            "\u25cf  Offline mode" if offline else "\u25cf  Local processing"
+            tr("shell.command.offline_mode")
+            if offline else tr("shell.command.local_processing")
         )
         self._local_status_label.setObjectName("localStatus")
         layout.addWidget(self._local_status_label)
 
         set_accessible(
             bar,
-            "Workspace command bar",
-            "Shows the active project, autosave interval, compute state, and privacy mode.",
+            tr("shell.accessibility.command_bar_name"),
+            tr("shell.accessibility.command_bar_description"),
         )
         set_accessible(
             self._compute_status_label,
-            "Compute status",
-            "Reports whether generation is using a GPU or CPU.",
+            tr("shell.accessibility.compute_name"),
+            tr("shell.accessibility.compute_description"),
         )
         set_accessible(
             self._local_status_label,
-            "Processing privacy status",
-            "Reports local processing or strict offline mode.",
+            tr("shell.accessibility.privacy_name"),
+            tr("shell.accessibility.privacy_description"),
         )
         set_accessible(
             self._last_message_label,
-            "Last notification",
-            "Keeps the most recent notification readable after its toast closes.",
+            tr("shell.accessibility.last_notification_name"),
+            tr("shell.accessibility.last_notification_description"),
         )
         set_accessible(
             self._notification_button,
-            "Notification history",
-            "Opens the retained application notifications and errors.",
+            tr("shell.accessibility.notification_history_name"),
+            tr("shell.accessibility.notification_history_description"),
         )
         return bar
 

@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QWidget
 
 from core.i18n import (
     DEFAULT_LOCALE,
@@ -37,6 +37,7 @@ from core.voice_bank import VoiceBank
 from engines.lyrics_engine import default_lyrics_language
 from engines.lyrics_templates import build_quick_prompt
 from ui.lyrics_view import LyricsView
+from ui.i18n_runtime import apply_pseudolocale
 from ui.settings_view import SettingsView
 from ui.vocal_suite_view import VocalSuiteView
 
@@ -114,6 +115,22 @@ class I18nTests(unittest.TestCase):
             self.assertIs(window.focusWidget(), second)
         finally:
             window.close()
+            window.deleteLater()
+
+    def test_pseudolocale_expands_static_widget_copy_for_layout_qa(self):
+        set_locale(PSEUDO_LOCALE, persist=False)
+        window = QWidget()
+        layout = QHBoxLayout(window)
+        label = QLabel("Static shell copy")
+        button = QPushButton("Continue")
+        layout.addWidget(label)
+        layout.addWidget(button)
+        try:
+            self.assertGreaterEqual(apply_pseudolocale(window), 2)
+            self.assertTrue(label.text().startswith("［"))
+            self.assertTrue(button.text().startswith("［"))
+            self.assertEqual(0, apply_pseudolocale(window))
+        finally:
             window.deleteLater()
 
     def test_language_labels_normalize_to_prompt_codes(self):

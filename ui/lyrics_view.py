@@ -47,7 +47,7 @@ class GenrePicker(QWidget):
 
         # Search
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search genres...")
+        self._search.setPlaceholderText(tr("lyrics.history.search_genres"))
         self._search.setFixedHeight(34)
         self._search.textChanged.connect(self._filter)
         layout.addWidget(self._search)
@@ -357,7 +357,7 @@ class LyricsView(QWidget):
         guided_layout.addWidget(mood_label)
 
         self._mood_combo = QComboBox()
-        self._mood_combo.addItem("Auto-detect", "")
+        self._mood_combo.addItem(tr("lyrics.guided.auto_detect"), "")
         for mood in MOODS:
             self._mood_combo.addItem(mood.capitalize(), mood)
         self._mood_combo.setFixedHeight(34)
@@ -369,7 +369,7 @@ class LyricsView(QWidget):
         guided_layout.addWidget(struct_label)
 
         self._structure_combo = QComboBox()
-        self._structure_combo.addItem("Default for genre", "")
+        self._structure_combo.addItem(tr("lyrics.guided.default_structure"), "")
         for key, val in STANDARD_STRUCTURES.items():
             display = key.replace("_", " ").title()
             self._structure_combo.addItem(display, val)

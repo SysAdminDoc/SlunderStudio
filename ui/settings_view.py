@@ -180,7 +180,7 @@ class SettingsView(QWidget):
             self._on_audio_device_selected
         )
 
-        self._refresh_audio_devices_btn = QPushButton("Refresh")
+        self._refresh_audio_devices_btn = QPushButton(tr("settings.actions.refresh"))
         self._refresh_audio_devices_btn.setObjectName("secondaryBtn")
         self._refresh_audio_devices_btn.setFixedHeight(34)
         self._refresh_audio_devices_btn.clicked.connect(self._refresh_audio_devices)
@@ -192,9 +192,9 @@ class SettingsView(QWidget):
         device_controls_layout.addWidget(self._audio_device_combo, 1)
         device_controls_layout.addWidget(self._refresh_audio_devices_btn)
         output_layout.addLayout(SettingRow(
-            "Audio output device",
+            tr("settings.output.audio_device"),
             device_controls,
-            "Uses PortAudio and shows the host API so similarly named devices are distinguishable.",
+            tr("settings.output.audio_device_help"),
         ))
 
         self._audio_device_status = QLabel("")
@@ -251,10 +251,18 @@ class SettingsView(QWidget):
         appearance_layout = QVBoxLayout(appearance_group)
 
         self._experience_combo = QComboBox()
-        self._experience_combo.addItems(["Beginner", "Intermediate", "Advanced"])
+        for code, key in (
+            ("beginner", "settings.appearance.experience_beginner"),
+            ("intermediate", "settings.appearance.experience_intermediate"),
+            ("advanced", "settings.appearance.experience_advanced"),
+        ):
+            self._experience_combo.addItem(tr(key), code)
         self._experience_combo.setFixedWidth(160)
-        self._experience_combo.currentTextChanged.connect(
-            lambda v: self._save("general.experience_level", v.lower()))
+        self._experience_combo.currentIndexChanged.connect(
+            lambda: self._save(
+                "general.experience_level",
+                self._experience_combo.currentData() or "beginner",
+            ))
         appearance_layout.addLayout(SettingRow(
             tr("settings.appearance.experience_level"),
             self._experience_combo,
@@ -305,9 +313,9 @@ class SettingsView(QWidget):
         lyrics_layout = QVBoxLayout(lyrics_group)
 
         self._lyrics_model = QComboBox()
-        self._lyrics_model.addItem("LLaMA 3.1 8B (Recommended)", "llama-3.1-8b-q4")
-        self._lyrics_model.addItem("LLaMA 3.2 3B (Fast)", "llama-3.2-3b-q4")
-        self._lyrics_model.addItem("Qwen 2.5 14B (Premium)", "qwen-2.5-14b-q4")
+        self._lyrics_model.addItem(tr("settings.lyrics.model_recommended"), "llama-3.1-8b-q4")
+        self._lyrics_model.addItem(tr("settings.lyrics.model_fast"), "llama-3.2-3b-q4")
+        self._lyrics_model.addItem(tr("settings.lyrics.model_premium"), "qwen-2.5-14b-q4")
         self._lyrics_model.setFixedWidth(240)
         self._lyrics_model.currentIndexChanged.connect(
             lambda: self._save("lyrics.model_id", self._lyrics_model.currentData()))
@@ -344,7 +352,7 @@ class SettingsView(QWidget):
         layout.addWidget(lyrics_group)
 
         # ── Song Forge ──
-        forge_group = QGroupBox("Song Forge")
+        forge_group = QGroupBox(tr("settings.song_forge.group"))
         forge_layout = QVBoxLayout(forge_group)
 
         self._timestep_shift = QDoubleSpinBox()
@@ -355,9 +363,9 @@ class SettingsView(QWidget):
         self._timestep_shift.valueChanged.connect(
             lambda v: self._save("song_forge.timestep_shift", v))
         forge_layout.addLayout(SettingRow(
-            "Timestep Shift",
+            tr("settings.song_forge.timestep_shift"),
             self._timestep_shift,
-            "ACE-Step XL Turbo schedule shift (1, 2, or 3)",
+            tr("settings.song_forge.timestep_shift_help"),
         ))
 
         self._inference_steps = QSpinBox()
@@ -366,41 +374,49 @@ class SettingsView(QWidget):
         self._inference_steps.setFixedWidth(100)
         self._inference_steps.valueChanged.connect(
             lambda v: self._save("song_forge.inference_steps", v))
-        forge_layout.addLayout(SettingRow("Inference Steps", self._inference_steps, "More steps = higher quality, slower"))
+        forge_layout.addLayout(SettingRow(
+            tr("settings.song_forge.inference_steps"),
+            self._inference_steps,
+            tr("settings.song_forge.inference_steps_help"),
+        ))
 
         self._batch_count = QSpinBox()
         self._batch_count.setRange(1, 16)
         self._batch_count.setFixedWidth(80)
         self._batch_count.valueChanged.connect(
             lambda v: self._save("song_forge.batch_count", v))
-        forge_layout.addLayout(SettingRow("Batch Count", self._batch_count, "Number of variations to generate"))
+        forge_layout.addLayout(SettingRow(
+            tr("settings.song_forge.batch_count"),
+            self._batch_count,
+            tr("settings.song_forge.batch_count_help"),
+        ))
 
         self._default_duration = QSpinBox()
         self._default_duration.setRange(10, 600)
-        self._default_duration.setSuffix(" sec")
+        self._default_duration.setSuffix(f" {tr('settings.units.seconds')}")
         self._default_duration.setFixedWidth(120)
         self._default_duration.valueChanged.connect(
             lambda v: self._save("song_forge.default_duration", v))
-        forge_layout.addLayout(SettingRow("Default Duration", self._default_duration))
+        forge_layout.addLayout(SettingRow(tr("settings.song_forge.default_duration"), self._default_duration))
 
         layout.addWidget(forge_group)
 
         # ── MIDI Studio ──
-        midi_group = QGroupBox("MIDI Studio")
+        midi_group = QGroupBox(tr("settings.midi.group"))
         midi_layout = QVBoxLayout(midi_group)
 
         self._default_bpm = QSpinBox()
         self._default_bpm.setRange(40, 300)
-        self._default_bpm.setSuffix(" BPM")
+        self._default_bpm.setSuffix(f" {tr('settings.units.bpm')}")
         self._default_bpm.setFixedWidth(120)
         self._default_bpm.valueChanged.connect(
             lambda v: self._save("midi_studio.default_bpm", v))
-        midi_layout.addLayout(SettingRow("Default BPM", self._default_bpm))
+        midi_layout.addLayout(SettingRow(tr("settings.midi.default_bpm"), self._default_bpm))
 
         layout.addWidget(midi_group)
 
         # ── Production ──
-        prod_group = QGroupBox("Production / Mastering")
+        prod_group = QGroupBox(tr("settings.production.group"))
         prod_layout = QVBoxLayout(prod_group)
 
         self._mastering_target = QComboBox()
@@ -409,48 +425,52 @@ class SettingsView(QWidget):
         self._mastering_target.setFixedWidth(220)
         self._mastering_target.currentIndexChanged.connect(
             lambda: self._save("production.mastering_target", self._mastering_target.currentData()))
-        prod_layout.addLayout(SettingRow("Mastering Target", self._mastering_target))
+        prod_layout.addLayout(SettingRow(tr("settings.production.mastering_target"), self._mastering_target))
 
-        self._auto_eq = QCheckBox("Auto EQ")
+        self._auto_eq = QCheckBox(tr("settings.production.auto_eq"))
         self._auto_eq.toggled.connect(
             lambda v: self._save("production.mastering_auto_eq", v))
-        prod_layout.addLayout(SettingRow("Apply spectral correction during mastering", self._auto_eq))
+        prod_layout.addLayout(SettingRow(tr("settings.production.auto_eq_help"), self._auto_eq))
 
-        self._auto_compress = QCheckBox("Auto Compression")
+        self._auto_compress = QCheckBox(tr("settings.production.auto_compress"))
         self._auto_compress.toggled.connect(
             lambda v: self._save("production.mastering_auto_compress", v))
-        prod_layout.addLayout(SettingRow("Apply bus compression during mastering", self._auto_compress))
+        prod_layout.addLayout(SettingRow(tr("settings.production.auto_compress_help"), self._auto_compress))
 
         layout.addWidget(prod_group)
 
         # ── Cache ──
-        cache_group = QGroupBox("Cache and Storage")
+        cache_group = QGroupBox(tr("settings.cache.group"))
         cache_layout = QVBoxLayout(cache_group)
 
         self._max_cache = QDoubleSpinBox()
         self._max_cache.setRange(1.0, 500.0)
-        self._max_cache.setSuffix(" GB")
+        self._max_cache.setSuffix(f" {tr('settings.units.gb')}")
         self._max_cache.setSingleStep(5.0)
         self._max_cache.setFixedWidth(120)
         self._max_cache.valueChanged.connect(
             lambda v: self._save("general.max_cache_gb", v))
-        cache_layout.addLayout(SettingRow("Max Cache Size", self._max_cache, "Auto-cleanup old generations beyond this limit"))
+        cache_layout.addLayout(SettingRow(
+            tr("settings.cache.max_size"),
+            self._max_cache,
+            tr("settings.cache.max_size_help"),
+        ))
 
         self._autosave_interval = QSpinBox()
         self._autosave_interval.setRange(10, 600)
-        self._autosave_interval.setSuffix(" sec")
+        self._autosave_interval.setSuffix(f" {tr('settings.units.seconds')}")
         self._autosave_interval.setFixedWidth(120)
         self._autosave_interval.valueChanged.connect(
             lambda v: self._save("general.auto_save_interval", v))
-        cache_layout.addLayout(SettingRow("Auto-Save Interval", self._autosave_interval))
+        cache_layout.addLayout(SettingRow(tr("settings.cache.autosave_interval"), self._autosave_interval))
 
-        self._autosave_enabled = QCheckBox("Autosave the open project on the interval")
+        self._autosave_enabled = QCheckBox(tr("settings.cache.autosave_enabled"))
         self._autosave_enabled.toggled.connect(
             lambda v: self._save("general.auto_save_enabled", v))
         cache_layout.addLayout(SettingRow(
-            "Autosave",
+            tr("settings.cache.autosave"),
             self._autosave_enabled,
-            "Saves and versions the open project only when it has unsaved changes.",
+            tr("settings.cache.autosave_help"),
         ))
 
         self._max_versions = QSpinBox()
@@ -459,9 +479,9 @@ class SettingsView(QWidget):
         self._max_versions.valueChanged.connect(
             lambda v: self._save("general.max_project_versions", v))
         cache_layout.addLayout(SettingRow(
-            "Kept Project Versions",
+            tr("settings.cache.max_versions"),
             self._max_versions,
-            "Oldest autosaves are pruned first; pre-restore versions are always kept.",
+            tr("settings.cache.max_versions_help"),
         ))
 
         layout.addWidget(cache_group)
@@ -473,13 +493,11 @@ class SettingsView(QWidget):
 
     def _build_recovery_center(self) -> QGroupBox:
         """One screen for every recovery artifact: inspect, preview, clean."""
-        group = QGroupBox("Recovery Center")
+        group = QGroupBox(tr("settings.recovery.group"))
         layout = QVBoxLayout(group)
 
         intro = QLabel(
-            "Jobs, logs, crash reports, settings backups, and project versions "
-            "are bounded by age, count, and size. Preview always runs first; "
-            "active, recoverable, and pre-restore records are never removed."
+            tr("settings.recovery.intro")
         )
         intro.setWordWrap(True)
         intro.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px;")
@@ -497,20 +515,20 @@ class SettingsView(QWidget):
         layout.addWidget(self._recovery_status)
 
         row = QHBoxLayout()
-        self._recovery_refresh_btn = QPushButton("Refresh")
+        self._recovery_refresh_btn = QPushButton(tr("settings.actions.refresh"))
         self._recovery_refresh_btn.setObjectName("secondaryBtn")
         self._recovery_refresh_btn.clicked.connect(self._refresh_recovery_center)
 
-        self._recovery_preview_btn = QPushButton("Preview Cleanup")
+        self._recovery_preview_btn = QPushButton(tr("settings.recovery.preview"))
         self._recovery_preview_btn.setObjectName("secondaryBtn")
         self._recovery_preview_btn.clicked.connect(self._preview_recovery_cleanup)
 
-        self._recovery_clean_btn = QPushButton("Clean Now")
+        self._recovery_clean_btn = QPushButton(tr("settings.recovery.clean"))
         self._recovery_clean_btn.setObjectName("dangerBtn")
         self._recovery_clean_btn.setEnabled(False)
         self._recovery_clean_btn.clicked.connect(self._run_recovery_cleanup)
 
-        self._recovery_reveal_btn = QPushButton("Open Config Folder")
+        self._recovery_reveal_btn = QPushButton(tr("settings.actions.open_config"))
         self._recovery_reveal_btn.setObjectName("secondaryBtn")
         self._recovery_reveal_btn.clicked.connect(self._open_config_dir)
 
@@ -542,7 +560,11 @@ class SettingsView(QWidget):
                 items = center.collect(category)
             except Exception as exc:
                 self._recovery_list.addItem(
-                    f"{CATEGORY_LABELS[category]}: unavailable ({exc})"
+                    tr(
+                        "settings.recovery.category_unavailable",
+                        category=CATEGORY_LABELS[category],
+                        error=exc,
+                    )
                 )
                 continue
             size = sum(item.size_bytes for item in items)
@@ -550,12 +572,17 @@ class SettingsView(QWidget):
             protected = sum(1 for item in items if item.protected)
             policy = load_policy(category, self._settings)
             self._recovery_list.addItem(
-                f"{CATEGORY_LABELS[category]}: {len(items)} item(s), "
-                f"{size / 1e6:.1f} MB, {protected} protected - keeps "
-                f"{policy.describe()}"
+                tr(
+                    "settings.recovery.category_summary",
+                    category=CATEGORY_LABELS[category],
+                    count=len(items),
+                    size=f"{size / 1e6:.1f}",
+                    protected=protected,
+                    policy=policy.describe(),
+                )
             )
         self._recovery_status.setText(
-            f"Recovery artifacts use {total_bytes / 1e6:.1f} MB."
+            tr("settings.recovery.usage", size=f"{total_bytes / 1e6:.1f}")
         )
         self._recovery_clean_btn.setEnabled(False)
 
@@ -569,9 +596,12 @@ class SettingsView(QWidget):
             removable += len(plan.remove)
             freed += plan.removed_bytes
         self._recovery_status.setText(
-            f"Preview only - nothing removed. {removable} item(s) would be "
-            f"removed, freeing {freed / 1e6:.1f} MB."
-            if removable else "Preview only - nothing needs removing."
+            tr(
+                "settings.recovery.preview_summary",
+                count=removable,
+                size=f"{freed / 1e6:.1f}",
+            )
+            if removable else tr("settings.recovery.preview_empty")
         )
         self._recovery_clean_btn.setEnabled(removable > 0)
 
@@ -587,11 +617,15 @@ class SettingsView(QWidget):
         total = sum(len(items) for items in removed.values())
         self._refresh_recovery_center()
         self._recovery_status.setText(
-            f"Removed {total} item(s). " + " | ".join(lines)
-            if total else "Nothing needed removing."
+            tr(
+                "settings.recovery.cleanup_summary",
+                count=total,
+                details=" | ".join(lines),
+            )
+            if total else tr("settings.recovery.cleanup_empty")
         )
         if self.toast_mgr:
-            self.toast_mgr.success(f"Recovery cleanup removed {total} item(s).")
+            self.toast_mgr.success(tr("settings.recovery.cleanup_toast", count=total))
 
     def _set_audio_device_status(self, message: str):
         """Show an audio-device warning without hiding the selected setting."""
@@ -613,7 +647,7 @@ class SettingsView(QWidget):
         self._audio_device_combo.blockSignals(True)
         try:
             self._audio_device_combo.clear()
-            self._audio_device_combo.addItem("System default", "")
+            self._audio_device_combo.addItem(tr("settings.output.system_default"), "")
             for device in devices:
                 self._audio_device_combo.addItem(device.label, device.identity)
 
@@ -622,7 +656,10 @@ class SettingsView(QWidget):
             if saved_unavailable:
                 selected_index = self._audio_device_combo.count()
                 self._audio_device_combo.addItem(
-                    f"Unavailable: {format_output_device_identity(saved_identity)}",
+                    tr(
+                        "settings.output.unavailable",
+                        identity=format_output_device_identity(saved_identity),
+                    ),
                     saved_identity,
                 )
             self._audio_device_combo.setCurrentIndex(max(0, selected_index))
@@ -636,17 +673,18 @@ class SettingsView(QWidget):
 
         if error:
             self._set_audio_device_status(
-                "Could not enumerate audio output devices; playback will use "
-                f"the system default until the list is refreshed. ({error})"
+                tr("settings.output.enumeration_failed", error=error)
             )
         elif saved_unavailable:
             self._set_audio_device_status(
-                f"Saved output device '{format_output_device_identity(saved_identity)}' "
-                "is unavailable; playback will use the system default until it returns."
+                tr(
+                    "settings.output.saved_unavailable",
+                    identity=format_output_device_identity(saved_identity),
+                )
             )
         elif not devices:
             self._set_audio_device_status(
-                "No PortAudio output devices were found; playback will use the system default."
+                tr("settings.output.no_devices")
             )
         else:
             self._set_audio_device_status("")
@@ -697,8 +735,8 @@ class SettingsView(QWidget):
             self._offline_mode.setChecked(s.get("model_hub.offline_mode", False))
             self._hf_token.setText(s.get("model_hub.hf_token", ""))
 
-            exp = s.get("general.experience_level", "beginner").capitalize()
-            idx = self._experience_combo.findText(exp)
+            exp = s.get("general.experience_level", "beginner")
+            idx = self._experience_combo.findData(exp)
             if idx >= 0:
                 self._experience_combo.setCurrentIndex(idx)
 
@@ -759,7 +797,9 @@ class SettingsView(QWidget):
             self._settings.set(key, value)
         except CredentialError as exc:
             if self.toast_mgr:
-                self.toast_mgr.error(f"{key} was not saved: {exc}")
+                self.toast_mgr.error(
+                    tr("settings.messages.setting_save_failed", key=key, error=exc)
+                )
             self._update_repair_status()
             self._refresh_credential_status()
             return
@@ -769,8 +809,8 @@ class SettingsView(QWidget):
             if self.toast_mgr:
                 store = self._settings.credential_store
                 self.toast_mgr.success(
-                    f"Saved to {store.backend_name}."
-                    if value else "Stored secret cleared."
+                    tr("settings.messages.secret_saved", backend=store.backend_name)
+                    if value else tr("settings.messages.secret_cleared")
                 )
             return
         # Toast for important changes only
@@ -807,14 +847,11 @@ class SettingsView(QWidget):
         """Name the credential service in use, or state plainly that there is none."""
         status = self._settings.credential_backend_status()
         if status.get("available"):
-            text = (
-                f"Secrets are stored in {status.get('name')}. "
-                "They are never written to config JSON, backups, or diagnostics."
-            )
+            text = tr("settings.credentials.available", backend=status.get("name"))
             self._credential_status.setProperty("state", "ok")
         else:
             detail = (status.get("detail") or "").strip()
-            lead = "No OS credential service is available, so secrets cannot be stored."
+            lead = tr("settings.credentials.unavailable")
             text = lead if detail in ("", lead) else f"{lead} {detail}"
             self._credential_status.setProperty("state", "warning")
         self._credential_status.setText(text)
@@ -833,9 +870,13 @@ class SettingsView(QWidget):
 
         messages = status.get("messages") or []
         backups = status.get("backup_paths") or []
-        text = f"Config {state}: " + (" ".join(messages) if messages else "Review the config file.")
+        text = tr(
+            "settings.config.status",
+            state=state,
+            messages=" ".join(messages) if messages else tr("settings.config.review"),
+        )
         if backups:
-            text += f" Backup: {backups[-1]}"
+            text += f" {tr('settings.config.backup', path=backups[-1])}"
         self._repair_label.setText(text)
         self._repair_label.setVisible(True)
 

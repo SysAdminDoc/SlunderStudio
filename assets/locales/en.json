@@ -76,6 +76,41 @@
     "vram_accessible_name": "VRAM usage",
     "vram_accessible_description": "Current GPU memory usage."
   },
+  "shell": {
+    "transport": {
+      "global_output": "GLOBAL OUTPUT",
+      "no_audio": "No audio loaded",
+      "volume": "VOL"
+    },
+    "command": {
+      "active_project": "ACTIVE PROJECT",
+      "no_project": "No project open",
+      "autosave_interval": "Autosave interval · {seconds}s",
+      "notifications": "Notifications",
+      "checking_compute": "Checking compute",
+      "offline_mode": "●  Offline mode",
+      "local_processing": "●  Local processing"
+    },
+    "sidebar": {
+      "brand": "SLUNDER STUDIO",
+      "local_engine": "●  LOCAL ENGINE",
+      "private_by_default": "Private by default"
+    },
+    "accessibility": {
+      "status_name": "Application status",
+      "status_description": "Shows GPU, VRAM, active model, and audio output status.",
+      "command_bar_name": "Workspace command bar",
+      "command_bar_description": "Shows the active project, autosave interval, compute state, and privacy mode.",
+      "compute_name": "Compute status",
+      "compute_description": "Reports whether generation is using a GPU or CPU.",
+      "privacy_name": "Processing privacy status",
+      "privacy_description": "Reports local processing or strict offline mode.",
+      "last_notification_name": "Last notification",
+      "last_notification_description": "Keeps the most recent notification readable after its toast closes.",
+      "notification_history_name": "Notification history",
+      "notification_history_description": "Opens the retained application notifications and errors."
+    }
+  },
   "settings": {
     "title": "Settings",
     "version_label": "Slunder Studio v{version}",
@@ -90,7 +125,14 @@
       "browse": "Browse",
       "format": "Default Audio Format",
       "sample_rate": "Sample Rate",
-      "sample_rate_help": "44.1kHz for CD, 48kHz for modern production"
+      "sample_rate_help": "44.1kHz for CD, 48kHz for modern production",
+      "audio_device": "Audio Output Device",
+      "audio_device_help": "Uses PortAudio and shows the host API so similarly named devices are distinguishable.",
+      "system_default": "System default",
+      "unavailable": "Unavailable: {identity}",
+      "enumeration_failed": "Could not enumerate audio output devices; playback will use the system default until the list is refreshed. ({error})",
+      "saved_unavailable": "Saved output device '{identity}' is unavailable; playback will use the system default until it returns.",
+      "no_devices": "No PortAudio output devices were found; playback will use the system default."
     },
     "gpu": {
       "group": "GPU and Models",
@@ -105,6 +147,9 @@
       "group": "Appearance",
       "experience_level": "Experience Level",
       "experience_help": "Controls default UI complexity across all modules",
+      "experience_beginner": "Beginner",
+      "experience_intermediate": "Intermediate",
+      "experience_advanced": "Advanced",
       "ui_language": "Interface Language",
       "ui_language_help": "Changes the interface language and applies right-to-left layout when supported. Restart to rebuild translated views.",
       "default_lyrics_language": "Default Lyrics Language",
@@ -116,13 +161,69 @@
       "temperature": "Temperature",
       "temperature_help": "Higher = more creative, lower = more predictable",
       "top_p": "Top P",
-      "max_tokens": "Max Tokens"
+      "max_tokens": "Max Tokens",
+      "model_recommended": "LLaMA 3.1 8B (Recommended)",
+      "model_fast": "LLaMA 3.2 3B (Fast)",
+      "model_premium": "Qwen 2.5 14B (Premium)"
+    },
+    "song_forge": {
+      "group": "Song Forge",
+      "timestep_shift": "Timestep Shift",
+      "timestep_shift_help": "ACE-Step XL Turbo schedule shift (1, 2, or 3)",
+      "inference_steps": "Inference Steps",
+      "inference_steps_help": "More steps = higher quality, slower",
+      "batch_count": "Batch Count",
+      "batch_count_help": "Number of variations to generate",
+      "default_duration": "Default Duration"
+    },
+    "midi": {
+      "group": "MIDI Studio",
+      "default_bpm": "Default BPM"
+    },
+    "production": {
+      "group": "Production / Mastering",
+      "mastering_target": "Mastering Target",
+      "auto_eq": "Auto EQ",
+      "auto_eq_help": "Apply spectral correction during mastering",
+      "auto_compress": "Auto Compression",
+      "auto_compress_help": "Apply bus compression during mastering"
+    },
+    "cache": {
+      "group": "Cache and Storage",
+      "max_size": "Max Cache Size",
+      "max_size_help": "Auto-cleanup old generations beyond this limit",
+      "autosave_interval": "Auto-Save Interval",
+      "autosave_enabled": "Autosave the open project on the interval",
+      "autosave": "Autosave",
+      "autosave_help": "Saves and versions the open project only when it has unsaved changes.",
+      "max_versions": "Kept Project Versions",
+      "max_versions_help": "Oldest autosaves are pruned first; pre-restore versions are always kept."
+    },
+    "recovery": {
+      "group": "Recovery Center",
+      "intro": "Jobs, logs, crash reports, settings backups, and project versions are bounded by age, count, and size. Preview always runs first; active, recoverable, and pre-restore records are never removed.",
+      "preview": "Preview Cleanup",
+      "clean": "Clean Now",
+      "category_unavailable": "{category}: unavailable ({error})",
+      "category_summary": "{category}: {count} item(s), {size} MB, {protected} protected — keeps {policy}",
+      "usage": "Recovery artifacts use {size} MB.",
+      "preview_summary": "Preview only — nothing removed. {count} item(s) would be removed, freeing {size} MB.",
+      "preview_empty": "Preview only — nothing needs removing.",
+      "cleanup_summary": "Removed {count} item(s). {details}",
+      "cleanup_empty": "Nothing needed removing.",
+      "cleanup_toast": "Recovery cleanup removed {count} item(s)."
+    },
+    "units": {
+      "seconds": "sec",
+      "bpm": "BPM",
+      "gb": "GB"
     },
     "actions": {
       "reset_defaults": "Reset All to Defaults",
       "include_private_inputs": "Include private job inputs",
       "export_health": "Export Health Report",
-      "open_config": "Open Config Folder"
+      "open_config": "Open Config Folder",
+      "refresh": "Refresh"
     },
     "dialogs": {
       "select_output_directory": "Select Output Directory",
@@ -133,7 +234,19 @@
       "reset": "All settings reset to defaults",
       "locale_changed": "Interface language saved. Restart Slunder Studio to rebuild all translated views.",
       "health_export_failed": "Health report export failed: {error}",
-      "health_exported": "Health report exported: {filename}"
+      "health_exported": "Health report exported: {filename}",
+      "setting_save_failed": "{key} was not saved: {error}",
+      "secret_saved": "Saved to {backend}.",
+      "secret_cleared": "Stored secret cleared."
+    },
+    "credentials": {
+      "available": "Secrets are stored in {backend}. They are never written to config JSON, backups, or diagnostics.",
+      "unavailable": "No OS credential service is available, so secrets cannot be stored."
+    },
+    "config": {
+      "status": "Config {state}: {messages}",
+      "review": "Review the config file.",
+      "backup": "Backup: {path}"
     }
   },
   "lyrics": {
@@ -150,7 +263,9 @@
       "genre": "Genre",
       "mood": "Mood",
       "structure": "Song Structure",
-      "language": "Language"
+      "language": "Language",
+      "auto_detect": "Auto-detect",
+      "default_structure": "Default for genre"
     },
     "pro": {
       "tab": "Pro",
@@ -173,6 +288,7 @@
     "history": {
       "title": "History",
       "search_placeholder": "Search history...",
+      "search_genres": "Search genres...",
       "all": "All",
       "favorites": "Favorites",
       "entries_count": "{count} entries"
