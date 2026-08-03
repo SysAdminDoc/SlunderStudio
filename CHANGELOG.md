@@ -39,6 +39,8 @@ All notable changes to SlunderStudio will be documented in this file.
   remain visible, with a geometry regression test.
 - Made Lyrics History favorites actionable by persisting a double-click star toggle through the
   existing Favorites filter and restart path.
+- Persisted Batch Results star selections by stable audio-path/seed identity so Clear All and
+  reopening the view no longer erase the user’s starred variations.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

@@ -3,7 +3,9 @@ Slunder Studio — Batch View
 Grid display for batch-generated song variations.
 Mini waveform cards with one-click playback, star/rank, delete, and "Best of" refinement.
 """
+import json
 import os
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel,
@@ -15,6 +17,7 @@ from ui.accessibility import install_accessibility
 from ui.theme import Palette
 from ui.waveform_widget import MiniWaveform
 from core.job_state import JobStatus, JobStore
+from core.settings import get_config_dir
 
 
 class BatchCard(QFrame):
@@ -141,15 +144,21 @@ class BatchCard(QFrame):
         self._update_style()
 
     def _toggle_star(self):
-        self._is_starred = not self._is_starred
+        self.set_starred(not self._is_starred)
+        self.star_toggled.emit(self._index, self._is_starred)
+
+    def set_starred(self, starred: bool):
+        """Set star state without emitting the persistence signal."""
+        self._is_starred = bool(starred)
         self._star_btn.setText("\u2605" if self._is_starred else "\u2606")
         self._star_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; "
             f"color: {Palette.YELLOW if self._is_starred else Palette.OVERLAY0}; font-size: 16px; }}"
             f" QPushButton:hover {{ color: {Palette.YELLOW}; }}"
         )
+        state = "Unstar" if self._is_starred else "Star"
+        self._star_btn.setAccessibleName(f"{state} variation {self._index + 1}")
         self._update_style()
-        self.star_toggled.emit(self._index, self._is_starred)
 
     @property
     def audio_path(self) -> str:
@@ -162,6 +171,13 @@ class BatchCard(QFrame):
     @property
     def is_starred(self) -> bool:
         return self._is_starred
+
+    @property
+    def favorite_key(self) -> str:
+        if not self._audio_path:
+            return ""
+        normalized_path = os.path.normcase(os.path.abspath(self._audio_path))
+        return f"{normalized_path}|{self._seed}"
 
     @property
     def quality_score(self) -> float:
@@ -196,6 +212,7 @@ class BatchView(QWidget):
         self._cards: list[BatchCard] = []
         self._playing_index = -1
         self._job_store = JobStore()
+        self._starred_keys = self._load_starred_keys()
         self._setup_ui()
         # Startup recovery is intentionally separate from later banner refreshes.
         self._job_store.recover_stale_jobs()
@@ -280,6 +297,7 @@ class BatchView(QWidget):
         idx = len(self._cards)
         card = BatchCard(idx)
         card.set_result(audio_path, seed, gen_time)
+        card.set_starred(card.favorite_key in self._starred_keys)
         card.play_requested.connect(self._on_play)
         card.star_toggled.connect(self._on_star_toggled)
         card.delete_requested.connect(self._on_delete)
@@ -320,7 +338,43 @@ class BatchView(QWidget):
         self.play_requested.emit(audio_path)
 
     def _on_star_toggled(self, index: int, starred: bool):
-        pass
+        if not 0 <= index < len(self._cards):
+            return
+        key = self._cards[index].favorite_key
+        if not key:
+            return
+        if starred:
+            self._starred_keys.add(key)
+        else:
+            self._starred_keys.discard(key)
+        self._save_starred_keys()
+
+    @staticmethod
+    def _starred_path() -> Path:
+        return get_config_dir() / "batch_favorites.json"
+
+    def _load_starred_keys(self) -> set[str]:
+        try:
+            data = json.loads(self._starred_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            return set()
+        if not isinstance(data, list):
+            return set()
+        return {item for item in data if isinstance(item, str) and item}
+
+    def _save_starred_keys(self):
+        path = self._starred_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = path.with_name(path.name + ".tmp")
+            temp_path.write_text(
+                json.dumps(sorted(self._starred_keys), indent=2),
+                encoding="utf-8",
+            )
+            os.replace(temp_path, path)
+        except OSError:
+            # Starring should remain usable even when the config directory is read-only.
+            pass
 
     def _on_delete(self, index: int):
         if 0 <= index < len(self._cards):
