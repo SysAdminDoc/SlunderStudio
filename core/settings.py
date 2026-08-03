@@ -46,6 +46,7 @@ DEFAULTS = {
         "gpu_device": 0,
         "theme_accent": "#a293ff",
         "ui_mode": "simple",
+        "ui_locale": "en",
         "experience_level": "beginner",
         "onboarding_complete": False,
         "auto_save_interval": 60,

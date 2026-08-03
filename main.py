@@ -457,9 +457,11 @@ def _launch_app():
     app.setFont(font)
 
     from core.settings import Settings
+    from core.i18n import set_locale
     from ui.theme import build_stylesheet
 
     settings = Settings()
+    set_locale(settings.get("general.ui_locale", "en"), persist=False, app=app)
     accent = settings.get("general.theme_accent", "#89b4fa")
     app.setStyleSheet(build_stylesheet(accent))
 

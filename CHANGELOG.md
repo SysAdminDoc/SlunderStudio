@@ -4,6 +4,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added persisted English/Arabic/pseudo-locale selection, startup locale restoration, RTL layout
+  direction, and translated main-shell page metadata with catalog coverage and keyboard gates.
 - Added dedicated direct coverage for worker cancellation, preserved outputs, semantic failures,
   progress throttling, autosave branches, MIDI transforms, settings persistence, and style-tag
   search/favorites.

@@ -16,7 +16,55 @@
     "model_hub": "Model Hub",
     "settings": "Settings",
     "open": "Open {label}",
-    "switches": "Switches the main workspace to {label}."
+    "switches": "Switches the main workspace to {label}.",
+    "sections": {
+      "create": "CREATE",
+      "finish": "FINISH",
+      "library": "LIBRARY",
+      "system": "SYSTEM"
+    }
+  },
+  "page": {
+    "lyrics": {
+      "title": "Lyrics Engine",
+      "subtitle": "Write, structure and revise lyrics with a local model."
+    },
+    "song_forge": {
+      "title": "Song Forge",
+      "subtitle": "Turn lyrics and direction into a finished local render."
+    },
+    "midi_studio": {
+      "title": "MIDI Studio",
+      "subtitle": "Compose, arrange and humanize MIDI performances."
+    },
+    "vocals": {
+      "title": "Vocal Suite",
+      "subtitle": "Synthesize, convert, tune and separate vocal performances."
+    },
+    "sfx": {
+      "title": "Sound Forge",
+      "subtitle": "Generate production-ready sound effects from text."
+    },
+    "mixer": {
+      "title": "Mix Console",
+      "subtitle": "Balance tracks, shape stereo space and prepare a master."
+    },
+    "ai_producer": {
+      "title": "AI Producer",
+      "subtitle": "Orchestrate a complete local production from one brief."
+    },
+    "projects": {
+      "title": "Projects",
+      "subtitle": "Manage sessions, assets, versions and provenance."
+    },
+    "model_hub": {
+      "title": "Model Hub",
+      "subtitle": "Install and manage the local models behind each workflow."
+    },
+    "settings": {
+      "title": "Settings",
+      "subtitle": "Control storage, compute, appearance and diagnostics."
+    }
   },
   "placeholder": {
     "coming_soon": "Coming in {phase}"
@@ -57,6 +105,8 @@
       "group": "Appearance",
       "experience_level": "Experience Level",
       "experience_help": "Controls default UI complexity across all modules",
+      "ui_language": "Interface Language",
+      "ui_language_help": "Changes the interface language and applies right-to-left layout when supported. Restart to rebuild translated views.",
       "default_lyrics_language": "Default Lyrics Language",
       "default_lyrics_language_help": "Used by Quick lyrics generation and new voice-clone language metadata."
     },
@@ -81,6 +131,7 @@
     "messages": {
       "setting_updated": "Setting updated",
       "reset": "All settings reset to defaults",
+      "locale_changed": "Interface language saved. Restart Slunder Studio to rebuild all translated views.",
       "health_export_failed": "Health report export failed: {error}",
       "health_exported": "Health report exported: {filename}"
     }

@@ -14,7 +14,14 @@ from PySide6.QtCore import Qt
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
 from core.diagnostics import export_health_report
-from core.i18n import language_code_from_label, language_combo_items, language_label, tr
+from core.i18n import (
+    language_code_from_label,
+    language_combo_items,
+    language_label,
+    set_locale,
+    tr,
+    ui_locale_options,
+)
 from core.mastering import LUFS_TARGETS
 from core.credentials import CredentialError
 from core.settings import Settings, APP_VERSION, SECRET_SETTING_KEYS
@@ -252,6 +259,17 @@ class SettingsView(QWidget):
             tr("settings.appearance.experience_level"),
             self._experience_combo,
             tr("settings.appearance.experience_help"),
+        ))
+
+        self._ui_locale_combo = QComboBox()
+        for code, label in ui_locale_options():
+            self._ui_locale_combo.addItem(label, code)
+        self._ui_locale_combo.setFixedWidth(220)
+        self._ui_locale_combo.currentIndexChanged.connect(self._on_ui_locale_changed)
+        appearance_layout.addLayout(SettingRow(
+            tr("settings.appearance.ui_language"),
+            self._ui_locale_combo,
+            tr("settings.appearance.ui_language_help"),
         ))
 
         self._default_language = QComboBox()
@@ -650,6 +668,7 @@ class SettingsView(QWidget):
         _widgets = [
             self._format_combo, self._sample_rate_combo, self._gpu_device,
             self._offline_mode, self._hf_token, self._experience_combo,
+            self._ui_locale_combo,
             self._default_language,
             self._lyrics_model, self._temperature, self._top_p,
             self._max_tokens, self._timestep_shift, self._inference_steps,
@@ -687,6 +706,11 @@ class SettingsView(QWidget):
             idx = self._default_language.findText(language)
             if idx >= 0:
                 self._default_language.setCurrentIndex(idx)
+
+            ui_locale = s.get("general.ui_locale", "en")
+            idx = self._ui_locale_combo.findData(ui_locale)
+            if idx >= 0:
+                self._ui_locale_combo.setCurrentIndex(idx)
 
             # Advanced tab
             model_id = s.get("lyrics.model_id", "llama-3.1-8b-q4")
@@ -759,6 +783,13 @@ class SettingsView(QWidget):
         ):
             self.toast_mgr.success(tr("settings.messages.setting_updated"))
 
+    def _on_ui_locale_changed(self, _index: int):
+        """Persist the interface locale and apply layout direction immediately."""
+        code = str(self._ui_locale_combo.currentData() or "en")
+        selected = set_locale(code, persist=True)
+        if self.toast_mgr:
+            self.toast_mgr.info(tr("settings.messages.locale_changed", locale=selected))
+
     def _browse_output_dir(self):
         path = QFileDialog.getExistingDirectory(self, tr("settings.dialogs.select_output_directory"))
         if path:
@@ -824,6 +855,7 @@ class SettingsView(QWidget):
                 (self._offline_mode, "Offline mode", "Disables internet access for Model Hub."),
                 (self._hf_token, "HuggingFace token", "Stores a token for gated model downloads."),
                 (self._experience_combo, "Experience level", "Controls default UI complexity."),
+                (self._ui_locale_combo, "Interface language", "Selects the interface language and layout direction."),
                 (self._default_language, "Default lyrics language", "Sets the default language metadata for lyrics and new voice profiles."),
                 (self._lyrics_model, "Lyrics model", "Selects the local lyrics model."),
                 (self._temperature, "Lyrics temperature", "Controls creative variation."),
@@ -858,6 +890,7 @@ class SettingsView(QWidget):
                 self._offline_mode,
                 self._hf_token,
                 self._experience_combo,
+                self._ui_locale_combo,
                 self._default_language,
                 self._lyrics_model,
                 self._temperature,

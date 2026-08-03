@@ -8,18 +8,27 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QPushButton, QWidget
 
 from core.i18n import (
     DEFAULT_LOCALE,
+    PSEUDO_LOCALE,
     REQUIRED_I18N_KEYS,
     available_locales,
     clear_missing_key_log,
+    current_locale,
     get_missing_key_log,
+    is_rtl,
     language_code_from_label,
     load_catalog,
     missing_keys,
+    pseudolocalize,
+    pseudolocale_overflow,
+    set_locale,
     tr,
+    ui_locale_options,
 )
 from core.lyrics_db import LyricsDB
 from core.settings import Settings
@@ -37,6 +46,7 @@ class I18nTests(unittest.TestCase):
         cls._app = QApplication.instance() or QApplication([])
 
     def tearDown(self):
+        set_locale(DEFAULT_LOCALE, persist=False)
         if LyricsDB._instance is not None:
             LyricsDB._instance.close()
         Settings._instance = None
@@ -48,6 +58,55 @@ class I18nTests(unittest.TestCase):
         self.assertEqual([], missing_keys(REQUIRED_I18N_KEYS))
         self.assertEqual("Lyrics", tr("nav.lyrics"))
         self.assertEqual("Slunder Studio v9.9.9", tr("app.window_title", version="9.9.9"))
+
+    def test_builtin_rtl_and_pseudo_catalogs_cover_required_keys(self):
+        self.assertIn("ar", available_locales())
+        self.assertIn(PSEUDO_LOCALE, available_locales())
+        self.assertEqual([], missing_keys(REQUIRED_I18N_KEYS, "ar"))
+        self.assertEqual([], missing_keys(REQUIRED_I18N_KEYS, PSEUDO_LOCALE))
+
+    def test_pseudolocale_preserves_placeholders_and_exposes_overflow_gate(self):
+        translated = pseudolocalize("Open {label}")
+        self.assertIn("{label}", translated)
+        self.assertGreater(len(translated), len("Open {label}"))
+        text = tr("settings.messages.locale_changed", locale=PSEUDO_LOCALE)
+        width = QFontMetrics(self._app.font()).horizontalAdvance(text)
+        self.assertTrue(pseudolocale_overflow(text, width, max(1, width - 8)))
+        self.assertFalse(pseudolocale_overflow("", width, 1))
+
+    def test_ui_locale_persists_and_applies_rtl_direction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self._patched_config(Path(tmp)):
+                self.assertEqual("en", current_locale())
+                self.assertEqual("ar", set_locale("ar"))
+                self.assertEqual("ar", Settings().get("general.ui_locale"))
+                self.assertTrue(is_rtl())
+                self.assertEqual(
+                    Qt.LayoutDirection.RightToLeft,
+                    self._app.layoutDirection(),
+                )
+                Settings._instance = None
+                self.assertEqual("ar", current_locale())
+
+    def test_rtl_layout_keeps_keyboard_tab_order_predictable(self):
+        set_locale("ar", persist=False)
+        window = QWidget()
+        layout = QHBoxLayout(window)
+        first = QPushButton("الأول")
+        second = QPushButton("الثاني")
+        layout.addWidget(first)
+        layout.addWidget(second)
+        window.setTabOrder(first, second)
+        window.show()
+        try:
+            self.assertEqual(Qt.LayoutDirection.RightToLeft, window.layoutDirection())
+            first.setFocus()
+            self.assertIs(window.focusWidget(), first)
+            self.assertTrue(window.focusNextChild())
+            self.assertIs(window.focusWidget(), second)
+        finally:
+            window.close()
+            window.deleteLater()
 
     def test_language_labels_normalize_to_prompt_codes(self):
         self.assertEqual("en", language_code_from_label("English"))
@@ -97,6 +156,19 @@ class I18nTests(unittest.TestCase):
                     view.deleteLater()
                     if LyricsDB._instance is not None:
                         LyricsDB._instance.close()
+
+    def test_settings_view_saves_ui_locale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self._patched_config(Path(tmp)):
+                view = SettingsView()
+                try:
+                    idx = view._ui_locale_combo.findData("ar")
+                    self.assertGreaterEqual(idx, 0)
+                    view._ui_locale_combo.setCurrentIndex(idx)
+                    self.assertEqual("ar", Settings().get("general.ui_locale"))
+                    self.assertEqual(Qt.LayoutDirection.RightToLeft, self._app.layoutDirection())
+                finally:
+                    view.deleteLater()
 
     def test_vocal_clone_language_uses_supported_default(self):
         with tempfile.TemporaryDirectory() as tmp:

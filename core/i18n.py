@@ -4,6 +4,7 @@ Slunder Studio - Locale catalog and language helpers.
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
@@ -11,9 +12,12 @@ from typing import Iterable
 from core.settings import get_config_dir
 
 DEFAULT_LOCALE = "en"
+PSEUDO_LOCALE = "qps-ploc"
+RTL_LOCALES = frozenset({"ar", "fa", "he", "ur"})
 LOCALE_DIR = Path(__file__).resolve().parents[1] / "assets" / "locales"
 
 _missing_key_log: list[str] = []
+_active_locale: str | None = None
 
 LANGUAGE_OPTIONS: tuple[tuple[str, str], ...] = (
     ("en", "English"),
@@ -37,6 +41,12 @@ LANGUAGE_OPTIONS: tuple[tuple[str, str], ...] = (
     ("id", "Indonesian"),
 )
 
+UI_LOCALE_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("en", "English"),
+    ("ar", "العربية"),
+    (PSEUDO_LOCALE, "Pseudo-locale (layout QA)"),
+)
+
 GPT_SOVITS_LANGUAGE_CODES = ("en", "zh", "ja")
 
 REQUIRED_I18N_KEYS = (
@@ -55,7 +65,30 @@ REQUIRED_I18N_KEYS = (
     "nav.settings",
     "nav.open",
     "nav.switches",
-    "placeholder.coming_soon",
+    "nav.sections.create",
+    "nav.sections.finish",
+    "nav.sections.library",
+    "nav.sections.system",
+    "page.lyrics.title",
+    "page.lyrics.subtitle",
+    "page.song_forge.title",
+    "page.song_forge.subtitle",
+    "page.midi_studio.title",
+    "page.midi_studio.subtitle",
+    "page.vocals.title",
+    "page.vocals.subtitle",
+    "page.sfx.title",
+    "page.sfx.subtitle",
+    "page.mixer.title",
+    "page.mixer.subtitle",
+    "page.ai_producer.title",
+    "page.ai_producer.subtitle",
+    "page.projects.title",
+    "page.projects.subtitle",
+    "page.model_hub.title",
+    "page.model_hub.subtitle",
+    "page.settings.title",
+    "page.settings.subtitle",
     "status.gpu_detecting",
     "status.gpu_accessible_name",
     "status.gpu_accessible_description",
@@ -78,6 +111,8 @@ REQUIRED_I18N_KEYS = (
     "settings.appearance.group",
     "settings.appearance.experience_level",
     "settings.appearance.default_lyrics_language",
+    "settings.appearance.ui_language",
+    "settings.appearance.ui_language_help",
     "settings.lyrics.group",
     "settings.lyrics.model",
     "settings.lyrics.temperature",
@@ -88,6 +123,7 @@ REQUIRED_I18N_KEYS = (
     "settings.actions.export_health",
     "settings.actions.open_config",
     "settings.dialogs.export_health",
+    "settings.messages.locale_changed",
     "lyrics.title",
     "lyrics.quick.tab",
     "lyrics.quick.label",
@@ -148,7 +184,10 @@ REQUIRED_I18N_KEYS = (
 
 def normalize_locale(locale: str | None) -> str:
     raw = (locale or DEFAULT_LOCALE).strip().lower().replace("-", "_")
-    return raw.split(".")[0] or DEFAULT_LOCALE
+    normalized = raw.split(".")[0] or DEFAULT_LOCALE
+    if normalized == "qps_ploc":
+        return PSEUDO_LOCALE
+    return normalized
 
 
 def _external_locale_dir() -> Path:
@@ -160,24 +199,54 @@ def available_locales() -> list[str]:
     for directory in (LOCALE_DIR, _external_locale_dir()):
         if directory.exists():
             locales.update(path.stem for path in directory.glob("*.json") if path.is_file())
+    locales.add(PSEUDO_LOCALE)
     return sorted(locales) or [DEFAULT_LOCALE]
+
+
+def _read_catalog(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    return payload if isinstance(payload, dict) else {}
+
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    merged = dict(base)
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _transform_catalog(catalog: dict, transform) -> dict:
+    transformed: dict = {}
+    for key, value in catalog.items():
+        transformed[key] = (
+            _transform_catalog(value, transform)
+            if isinstance(value, dict)
+            else transform(str(value))
+        )
+    return transformed
 
 
 @lru_cache(maxsize=16)
 def load_catalog(locale: str = DEFAULT_LOCALE) -> dict:
     catalog_locale = normalize_locale(locale)
-    external = _external_locale_dir() / f"{catalog_locale}.json"
+    if catalog_locale == PSEUDO_LOCALE:
+        return _transform_catalog(load_catalog(DEFAULT_LOCALE), pseudolocalize)
+
+    builtin_base = _read_catalog(LOCALE_DIR / f"{DEFAULT_LOCALE}.json")
     builtin = LOCALE_DIR / f"{catalog_locale}.json"
-
+    external = _external_locale_dir() / f"{catalog_locale}.json"
+    catalog = _deep_merge({}, builtin_base)
+    if builtin.exists() and catalog_locale != DEFAULT_LOCALE:
+        catalog = _deep_merge(catalog, _read_catalog(builtin))
     if external.exists():
-        with external.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-
-    path = builtin
-    if not path.exists() and catalog_locale != DEFAULT_LOCALE:
-        path = LOCALE_DIR / f"{DEFAULT_LOCALE}.json"
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+        catalog = _deep_merge(catalog, _read_catalog(external))
+    return catalog
 
 
 def flatten_catalog(catalog: dict, prefix: str = "") -> dict[str, str]:
@@ -200,9 +269,10 @@ def missing_keys(required: Iterable[str], locale: str = DEFAULT_LOCALE) -> list[
     return sorted(key for key in required if key not in keys)
 
 
-def tr(key: str, locale: str = DEFAULT_LOCALE, **params) -> str:
-    value = _lookup(load_catalog(locale), key)
-    if value is None and normalize_locale(locale) != DEFAULT_LOCALE:
+def tr(key: str, locale: str | None = None, **params) -> str:
+    catalog_locale = current_locale() if locale is None else normalize_locale(locale)
+    value = _lookup(load_catalog(catalog_locale), key)
+    if value is None and catalog_locale != DEFAULT_LOCALE:
         value = _lookup(load_catalog(DEFAULT_LOCALE), key)
     if value is None:
         if key not in _missing_key_log:
@@ -218,6 +288,109 @@ def get_missing_key_log() -> list[str]:
 
 def clear_missing_key_log() -> None:
     _missing_key_log.clear()
+
+
+def current_locale() -> str:
+    """Return the active UI locale, loading the persisted setting lazily."""
+    global _active_locale
+    if _active_locale is None:
+        try:
+            from core.settings import Settings
+
+            _active_locale = normalize_locale(
+                Settings().get("general.ui_locale", DEFAULT_LOCALE)
+            )
+        except Exception:
+            _active_locale = DEFAULT_LOCALE
+    return _active_locale
+
+
+def locale_direction(locale: str | None = None) -> str:
+    """Return ``rtl`` for right-to-left UI locales, otherwise ``ltr``."""
+    return "rtl" if normalize_locale(locale or current_locale()) in RTL_LOCALES else "ltr"
+
+
+def is_rtl(locale: str | None = None) -> bool:
+    return locale_direction(locale) == "rtl"
+
+
+def set_locale(
+    locale: str | None,
+    *,
+    persist: bool = True,
+    app=None,
+) -> str:
+    """Set the UI locale, persist it when requested, and apply Qt direction."""
+    global _active_locale
+    requested = normalize_locale(locale)
+    if requested not in available_locales():
+        requested = DEFAULT_LOCALE
+    _active_locale = requested
+    if persist:
+        from core.settings import Settings
+
+        Settings().set("general.ui_locale", requested)
+
+    if app is None:
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+        except ImportError:
+            app = None
+    if app is not None:
+        try:
+            from PySide6.QtCore import Qt
+
+            app.setLayoutDirection(
+                Qt.LayoutDirection.RightToLeft
+                if is_rtl(requested)
+                else Qt.LayoutDirection.LeftToRight
+            )
+        except (AttributeError, ImportError):
+            pass
+    return requested
+
+
+def ui_locale_options() -> tuple[tuple[str, str], ...]:
+    """Return selectable UI locales with stable codes in combo-box data."""
+    known = dict(UI_LOCALE_OPTIONS)
+    for code in available_locales():
+        known.setdefault(code, language_label(code))
+    return tuple((code, known[code]) for code in known)
+
+
+def pseudolocalize(text: str) -> str:
+    """Expand English copy while preserving format placeholders for layout QA."""
+    source = str(text)
+    parts = re.split(r"(\{[^{}]+\})", source)
+    transformed: list[str] = []
+    for part in parts:
+        if part.startswith("{") and part.endswith("}"):
+            transformed.append(part)
+            continue
+        converted = part.translate(str.maketrans({
+            "a": "à", "A": "À", "e": "ë", "E": "Ë",
+            "i": "ï", "I": "Ï", "o": "õ", "O": "Õ",
+            "u": "ü", "U": "Ü", "c": "ç", "C": "Ç",
+            "n": "ñ", "N": "Ñ",
+        }))
+        transformed.append(converted)
+    body = "".join(transformed)
+    return f"［{body} ···］"
+
+
+def pseudolocale_overflow(
+    text: str,
+    measured_width: float,
+    available_width: float,
+    *,
+    margin: float = 4.0,
+) -> bool:
+    """Return whether a non-empty pseudo-localized label exceeds its slot."""
+    if not str(text).strip() or float(available_width) <= 0:
+        return False
+    return float(measured_width) + float(margin) > float(available_width)
 
 
 def language_label(code: str | None) -> str:

@@ -1,0 +1,93 @@
+{
+  "app": {
+    "window_title": "استوديو سلندر v{version}",
+    "accessible_name": "استوديو سلندر",
+    "accessible_description": "مساحة عمل محلية لإنشاء الموسيقى بالذكاء الاصطناعي دون اتصال."
+  },
+  "nav": {
+    "lyrics": "الكلمات",
+    "song_forge": "مصنع الأغاني",
+    "midi_studio": "استوديو MIDI",
+    "vocals": "الأصوات",
+    "sfx": "المؤثرات الصوتية",
+    "mixer": "المِكسر",
+    "ai_producer": "المنتج بالذكاء الاصطناعي",
+    "projects": "المشاريع",
+    "model_hub": "مركز النماذج",
+    "settings": "الإعدادات",
+    "open": "فتح {label}",
+    "switches": "يبدّل مساحة العمل الرئيسية إلى {label}.",
+    "sections": {
+      "create": "إنشاء",
+      "finish": "إنهاء",
+      "library": "المكتبة",
+      "system": "النظام"
+    }
+  },
+  "page": {
+    "lyrics": { "title": "محرك الكلمات", "subtitle": "اكتب الكلمات ونظّمها وراجعها باستخدام نموذج محلي." },
+    "song_forge": { "title": "مصنع الأغاني", "subtitle": "حوّل الكلمات والتوجيهات إلى تسجيل محلي نهائي." },
+    "midi_studio": { "title": "استوديو MIDI", "subtitle": "ألّف ورتّب وأضف الطابع الإنساني إلى أداء MIDI." },
+    "vocals": { "title": "جناح الأصوات", "subtitle": "ولّد الأصوات وحوّلها واضبطها وافصل أداءاتها." },
+    "sfx": { "title": "مصنع المؤثرات", "subtitle": "ولّد مؤثرات صوتية جاهزة للإنتاج من النص." },
+    "mixer": { "title": "وحدة المزج", "subtitle": "وازن المسارات وشكّل المجال المجسم وجهّز النسخة الرئيسية." },
+    "ai_producer": { "title": "المنتج بالذكاء الاصطناعي", "subtitle": "نسّق إنتاجاً محلياً كاملاً من موجز واحد." },
+    "projects": { "title": "المشاريع", "subtitle": "أدر الجلسات والأصول والإصدارات وسجل المصدر." },
+    "model_hub": { "title": "مركز النماذج", "subtitle": "ثبّت وأدر النماذج المحلية التي تدعم كل سير عمل." },
+    "settings": { "title": "الإعدادات", "subtitle": "تحكم في التخزين والحوسبة والمظهر والتشخيصات." }
+  },
+  "status": {
+    "gpu_detecting": "GPU: جارٍ الاكتشاف...",
+    "gpu_accessible_name": "حالة GPU",
+    "gpu_accessible_description": "التوافر الحالي للـ GPU واسم الجهاز.",
+    "vram_accessible_name": "استخدام VRAM",
+    "vram_accessible_description": "استخدام ذاكرة GPU الحالية."
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "version_label": "استوديو سلندر v{version}",
+    "tabs": { "simple": "بسيط", "advanced": "متقدم" },
+    "output": {
+      "group": "الإخراج",
+      "directory": "مجلد الإخراج",
+      "placeholder": "اختر مجلد الإخراج...",
+      "browse": "استعراض",
+      "format": "تنسيق الصوت الافتراضي",
+      "sample_rate": "معدل العينة"
+    },
+    "gpu": {
+      "group": "GPU والنماذج",
+      "device_index": "رقم جهاز GPU",
+      "offline_mode": "الوضع دون اتصال",
+      "disable_internet": "تعطيل الإنترنت لمركز النماذج",
+      "hf_token": "رمز HuggingFace"
+    },
+    "appearance": {
+      "group": "المظهر",
+      "experience_level": "مستوى الخبرة",
+      "experience_help": "يتحكم في تعقيد الواجهة الافتراضي في كل الوحدات",
+      "ui_language": "لغة الواجهة",
+      "ui_language_help": "يغيّر لغة الواجهة ويطبّق التخطيط من اليمين إلى اليسار عند الدعم. أعد التشغيل لإعادة بناء الواجهات المترجمة.",
+      "default_lyrics_language": "لغة الكلمات الافتراضية"
+    },
+    "lyrics": {
+      "group": "محرك الكلمات",
+      "model": "نموذج الكلمات",
+      "temperature": "الحرارة",
+      "top_p": "Top P",
+      "max_tokens": "الحد الأقصى للرموز"
+    },
+    "actions": {
+      "reset_defaults": "إعادة ضبط كل الإعدادات",
+      "include_private_inputs": "تضمين مدخلات المهام الخاصة",
+      "export_health": "تصدير تقرير الحالة",
+      "open_config": "فتح مجلد الإعدادات"
+    },
+    "dialogs": { "export_health": "تصدير تقرير الحالة" },
+    "messages": {
+      "setting_updated": "تم تحديث الإعداد",
+      "reset": "تمت إعادة ضبط كل الإعدادات",
+      "locale_changed": "تم حفظ لغة الواجهة. أعد تشغيل استوديو سلندر لإعادة بناء كل الواجهات المترجمة."
+    }
+  }
+}

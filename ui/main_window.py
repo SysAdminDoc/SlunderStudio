@@ -33,16 +33,16 @@ from ui.ai_producer_view import AIProducerView
 
 
 PAGE_META = (
-    ("CREATE", "Lyrics Engine", "Write, structure and revise lyrics with a local model."),
-    ("CREATE", "Song Forge", "Turn lyrics and direction into a finished local render."),
-    ("CREATE", "MIDI Studio", "Compose, arrange and humanize MIDI performances."),
-    ("CREATE", "Vocal Suite", "Synthesize, convert, tune and separate vocal performances."),
-    ("CREATE", "Sound Forge", "Generate production-ready sound effects from text."),
-    ("FINISH", "Mix Console", "Balance tracks, shape stereo space and prepare a master."),
-    ("FINISH", "AI Producer", "Orchestrate a complete local production from one brief."),
-    ("LIBRARY", "Projects", "Manage sessions, assets, versions and provenance."),
-    ("SYSTEM", "Model Hub", "Install and manage the local models behind each workflow."),
-    ("SYSTEM", "Settings", "Control storage, compute, appearance and diagnostics."),
+    ("nav.sections.create", "page.lyrics.title", "page.lyrics.subtitle"),
+    ("nav.sections.create", "page.song_forge.title", "page.song_forge.subtitle"),
+    ("nav.sections.create", "page.midi_studio.title", "page.midi_studio.subtitle"),
+    ("nav.sections.create", "page.vocals.title", "page.vocals.subtitle"),
+    ("nav.sections.create", "page.sfx.title", "page.sfx.subtitle"),
+    ("nav.sections.finish", "page.mixer.title", "page.mixer.subtitle"),
+    ("nav.sections.finish", "page.ai_producer.title", "page.ai_producer.subtitle"),
+    ("nav.sections.library", "page.projects.title", "page.projects.subtitle"),
+    ("nav.sections.system", "page.model_hub.title", "page.model_hub.subtitle"),
+    ("nav.sections.system", "page.settings.title", "page.settings.subtitle"),
 )
 
 
@@ -122,7 +122,7 @@ class Sidebar(QWidget):
         for i, (icon, label) in enumerate(nav_items):
             section = PAGE_META[i][0]
             if section != current_section:
-                section_label = QLabel(section)
+                section_label = QLabel(tr(section))
                 section_label.setObjectName("navSection")
                 layout.addWidget(section_label)
                 current_section = section
@@ -147,7 +147,7 @@ class Sidebar(QWidget):
         layout.addWidget(engine_frame)
 
         # Bottom nav
-        system_label = QLabel("SYSTEM")
+        system_label = QLabel(tr("nav.sections.system"))
         system_label.setObjectName("navSection")
         layout.addWidget(system_label)
         bottom_items = [
@@ -622,9 +622,9 @@ class MainWindow(QMainWindow):
         if 0 <= index < self._pages.count():
             self._pages.setCurrentIndex(index)
             eyebrow, title, subtitle = PAGE_META[index]
-            self._page_eyebrow.setText(eyebrow)
-            self._page_title.setText(title)
-            self._page_subtitle.setText(subtitle)
+            self._page_eyebrow.setText(tr(eyebrow))
+            self._page_title.setText(tr(title))
+            self._page_subtitle.setText(tr(subtitle))
 
     def _on_project_opened(self, _project_id: str):
         from core.project import get_project_manager
