@@ -18,7 +18,7 @@ try:
     import pyqtgraph as pg
     HAS_PYQTGRAPH = True
 except ImportError:
-    # Auto-install and retry
+    # Optional UI dependencies fail closed with diagnostics; supported setup profiles install them.
     try:
         from core.deps import ensure
         ensure("pyqtgraph")

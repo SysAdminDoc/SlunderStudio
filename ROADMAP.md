@@ -120,18 +120,6 @@ therefore new work, not a pre-existing red build.
 
 ### P3
 
-- [ ] P3 — Stale comment invites restoring pip-at-runtime, which was deliberately removed
-  Category: docs
-  Where: `ui/waveform_widget.py:21-24`
-  Problem: The comment says "Auto-install and retry", but `core.deps.ensure()` raises
-    `MissingDependencyError` (`core/deps.py:110-126`). It misdocuments the deliberate v0.1.8
-    hardening ("dependency paths now fail with explicit setup diagnostics instead of running pip")
-    and invites a future contributor to "restore" the removed behavior.
-  Fix: Rewrite the comment to state that missing dependencies fail closed with diagnostics.
-  Acceptance: No comment in the repo describes runtime pip installation as current behavior.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P3 — Dead animation helpers, one with an invisible-but-clickable trap
   Category: maintainability
   Where: `ui/theme.py:735-785` (`fade_in`, `fade_out`, `slide_in_right`, `slide_out_right`)
