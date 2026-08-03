@@ -27,6 +27,21 @@ from core.dependency_profiles import (
 
 
 class DependencyProfileTests(unittest.TestCase):
+    def test_declared_security_floor_and_optional_gguf_pin_are_current(self):
+        registry = load_registry()
+        torch_floor = registry["advisory_floors"]["torch"]
+        self.assertEqual(torch_floor["minimum"], "2.10.0")
+        self.assertIn("CVE-2026-24747", torch_floor["advisory"])
+        self.assertIn("GHSA-63cw-57p8-fm3p", torch_floor["advisory"])
+
+        requirements = (
+            Path(__file__).resolve().parents[1] / "requirements.txt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("# llama-cpp-python==0.3.34", requirements)
+        self.assertNotIn("llama-cpp-python>=", requirements)
+        self.assertNotIn("pyloudnorm", requirements)
+        self.assertEqual(requirements.count("psutil"), 1)
+
     def test_security_controls_keep_denylisted_packages_out_of_every_profile(self):
         registry = load_registry()
         controls = registry["security_controls"]
@@ -53,7 +68,12 @@ class DependencyProfileTests(unittest.TestCase):
             self.assertGreaterEqual(len(entries), 35)
             self.assertTrue(profile.lock_path.is_file())
             self.assertTrue(all(entry.hashes for entry in entries.values()))
-            self.assertTrue(version_at_least(entries["torch"].version, "2.6.0"))
+            self.assertTrue(
+                version_at_least(
+                    entries["torch"].version,
+                    registry["advisory_floors"]["torch"]["minimum"],
+                )
+            )
             self.assertTrue(version_at_least(entries["transformers"].version, "4.53.0"))
             self.assertTrue(version_less_than(entries["transformers"].version, "4.58.0"))
 
@@ -65,8 +85,8 @@ class DependencyProfileTests(unittest.TestCase):
             require_enabled=False,
         )
         self.assertFalse(profile.enabled)
-        self.assertIn("2.3.1", profile.reason)
-        self.assertIn("2.6.0", profile.reason)
+        self.assertIn("2.4.1", profile.reason)
+        self.assertIn("2.10.0", profile.reason)
         with self.assertRaisesRegex(DependencyProfileError, "disabled"):
             get_profile("windows-directml", registry=registry)
 
@@ -111,6 +131,9 @@ class DependencyProfileTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(DependencyProfileError, "below security floor"):
                 validate_profile("bad", registry_path=registry_path)
+
+            with self.assertRaisesRegex(DependencyProfileError, "below security floor"):
+                validate_profile_registry_security(registry_path)
 
     def test_denylisted_package_cannot_enter_a_profile_or_install_command(self):
         with tempfile.TemporaryDirectory() as tmp:

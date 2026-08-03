@@ -33,7 +33,7 @@ py -3.12 tools/dependency_profiles.py smoke windows-cpu
 
 Available locks cover Windows/Linux CPU and CUDA 12.6 plus Apple Silicon MPS.
 Torch-DirectML is intentionally disabled: Microsoft documents support only
-through PyTorch 2.3.1, below the PyTorch 2.6.0 security floor.
+through PyTorch 2.4.1, below the PyTorch 2.10.0 security floor.
 
 ## Features
 

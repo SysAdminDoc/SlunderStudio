@@ -283,17 +283,16 @@ def _acquire_lock() -> bool:
     )
     os.makedirs(config_dir, exist_ok=True)
     lock_file = os.path.join(config_dir, "studio.lock")
+    import psutil  # Core runtime dependency; bootstrap checks it before launch.
 
     try:
         if os.path.isfile(lock_file):
             try:
                 with open(lock_file) as f:
                     pid = int(f.read().strip())
-                import psutil
-
                 if pid > 0 and psutil.pid_exists(pid):
                     return False
-            except (ValueError, OSError, ImportError):
+            except (ValueError, OSError):
                 pass
 
         with open(lock_file, "w") as f:

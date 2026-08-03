@@ -313,8 +313,14 @@ def validate_profile_registry_security(
         profile = get_profile(name, registry=registry, require_enabled=False)
         if profile.lock_path is None:
             continue
-        entries = parse_lock(profile.lock_path)
-        assert_profile_dependency_policy(entries, profile.name)
+        if profile.enabled:
+            # Startup must enforce the same floors and compatibility ceilings as
+            # explicit profile installation; parsing alone would only check the
+            # deny-list and could admit a stale vulnerable lock.
+            validate_profile(name, registry_path=registry_path)
+        else:
+            entries = parse_lock(profile.lock_path)
+            assert_profile_dependency_policy(entries, profile.name)
     assert_no_denylisted_packages_installed()
 
 

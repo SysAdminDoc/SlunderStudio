@@ -81,25 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Correct the declared dependency security floors
-  Why: The floors the repo advertises are older than the advisories that supersede them, and one
-    unbounded floor admits a reachable heap-overflow class.
-  Evidence: `requirements/profiles.json:6` declares a torch floor of `2.6.0` citing
-    GHSA-53q9-r3pm-6pq6; that is superseded by CVE-2026-24747 / GHSA-63cw-57p8-fm3p (CVSS 8.8),
-    affecting torch < 2.10.0 — a heap corruption in the `weights_only=True` unpickler, i.e. the
-    safe-load path itself. `requirements.txt` floors `llama-cpp-python>=0.3` unbounded, while
-    llama.cpp < b8146 carries CVE-2026-27940 (GHSA-3p4r-fq3f-q74v, a bypass of the CVE-2025-53630
-    fix), CVE-2026-33298 and GHSA-96jg-mvhq-q7q7 — all GGUF parser overflows, reachable because
-    `engines/lyrics_engine.py:34-46` loads user-supplied `.gguf` files.
-    `requirements.txt` also lists `psutil>=5.9` as core (line 11) and again as optional (commented,
-    line 43); `main.py:272` treats it as optional while `core/deps.py:48` treats it as required.
-  Touches: `requirements/profiles.json`, `requirements.txt`, `core/dependency_profiles.py`, tests.
-  Acceptance: torch minimum is 2.10.0 with the correct advisory cited; `llama-cpp-python` is pinned
-    to a build past the GGUF fixes; the psutil contradiction is resolved one way and `deps.py` and
-    `main.py` agree; the dead commented `pyloudnorm>=0.1` line is removed since `core/mastering.py`
-    already exceeds it.
-  Complexity: S
-
 - [ ] P1 — Run the numpy → scipy → torch → transformers upgrade train
   Why: numpy is pinned to a release that has been end-of-life since 2025-09, so it can never
     receive another security patch, and it blocks everything downstream.

@@ -14,11 +14,12 @@ tqdm>=4.0
 # ── Optional: AI Models ─────────────────────────────────────────────
 # Do not install broad AI minimums into the application environment.
 # Use tools/dependency_profiles.py with a hash-locked CPU/CUDA/MPS profile.
-# Security floors: torch>=2.6.0 and transformers>=4.53.0.
-# DirectML remains disabled until its supported torch version clears that floor.
+# Security floors: torch>=2.10.0 (CVE-2026-24747 / GHSA-63cw-57p8-fm3p)
+# and transformers>=4.53.0. DirectML remains disabled until its supported torch
+# version clears the torch floor.
 
 # Lyrics Generation (GGUF)
-# llama-cpp-python>=0.3
+# llama-cpp-python==0.3.34  # llama.cpp@e3546c794, past the b8146 GGUF fixes
 
 # MIDI Studio
 # pretty_midi>=0.2.10
@@ -38,10 +39,8 @@ tqdm>=4.0
 
 # Mastering / Audio Analysis
 # librosa>=0.10
-# pyloudnorm>=0.1          # Precise LUFS metering
 
 # ── Optional: Utilities ────────────────────────────────────────────
-# psutil>=5.9              # System info (onboarding)
 # pypinyin>=0.49           # Chinese phonemizer (DiffSinger)
 # g2p-en>=2.1              # English phonemizer (DiffSinger)
 # pyyaml>=6.0              # Config parsing

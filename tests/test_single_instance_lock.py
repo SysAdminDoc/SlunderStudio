@@ -2,6 +2,7 @@ import os
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import main
@@ -42,6 +43,14 @@ class SingleInstanceLockTests(unittest.TestCase):
                 self.assertFalse(main._acquire_lock())
 
             pid_exists.assert_called_once_with(os.getpid())
+
+    def test_lock_path_requires_core_psutil_instead_of_treating_it_as_optional(self):
+        source = Path(main.__file__).read_text(encoding="utf-8")
+        lock_section = source[
+            source.index("def _acquire_lock"):source.index("# ── Application Launch")
+        ]
+        self.assertIn("import psutil", lock_section)
+        self.assertNotIn("ImportError", lock_section)
 
 
 if __name__ == "__main__":

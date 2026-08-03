@@ -20,7 +20,7 @@ ACE_STEP_DEFAULT_STEPS = 8
 ACE_STEP_DEFAULT_SHIFT = 3.0
 ACE_STEP_PYTHON_VERSIONS = ((3, 11), (3, 12))
 ACE_STEP_DEPENDENCY_BOUNDS = {
-    "torch": ("2.6.0", None),
+    "torch": ("2.10.0", None),
     "transformers": ("4.53.0", "4.58.0"),
     "diffusers": ("0.37.0", None),
     "accelerate": ("1.12.0", None),

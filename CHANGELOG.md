@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Raised the declared torch security floor to 2.10.0 for CVE-2026-24747 / GHSA-63cw-57p8-fm3p,
+  pinned optional GGUF lyrics support to `llama-cpp-python==0.3.34`, and made profile startup
+  validation enforce the same advisory floors as installation. Kept `psutil` consistently core,
+  removed its duplicate optional declaration, and removed the dead `pyloudnorm` stub.
 - Added explicit Vocal Suite trust actions for unsafe RVC and GPT-SoVITS checkpoints, with
   persisted acknowledgment, visible pickle/deserialization risk copy, and an error remedy that
   points users to the exact control while keeping the loader fail closed.

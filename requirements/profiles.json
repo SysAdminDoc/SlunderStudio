@@ -3,8 +3,8 @@
   "generated_on": "2026-07-29",
   "advisory_floors": {
     "torch": {
-      "minimum": "2.6.0",
-      "advisory": "GHSA-53q9-r3pm-6pq6"
+      "minimum": "2.10.0",
+      "advisory": "CVE-2026-24747 / GHSA-63cw-57p8-fm3p"
     },
     "transformers": {
       "minimum": "4.53.0",
@@ -133,7 +133,7 @@
       "system": "Windows",
       "machines": ["AMD64", "x86_64"],
       "python_tag": "cp312",
-      "reason": "Microsoft documents torch-directml support only through PyTorch 2.3.1, below the PyTorch 2.6.0 security floor required by GHSA-53q9-r3pm-6pq6."
+      "reason": "torch-directml 0.2.5.dev240914 requires PyTorch 2.4.1, below the PyTorch 2.10.0 security floor required by CVE-2026-24747 / GHSA-63cw-57p8-fm3p."
     }
   }
 }
