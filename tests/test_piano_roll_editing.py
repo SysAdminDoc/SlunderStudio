@@ -21,7 +21,14 @@ from core.midi_utils import (
     load_midi,
     save_midi,
 )
-from ui.piano_roll import PianoRollWidget
+from ui.piano_roll import (
+    KEY_WIDTH,
+    NOTE_HEIGHT,
+    PIXELS_PER_BEAT,
+    TOTAL_KEYS,
+    PianoRollScene,
+    PianoRollWidget,
+)
 
 
 class PianoRollEditingTests(unittest.TestCase):
@@ -116,6 +123,19 @@ class PianoRollEditingTests(unittest.TestCase):
             self.assertAlmostEqual(1.0, track.cc_events[0].time, places=6)
         finally:
             widget.deleteLater()
+
+    def test_scene_rect_includes_pitch_and_bar_label_gutters(self):
+        scene = PianoRollScene()
+        self.addCleanup(scene.deleteLater)
+
+        expected_width = 16 * 4 * PIXELS_PER_BEAT + KEY_WIDTH
+        expected_height = TOTAL_KEYS * NOTE_HEIGHT + 20
+        rect = scene.sceneRect()
+
+        self.assertEqual(-KEY_WIDTH, rect.left())
+        self.assertEqual(-20, rect.top())
+        self.assertEqual(expected_width, rect.width())
+        self.assertEqual(expected_height, rect.height())
 
     def test_destructive_edits_restore_exact_note_and_cc_state(self):
         widget = PianoRollWidget()

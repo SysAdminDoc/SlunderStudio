@@ -205,7 +205,7 @@ class PianoRollScene(QGraphicsScene):
         total_beats = self.bars * bar_beats
         total_width = total_beats * PIXELS_PER_BEAT
 
-        self.setSceneRect(0, 0, total_width + KEY_WIDTH, total_height)
+        self.setSceneRect(-KEY_WIDTH, -20, total_width + KEY_WIDTH, total_height + 20)
 
         # Piano keys background
         for i in range(TOTAL_KEYS):
