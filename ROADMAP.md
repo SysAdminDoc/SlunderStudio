@@ -939,23 +939,35 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
     `core/midi_utils.py`, `core/chord_chart.py`, `core/dawproject.py`, `core/deps.py`,
     `core/dependency_profiles.py`, `core/i18n.py`, `core/diagnostics.py`, `core/settings.py`,
     `core/project.py`, `core/engine_contract.py`, `core/ace_step_contract.py`
-  Problem: The 2026-08-02 audit dispatched a dedicated pass over these modules, and that pass
-    terminated early on an API limit before producing findings. Everything above touching `core/`
-    was found incidentally while tracing from `ui/` and `engines/` — so these modules have had no
-    systematic review of parsing and schema drift, migration and persistence integrity, path
-    traversal in archive handling (`core/dawproject.py`, `core/trash.py`), unsafe deserialization,
-    resource cleanup on error paths, or thread safety beyond what is already logged.
-  Fix: Run a dedicated read-only pass over the list above, tracing cross-module paths
-    (settings to consumers, job_state to workers, trash to retention, export to provenance).
-  Acceptance: Each module has either a logged finding or an explicit note that it was reviewed and
-    found clean.
-  Confidence: Verified (this is a known coverage gap, not a suspicion)
-  Effort: M
+  Problem: **Narrowed 2026-08-02 (second pass).** The pass that had terminated early was re-run and
+    did complete. It covered exception handling, resource lifetime, dead code and duplication
+    across all the modules listed, and its findings are now filed above as the P0/P1/P2 items on
+    provenance fail-open, worker/thread teardown, unload reporting, audio-writer duplication and
+    dead subsystems. Resource handling in particular was found clean: every `open` /
+    `TemporaryDirectory` / `ZipFile` / `sqlite3.connect` site uses a context manager or has a
+    matching close, and `core/project.py:979-995` has correct try/rollback semantics.
+    What that pass did **not** cover, and what this item now means: **path traversal in archive
+    handling** (`core/dawproject.py` ZIP construction and any future import, `core/trash.py`
+    manifest-driven restore), **schema drift on unknown-field round-trips**, and **deserialization
+    of attacker-influenced JSON** (job records, project files, provenance sidecars, trash
+    manifests) — none of which were examined.
+  Fix: A focused pass on archive extraction/restore paths and on schema round-tripping, with
+    adversarial fixtures (`../` and absolute paths in archive entries, symlink entries, unknown
+    fields, truncated and oversized files).
+  Acceptance: Archive restore refuses any entry resolving outside its destination root; schema
+    round-trips preserve unknown fields; malformed input fails with a diagnostic rather than a
+    traceback. Each has a test.
+  Confidence: Verified (a scoped remainder, not the original open-ended gap)
+  Effort: S
 
 - [ ] P3 — Confirm the visual findings on a real display at 125% scaling
   Category: visual
-  Where: the P2 visual items above (wordmark clipping, group-title mnemonic, card description
-    clipping, stem border hue)
+  Where: the P2 item "Harden the UI against display scaling", and any layout work that follows it.
+  Note 2026-08-02: the four original visual findings this item was written against (wordmark
+    clipping, group-title mnemonic, card description clipping, stem border hue) have since been
+    fixed and removed from this roadmap, so this item now applies to the scaling work instead —
+    the underlying method limitation below is unchanged and is why that work needs real-display
+    confirmation rather than offscreen renders.
   Problem: Those four were confirmed by offscreen Qt renders at 1:1 with Windows fonts loaded
     explicitly, because Qt's offscreen platform exposes no font database of its own (measured:
     `QFontDatabase.families()` returns 0 entries under `QT_QPA_PLATFORM=offscreen`). Font fallback
