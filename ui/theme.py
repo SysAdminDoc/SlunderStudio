@@ -3,9 +3,7 @@ Slunder Studio — Theme Engine
 Ink-and-signal desktop theme with an accessible focus system, restrained surfaces,
 and complete native Qt control styling.
 """
-from PySide6.QtWidgets import QWidget, QGraphicsOpacityEffect
-from PySide6.QtCore import QPropertyAnimation, QEasingCurve, QRect, Property
-from PySide6.QtGui import QPainter, QColor, QLinearGradient
+from PySide6.QtGui import QColor
 
 # ── Ink-and-signal palette ─────────────────────────────────────────────────────
 
@@ -754,55 +752,3 @@ QRadioButton::indicator:checked {{
 """
 
 
-# ── Animation Helpers ──────────────────────────────────────────────────────────
-
-def fade_in(widget: QWidget, duration: int = 250):
-    """Fade a widget in from transparent to opaque."""
-    effect = QGraphicsOpacityEffect(widget)
-    widget.setGraphicsEffect(effect)
-    anim = QPropertyAnimation(effect, b"opacity", widget)
-    anim.setDuration(duration)
-    anim.setStartValue(0.0)
-    anim.setEndValue(1.0)
-    anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-    anim.start()
-    return anim
-
-
-def fade_out(widget: QWidget, duration: int = 250):
-    """Fade a widget out from opaque to transparent."""
-    effect = QGraphicsOpacityEffect(widget)
-    widget.setGraphicsEffect(effect)
-    anim = QPropertyAnimation(effect, b"opacity", widget)
-    anim.setDuration(duration)
-    anim.setStartValue(1.0)
-    anim.setEndValue(0.0)
-    anim.setEasingCurve(QEasingCurve.Type.InCubic)
-    anim.start()
-    return anim
-
-
-def slide_in_right(widget: QWidget, parent_width: int, duration: int = 300):
-    """Slide a widget in from the right edge."""
-    anim = QPropertyAnimation(widget, b"geometry", widget)
-    start = QRect(parent_width, widget.y(), widget.width(), widget.height())
-    end = widget.geometry()
-    anim.setDuration(duration)
-    anim.setStartValue(start)
-    anim.setEndValue(end)
-    anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-    anim.start()
-    return anim
-
-
-def slide_out_right(widget: QWidget, parent_width: int, duration: int = 250):
-    """Slide a widget out to the right edge."""
-    anim = QPropertyAnimation(widget, b"geometry", widget)
-    start = widget.geometry()
-    end = QRect(parent_width, widget.y(), widget.width(), widget.height())
-    anim.setDuration(duration)
-    anim.setStartValue(start)
-    anim.setEndValue(end)
-    anim.setEasingCurve(QEasingCurve.Type.InCubic)
-    anim.start()
-    return anim

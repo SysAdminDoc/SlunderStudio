@@ -120,21 +120,6 @@ therefore new work, not a pre-existing red build.
 
 ### P3
 
-- [ ] P3 — Dead animation helpers, one with an invisible-but-clickable trap
-  Category: maintainability
-  Where: `ui/theme.py:735-785` (`fade_in`, `fade_out`, `slide_in_right`, `slide_out_right`)
-  Problem: None of the four has a call site anywhere in the repo (the toast animations are
-    self-contained). Beyond being dead, `fade_out` animates opacity to 0 but never hides the widget
-    or removes the `QGraphicsOpacityEffect`, and a fully transparent widget still receives mouse
-    events — so the first adoption produces an invisible clickable surface. There is also no
-    app-wide reduced-motion setting, so adoption would make motion unconditional.
-  Fix: Delete them; or fix `fade_out` to `hide()` on `finished` and gate all four behind a
-    reduced-motion setting before first use.
-  Acceptance: Either the helpers are gone, or they are covered by tests and respect a
-    reduced-motion preference.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P3 — Piano-roll pitch labels and bar numbers are drawn outside the scene rect
   Category: visual
   Where: `ui/piano_roll.py:205, 224-227, 241-245`

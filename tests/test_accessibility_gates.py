@@ -96,6 +96,13 @@ class ContrastGateTests(unittest.TestCase):
                     offenders.append(f"{path.relative_to(ROOT)}:{line_number}")
         self.assertEqual(offenders, [])
 
+    def test_theme_contains_no_dead_animation_helpers(self):
+        source = (ROOT / "ui" / "theme.py").read_text(encoding="utf-8")
+        for helper in ("fade_in", "fade_out", "slide_in_right", "slide_out_right"):
+            with self.subTest(helper=helper):
+                self.assertNotIn(f"def {helper}(", source)
+        self.assertNotIn("QPropertyAnimation", source)
+
     def test_dynamic_hex_alpha_uses_rgb_ordered_rgba(self):
         offenders = []
         suffix = re.compile(r"\{[^{}\n]+\}[0-9a-fA-F]{2}(?=[;}\s])")
