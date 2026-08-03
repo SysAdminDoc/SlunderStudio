@@ -81,20 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Let the user choose an audio output device
-  Why: A music production tool plays through whatever sounddevice picks, with no way to change it.
-  Evidence: `core/audio_engine.py` never passes a `device` argument and there is no device control
-    anywhere in `ui/settings_view.py`. PortAudio's Windows behaviour makes the default frequently
-    wrong or unusable: ASIO is not enabled by default (sounddevice#35), WASAPI settings raise when
-    mixed with WDM-KS/ASIO devices (#55), and shared-mode glitching is documented (#546). Qt's own
-    device-notification teardown is separately known to kill the process (QTBUG-120198), so device
-    enumeration should stay on PortAudio rather than QtMultimedia.
-  Touches: `core/audio_engine.py`, `ui/settings_view.py`, `core/settings.py`, tests.
-  Acceptance: Settings lists output devices with host API shown, the choice persists and is used by
-    the transport, an unavailable saved device falls back with a visible message rather than
-    silently, and device-list refresh does not require a restart.
-  Complexity: M
-
 - [ ] P1 — Test `core/workers.py` directly
   Why: It is the threading spine of the whole application and has no dedicated test file.
   Evidence: `tests/` has 69 files; `core/workers.py` is exercised only incidentally through engine

@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added PortAudio output-device selection in Settings. Device names include their host API,
+  selections persist by stable host/API identity, the list refreshes without a restart, and
+  unavailable devices visibly fall back to the system default during playback.
+
 ## [v0.1.31] - 2026-08-02
 
 - Added a project-level AI disclosure and human-authorship report. Project Manager can record
