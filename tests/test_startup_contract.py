@@ -6,6 +6,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class StartupContractTests(unittest.TestCase):
+    def test_startup_validates_optional_profile_security_before_gui_imports(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        self.assertIn("validate_profile_registry_security()", source)
+        self.assertIn("Unsafe optional dependency profile registry", source)
+
     def test_startup_does_not_purge_bytecode_caches(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
         self.assertNotIn("_clean_pycache", source)

@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 from core.dependency_profiles import (
+    DENYLISTED_PROFILE_PACKAGES,
     DependencyProfile,
     DependencyProfileError,
     LockEntry,
@@ -17,6 +18,7 @@ from core.dependency_profiles import (
     offline_install_command,
     parse_lock,
     registry_diagnostics,
+    validate_profile_registry_security,
     validate_profile,
     verify_wheelhouse,
     version_at_least,
@@ -25,6 +27,14 @@ from core.dependency_profiles import (
 
 
 class DependencyProfileTests(unittest.TestCase):
+    def test_security_controls_keep_denylisted_packages_out_of_every_profile(self):
+        registry = load_registry()
+        controls = registry["security_controls"]
+        self.assertEqual(set(controls["denylisted_packages"]), DENYLISTED_PROFILE_PACKAGES)
+        self.assertIn("config.json", controls["transformers_config_scan"])
+        self.assertIn("transformers<4.58.0", controls["compatibility_note"])
+        validate_profile_registry_security()
+
     def test_all_enabled_profiles_are_complete_hashed_and_above_floors(self):
         registry = load_registry()
         expected = {
@@ -101,6 +111,54 @@ class DependencyProfileTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(DependencyProfileError, "below security floor"):
                 validate_profile("bad", registry_path=registry_path)
+
+    def test_denylisted_package_cannot_enter_a_profile_or_install_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lock = root / "unsafe.txt"
+            lock.write_text(
+                "kernels==0.1.0 --hash=sha256:" + "a" * 64 + "\n",
+                encoding="utf-8",
+            )
+            registry = json.loads(
+                (Path(__file__).resolve().parents[1] / "requirements" / "profiles.json")
+                .read_text(encoding="utf-8")
+            )
+            registry["profiles"] = {
+                "unsafe": {
+                    "enabled": True,
+                    "backend": "cpu",
+                    "system": "Windows",
+                    "machines": ["AMD64"],
+                    "python_tag": "cp312",
+                    "lock": "unsafe.txt",
+                    "roots": {"kernels": "0.1.0"},
+                    "smoke_imports": [],
+                }
+            }
+            registry_path = root / "profiles.json"
+            registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+            with self.assertRaisesRegex(DependencyProfileError, "deny-listed"):
+                validate_profile("unsafe", registry_path=registry_path)
+            with self.assertRaisesRegex(DependencyProfileError, "deny-listed"):
+                validate_profile_registry_security(registry_path)
+
+            profile = DependencyProfile(
+                name="unsafe",
+                enabled=True,
+                backend="cpu",
+                system="Windows",
+                machines=("AMD64",),
+                python_tag="cp312",
+                lock_path=lock,
+                index_url="",
+                extra_index_url="",
+                roots={"kernels": "0.1.0"},
+                smoke_imports=(),
+            )
+            with self.assertRaisesRegex(DependencyProfileError, "deny-listed"):
+                offline_install_command(profile, root / "wheelhouse")
 
     def test_wheelhouse_rejects_tampering_and_sbom_covers_every_lock_entry(self):
         with tempfile.TemporaryDirectory() as tmp:

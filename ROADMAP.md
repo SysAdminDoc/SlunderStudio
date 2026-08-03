@@ -81,24 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P0
 
-- [ ] P0 — Resolve the transformers config-injection RCE exposure
-  Why: The pinned version sits inside a window for a bug that bypasses `trust_remote_code=False` —
-    the specific control this app's model-trust design depends on.
-  Evidence: CVE-2026-4372 (CVSS 7.8) affects transformers 4.56.0–5.2.x; a malicious `config.json`
-    sets `_attn_implementation_internal`, causing `importlib.import_module()` of an attacker
-    repo at load with no flag and no warning. Fixed in 5.3.0.
-    `requirements/profiles.json` pins `transformers 4.57.6` with `maximum_exclusive: 4.58.0`,
-    attributed to ACE-Step 1.5. Exploitation requires the `kernels` package, absent from all five
-    profile locks — so this is currently a discipline, not a fix.
-  Touches: `requirements/profiles.json`, `requirements/profiles/*.txt`,
-    `core/dependency_profiles.py`, `core/model_manager.py`, engine loaders, tests.
-  Acceptance: Either ACE-Step 1.5 is verified against transformers >=5.3.0 and the ceiling is
-    raised, or the ceiling is documented with compensating controls that are *enforced*:
-    `kernels` on an explicit deny-list checked at profile install and at startup, and a
-    `config.json` pre-scan rejecting underscore-prefixed keys before `from_pretrained`. Either way
-    a test fails if `kernels` becomes installable.
-  Complexity: M
-
 - [ ] P0 — Stop losing user work on save failure and on window close
   Why: Three independent paths discard work or state silently; one of them is the plain Save button.
   Evidence: (a) `ui/project_manager.py:310-314` `_on_save` discards the boolean from `mgr.save()`

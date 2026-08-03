@@ -19,6 +19,7 @@ from PySide6.QtCore import QObject, Signal
 
 from core.settings import Settings, get_config_dir
 from core.trash import TrashEntry, TrashError, TrashManager
+from core.model_security import ModelSecurityError
 from core.engine_contract import (
     ActivationOutcome,
     CapabilityReadiness,
@@ -41,11 +42,6 @@ from core.ace_step_contract import (
 
 class OfflineModeError(RuntimeError):
     """Raised when a network operation is attempted while offline mode is enabled."""
-    pass
-
-
-class ModelSecurityError(RuntimeError):
-    """Raised when model provenance or executable-content policy is not satisfied."""
     pass
 
 

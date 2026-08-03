@@ -17,6 +17,11 @@
       "source": "ACE-Step 1.5"
     }
   },
+  "security_controls": {
+    "transformers_config_scan": "Every local Transformers config.json is recursively scanned before from_pretrained and rejects malformed JSON or underscore-prefixed keys.",
+    "denylisted_packages": ["kernels"],
+    "compatibility_note": "ACE-Step 1.5 retains the transformers<4.58.0 ceiling; the deny-list, startup check, and snapshot scan are required compensating controls."
+  },
   "profiles": {
     "windows-cpu": {
       "enabled": true,

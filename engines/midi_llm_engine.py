@@ -14,6 +14,7 @@ from pathlib import Path
 from core.provenance import sidecar_path_for
 from core.settings import get_config_dir
 from core.midi_utils import MidiData, TrackData, NoteData
+from core.model_security import assert_safe_transformers_snapshot
 
 
 # ── MIDI Token Vocabulary ──────────────────────────────────────────────────────
@@ -656,6 +657,8 @@ class MidiLLMEngine:
                 raise ModelSecurityError(
                     "Pickle-backed model weights require explicit consent for the pinned revision."
                 )
+
+            assert_safe_transformers_snapshot(local_path)
 
             if progress_callback:
                 progress_callback(0.1, "Loading tokenizer...")

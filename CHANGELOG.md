@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Kept the ACE-Step-compatible `transformers<4.58.0` ceiling while enforcing compensating
+  controls for the config-injection RCE window: deny-listed `kernels` profile/runtime checks,
+  startup validation of every optional lock, and recursive local `config.json` scans before
+  Transformers loaders reject malformed or underscore-prefixed keys.
 - Gated PyInstaller packaging behind temporary Python 3.12 environments installed from hashed
   runtime and build locks, excluded polluted/dead module graphs, audited frozen packages, and
   moved Windows smoke launches onto the private virtual-display isolation contract.

@@ -285,6 +285,34 @@ class ModelTrustTests(unittest.TestCase):
             self.assertFalse(model_kwargs["trust_remote_code"])
             self.assertTrue(model_kwargs["use_safetensors"])
 
+    def test_midi_transformers_loader_rejects_private_config_before_loading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "config.json").write_text(
+                '{"model_type": "midi", "_attn_implementation_internal": "evil.module"}',
+                encoding="utf-8",
+            )
+            tokenizer_loader = MagicMock()
+            model_loader = MagicMock()
+            transformers = types.ModuleType("transformers")
+            transformers.AutoTokenizer = types.SimpleNamespace(
+                from_pretrained=tokenizer_loader
+            )
+            transformers.AutoModelForCausalLM = types.SimpleNamespace(
+                from_pretrained=model_loader
+            )
+            torch = types.ModuleType("torch")
+            torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+            torch.float32 = object()
+            torch.float16 = object()
+
+            with patch.dict(sys.modules, {"transformers": transformers, "torch": torch}):
+                with self.assertRaisesRegex(RuntimeError, "_attn_implementation_internal"):
+                    MidiLLMEngine().load_model(tmp, device="cpu")
+
+            tokenizer_loader.assert_not_called()
+            model_loader.assert_not_called()
+
     def test_whisper_loader_uses_registry_transformers_snapshot(self):
         from engines import audio_analyzer
 
@@ -296,7 +324,10 @@ class ModelTrustTests(unittest.TestCase):
                 "preprocessor_config.json",
                 "tokenizer.json",
             ):
-                (root / name).write_bytes(b"staged")
+                if name == "config.json":
+                    (root / name).write_text("{}", encoding="utf-8")
+                else:
+                    (root / name).write_bytes(b"staged")
 
             processor = MagicMock()
             model = MagicMock()

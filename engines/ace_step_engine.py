@@ -28,6 +28,7 @@ from core.ace_step_contract import (
     ACE_STEP_SOURCE_TASKS,
 )
 from core.dependency_profiles import version_at_least, version_less_than
+from core.model_security import assert_safe_transformers_snapshot
 
 
 def _cleanup_output_paths(paths: list[str | Path]) -> None:
@@ -623,6 +624,8 @@ class ACEStepEngine:
                 "ACE-Step model not cached locally and Offline Mode is enabled. "
                 "Download the model first, then enable Offline Mode."
             )
+
+        assert_safe_transformers_snapshot(checkpoint_dir)
 
         if torch.cuda.is_available():
             self._device = "cuda"

@@ -29,6 +29,7 @@ HASH_RE = re.compile(r"--hash=sha256:([0-9a-f]{64})(?:\s|$)", re.IGNORECASE)
 REQUIREMENT_RE = re.compile(
     r"^([A-Za-z0-9_.-]+)==([A-Za-z0-9_.+!-]+)(?:\s+(.+))?$"
 )
+DENYLISTED_PROFILE_PACKAGES = frozenset({"kernels"})
 
 
 class DependencyProfileError(RuntimeError):
@@ -67,6 +68,36 @@ class WheelArtifact:
     entry: LockEntry
     path: Path
     sha256: str
+
+
+def assert_profile_dependency_policy(
+    entries: Mapping[str, LockEntry],
+    profile_name: str = "profile",
+) -> None:
+    """Reject packages that would re-enable known unsafe Transformers paths."""
+    denied = sorted(
+        DENYLISTED_PROFILE_PACKAGES.intersection(
+            normalize_name(name) for name in entries
+        )
+    )
+    if denied:
+        raise DependencyProfileError(
+            f"Dependency profile {profile_name!r} contains deny-listed package(s): "
+            f"{', '.join(denied)}"
+        )
+
+
+def assert_no_denylisted_packages_installed() -> None:
+    """Fail closed if a deny-listed distribution is present in the runtime."""
+    for package in sorted(DENYLISTED_PROFILE_PACKAGES):
+        try:
+            version = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+        raise DependencyProfileError(
+            f"Deny-listed package {package!r} is installed ({version}); "
+            "remove it before starting Slunder Studio."
+        )
 
 
 def resource_root() -> Path:
@@ -232,6 +263,7 @@ def validate_profile(
     if profile.lock_path is None:
         raise DependencyProfileError(f"Profile {name!r} has no lock")
     entries = parse_lock(profile.lock_path)
+    assert_profile_dependency_policy(entries, profile.name)
 
     for package, expected_version in profile.roots.items():
         entry = entries.get(package)
@@ -270,6 +302,20 @@ def validate_profile(
                 f"required <{maximum}"
             )
     return profile, entries
+
+
+def validate_profile_registry_security(
+    registry_path: Optional[str | Path] = None,
+) -> None:
+    """Validate every profile lock and the active interpreter deny-list policy."""
+    registry = load_registry(registry_path)
+    for name in sorted(registry["profiles"]):
+        profile = get_profile(name, registry=registry, require_enabled=False)
+        if profile.lock_path is None:
+            continue
+        entries = parse_lock(profile.lock_path)
+        assert_profile_dependency_policy(entries, profile.name)
+    assert_no_denylisted_packages_installed()
 
 
 def assert_host_compatible(profile: DependencyProfile) -> None:
@@ -358,6 +404,7 @@ def offline_install_command(
 ) -> list[str]:
     if profile.lock_path is None:
         raise DependencyProfileError(f"Profile {profile.name!r} has no lock")
+    assert_profile_dependency_policy(parse_lock(profile.lock_path), profile.name)
     return [
         python_executable or sys.executable,
         "-m",
@@ -381,6 +428,7 @@ def download_command(
 ) -> list[str]:
     if profile.lock_path is None:
         raise DependencyProfileError(f"Profile {profile.name!r} has no lock")
+    assert_profile_dependency_policy(parse_lock(profile.lock_path), profile.name)
     return [
         python_executable or sys.executable,
         "-m",
@@ -470,6 +518,7 @@ def install_profile(
     sbom_output: Optional[str | Path] = None,
 ) -> Path:
     profile, entries = validate_profile(name, registry_path=registry_path, check_host=True)
+    assert_no_denylisted_packages_installed()
     artifacts = verify_wheelhouse(entries, wheelhouse)
     output = Path(sbom_output) if sbom_output else (
         Path(wheelhouse) / f"slunderstudio-{name}.cdx.json"

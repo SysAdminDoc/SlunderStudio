@@ -14,6 +14,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 from core.settings import get_config_dir
+from core.model_security import assert_safe_transformers_snapshot
 
 
 @dataclass
@@ -649,6 +650,7 @@ def load_model(cache_dir: str = None, model_path: str = None, **kwargs):
             "Whisper loading will not download model data during inference. "
             "A verified local Transformers snapshot with safetensors weights is required."
         )
+    assert_safe_transformers_snapshot(local)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     processor = WhisperProcessor.from_pretrained(

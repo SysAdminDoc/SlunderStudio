@@ -25,12 +25,23 @@ def _is_frozen() -> bool:
 
 def _phase1_bootstrap():
     """Report missing core dependencies before importing PySide6."""
-    if _is_frozen():
-        return []
-
     if sys.version_info < (3, 10):
         print(f"Slunder Studio requires Python 3.10+. Current: {sys.version}")
         sys.exit(1)
+
+    from core.dependency_profiles import (
+        DependencyProfileError,
+        validate_profile_registry_security,
+    )
+
+    try:
+        validate_profile_registry_security()
+    except DependencyProfileError as exc:
+        print(f"Unsafe optional dependency profile registry: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if _is_frozen():
+        return []
 
     from core.deps import CORE_RUNTIME_PACKAGES, dependency_status
 
