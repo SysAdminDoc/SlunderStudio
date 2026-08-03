@@ -125,9 +125,9 @@ _BOOTSTRAP_MISSING = _phase1_bootstrap()
 
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPlainTextEdit, QPushButton,
+    QPlainTextEdit, QPushButton, QDialog,
 )
-from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtCore import Qt, QTimer  # noqa: E402
 from PySide6.QtGui import QFont  # noqa: E402
 
 
@@ -471,16 +471,25 @@ def _launch_app():
 
     settings.on_change(on_settings_change)
 
+    onboarding_handoff = None
     if not settings.get("general.onboarding_complete", False) and not settings.get(
         "general.onboarding_skipped", False
     ):
         from ui.onboarding import OnboardingWizard
         wizard = OnboardingWizard()
-        wizard.exec()
+        if wizard.exec() == QDialog.DialogCode.Accepted:
+            onboarding_handoff = wizard.model_handoff()
 
     from ui.main_window import MainWindow
     window = MainWindow()
     window.show()
+    if onboarding_handoff:
+        QTimer.singleShot(
+            0,
+            lambda handoff=onboarding_handoff: window.open_model_hub_for_onboarding(
+                handoff["model_id"], handoff["action"]
+            ),
+        )
 
 
 def main():

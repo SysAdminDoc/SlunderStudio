@@ -713,6 +713,31 @@ class ModelHubView(QWidget):
         self._mgr.status_changed.connect(self._on_status_changed)
         self._mgr.gpu_status_changed.connect(self._on_gpu_changed)
 
+    def prepare_onboarding_model(self, model_id: str, action: str = "open") -> bool:
+        """Select the model handed off by onboarding and optionally start it."""
+        if model_id not in self._cards:
+            return False
+        if action not in {"open", "download"}:
+            action = "open"
+        self._search.clear()
+        self._category_filter.setCurrentIndex(0)
+        self._downloaded_only.setChecked(False)
+        self._filter_cards()
+        card = self._cards[model_id]
+        card.setVisible(True)
+        card.setAccessibleDescription(
+            f"Selected by onboarding for setup: {card.info.name}"
+        )
+        if action == "download":
+            status = self._mgr.get_status(model_id)
+            handler = (
+                self._start_activation
+                if status in {ModelStatus.DOWNLOADED, ModelStatus.LOADED}
+                else self._start_download
+            )
+            QTimer.singleShot(0, lambda mid=model_id: handler(mid))
+        return True
+
     def _refresh_all_cards(self):
         for record in self._recoverable_download_records():
             model_id = record.inputs.get("model_id") or record.metadata.get("model_id")

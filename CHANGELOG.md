@@ -31,6 +31,9 @@ All notable changes to SlunderStudio will be documented in this file.
 - Fixed onboarding dismissal so it never completes setup, added an explicit distinguishable Skip
   state and a Settings reopen action, cleared repeated system-check rows, and showed per-model
   installed/loadable/loaded/offline/error readiness with disk and VRAM estimates.
+- Made first-run setup actionable: onboarding now saves the output folder and experience level,
+  collects a HuggingFace token before gated downloads, offers remediation actions for failed system
+  checks, and carries a selected core model into Model Hub for review or download.
 
 ## [v0.1.31] - 2026-08-02
 

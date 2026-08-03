@@ -6,11 +6,13 @@ quick start guide, and preference setup.
 import os
 import sys
 import platform
+import subprocess
+from pathlib import Path
 from typing import Optional
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QStackedWidget, QWidget, QCheckBox, QComboBox,
-    QProgressBar,
+    QProgressBar, QLineEdit, QFileDialog,
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
@@ -26,6 +28,27 @@ from core.workers import InferenceWorker
 
 
 # ── System Check ───────────────────────────────────────────────────────────────
+
+def run_dependency_setup(progress_cb=None, **_kwargs) -> str:
+    """Install the source checkout's runtime requirements for a failed check."""
+    requirements = Path(__file__).resolve().parents[1] / "requirements.txt"
+    if not requirements.is_file():
+        raise RuntimeError(f"Requirements file not found: {requirements}")
+    if progress_cb:
+        progress_cb(10)
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-r", str(requirements)],
+        cwd=str(requirements.parent),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode:
+        detail = (result.stderr or result.stdout or "setup command failed").strip()
+        raise RuntimeError(detail[-1200:])
+    if progress_cb:
+        progress_cb(100)
+    return "Runtime dependencies installed. Re-running the system check."
 
 def check_system() -> dict:
     """Run system compatibility checks."""
@@ -45,9 +68,10 @@ def check_system() -> dict:
         ram = psutil.virtual_memory()
         checks["ram_gb"] = round(ram.total / (1024**3), 1)
         checks["ram_ok"] = checks["ram_gb"] >= 8
-    except ImportError:
+    except Exception as exc:
         checks["ram_gb"] = 0
-        checks["ram_ok"] = True  # assume OK if psutil missing
+        checks["ram_ok"] = False
+        checks["ram_error"] = f"Unable to inspect RAM: {type(exc).__name__}"
 
     # Core Python dependencies
     try:
@@ -55,9 +79,12 @@ def check_system() -> dict:
         missing_deps = dependency_status(CORE_RUNTIME_PACKAGES)
         checks["deps_missing"] = [pip_name for _, pip_name in missing_deps]
         checks["deps_ok"] = not missing_deps
-    except Exception:
-        checks["deps_missing"] = []
-        checks["deps_ok"] = True
+    except Exception as exc:
+        checks["deps_missing"] = [
+            f"Unable to inspect dependencies ({type(exc).__name__})"
+        ]
+        checks["deps_ok"] = False
+        checks["deps_error"] = "Dependency inspection failed; run setup and retry."
 
     # GPU / CUDA
     checks["cuda"] = False
@@ -73,8 +100,8 @@ def check_system() -> dict:
             checks["vram_gb"] = round(
                 torch.cuda.get_device_properties(gpu_index).total_memory / (1024**3), 1
             )
-    except (ImportError, RuntimeError, AttributeError):
-        pass
+    except (ImportError, RuntimeError, AttributeError) as exc:
+        checks["gpu_error"] = f"GPU probe unavailable: {type(exc).__name__}"
 
     # Disk space
     try:
@@ -83,9 +110,10 @@ def check_system() -> dict:
         usage = shutil.disk_usage(get_config_dir())
         checks["disk_free_gb"] = round(usage.free / (1024**3), 1)
         checks["disk_ok"] = checks["disk_free_gb"] >= 10
-    except Exception:
+    except Exception as exc:
         checks["disk_free_gb"] = 0
-        checks["disk_ok"] = True
+        checks["disk_ok"] = False
+        checks["disk_error"] = f"Unable to inspect disk space: {type(exc).__name__}"
 
     return checks
 
@@ -144,6 +172,8 @@ class WelcomePage(QWidget):
 
 
 class SystemCheckPage(QWidget):
+    remediation_requested = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         t = ThemeEngine.get_colors()
@@ -175,6 +205,8 @@ class SystemCheckPage(QWidget):
         layout.addStretch()
         self._check_worker = None
         self._check_workers = set()
+        self._setup_worker = None
+        self._setup_workers = set()
         install_accessibility(self, "Onboarding system check")
 
     def run_checks(self):
@@ -225,27 +257,87 @@ class SystemCheckPage(QWidget):
         self._check_worker = None
         self._summary.setText(f"System check failed: {message}")
 
+    def _start_dependency_setup(self):
+        if self._setup_worker is not None and self._setup_worker.isRunning():
+            return
+        self._summary.setText("Installing runtime dependencies...")
+        worker = InferenceWorker(
+            run_dependency_setup,
+            job_kind="onboarding_dependency_setup",
+            job_label="Install runtime dependencies",
+        )
+        self._setup_workers.add(worker)
+        self._setup_worker = worker
+        worker.finished.connect(self._on_setup_finished)
+        worker.error.connect(self._on_setup_error)
+        worker.thread_stopped.connect(lambda w=worker: self._release_setup_worker_later(w))
+        worker.start()
+
+    def _release_setup_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._release_setup_worker_later(worker))
+            return
+        self._setup_workers.discard(worker)
+        if self._setup_worker is worker:
+            self._setup_worker = None
+
+    def _on_setup_finished(self, message: str):
+        self._summary.setText(str(message))
+        worker = self._setup_worker
+        self._release_setup_worker_later(worker)
+        self.run_checks()
+
+    def _on_setup_error(self, message: str):
+        self._summary.setText(f"Dependency setup failed: {message}")
+        worker = self._setup_worker
+        self._release_setup_worker_later(worker)
+
+    @staticmethod
+    def _remediation_label(key: str) -> str:
+        return {
+            "dependencies": "Run setup",
+            "gpu": "Choose a model",
+            "ram": "Choose a model",
+            "disk": "Choose output",
+            "python": "Show instructions",
+        }.get(key, "Details")
+
+    def _request_remediation(self, key: str, checks: dict):
+        if key == "dependencies":
+            self._start_dependency_setup()
+        elif key == "python":
+            self._summary.setText(
+                f"Install Python 3.10+ and restart Slunder Studio. "
+                f"The current interpreter is {checks['python']}."
+            )
+        else:
+            self.remediation_requested.emit(key)
+
     def _display_checks(self, checks: dict):
         t = ThemeEngine.get_colors()
 
         items = [
-            ("Python", checks["python"], checks["python_ok"],
+            ("python", "Python", checks["python"], checks["python_ok"],
              "3.10+ required"),
-            ("Dependencies",
+            ("dependencies", "Dependencies",
              "Ready" if checks["deps_ok"] else ", ".join(checks["deps_missing"]),
              checks["deps_ok"],
-             "" if checks["deps_ok"] else f"Run: {checks['setup_command']}"),
-            ("Operating System", f"{checks['os']} {checks['arch']}", True, ""),
-            ("GPU / CUDA", checks["gpu_name"],
+             checks.get("deps_error")
+             or ("" if checks["deps_ok"] else f"Run: {checks['setup_command']}")),
+            ("os", "Operating System", f"{checks['os']} {checks['arch']}", True, ""),
+            ("gpu", "GPU / CUDA", checks["gpu_name"],
              checks["cuda"],
-             f"{checks['vram_gb']} GB VRAM" if checks["cuda"] else "CPU-only mode"),
-            ("RAM", f"{checks['ram_gb']} GB",
-             checks.get("ram_ok", True), "8 GB+ recommended"),
-            ("Disk Space", f"{checks['disk_free_gb']} GB free",
-             checks.get("disk_ok", True), "10 GB+ recommended for models"),
+             checks.get("gpu_error")
+             or (f"{checks['vram_gb']} GB VRAM" if checks["cuda"] else "CPU-only mode")),
+            ("ram", "RAM", f"{checks['ram_gb']} GB",
+             checks.get("ram_ok", True), checks.get("ram_error", "8 GB+ recommended")),
+            ("disk", "Disk Space", f"{checks['disk_free_gb']} GB free",
+             checks.get("disk_ok", True), checks.get("disk_error", "10 GB+ recommended for models")),
         ]
 
-        for label, value, ok, note in items:
+        for key, label, value, ok, note in items:
             row = QHBoxLayout()
             icon = QLabel("OK" if ok else "!!")
             icon.setFixedWidth(24)
@@ -264,6 +356,16 @@ class SystemCheckPage(QWidget):
             row.addWidget(name)
             row.addWidget(val, 1)
             row.addWidget(note_l)
+            if not ok:
+                action = QPushButton(self._remediation_label(key))
+                action.setObjectName("remediationButton")
+                action.setFixedHeight(28)
+                action.clicked.connect(
+                    lambda _checked=False, check_key=key: self._request_remediation(
+                        check_key, checks
+                    )
+                )
+                row.addWidget(action)
             self._checks_layout.addLayout(row)
 
         if checks["cuda"]:
@@ -356,8 +458,21 @@ class ModelGuidePage(QWidget):
         readiness_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
         readiness_layout.addWidget(readiness_title)
         manager = ModelManager()
-        for info_item in manager.get_core_models():
-            readiness = manager.get_model_readiness(info_item.model_id)
+        self._manager = manager
+        self._core_models = manager.get_core_models()
+        for info_item in self._core_models:
+            try:
+                readiness = manager.get_model_readiness(info_item.model_id)
+            except Exception as exc:
+                readiness = ModelReadiness(
+                    model_id=info_item.model_id,
+                    installed=False,
+                    verified=False,
+                    loadable=False,
+                    active=False,
+                    status="error",
+                    remedy=f"Readiness probe failed: {type(exc).__name__}",
+                )
             row = QHBoxLayout()
             state = QLabel(model_readiness_label(readiness, manager.is_offline))
             state.setFixedWidth(145)
@@ -372,6 +487,64 @@ class ModelGuidePage(QWidget):
             readiness_layout.addLayout(row)
         layout.addWidget(readiness_frame)
 
+        setup_frame = QFrame()
+        setup_frame.setStyleSheet(f"""
+            QFrame {{ background: {t['surface']}; border: 1px solid {t['border']};
+                border-radius: 8px; }}
+        """)
+        setup_layout = QVBoxLayout(setup_frame)
+        setup_layout.setContentsMargins(12, 10, 12, 10)
+        setup_layout.setSpacing(8)
+        setup_title = QLabel("Choose first model setup")
+        setup_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        setup_layout.addWidget(setup_title)
+
+        self._model_selector = QComboBox()
+        self._model_selector.setObjectName("onboardingModelSelector")
+        for info_item in self._core_models:
+            self._model_selector.addItem(
+                f"{info_item.name} — {info_item.disk_gb:.1f} GB disk / {info_item.vram_gb:.1f} GB VRAM",
+                info_item.model_id,
+            )
+        if not self._core_models:
+            self._model_selector.addItem("No core models are registered", "")
+            self._model_selector.setEnabled(False)
+        setup_layout.addWidget(self._model_selector)
+
+        self._model_action = QComboBox()
+        self._model_action.setObjectName("onboardingModelAction")
+        self._model_action.addItem("Open Model Hub and choose the action", "open")
+        self._model_action.addItem("Start this download in Model Hub", "download")
+        if manager.is_offline:
+            self._model_action.setItemText(1, "Start download (offline mode unavailable)")
+            self._model_action.model().item(1).setEnabled(False)
+        setup_layout.addWidget(self._model_action)
+
+        action_note = QLabel(
+            "The selected model and action will be carried into Model Hub after Launch Studio."
+        )
+        action_note.setWordWrap(True)
+        action_note.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        setup_layout.addWidget(action_note)
+
+        token_label = QLabel("HuggingFace token (optional; saved before gated downloads)")
+        token_label.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
+        setup_layout.addWidget(token_label)
+        self._hf_token = QLineEdit()
+        self._hf_token.setObjectName("onboardingHfToken")
+        self._hf_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self._hf_token.setPlaceholderText("Paste a token beginning with hf_...")
+        token_lookup = getattr(manager, "_get_hf_token", lambda: None)
+        if token_lookup():
+            self._hf_token.setPlaceholderText("A saved HuggingFace token will be reused")
+        setup_layout.addWidget(self._hf_token)
+        self._token_error = QLabel("")
+        self._token_error.setVisible(False)
+        self._token_error.setWordWrap(True)
+        self._token_error.setStyleSheet(f"color: {Palette.RED}; font-size: 10px;")
+        setup_layout.addWidget(self._token_error)
+        layout.addWidget(setup_frame)
+
         note = QLabel(
             "You can skip model downloads now and install them later from Model Hub. "
             "Without a verified active model, generation is unavailable or explicitly labeled DEMO. "
@@ -382,6 +555,27 @@ class ModelGuidePage(QWidget):
         layout.addWidget(note)
         layout.addStretch()
         install_accessibility(self, "Onboarding model guide")
+
+    def selected_model_id(self) -> str:
+        return str(self._model_selector.currentData() or "")
+
+    def selected_model_action(self) -> str:
+        return str(self._model_action.currentData() or "open")
+
+    def hf_token(self) -> str:
+        return self._hf_token.text().strip()
+
+    def show_token_error(self, message: str):
+        self._token_error.setText(message)
+        self._token_error.setVisible(True)
+        self._hf_token.setFocus()
+
+    def clear_token_error(self):
+        self._token_error.clear()
+        self._token_error.setVisible(False)
+
+    def focus_model_selector(self):
+        self._model_selector.setFocus()
 
 
 class QuickStartPage(QWidget):
@@ -394,6 +588,56 @@ class QuickStartPage(QWidget):
         title = QLabel("Quick Start")
         title.setStyleSheet(f"color: {t['text']}; font-size: 18px; font-weight: bold;")
         layout.addWidget(title)
+
+        preferences = QFrame()
+        preferences.setStyleSheet(f"""
+            QFrame {{ background: {t['surface']}; border: 1px solid {t['border']};
+                border-radius: 8px; }}
+        """)
+        preferences_layout = QVBoxLayout(preferences)
+        preferences_layout.setContentsMargins(12, 10, 12, 10)
+        preferences_layout.setSpacing(8)
+        preferences_title = QLabel("First-run preferences")
+        preferences_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        preferences_layout.addWidget(preferences_title)
+
+        output_row = QHBoxLayout()
+        output_label = QLabel("Default output folder")
+        output_label.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
+        output_row.addWidget(output_label)
+        from core.settings import Settings, get_default_output_dir
+        settings = Settings()
+        self._output_dir = QLineEdit(str(settings.get("general.output_dir", "") or ""))
+        self._output_dir.setObjectName("onboardingOutputDirectory")
+        self._output_dir.setReadOnly(True)
+        self._output_dir.setPlaceholderText(f"Default: {get_default_output_dir()}")
+        output_row.addWidget(self._output_dir, 1)
+        browse = QPushButton("Browse")
+        browse.setObjectName("onboardingBrowseOutput")
+        browse.clicked.connect(self._browse_output_dir)
+        output_row.addWidget(browse)
+        preferences_layout.addLayout(output_row)
+
+        experience_row = QHBoxLayout()
+        experience_label = QLabel("Experience level")
+        experience_label.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
+        experience_row.addWidget(experience_label)
+        self._experience = QComboBox()
+        self._experience.setObjectName("onboardingExperience")
+        for code, label in (
+            ("beginner", "Beginner — guided controls"),
+            ("intermediate", "Intermediate — balanced controls"),
+            ("advanced", "Advanced — expose more controls"),
+        ):
+            self._experience.addItem(label, code)
+        current_experience = settings.get("general.experience_level", "beginner")
+        experience_index = self._experience.findData(current_experience)
+        if experience_index >= 0:
+            self._experience.setCurrentIndex(experience_index)
+        experience_row.addWidget(self._experience)
+        experience_row.addStretch()
+        preferences_layout.addLayout(experience_row)
+        layout.addWidget(preferences)
 
         steps = [
             ("Song Forge", "Generate full songs from lyrics and style tags with ACE-Step"),
@@ -436,6 +680,20 @@ class QuickStartPage(QWidget):
         layout.addStretch()
         install_accessibility(self, "Onboarding quick start")
 
+    def output_dir(self) -> str:
+        return self._output_dir.text().strip()
+
+    def experience_level(self) -> str:
+        return str(self._experience.currentData() or "beginner")
+
+    def _browse_output_dir(self):
+        path = QFileDialog.getExistingDirectory(self, "Select output directory")
+        if path:
+            self._output_dir.setText(path)
+
+    def focus_output_directory(self):
+        self._output_dir.setFocus()
+
 
 # ── Onboarding Dialog ──────────────────────────────────────────────────────────
 
@@ -449,6 +707,7 @@ class OnboardingWizard(QDialog):
         self.setWindowTitle("Welcome to Slunder Studio")
         self.setMinimumSize(700, 520)
         self.setModal(True)
+        self._model_handoff = None
 
         t = ThemeEngine.get_colors()
         self.setStyleSheet(f"background: {t['background']};")
@@ -463,6 +722,7 @@ class OnboardingWizard(QDialog):
         self._system = SystemCheckPage()
         self._models = ModelGuidePage()
         self._quickstart = QuickStartPage()
+        self._system.remediation_requested.connect(self._handle_system_remediation)
 
         self._pages.addWidget(self._welcome)
         self._pages.addWidget(self._system)
@@ -555,6 +815,15 @@ class OnboardingWizard(QDialog):
             self._pages.setCurrentIndex(idx - 1)
         self._update_nav()
 
+    def _handle_system_remediation(self, key: str):
+        if key == "disk":
+            self._pages.setCurrentWidget(self._quickstart)
+            self._quickstart.focus_output_directory()
+        elif key in {"gpu", "ram"}:
+            self._pages.setCurrentWidget(self._models)
+            self._models.focus_model_selector()
+        self._update_nav()
+
     def _update_nav(self):
         t = ThemeEngine.get_colors()
         idx = self._pages.currentIndex()
@@ -582,11 +851,39 @@ class OnboardingWizard(QDialog):
 
     def _finish(self):
         from core.settings import Settings
+
         settings = Settings()
+        token = self._models.hf_token()
+        if token and not token.startswith("hf_"):
+            self._pages.setCurrentWidget(self._models)
+            self._models.show_token_error("HuggingFace tokens must begin with hf_...")
+            self._update_nav()
+            return
+        if token:
+            try:
+                settings.set("model_hub.hf_token", token)
+            except Exception as exc:
+                self._pages.setCurrentWidget(self._models)
+                self._models.show_token_error(f"Token could not be saved securely: {exc}")
+                self._update_nav()
+                return
+        self._models.clear_token_error()
+        output_dir = self._quickstart.output_dir()
+        if output_dir:
+            settings.set("general.output_dir", output_dir)
+        settings.set("general.experience_level", self._quickstart.experience_level())
+        model_id = self._models.selected_model_id()
+        action = self._models.selected_model_action()
+        if model_id:
+            self._model_handoff = {"model_id": model_id, "action": action}
         settings.set("general.onboarding_complete", True)
         settings.set("general.onboarding_skipped", False)
         self.completed.emit()
         self.accept()
+
+    def model_handoff(self) -> Optional[dict]:
+        """Return the selected Model Hub handoff after an accepted wizard."""
+        return dict(self._model_handoff) if self._model_handoff else None
 
     def _skip(self):
         from core.settings import Settings

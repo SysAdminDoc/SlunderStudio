@@ -632,6 +632,11 @@ class MainWindow(QMainWindow):
             self._page_title.setText(tr(title))
             self._page_subtitle.setText(tr(subtitle))
 
+    def open_model_hub_for_onboarding(self, model_id: str, action: str = "open") -> bool:
+        """Open Model Hub with the first-run model choice already selected."""
+        self._sidebar.select_page(8)
+        return self._model_hub.prepare_onboarding_model(model_id, action)
+
     def _on_project_opened(self, _project_id: str):
         from core.project import get_project_manager
 

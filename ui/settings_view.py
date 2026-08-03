@@ -7,9 +7,9 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QScrollArea, QComboBox, QLineEdit, QPushButton,
     QSpinBox, QDoubleSpinBox, QCheckBox, QSlider, QListWidget,
-    QFileDialog, QGroupBox, QFormLayout, QTabWidget,
+    QFileDialog, QGroupBox, QFormLayout, QTabWidget, QDialog,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
@@ -857,7 +857,16 @@ class SettingsView(QWidget):
         from ui.onboarding import OnboardingWizard
 
         wizard = OnboardingWizard(self)
-        wizard.exec()
+        if wizard.exec() == QDialog.DialogCode.Accepted:
+            handoff = wizard.model_handoff()
+            window = self.window()
+            if handoff and hasattr(window, "open_model_hub_for_onboarding"):
+                QTimer.singleShot(
+                    0,
+                    lambda value=handoff: window.open_model_hub_for_onboarding(
+                        value["model_id"], value["action"]
+                    ),
+                )
 
     def _refresh_credential_status(self):
         """Name the credential service in use, or state plainly that there is none."""

@@ -1,5 +1,6 @@
 import os
 import inspect
+import sys
 import tempfile
 import unittest
 from contextlib import ExitStack
@@ -9,14 +10,21 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QHBoxLayout
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QPushButton
 
 from core.audio_export import configured_export_settings
 from core.device import configured_cuda_index, configured_torch_device
 from core.engine_contract import ModelReadiness
 from core.model_manager import ModelInfo, ModelManager, ModelCategory
 from core.settings import Settings, get_configured_output_dir
-from ui.onboarding import OnboardingWizard, SystemCheckPage, model_readiness_label
+from ui.model_hub import ModelHubView
+from ui.onboarding import (
+    OnboardingWizard,
+    SystemCheckPage,
+    check_system,
+    model_readiness_label,
+    run_dependency_setup,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -170,6 +178,120 @@ class SettingsRuntimeTests(unittest.TestCase):
         page._clear_check_rows()
         self.assertEqual(0, page._checks_layout.count())
         page.deleteLater()
+
+    def test_onboarding_saves_preferences_and_carries_model_handoff(self):
+        app = QApplication.instance() or QApplication([])
+        del app
+        core_info = ModelInfo(
+            model_id="core-fixture",
+            name="Core Fixture",
+            description="fixture",
+            category=ModelCategory.SONG_FORGE,
+            vram_gb=2.0,
+            disk_gb=1.5,
+            license="MIT",
+            source="fixture/source",
+            loader_module="fixture.engine",
+            loader_fn="load_model",
+            is_core=True,
+        )
+        readiness = ModelReadiness(
+            "core-fixture", False, False, False, False, "not_downloaded"
+        )
+        manager = SimpleNamespace(
+            get_core_models=lambda: [core_info],
+            get_model_readiness=lambda _model_id: readiness,
+            is_offline=False,
+            _get_hf_token=lambda: None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with self._isolated_settings(Path(tmp)), mock.patch(
+                "ui.onboarding.ModelManager", return_value=manager
+            ):
+                settings = Settings()
+                wizard = OnboardingWizard()
+                wizard._models._model_action.setCurrentIndex(1)
+                wizard._quickstart._output_dir.setText(str(Path(tmp) / "renders"))
+                advanced = wizard._quickstart._experience.findData("advanced")
+                wizard._quickstart._experience.setCurrentIndex(advanced)
+
+                wizard._finish()
+
+                self.assertEqual(
+                    {"model_id": "core-fixture", "action": "download"},
+                    wizard.model_handoff(),
+                )
+                self.assertEqual(str(Path(tmp) / "renders"), settings.get("general.output_dir"))
+                self.assertEqual("advanced", settings.get("general.experience_level"))
+                self.assertTrue(settings.get("general.onboarding_complete"))
+                wizard.deleteLater()
+
+    def test_failed_system_rows_offer_remediation_actions(self):
+        app = QApplication.instance() or QApplication([])
+        del app
+        page = SystemCheckPage()
+        requested = []
+        page.remediation_requested.connect(requested.append)
+        page._display_checks(
+            {
+                "python": "3.9.0",
+                "python_ok": False,
+                "deps_ok": False,
+                "deps_missing": ["torch"],
+                "setup_command": "python -m pip install -r requirements.txt",
+                "os": "Windows",
+                "arch": "AMD64",
+                "cuda": False,
+                "gpu_name": "None detected",
+                "vram_gb": 0,
+                "ram_gb": 4.0,
+                "ram_ok": False,
+                "disk_free_gb": 2.0,
+                "disk_ok": False,
+            }
+        )
+        buttons = page.findChildren(QPushButton, "remediationButton")
+        self.assertEqual(5, len(buttons))
+        gpu_button = next(button for button in buttons if button.text() == "Choose a model")
+        gpu_button.click()
+        self.assertEqual(["gpu"], requested)
+        page.deleteLater()
+
+    def test_dependency_setup_uses_the_project_requirements_file(self):
+        result = SimpleNamespace(returncode=0, stdout="", stderr="")
+        with mock.patch("ui.onboarding.subprocess.run", return_value=result) as run:
+            message = run_dependency_setup()
+
+        command = run.call_args.args[0]
+        self.assertEqual(["-m", "pip", "install", "-r"], command[1:5])
+        self.assertEqual(sys.executable, command[0])
+        self.assertIn("installed", message.lower())
+
+    def test_system_check_failures_do_not_report_false_green(self):
+        with mock.patch(
+            "core.deps.dependency_status",
+            side_effect=RuntimeError("probe failed"),
+        ):
+            checks = check_system()
+
+        self.assertFalse(checks["deps_ok"])
+        self.assertTrue(checks["deps_missing"])
+
+    def test_model_hub_accepts_an_onboarding_selection(self):
+        view = ModelHubView.__new__(ModelHubView)
+        card = mock.Mock()
+        card.info = SimpleNamespace(name="Core Fixture")
+        view._cards = {"core-fixture": card}
+        view._search = mock.Mock()
+        view._category_filter = mock.Mock()
+        view._downloaded_only = mock.Mock()
+        view._filter_cards = mock.Mock()
+
+        self.assertTrue(view.prepare_onboarding_model("core-fixture", "open"))
+        view._search.clear.assert_called_once_with()
+        view._filter_cards.assert_called_once_with()
+        card.setVisible.assert_called_once_with(True)
+        self.assertFalse(view.prepare_onboarding_model("missing", "open"))
 
 
 if __name__ == "__main__":

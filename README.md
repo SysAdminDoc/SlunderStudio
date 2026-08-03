@@ -153,8 +153,10 @@ Settings are stored in `~/.config/SlunderStudio/` (Linux/macOS) or `%APPDATA%/Sl
 The configured output directory is used by generated artifacts and renders; the default export
 format, sample rate, bit depth, GPU index, MIDI tempo, Song Forge defaults, and mastering stage
 switches are consumed by their respective runtime paths. The model-cache limit is an admission
-cap: downloads that would exceed it are refused with an actionable message. Onboarding can be
-reopened from Settings after the first run.
+cap: downloads that would exceed it are refused with an actionable message. First-run onboarding
+can save the output folder and experience level, securely collect a HuggingFace token before a
+gated download, and carry a selected core model into Model Hub for review or download. It can be
+reopened from Settings after the first run; choosing Skip leaves setup incomplete.
 
 ```
 SlunderStudio/
