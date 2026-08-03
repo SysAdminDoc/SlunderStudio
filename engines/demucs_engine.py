@@ -12,7 +12,8 @@ from pathlib import Path
 import numpy as np
 
 from core.provenance import sidecar_path_for, write_provenance_sidecar
-from core.settings import get_config_dir
+from core.settings import get_configured_output_dir
+from core.device import configured_torch_device
 
 
 STEM_NAMES = ["drums", "bass", "other", "vocals"]
@@ -138,7 +139,7 @@ class DemucsEngine:
         self._model = None
         self._model_name: Optional[str] = None
         self._device = "cpu"
-        self._output_dir = os.path.join(get_config_dir(), "generations", "stems")
+        self._output_dir = os.path.join(get_configured_output_dir(), "generations", "stems")
         os.makedirs(self._output_dir, exist_ok=True)
 
     @property
@@ -171,10 +172,8 @@ class DemucsEngine:
             from demucs.pretrained import get_model
             from demucs.apply import BagOfModels
 
-            if device == "auto":
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            elif device == "cuda" and not torch.cuda.is_available():
-                device = "cpu"
+            if device in {"auto", "cuda"}:
+                device = configured_torch_device(torch)
 
             if progress_callback:
                 progress_callback(0.1, f"Loading {model_name}...")

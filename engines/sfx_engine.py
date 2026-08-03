@@ -11,7 +11,8 @@ from dataclasses import asdict, dataclass, field
 import numpy as np
 
 from core.provenance import write_provenance_sidecar
-from core.settings import get_config_dir
+from core.settings import get_configured_output_dir
+from core.device import configured_torch_device
 
 
 @dataclass
@@ -108,7 +109,7 @@ class SFXEngine:
         self._model = None
         self._model_config = None
         self._device = "cpu"
-        self._output_dir = os.path.join(get_config_dir(), "generations", "sfx")
+        self._output_dir = os.path.join(get_configured_output_dir(), "generations", "sfx")
         os.makedirs(self._output_dir, exist_ok=True)
 
     @property
@@ -134,10 +135,8 @@ class SFXEngine:
             import torch
             from stable_audio_tools import get_pretrained_model
 
-            if device == "auto":
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            elif device == "cuda" and not torch.cuda.is_available():
-                device = "cpu"
+            if device in {"auto", "cuda"}:
+                device = configured_torch_device(torch)
 
             if progress_callback:
                 progress_callback(0.1, "Loading Stable Audio Open...")

@@ -97,6 +97,31 @@ class ExportSettings:
         return {k: str(v) for k, v in tags.items() if str(v).strip()}
 
 
+def configured_export_settings() -> ExportSettings:
+    """Build export defaults from Settings without importing it at module load."""
+    from core.settings import Settings
+
+    settings = Settings()
+    export_format = str(settings.get("general.audio_format", "wav") or "wav").lower()
+    if export_format not in DELIVERY_FORMATS:
+        export_format = "wav"
+    try:
+        sample_rate = int(settings.get("general.sample_rate", 48000))
+    except (TypeError, ValueError):
+        sample_rate = 48000
+    try:
+        bit_depth = int(settings.get("general.bit_depth", 24))
+    except (TypeError, ValueError):
+        bit_depth = 24
+    if bit_depth not in {16, 24, 32}:
+        bit_depth = 24
+    return ExportSettings(
+        format=export_format,
+        sample_rate=sample_rate,
+        bit_depth=bit_depth,
+    )
+
+
 @dataclass(frozen=True)
 class CodecAvailability:
     """Whether a delivery format can actually be written right now."""
@@ -443,7 +468,7 @@ def export_audio(
     Returns final output path.
     """
     if settings is None:
-        settings = ExportSettings()
+        settings = configured_export_settings()
 
     output_path = str(output_path)
     source_path = str(source_path)
@@ -664,7 +689,7 @@ def export_from_numpy(
 ) -> str:
     """Export a numpy audio array directly to file."""
     if settings is None:
-        settings = ExportSettings()
+        settings = configured_export_settings()
 
     # Write temp WAV then use main export
     temp_path = output_path + ".tmp_src.wav"

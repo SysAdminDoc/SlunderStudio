@@ -150,6 +150,11 @@ GPU acceleration requires PyTorch with CUDA support. The app runs on CPU without
 ## Configuration
 
 Settings are stored in `~/.config/SlunderStudio/` (Linux/macOS) or `%APPDATA%/SlunderStudio/` (Windows).
+The configured output directory is used by generated artifacts and renders; the default export
+format, sample rate, bit depth, GPU index, MIDI tempo, Song Forge defaults, and mastering stage
+switches are consumed by their respective runtime paths. The model-cache limit is an admission
+cap: downloads that would exceed it are refused with an actionable message. Onboarding can be
+reopened from Settings after the first run.
 
 ```
 SlunderStudio/
@@ -215,6 +220,7 @@ SlunderStudio/
 │   ├── midi_utils.py           # MIDI I/O (pretty_midi wrapper)
 │   ├── model_manager.py        # HuggingFace model downloads
 │   ├── disclosure.py           # AI disclosure and human-authorship reports
+│   ├── device.py               # Configured CUDA/MPS/CPU device selection
 │   ├── provenance.py           # Generation sidecars and project metadata
 │   ├── project.py              # Project save/load/versioning
 │   ├── settings.py             # Persistent settings

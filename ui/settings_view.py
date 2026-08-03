@@ -124,6 +124,12 @@ class SettingsView(QWidget):
         self._open_dir_btn.clicked.connect(self._open_config_dir)
         bottom.addWidget(self._open_dir_btn)
 
+        self._onboarding_btn = QPushButton(tr("settings.actions.open_onboarding"))
+        self._onboarding_btn.setObjectName("secondaryBtn")
+        self._onboarding_btn.setFixedHeight(36)
+        self._onboarding_btn.clicked.connect(self._open_onboarding)
+        bottom.addWidget(self._onboarding_btn)
+
         layout.addLayout(bottom)
 
     def _build_simple_tab(self) -> QWidget:
@@ -749,6 +755,7 @@ class SettingsView(QWidget):
             idx = self._ui_locale_combo.findData(ui_locale)
             if idx >= 0:
                 self._ui_locale_combo.setCurrentIndex(idx)
+            self._tabs.setCurrentIndex(1 if s.get("general.ui_mode", "simple") == "advanced" else 0)
 
             # Advanced tab
             model_id = s.get("lyrics.model_id", "llama-3.1-8b-q4")
@@ -770,7 +777,9 @@ class SettingsView(QWidget):
             self._default_duration.setValue(s.get("song_forge.default_duration", 180))
             self._default_bpm.setValue(s.get("midi_studio.default_bpm", 120))
 
-            target = s.get("production.mastering_target", "spotify")
+            target = s.get("production.mastering_target", "streaming")
+            if target == "spotify":
+                target = "streaming"
             for i in range(self._mastering_target.count()):
                 if self._mastering_target.itemData(i) == target:
                     self._mastering_target.setCurrentIndex(i)
@@ -842,6 +851,13 @@ class SettingsView(QWidget):
         self._update_repair_status()
         if self.toast_mgr:
             self.toast_mgr.warning(tr("settings.messages.reset"))
+
+    def _open_onboarding(self):
+        """Reopen onboarding without changing completion until it is accepted."""
+        from ui.onboarding import OnboardingWizard
+
+        wizard = OnboardingWizard(self)
+        wizard.exec()
 
     def _refresh_credential_status(self):
         """Name the credential service in use, or state plainly that there is none."""
@@ -918,6 +934,7 @@ class SettingsView(QWidget):
                 (self._health_private_inputs, "Include private job inputs", "Includes job prompt and input fields in the health report."),
                 (self._export_health_btn, "Export health report", "Saves a redacted diagnostics bundle."),
                 (self._open_dir_btn, "Open config folder", "Opens the settings folder in the file manager."),
+                (self._onboarding_btn, "Open onboarding", "Reopens the first-run setup wizard."),
             ],
             tab_order=[
                 self._tabs,
@@ -953,6 +970,7 @@ class SettingsView(QWidget):
                 self._health_private_inputs,
                 self._export_health_btn,
                 self._open_dir_btn,
+                self._onboarding_btn,
             ],
         )
 

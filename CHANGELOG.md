@@ -24,6 +24,13 @@ All notable changes to SlunderStudio will be documented in this file.
   seed/duration/structure contracts, latency and RAM/VRAM sampling, model/runtime provenance,
   artifact hashes, loudness/true-peak measurements, failure capture, and a blinded listener
   rubric. FAD is explicitly informational and never a release gate.
+- Connected Settings defaults to the live Song Forge, MIDI, Mixer, export, model-cache, GPU,
+  and generation-output paths. Mastering EQ/compression switches now change the DSP chain, and
+  model downloads refuse to exceed the configured cache limit instead of promising cleanup that
+  does not exist.
+- Fixed onboarding dismissal so it never completes setup, added an explicit distinguishable Skip
+  state and a Settings reopen action, cleared repeated system-check rows, and showed per-model
+  installed/loadable/loaded/offline/error readiness with disk and VRAM estimates.
 
 ## [v0.1.31] - 2026-08-02
 

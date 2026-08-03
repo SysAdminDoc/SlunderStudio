@@ -11,7 +11,8 @@ from pathlib import Path
 from dataclasses import asdict, dataclass, field, replace
 
 from core.provenance import write_provenance_sidecar
-from core.settings import get_config_dir
+from core.settings import get_configured_output_dir
+from core.device import configured_torch_device
 from core.ace_step_contract import (
     ACE_STEP_ADAPTER,
     ACE_STEP_APP_TASKS,
@@ -597,7 +598,7 @@ class ACEStepEngine:
         self._pipeline = None
         self._model_loaded = False
         self._device = "cpu"
-        self._output_dir = get_config_dir() / "generations" / "song_forge"
+        self._output_dir = get_configured_output_dir() / "generations" / "song_forge"
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
     @property
@@ -628,7 +629,7 @@ class ACEStepEngine:
         assert_safe_transformers_snapshot(checkpoint_dir)
 
         if torch.cuda.is_available():
-            self._device = "cuda"
+            self._device = configured_torch_device(torch)
             dtype = (
                 torch.bfloat16
                 if getattr(torch.cuda, "is_bf16_supported", lambda: False)()
@@ -650,7 +651,7 @@ class ACEStepEngine:
             use_safetensors=True,
             torch_dtype=dtype,
         )
-        if self._device == "cuda" and hasattr(
+        if self._device.startswith("cuda") and hasattr(
             self._pipeline, "enable_model_cpu_offload"
         ):
             self._pipeline.enable_model_cpu_offload()

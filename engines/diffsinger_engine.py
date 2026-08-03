@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 import numpy as np
 
 from core.provenance import file_sha256, write_provenance_sidecar
-from core.settings import get_config_dir
+from core.settings import get_configured_output_dir
 from core.voice_bank import VoiceProfile
 
 
@@ -71,7 +71,7 @@ class DiffSingerEngine:
         self._hop_size = 0
         self._phoneme_dictionary: Optional[dict[str, int]] = None
         self._phonemizer = None
-        self._output_dir = os.path.join(get_config_dir(), "generations", "vocals")
+        self._output_dir = os.path.join(get_configured_output_dir(), "generations", "vocals")
         os.makedirs(self._output_dir, exist_ok=True)
 
     @property

@@ -49,6 +49,7 @@ DEFAULTS = {
         "ui_locale": "en",
         "experience_level": "beginner",
         "onboarding_complete": False,
+        "onboarding_skipped": False,
         "auto_save_interval": 60,
         "auto_save_enabled": True,
         "max_project_versions": 20,
@@ -106,7 +107,7 @@ DEFAULTS = {
         "autotune_strength": 0.75,
     },
     "production": {
-        "mastering_target": "spotify",
+        "mastering_target": "streaming",
         "mastering_auto_eq": True,
         "mastering_auto_compress": True,
         "effects_presets_dir": "",
@@ -150,6 +151,16 @@ def get_default_output_dir() -> Path:
     music_dir = Path.home() / "Music" / APP_NAME
     music_dir.mkdir(parents=True, exist_ok=True)
     return music_dir
+
+
+def get_configured_output_dir() -> Path:
+    """Return the user's configured render root, creating it when needed."""
+    configured = str(Settings().get("general.output_dir", "") or "").strip()
+    output_dir = Path(configured) if configured else get_default_output_dir()
+    if not output_dir.is_absolute():
+        output_dir = get_default_output_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
 
 
 def get_default_cache_dir() -> Path:
@@ -610,6 +621,11 @@ class Settings:
             messages.append(
                 f"Settings schema v{schema_version} is newer than supported v{SETTINGS_SCHEMA_VERSION}; preserved compatible keys."
             )
+        production = data.get("production")
+        if isinstance(production, dict) and production.get("mastering_target") == "spotify":
+            production["mastering_target"] = "streaming"
+            messages.append("Migrated the legacy Spotify mastering target key to streaming.")
+            migrated = True
 
         if data.get("schema_version") != SETTINGS_SCHEMA_VERSION:
             data["schema_version"] = SETTINGS_SCHEMA_VERSION

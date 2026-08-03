@@ -12,7 +12,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from core.provenance import sidecar_path_for
-from core.settings import get_config_dir
+from core.settings import get_configured_output_dir
+from core.device import configured_torch_device
 from core.midi_utils import MidiData, TrackData, NoteData
 from core.model_security import assert_safe_transformers_snapshot
 
@@ -646,7 +647,7 @@ class MidiLLMEngine:
         self.tokenizer = None
         self._model_id: Optional[str] = None
         self._device = "cpu"
-        self._generation_dir = os.path.join(get_config_dir(), "generations", "midi_studio")
+        self._generation_dir = os.path.join(get_configured_output_dir(), "generations", "midi_studio")
         os.makedirs(self._generation_dir, exist_ok=True)
 
     @property
@@ -676,10 +677,8 @@ class MidiLLMEngine:
             from transformers import AutoModelForCausalLM, AutoTokenizer
             from core.model_manager import ModelSecurityError
 
-            if device == "auto":
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            elif device == "cuda" and not torch.cuda.is_available():
-                device = "cpu"
+            if device in {"auto", "cuda"}:
+                device = configured_torch_device(torch)
 
             local_path = Path(model_path)
             if not local_files_only or not local_path.is_absolute() or not local_path.is_dir():

@@ -191,7 +191,7 @@
     "cache": {
       "group": "Cache and Storage",
       "max_size": "Max Cache Size",
-      "max_size_help": "Auto-cleanup old generations beyond this limit",
+      "max_size_help": "Refuse new model downloads when the cache would exceed this limit",
       "autosave_interval": "Auto-Save Interval",
       "autosave_enabled": "Autosave the open project on the interval",
       "autosave": "Autosave",
@@ -223,6 +223,7 @@
       "include_private_inputs": "Include private job inputs",
       "export_health": "Export Health Report",
       "open_config": "Open Config Folder",
+      "open_onboarding": "Open Onboarding",
       "refresh": "Refresh"
     },
     "dialogs": {

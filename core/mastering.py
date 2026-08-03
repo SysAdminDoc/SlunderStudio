@@ -37,6 +37,9 @@ class MasteringPreset:
     ms_side_gain_db: float = 0.0    # Side channel trim
     # Loudness
     target_lufs: float = -14.0      # integrated loudness target
+    # Settings-controlled stage switches. Defaults preserve the full chain.
+    auto_eq: bool = True
+    auto_compress: bool = True
 
 
 @dataclass(frozen=True)
@@ -924,21 +927,25 @@ def master_audio(audio: np.ndarray, sr: int,
             progress_callback(0.1, "Applying EQ...")
 
         # EQ
-        processed = apply_eq_shelf(audio, sr, preset.low_shelf_freq,
-                                   preset.low_shelf_gain, "low")
-        processed = apply_eq_shelf(processed, sr, preset.high_shelf_freq,
-                                   preset.high_shelf_gain, "high")
+        if getattr(preset, "auto_eq", True):
+            processed = apply_eq_shelf(audio, sr, preset.low_shelf_freq,
+                                       preset.low_shelf_gain, "low")
+            processed = apply_eq_shelf(processed, sr, preset.high_shelf_freq,
+                                       preset.high_shelf_gain, "high")
+        else:
+            processed = audio.copy()
 
         if progress_callback:
             progress_callback(0.3, "Applying compression...")
 
         # Compression
-        processed = apply_compression(
-            processed, sr,
-            preset.comp_threshold, preset.comp_ratio,
-            preset.comp_attack, preset.comp_release,
-            preset.comp_makeup,
-        )
+        if getattr(preset, "auto_compress", True):
+            processed = apply_compression(
+                processed, sr,
+                preset.comp_threshold, preset.comp_ratio,
+                preset.comp_attack, preset.comp_release,
+                preset.comp_makeup,
+            )
 
         if progress_callback:
             progress_callback(0.5, "Adjusting stereo width...")

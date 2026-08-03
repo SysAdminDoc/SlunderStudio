@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QObject, Signal
 
 from core.settings import Settings, get_config_dir
+from core.device import configured_cuda_index
 from core.trash import TrashEntry, TrashError, TrashManager
 from core.model_security import ModelSecurityError
 from core.engine_contract import (
@@ -528,13 +529,15 @@ def get_gpu_info() -> dict:
     try:
         torch = _get_torch_module()
         if torch is not None and torch.cuda.is_available():
-            props = torch.cuda.get_device_properties(0)
+            index = configured_cuda_index(torch)
+            props = torch.cuda.get_device_properties(index)
             total = props.total_memory / (1024**3)
-            reserved = torch.cuda.memory_reserved(0) / (1024**3)
-            allocated = torch.cuda.memory_allocated(0) / (1024**3)
+            reserved = torch.cuda.memory_reserved(index) / (1024**3)
+            allocated = torch.cuda.memory_allocated(index) / (1024**3)
             return {
                 "available": True,
                 "name": props.name,
+                "index": index,
                 "total_gb": round(total, 1),
                 "used_gb": round(allocated, 1),
                 "reserved_gb": round(reserved, 1),
@@ -1319,6 +1322,13 @@ class ModelManager(QObject):
         base = Path(self._settings.get("model_hub.cache_dir", str(get_config_dir() / "models")))
         return base / model_id.replace("/", "--")
 
+    def get_cache_limit_gb(self) -> float:
+        """Return the configured model-cache admission limit, or zero for unlimited."""
+        try:
+            return max(0.0, float(self._settings.get("general.max_cache_gb", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+
     def download_model(self, model_id: str, progress_cb=None, speed_cb=None,
                        downloaded_cb=None, cancel_event=None):
         """
@@ -1335,6 +1345,17 @@ class ModelManager(QObject):
         if info is None:
             raise ValueError(f"Unknown model: {model_id}")
         self._validate_registry_revision(info)
+
+        limit = self.get_cache_limit_gb()
+        if limit and not self._is_model_cached(model_id):
+            used = self.get_total_disk_usage()
+            if used + info.disk_gb > limit:
+                raise RuntimeError(
+                    f"Model cache limit is {limit:.1f} GB; {info.name} needs about "
+                    f"{info.disk_gb:.1f} GB and {used:.1f} GB is already used. "
+                    "Increase the limit in Settings > Advanced > Cache or remove "
+                    "an installed model from Model Hub."
+                )
 
         with self._state_lock:
             if model_id in self._downloads_in_flight:

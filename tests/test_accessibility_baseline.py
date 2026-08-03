@@ -171,6 +171,7 @@ class AccessibilityBaselineTests(unittest.TestCase):
                             "_export_health_btn",
                             "_reset_btn",
                             "_open_dir_btn",
+                            "_onboarding_btn",
                         ],
                     ),
                 ]

@@ -16,6 +16,7 @@ from PySide6.QtCore import Signal, Qt
 
 from core.workers import InferenceWorker
 from core.audio_engine import AudioEngine, decode_playback_file
+from core.settings import Settings
 from engines.style_tags import StyleTagDB, CATEGORIES
 from ui.waveform_widget import WaveformWidget
 from ui.batch_view import BatchView
@@ -196,7 +197,23 @@ class SongForgeView(QWidget):
         self._playback_token = 0
         self._seed_explore_params: list[dict] = []
         self._routed_reference_context_tags: list[str] = []
+        self._settings = Settings()
         self._setup_ui()
+        self._settings.on_change(self._on_settings_change)
+
+    def _on_settings_change(self, key: str, value, _old_value):
+        """Apply changed Song Forge defaults to the live generation controls."""
+        controls = {
+            "song_forge.timestep_shift": self._shift_spin,
+            "song_forge.inference_steps": self._steps_spin,
+            "song_forge.batch_count": self._batch_spin,
+            "song_forge.default_duration": self._duration_spin,
+        }
+        control = controls.get(key)
+        if control is not None and not self._is_generating:
+            control.setValue(value)
+        elif key == "general.experience_level":
+            self._mode_tabs.setCurrentIndex(1 if value == "advanced" else 0)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -273,14 +290,18 @@ class SongForgeView(QWidget):
         pg.addWidget(QLabel("Duration (s):"), 0, 0)
         self._duration_spin = QDoubleSpinBox()
         self._duration_spin.setRange(10, 600)
-        self._duration_spin.setValue(60)
+        self._duration_spin.setValue(
+            float(self._settings.get("song_forge.default_duration", 180))
+        )
         self._duration_spin.setSuffix("s")
         pg.addWidget(self._duration_spin, 0, 1)
 
         pg.addWidget(QLabel("Timestep Shift:"), 0, 2)
         self._shift_spin = QDoubleSpinBox()
         self._shift_spin.setRange(1.0, 3.0)
-        self._shift_spin.setValue(3.0)
+        self._shift_spin.setValue(
+            float(self._settings.get("song_forge.timestep_shift", 3.0))
+        )
         self._shift_spin.setSingleStep(1.0)
         self._shift_spin.setDecimals(1)
         self._shift_spin.setToolTip(
@@ -291,7 +312,9 @@ class SongForgeView(QWidget):
         pg.addWidget(QLabel("Steps:"), 1, 0)
         self._steps_spin = QSpinBox()
         self._steps_spin.setRange(1, 100)
-        self._steps_spin.setValue(8)
+        self._steps_spin.setValue(
+            int(self._settings.get("song_forge.inference_steps", 8))
+        )
         pg.addWidget(self._steps_spin, 1, 1)
 
         pg.addWidget(QLabel("Seed:"), 1, 2)
@@ -303,8 +326,8 @@ class SongForgeView(QWidget):
 
         pg.addWidget(QLabel("Batch:"), 2, 0)
         self._batch_spin = QSpinBox()
-        self._batch_spin.setRange(1, 8)
-        self._batch_spin.setValue(1)
+        self._batch_spin.setRange(1, 16)
+        self._batch_spin.setValue(int(self._settings.get("song_forge.batch_count", 4)))
         pg.addWidget(self._batch_spin, 2, 1)
 
         self._long_form_check = QCheckBox("Long-form stitching")
@@ -404,6 +427,9 @@ class SongForgeView(QWidget):
         adv_layout.addWidget(adv_scroll)
 
         self._mode_tabs.addTab(adv_page, "Advanced")
+        self._mode_tabs.setCurrentIndex(
+            1 if self._settings.get("general.experience_level", "beginner") == "advanced" else 0
+        )
 
         left_layout.addWidget(self._mode_tabs)
 

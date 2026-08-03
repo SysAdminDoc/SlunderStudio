@@ -77,11 +77,15 @@
       "top_p": "Top P",
       "max_tokens": "الحد الأقصى للرموز"
     },
+    "cache": {
+      "max_size_help": "يمنع تنزيل نماذج جديدة عند تجاوز ذاكرة التخزين هذا الحد"
+    },
     "actions": {
       "reset_defaults": "إعادة ضبط كل الإعدادات",
       "include_private_inputs": "تضمين مدخلات المهام الخاصة",
       "export_health": "تصدير تقرير الحالة",
-      "open_config": "فتح مجلد الإعدادات"
+      "open_config": "فتح مجلد الإعدادات",
+      "open_onboarding": "فتح الإعداد الأولي"
     },
     "dialogs": { "export_health": "تصدير تقرير الحالة" },
     "messages": {

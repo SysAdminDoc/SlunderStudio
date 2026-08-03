@@ -16,6 +16,9 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
 
 from core.settings import APP_VERSION
+from core.device import configured_cuda_index
+from core.engine_contract import ModelReadiness
+from core.model_manager import ModelManager
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
@@ -33,6 +36,7 @@ def check_system() -> dict:
         "python_ok": sys.version_info >= (3, 10),
         "arch": platform.machine(),
         "cpu": platform.processor() or "Unknown",
+        "setup_command": f'"{sys.executable}" -m pip install -r requirements.txt',
     }
 
     # RAM
@@ -63,9 +67,11 @@ def check_system() -> dict:
         import torch
         checks["cuda"] = torch.cuda.is_available()
         if checks["cuda"]:
-            checks["gpu_name"] = torch.cuda.get_device_name(0)
+            gpu_index = configured_cuda_index(torch)
+            checks["gpu_index"] = gpu_index
+            checks["gpu_name"] = torch.cuda.get_device_name(gpu_index)
             checks["vram_gb"] = round(
-                torch.cuda.get_device_properties(0).total_memory / (1024**3), 1
+                torch.cuda.get_device_properties(gpu_index).total_memory / (1024**3), 1
             )
     except (ImportError, RuntimeError, AttributeError):
         pass
@@ -85,6 +91,21 @@ def check_system() -> dict:
 
 
 # ── Wizard Pages ───────────────────────────────────────────────────────────────
+
+
+def model_readiness_label(readiness: ModelReadiness, offline: bool = False) -> str:
+    """Map lifecycle evidence to the state shown during onboarding."""
+    if readiness.active:
+        return "loaded"
+    if readiness.status == "error":
+        return "error"
+    if offline and not readiness.installed:
+        return "offline"
+    if readiness.installed and readiness.loadable:
+        return "downloaded / loadable"
+    if readiness.installed:
+        return "installed / not loadable"
+    return "not downloaded"
 
 class WelcomePage(QWidget):
     def __init__(self, parent=None):
@@ -159,6 +180,7 @@ class SystemCheckPage(QWidget):
     def run_checks(self):
         if self._check_worker is not None and self._check_worker.isRunning():
             return
+        self._clear_check_rows()
         self._summary.setText("Checking Python, dependencies, hardware, and disk...")
         worker = InferenceWorker(check_system)
         self._check_workers.add(worker)
@@ -166,6 +188,20 @@ class SystemCheckPage(QWidget):
         worker.finished.connect(self._on_checks_finished)
         worker.error.connect(self._on_checks_error)
         worker.start()
+
+    def _clear_check_rows(self):
+        """Remove the previous result rows before rendering a fresh check."""
+        while self._checks_layout.count():
+            item = self._checks_layout.takeAt(0)
+            child_layout = item.layout()
+            if child_layout is not None:
+                while child_layout.count():
+                    child = child_layout.takeAt(0)
+                    if child.widget() is not None:
+                        child.widget().deleteLater()
+                child_layout.deleteLater()
+            elif item.widget() is not None:
+                item.widget().deleteLater()
 
     def _release_check_worker_later(self, worker):
         if worker is None:
@@ -198,7 +234,7 @@ class SystemCheckPage(QWidget):
             ("Dependencies",
              "Ready" if checks["deps_ok"] else ", ".join(checks["deps_missing"]),
              checks["deps_ok"],
-             "" if checks["deps_ok"] else "Run setup command from launch diagnostics"),
+             "" if checks["deps_ok"] else f"Run: {checks['setup_command']}"),
             ("Operating System", f"{checks['os']} {checks['arch']}", True, ""),
             ("GPU / CUDA", checks["gpu_name"],
              checks["cuda"],
@@ -309,9 +345,37 @@ class ModelGuidePage(QWidget):
 
         layout.addWidget(models_frame)
 
+        readiness_frame = QFrame()
+        readiness_frame.setStyleSheet(f"""
+            QFrame {{ background: {t['background']}; border: 1px solid {t['border']};
+                border-radius: 8px; }}
+        """)
+        readiness_layout = QVBoxLayout(readiness_frame)
+        readiness_layout.setContentsMargins(12, 8, 12, 8)
+        readiness_title = QLabel("Runtime readiness")
+        readiness_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        readiness_layout.addWidget(readiness_title)
+        manager = ModelManager()
+        for info_item in manager.get_core_models():
+            readiness = manager.get_model_readiness(info_item.model_id)
+            row = QHBoxLayout()
+            state = QLabel(model_readiness_label(readiness, manager.is_offline))
+            state.setFixedWidth(145)
+            state.setStyleSheet(f"color: {Palette.YELLOW if readiness.status == 'error' else t['text']}; font-size: 10px;")
+            name = QLabel(info_item.name)
+            name.setStyleSheet(f"color: {t['text']}; font-size: 11px; font-weight: bold;")
+            estimate = QLabel(f"{info_item.disk_gb:.1f} GB disk / {info_item.vram_gb:.1f} GB VRAM")
+            estimate.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+            row.addWidget(state)
+            row.addWidget(name, 1)
+            row.addWidget(estimate)
+            readiness_layout.addLayout(row)
+        layout.addWidget(readiness_frame)
+
         note = QLabel(
             "You can skip model downloads now and install them later from Model Hub. "
-            "The app works without models — generation will use built-in fallbacks."
+            "Without a verified active model, generation is unavailable or explicitly labeled DEMO. "
+            "Open Model Hub from the sidebar to download, activate, or repair a model."
         )
         note.setWordWrap(True)
         note.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
@@ -441,6 +505,10 @@ class OnboardingWizard(QDialog):
         self._back_btn.clicked.connect(self._prev_page)
         self._back_btn.setVisible(False)
 
+        self._skip_btn = QPushButton("Skip for now")
+        self._skip_btn.setStyleSheet(f"color: {t['text_secondary']}; border: none; padding: 6px 10px;")
+        self._skip_btn.clicked.connect(self._skip)
+
         self._next_btn = QPushButton("Get Started")
         self._next_btn.setStyleSheet(f"""
             QPushButton {{
@@ -452,6 +520,7 @@ class OnboardingWizard(QDialog):
         """)
         self._next_btn.clicked.connect(self._next_page)
 
+        nav_layout.addWidget(self._skip_btn)
         nav_layout.addWidget(self._back_btn)
         nav_layout.addWidget(self._next_btn)
 
@@ -463,6 +532,7 @@ class OnboardingWizard(QDialog):
             named_controls=[
                 (self._pages, "Onboarding pages", "Switches between onboarding steps."),
                 (self._back_btn, "Back in onboarding", "Returns to the previous onboarding step."),
+                (self._skip_btn, "Skip onboarding", "Leaves onboarding incomplete so it can be reopened later."),
                 (self._next_btn, "Continue onboarding", "Advances to the next onboarding step."),
             ],
         )
@@ -505,6 +575,7 @@ class OnboardingWizard(QDialog):
             "Onboarding wizard",
             named_controls=[
                 (self._back_btn, "Back in onboarding", "Returns to the previous onboarding step."),
+                (self._skip_btn, "Skip onboarding", "Leaves onboarding incomplete so it can be reopened later."),
                 (self._next_btn, "Continue onboarding", "Advances to the next onboarding step."),
             ],
         )
@@ -513,5 +584,12 @@ class OnboardingWizard(QDialog):
         from core.settings import Settings
         settings = Settings()
         settings.set("general.onboarding_complete", True)
+        settings.set("general.onboarding_skipped", False)
         self.completed.emit()
         self.accept()
+
+    def _skip(self):
+        from core.settings import Settings
+
+        Settings().set("general.onboarding_skipped", True)
+        self.reject()

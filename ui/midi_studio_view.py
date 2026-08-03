@@ -32,6 +32,7 @@ from core.engine_contract import (
     adapt_engine_result,
 )
 from core.model_manager import ModelManager
+from core.settings import Settings
 from core.provenance import sidecar_path_for
 from core.workers import CancelledJobError, InferenceWorker
 from engines.midi_llm_engine import (
@@ -86,6 +87,7 @@ class MidiStudioView(QWidget):
         self._generation_worker: Optional[InferenceWorker] = None
         self._render_worker: Optional[InferenceWorker] = None
         self._contract_result: Optional[EngineRunResult] = None
+        self._settings = Settings()
 
         t = ThemeEngine.get_colors()
         main_layout = QHBoxLayout(self)
@@ -176,7 +178,7 @@ class MidiStudioView(QWidget):
         tempo_l.setStyleSheet(param_style)
         self._tempo_spin = QSpinBox()
         self._tempo_spin.setRange(40, 300)
-        self._tempo_spin.setValue(120)
+        self._tempo_spin.setValue(int(self._settings.get("midi_studio.default_bpm", 120)))
         self._tempo_spin.setStyleSheet(param_style)
 
         row1.addWidget(key_l)
@@ -446,6 +448,12 @@ class MidiStudioView(QWidget):
                 (self._tabs, "MIDI workspace tabs", "Switches between the piano roll and rendered audio."),
             ],
         )
+        self._settings.on_change(self._on_settings_change)
+
+    def _on_settings_change(self, key: str, value, _old_value):
+        """Apply the configured MIDI default to the live composition form."""
+        if key == "midi_studio.default_bpm" and self._generation_worker is None:
+            self._tempo_spin.setValue(int(value))
 
     # ── Generation ─────────────────────────────────────────────────────────────
 
@@ -774,9 +782,9 @@ class MidiStudioView(QWidget):
 
         import os
         import time as time_mod
-        from core.settings import get_config_dir
+        from core.settings import get_configured_output_dir
 
-        output_dir = os.path.join(get_config_dir(), "generations", "midi_renders")
+        output_dir = os.path.join(get_configured_output_dir(), "generations", "midi_renders")
         os.makedirs(output_dir, exist_ok=True)
         ts = time_mod.strftime("%Y%m%d_%H%M%S")
         output_path = os.path.join(output_dir, f"render_{ts}_{time_mod.time_ns()}.wav")

@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from core.provenance import sidecar_path_for, write_provenance_sidecar
-from core.settings import get_config_dir
+from core.settings import get_config_dir, get_configured_output_dir
 from core.midi_utils import MidiData, save_midi
 
 
@@ -92,7 +92,7 @@ class FluidSynthEngine:
         self._soundfont_id: Optional[int] = None
         self._soundfont_path: Optional[str] = None
         self._settings = RenderSettings()
-        self._render_dir = os.path.join(get_config_dir(), "generations", "midi_renders")
+        self._render_dir = os.path.join(get_configured_output_dir(), "generations", "midi_renders")
         os.makedirs(self._render_dir, exist_ok=True)
 
     @property

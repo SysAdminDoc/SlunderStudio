@@ -18,7 +18,7 @@ import numpy as np
 
 from core.audio_buffers import normalize_channel_layout, resample_audio
 from core.provenance import write_provenance_sidecar
-from core.settings import get_config_dir
+from core.settings import get_config_dir, get_configured_output_dir
 
 
 class PipelineStage(Enum):
@@ -346,7 +346,7 @@ class AIProducer:
     """
 
     def __init__(self):
-        self._output_dir = os.path.join(get_config_dir(), "generations", "ai_producer")
+        self._output_dir = os.path.join(get_configured_output_dir(), "generations", "ai_producer")
         os.makedirs(self._output_dir, exist_ok=True)
         self._current_result: Optional[ProducerResult] = None
 

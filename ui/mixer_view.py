@@ -475,10 +475,11 @@ class MixerView(QWidget):
     ):
         super().__init__(parent)
         self.toast_mgr = toast_mgr
-        if project_sample_rate is None:
-            from core.settings import Settings
+        from core.settings import Settings
 
-            project_sample_rate = Settings().get("general.sample_rate", 48000)
+        self._settings = Settings()
+        if project_sample_rate is None:
+            project_sample_rate = self._settings.get("general.sample_rate", 48000)
         try:
             self._project_sample_rate = validate_sample_rate(project_sample_rate)
         except ValueError:
@@ -636,6 +637,13 @@ class MixerView(QWidget):
             }}
         """)
         self._target_combo.currentIndexChanged.connect(self._on_lufs_target_changed)
+        target_key = self._settings.get("production.mastering_target", "streaming")
+        target_key = "streaming" if target_key == "spotify" else target_key
+        target_index = self._target_combo.findData(target_key)
+        if target_index >= 0:
+            self._target_combo.blockSignals(True)
+            self._target_combo.setCurrentIndex(target_index)
+            self._target_combo.blockSignals(False)
 
         ll = QLabel("LUFS:")
         ll.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
@@ -725,6 +733,8 @@ class MixerView(QWidget):
         self._status = QLabel("Import audio tracks to begin mixing")
         self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
         layout.addWidget(self._status)
+        if target_index >= 0:
+            self._on_lufs_target_changed()
 
         install_accessibility(
             self,
@@ -752,6 +762,15 @@ class MixerView(QWidget):
                 self._ref_btn, self._master_btn,
             ],
         )
+        self._settings.on_change(self._on_settings_change)
+
+    def _on_settings_change(self, key: str, value, _old_value):
+        """Apply production defaults to the live mastering controls."""
+        if key == "production.mastering_target":
+            target_key = "streaming" if value == "spotify" else value
+            index = self._target_combo.findData(target_key)
+            if index >= 0:
+                self._target_combo.setCurrentIndex(index)
 
     # ── Track Management ───────────────────────────────────────────────────────
 
@@ -1506,6 +1525,10 @@ class MixerView(QWidget):
         # Get preset
         preset_name = self._preset_combo.currentText()
         preset = replace(PRESETS.get(preset_name, PRESETS["Balanced"]))
+        preset.auto_eq = bool(self._settings.get("production.mastering_auto_eq", True))
+        preset.auto_compress = bool(
+            self._settings.get("production.mastering_auto_compress", True)
+        )
 
         # Override target LUFS
         preset.target_lufs = self._lufs_spin.value()
@@ -1534,6 +1557,8 @@ class MixerView(QWidget):
                 "sample_rate": sr,
                 "has_reference": reference_audio is not None,
                 "track_count": len(track_snapshots),
+                "auto_eq": preset.auto_eq,
+                "auto_compress": preset.auto_compress,
             },
         )
         worker.progress.connect(self._on_master_progress)

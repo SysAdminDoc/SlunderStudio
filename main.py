@@ -471,11 +471,12 @@ def _launch_app():
 
     settings.on_change(on_settings_change)
 
-    if not settings.get("general.onboarding_complete", False):
+    if not settings.get("general.onboarding_complete", False) and not settings.get(
+        "general.onboarding_skipped", False
+    ):
         from ui.onboarding import OnboardingWizard
         wizard = OnboardingWizard()
         wizard.exec()
-        settings.set("general.onboarding_complete", True)
 
     from ui.main_window import MainWindow
     window = MainWindow()

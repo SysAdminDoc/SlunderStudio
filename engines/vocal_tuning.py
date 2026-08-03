@@ -11,7 +11,7 @@ from typing import Callable
 import numpy as np
 
 from core.provenance import write_provenance_sidecar
-from core.settings import get_default_output_dir
+from core.settings import get_configured_output_dir
 
 
 @dataclass
@@ -220,7 +220,7 @@ def apply_segmented_pitch_shift(
 
 def _default_output_path(input_path: Path) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return get_default_output_dir() / "vocals" / "autotune" / f"{input_path.stem}_autotune_{timestamp}.wav"
+    return get_configured_output_dir() / "vocals" / "autotune" / f"{input_path.stem}_autotune_{timestamp}.wav"
 
 
 def _sanitize_audio(audio: np.ndarray) -> np.ndarray:

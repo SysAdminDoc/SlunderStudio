@@ -11,7 +11,7 @@ from typing import Callable
 import numpy as np
 
 from core.midi_utils import MidiData, NoteData, TrackData, save_midi
-from core.settings import get_default_output_dir
+from core.settings import get_configured_output_dir
 
 
 @dataclass
@@ -269,4 +269,4 @@ def _append_note(notes: list[NoteData], pitch: int, start: float, end: float, mi
 
 def _default_midi_path(input_path: Path) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return get_default_output_dir() / "vocals" / "melodies" / f"{input_path.stem}_melody_{timestamp}.mid"
+    return get_configured_output_dir() / "vocals" / "melodies" / f"{input_path.stem}_melody_{timestamp}.mid"

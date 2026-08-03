@@ -12,7 +12,8 @@ from dataclasses import asdict, dataclass, field
 import numpy as np
 
 from core.provenance import file_sha256, write_provenance_sidecar
-from core.settings import get_config_dir
+from core.settings import get_configured_output_dir
+from core.device import configured_torch_device
 from core.voice_bank import (
     SAFER_CHECKPOINT_EXTENSIONS,
     VOICE_OPERATION_CLONE,
@@ -309,7 +310,7 @@ class RVCEngine:
         self._base_model_path: Optional[str] = None
         self._profile: Optional[VoiceProfile] = None
         self._device = "cpu"
-        self._output_dir = os.path.join(get_config_dir(), "generations", "voice_convert")
+        self._output_dir = os.path.join(get_configured_output_dir(), "generations", "voice_convert")
         os.makedirs(self._output_dir, exist_ok=True)
 
     @property
@@ -335,6 +336,9 @@ class RVCEngine:
                    progress_callback: Optional[Callable] = None):
         """Load an RVC voice model."""
         try:
+            if device in {"auto", "cuda"}:
+                import torch
+                device = configured_torch_device(torch)
             if progress_callback:
                 progress_callback(0.1, "Loading RVC model...")
 
@@ -664,7 +668,7 @@ class GPTSoVITSEngine:
         self._base_model_path: Optional[str] = None
         self._profile: Optional[VoiceProfile] = None
         self._device = "cpu"
-        self._output_dir = os.path.join(get_config_dir(), "generations", "voice_clone")
+        self._output_dir = os.path.join(get_configured_output_dir(), "generations", "voice_clone")
         os.makedirs(self._output_dir, exist_ok=True)
 
     @property
@@ -691,6 +695,9 @@ class GPTSoVITSEngine:
                    progress_callback: Optional[Callable] = None):
         """Load GPT-SoVITS model pair."""
         try:
+            if device in {"auto", "cuda"}:
+                import torch
+                device = configured_torch_device(torch)
             if progress_callback:
                 progress_callback(0.1, "Loading SoVITS model...")
 
