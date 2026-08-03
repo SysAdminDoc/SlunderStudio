@@ -8,10 +8,15 @@ Run: python main.py
 import multiprocessing
 multiprocessing.freeze_support()
 
+import atexit
+import errno
+import json
 import sys
 import os
 import logging
 import traceback
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Sequence
 
 from core.version import APP_VERSION
@@ -275,36 +280,162 @@ def _setup_crash_handler():
 
 # ── Single Instance Lock ──────────────────────────────────────────────────────
 
-def _acquire_lock() -> bool:
-    """Prevent multiple instances via lockfile."""
-    config_dir = os.path.join(
-        os.environ.get("APPDATA", os.path.expanduser("~/.config")),
-        "SlunderStudio"
-    )
-    os.makedirs(config_dir, exist_ok=True)
-    lock_file = os.path.join(config_dir, "studio.lock")
-    import psutil  # Core runtime dependency; bootstrap checks it before launch.
+_LOCK_HANDLE = None
+_LOCK_PATH: Path | None = None
+_LOCK_FAILURE_REASON = ""
+_LOCK_CONTENTION = False
+_LOCK_ATEXIT_REGISTERED = False
 
+
+def _lock_file_path() -> Path:
+    """Return the stable per-user lock path used by every application launch."""
+    appdata = os.environ.get("APPDATA")
+    base = Path(appdata) if appdata else Path.home() / ".config"
+    return base / "SlunderStudio" / "studio.lock"
+
+
+def _acquire_file_lock(handle) -> None:
+    """Acquire one non-blocking OS lock byte, or raise on contention/failure."""
+    handle.seek(0)
+    if handle.read(1) == b"":
+        handle.seek(0)
+        handle.write(b"\0")
+        handle.flush()
+    handle.seek(0)
+
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        return
+
+    import fcntl
+
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _release_file_lock(handle) -> None:
+    """Release an OS lock and close its descriptor without masking shutdown."""
     try:
-        if os.path.isfile(lock_file):
-            try:
-                with open(lock_file) as f:
-                    pid = int(f.read().strip())
-                if pid > 0 and psutil.pid_exists(pid):
-                    return False
-            except (ValueError, OSError):
-                pass
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
 
-        with open(lock_file, "w") as f:
-            f.write(str(os.getpid()))
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
 
-        import atexit
-        atexit.register(
-            lambda: os.remove(lock_file) if os.path.isfile(lock_file) else None
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except (OSError, ValueError):
+        pass
+    finally:
+        try:
+            handle.close()
+        except (OSError, ValueError):
+            pass
+
+
+def _is_lock_contention(exc: BaseException) -> bool:
+    """Distinguish an occupied lock from an inaccessible lock path."""
+    if isinstance(exc, (BlockingIOError, PermissionError)):
+        return True
+    if getattr(exc, "errno", None) in {errno.EACCES, errno.EAGAIN}:
+        return True
+    return getattr(exc, "winerror", None) in {33, 36}
+
+
+def _lock_record() -> dict[str, object]:
+    executable = Path(sys.executable).resolve()
+    command = Path(sys.argv[0]).resolve() if sys.argv and sys.argv[0] else executable
+    return {
+        "schema": 2,
+        "pid": os.getpid(),
+        "executable": str(executable),
+        "executable_name": executable.name,
+        "command": str(command),
+        "started_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _write_lock_record(handle) -> None:
+    payload = json.dumps(_lock_record(), sort_keys=True).encode("utf-8")
+    handle.seek(0)
+    handle.truncate()
+    handle.write(payload)
+    handle.flush()
+    os.fsync(handle.fileno())
+
+
+def _lock_failure_message() -> str:
+    path = str(_LOCK_PATH or _lock_file_path())
+    if _LOCK_CONTENTION:
+        return (
+            "Another Slunder Studio instance is already running.\n\n"
+            f"Lock file: {path}\n\n"
+            "The operating-system lock releases automatically when that process exits. "
+            "If no Slunder Studio process remains, confirm that first, then delete the "
+            "lock file and retry."
         )
+    detail = _LOCK_FAILURE_REASON or "Unknown lock error."
+    return (
+        "Slunder Studio stopped before startup because it could not acquire its "
+        "single-instance lock.\n\n"
+        f"Lock file: {path}\n\n"
+        f"{detail}\n\n"
+        "Check the directory permissions and retry."
+    )
+
+
+def _release_lock() -> None:
+    global _LOCK_HANDLE
+    handle = _LOCK_HANDLE
+    _LOCK_HANDLE = None
+    if handle is not None:
+        _release_file_lock(handle)
+
+
+def _acquire_lock() -> bool:
+    """Acquire the process-wide lock, failing closed on every error."""
+    global _LOCK_HANDLE, _LOCK_PATH, _LOCK_FAILURE_REASON, _LOCK_CONTENTION
+    global _LOCK_ATEXIT_REGISTERED
+
+    if _LOCK_HANDLE is not None:
         return True
-    except Exception:
+
+    lock_file = _lock_file_path()
+    _LOCK_PATH = lock_file
+    _LOCK_FAILURE_REASON = ""
+    _LOCK_CONTENTION = False
+    handle = None
+    try:
+        lock_file.parent.mkdir(parents=True, exist_ok=True)
+        handle = lock_file.open("a+b", buffering=0)
+        try:
+            _acquire_file_lock(handle)
+        except Exception as exc:
+            if _is_lock_contention(exc):
+                _LOCK_CONTENTION = True
+                _LOCK_FAILURE_REASON = "The lock file is held by another process."
+            else:
+                _LOCK_FAILURE_REASON = f"{type(exc).__name__}: {exc}"
+            return False
+        try:
+            _write_lock_record(handle)
+        except Exception as exc:
+            _LOCK_FAILURE_REASON = f"{type(exc).__name__}: {exc}"
+            return False
+        _LOCK_HANDLE = handle
+        handle = None
+        if not _LOCK_ATEXIT_REGISTERED:
+            atexit.register(_release_lock)
+            _LOCK_ATEXIT_REGISTERED = True
         return True
+    except Exception as exc:
+        _LOCK_FAILURE_REASON = f"{type(exc).__name__}: {exc}"
+        return False
+    finally:
+        if handle is not None:
+            _release_file_lock(handle)
 
 
 # ── Application Launch ────────────────────────────────────────────────────────
@@ -315,9 +446,9 @@ def _launch_app():
 
     if not _acquire_lock():
         QMessageBox.warning(
-            None, "Slunder Studio", "Another instance is already running."
+            None, "Slunder Studio — Single Instance", _lock_failure_message()
         )
-        sys.exit(0)
+        sys.exit(0 if _LOCK_CONTENTION else 1)
 
     app = QApplication.instance()
 

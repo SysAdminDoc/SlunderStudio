@@ -81,25 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Make the single-instance lock trustworthy in both directions
-  Why: It currently produces both false positives that block startup with no stated remedy, and
-    false negatives that let two instances share one SQLite database.
-  Evidence: `main.py:268-277` accepts `psutil.pid_exists(pid)` as proof another instance is live
-    with no identity check — Windows recycles PIDs aggressively, so after a hard kill an unrelated
-    process inheriting the PID makes the app refuse to start, and the message at `:296-299` names
-    no lock-file path and no way to clear it. Conversely `main.py:279-288` returns `True` from a
-    blanket `except Exception`, so any failure writing the lock reports "acquired"; and the inner
-    `except (ValueError, OSError, ImportError): pass` skips the liveness check entirely when psutil
-    is missing, overwriting a valid lock. Two instances then share the same `JobStore`, `LyricsDB`
-    SQLite file, `config.json` and generation output directories.
-    `tests/test_single_instance_lock.py` mocks `pid_exists` directly and covers neither branch.
-  Touches: `main.py`, `tests/test_single_instance_lock.py`.
-  Acceptance: The lock records and verifies process identity (executable path/name, or an OS mutex
-    or `msvcrt`/`fcntl` file lock) rather than PID alone; failure to acquire fails closed rather
-    than open; the "already running" dialog names the lock file and how to clear it; tests cover
-    PID recycling, a missing psutil, and an unwritable lock directory.
-  Complexity: S
-
 - [ ] P1 — Move blocking decode, analysis and export off the GUI thread
   Why: `core/workers.py` exists and is used correctly for generation, but every preview, analysis
     and export path bypasses it, so routine actions freeze the window for seconds to minutes.

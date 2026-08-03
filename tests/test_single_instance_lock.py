@@ -1,6 +1,7 @@
 import os
+import json
+import sys
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -9,48 +10,86 @@ import main
 
 
 class SingleInstanceLockTests(unittest.TestCase):
-    def _write_lock(self, root: str, pid: int):
+    def setUp(self):
+        self.addCleanup(main._release_lock)
+
+    def _write_lock(self, root: str, payload):
         config_dir = os.path.join(root, "SlunderStudio")
         os.makedirs(config_dir)
         lock_file = os.path.join(config_dir, "studio.lock")
         with open(lock_file, "w", encoding="utf-8") as handle:
-            handle.write(str(pid))
-        old = time.time() - 3600
-        os.utime(lock_file, (old, old))
+            if isinstance(payload, dict):
+                json.dump(payload, handle)
+            else:
+                handle.write(str(payload))
         return lock_file
 
-    def test_dead_pid_reclaims_even_when_lockfile_is_old(self):
+    def test_stale_metadata_is_reclaimed_without_pid_liveness_guessing(self):
         with tempfile.TemporaryDirectory() as root:
-            self._write_lock(root, 987654321)
+            lock_file = self._write_lock(
+                root,
+                {
+                    "schema": 2,
+                    "pid": os.getpid(),
+                    "executable": "C:\\other\\SlunderStudio.exe",
+                },
+            )
             with (
                 mock.patch.dict(os.environ, {"APPDATA": root}),
-                mock.patch("psutil.pid_exists", return_value=False) as pid_exists,
-                mock.patch("main.os.kill", side_effect=AssertionError("os.kill used")),
-                mock.patch("atexit.register"),
             ):
                 self.assertTrue(main._acquire_lock())
 
-            pid_exists.assert_called_once_with(987654321)
+            main._release_lock()
+            record = json.loads(Path(lock_file).read_text(encoding="utf-8"))
+            self.assertEqual(record["pid"], os.getpid())
+            self.assertEqual(record["executable_name"], Path(sys.executable).name)
 
-    def test_current_pid_blocks_even_when_lockfile_is_old(self):
+    def test_active_file_lock_blocks_and_names_the_lock_path(self):
         with tempfile.TemporaryDirectory() as root:
-            self._write_lock(root, os.getpid())
+            self._write_lock(root, {"schema": 2, "pid": 1234})
             with (
                 mock.patch.dict(os.environ, {"APPDATA": root}),
-                mock.patch("psutil.pid_exists", return_value=True) as pid_exists,
-                mock.patch("main.os.kill", side_effect=AssertionError("os.kill used")),
+                mock.patch(
+                    "main._acquire_file_lock",
+                    side_effect=BlockingIOError("lock held"),
+                ),
             ):
                 self.assertFalse(main._acquire_lock())
 
-            pid_exists.assert_called_once_with(os.getpid())
+            self.assertTrue(main._lock_failure_message().startswith("Another"))
+            self.assertIn(os.path.join(root, "SlunderStudio", "studio.lock"),
+                          main._lock_failure_message())
 
-    def test_lock_path_requires_core_psutil_instead_of_treating_it_as_optional(self):
+    def test_missing_psutil_does_not_disable_the_os_lock(self):
+        with tempfile.TemporaryDirectory() as root:
+            with (
+                mock.patch.dict(os.environ, {"APPDATA": root}),
+                mock.patch.dict(sys.modules, {"psutil": None}),
+            ):
+                self.assertTrue(main._acquire_lock())
+            main._release_lock()
+
+    def test_unwritable_lock_directory_fails_closed(self):
+        with tempfile.TemporaryDirectory() as root:
+            with (
+                mock.patch.dict(os.environ, {"APPDATA": root}),
+                mock.patch.object(Path, "mkdir", side_effect=PermissionError("read only")),
+            ):
+                self.assertFalse(main._acquire_lock())
+
+            message = main._lock_failure_message()
+            self.assertIn("could not acquire", message)
+            self.assertIn(os.path.join(root, "SlunderStudio", "studio.lock"), message)
+            self.assertNotIn("Another Slunder Studio", message)
+
+    def test_lock_source_uses_os_lock_and_fails_closed(self):
         source = Path(main.__file__).read_text(encoding="utf-8")
         lock_section = source[
             source.index("def _acquire_lock"):source.index("# ── Application Launch")
         ]
-        self.assertIn("import psutil", lock_section)
-        self.assertNotIn("ImportError", lock_section)
+        self.assertIn("_acquire_file_lock(handle)", lock_section)
+        self.assertIn("return False", lock_section)
+        self.assertNotIn("pid_exists", lock_section)
 
 
 if __name__ == "__main__":

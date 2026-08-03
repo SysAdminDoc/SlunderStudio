@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Replaced the PID-only single-instance check with a held OS file lock (`msvcrt` on Windows,
+  `fcntl` elsewhere), recorded executable identity for diagnostics, retained the lock inode
+  across exits, and made lock-path and permission failures fail closed with actionable guidance.
 - Updated the core runtime lock to NumPy 2.4.6 and SciPy 1.18.0, capped NumPy below 2.5
   for the supported Numba release, and reverified the mastering conformance and mixer
   resampling suites against the NumPy 2 runtime. The optional torch profile train remains
