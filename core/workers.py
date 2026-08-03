@@ -71,7 +71,14 @@ def _result_is_cancelled(result: Any) -> bool:
     for name in ("cancelled", "is_cancelled"):
         value = getattr(result, name, False)
         if callable(value):
-            value = value()
+            try:
+                value = value()
+            except TypeError:
+                # ``EngineRunResult.cancelled`` is a class factory that shares
+                # a name with the instance-level cancellation property used by
+                # other result contracts. It requires a capability argument and
+                # is not itself a cancellation flag.
+                continue
         if value:
             return True
     return False

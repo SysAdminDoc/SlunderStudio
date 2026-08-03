@@ -134,6 +134,7 @@ class WaveformContractTests(unittest.TestCase):
                     return_value=stereo,
                 ):
                     midi_view._on_render()
+                    self.assertTrue(self._wait_for(lambda: midi_view._render_worker is None))
 
                 self.assertTrue(midi_view._waveform.has_audio)
                 self.assertEqual((4096, 2), midi_view._waveform._audio_data.shape)

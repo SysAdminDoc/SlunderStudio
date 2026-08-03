@@ -274,6 +274,7 @@ CAP_SONG_GENERATE = "song.generate"
 CAP_LYRICS_GENERATE = "lyrics.generate"
 CAP_PRODUCER_RUN = "producer.run"
 CAP_MIDI_GENERATE = "midi.generate"
+CAP_MIDI_RENDER = "midi.render"
 CAP_SFX_GENERATE = "sfx.generate"
 CAP_VOCAL_SYNTHESIZE = "vocal.synthesize"
 CAP_VOCAL_CONVERT = "vocal.convert"
@@ -310,6 +311,14 @@ ENGINE_CAPABILITIES: dict[str, EngineCapability] = {
         label="Generate MIDI",
         model_ids=("midi-llm-1b",),
         outputs=(ArtifactKind.MIDI, ArtifactKind.PROVENANCE),
+        supports_demo=True,
+    ),
+    CAP_MIDI_RENDER: EngineCapability(
+        id=CAP_MIDI_RENDER,
+        label="Render MIDI audio",
+        model_ids=("midi-llm-1b",),
+        outputs=(ArtifactKind.AUDIO, ArtifactKind.PROVENANCE),
+        requires_activation=False,
         supports_demo=True,
     ),
     CAP_SFX_GENERATE: EngineCapability(

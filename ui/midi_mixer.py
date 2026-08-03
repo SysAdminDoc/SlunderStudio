@@ -346,11 +346,29 @@ class MidiMixer(QWidget):
     def get_muted_tracks(self) -> set[int]:
         return self._muted.copy()
 
+    def get_solo_tracks(self) -> set[int]:
+        """Return every soloed track index, or an empty set when none is soloed."""
+        return self._soloed.copy()
+
     def get_solo_track(self) -> Optional[int]:
-        """Return soloed track index, or None if no solo."""
+        """Return the first soloed track for legacy single-track callers."""
         if self._soloed:
-            return min(self._soloed)  # First soloed track
+            return min(self._soloed)
         return None
+
+    def get_track_mix(self) -> dict[int, dict[str, float]]:
+        """Return an immutable snapshot of each strip's volume and pan controls.
+
+        Volume is normalized to 0..1 and pan to -1..1 so renderers do not need
+        to know about the widget's MIDI controller ranges.
+        """
+        return {
+            strip.track_idx: {
+                "volume": strip._volume_slider.value() / 127.0,
+                "pan": strip._pan_slider.value() / 64.0,
+            }
+            for strip in self._strips
+        }
 
     @property
     def selected_track(self) -> int:

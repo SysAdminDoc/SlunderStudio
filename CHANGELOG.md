@@ -10,6 +10,9 @@ All notable changes to SlunderStudio will be documented in this file.
 - Added PortAudio output-device selection in Settings. Device names include their host API,
   selections persist by stable host/API identity, the list refreshes without a restart, and
   unavailable devices visibly fall back to the system default during playback.
+- Moved MIDI-LLM generation and MIDI audio rendering onto cancellable worker jobs. Loaded
+  models are selected explicitly, demo mode remains labeled, and preview/export rendering now
+  honors multiple solo tracks, mute, volume, and pan snapshots with direct coverage.
 
 ## [v0.1.31] - 2026-08-02
 

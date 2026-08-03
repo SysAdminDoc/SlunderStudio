@@ -25,12 +25,14 @@ from core.chord_chart import save_chord_chart
 from core.engine_contract import (
     ArtifactKind,
     CAP_MIDI_GENERATE,
+    CAP_MIDI_RENDER,
     EngineArtifact,
     EngineRunResult,
     RunMode,
     adapt_engine_result,
 )
 from core.model_manager import ModelManager
+from core.provenance import sidecar_path_for
 from core.workers import CancelledJobError, InferenceWorker
 from engines.midi_llm_engine import (
     DRUM_GROOVE_NAMES, MidiGenParams, MidiGenResult, generate_midi,
@@ -82,6 +84,7 @@ class MidiStudioView(QWidget):
         self._rendered_output_kind = ""
         self._model_mgr = ModelManager()
         self._generation_worker: Optional[InferenceWorker] = None
+        self._render_worker: Optional[InferenceWorker] = None
         self._contract_result: Optional[EngineRunResult] = None
 
         t = ThemeEngine.get_colors()
@@ -297,6 +300,7 @@ class MidiStudioView(QWidget):
         # ── Mixer ──────────────────────────────────────────────────────────
         self._mixer = MidiMixer()
         self._mixer.track_selected.connect(self._on_track_selected)
+        self._mixer.mix_changed.connect(self._on_mix_changed)
         left.addWidget(self._mixer, 1)
 
         # ── Action buttons ─────────────────────────────────────────────────
@@ -534,7 +538,12 @@ class MidiStudioView(QWidget):
             if step_cb and message:
                 step_cb(message)
 
-        result = generate_midi(params, progress_callback=progress)
+        result = generate_midi(
+            params,
+            progress_callback=progress,
+            model_id=model_id,
+            cancel_event=cancel_event,
+        )
         if cancel_event and cancel_event.is_set():
             raise CancelledJobError("MIDI generation cancelled")
         artifacts = []
@@ -629,6 +638,8 @@ class MidiStudioView(QWidget):
 
     def _load_midi_data(self, midi_data: MidiData):
         """Load MidiData into all views."""
+        if self._render_worker is not None:
+            self._render_worker.cancel()
         self._midi_data = midi_data
 
         # Load mixer
@@ -662,6 +673,16 @@ class MidiStudioView(QWidget):
     def _on_notes_changed(self):
         """Handle piano roll edits."""
         self._update_info()
+        if self._render_worker is not None:
+            self._render_worker.cancel()
+            self._status.setText("MIDI changed; cancelling audio render...")
+        elif self._rendered_audio is not None:
+            self._rendered_audio = None
+            self._current_audio_path = None
+            self._rendered_output_kind = ""
+            self._to_forge_btn.setEnabled(False)
+            self._to_vocals_btn.setEnabled(False)
+            self._status.setText("MIDI changed; render MIDI audio again.")
 
     def _update_info(self):
         if self._midi_data:
@@ -734,12 +755,16 @@ class MidiStudioView(QWidget):
             self._report_error(f"Chart export error: {e}")
 
     def _on_render(self):
-        """Render MIDI to audio via FluidSynth or fallback."""
+        """Render MIDI to audio via a cancellable worker job."""
+        if self._render_worker is not None:
+            self._render_worker.cancel()
+            self._render_btn.setEnabled(False)
+            self._status.setText("Cancelling MIDI render...")
+            return
         if not self._midi_data:
             self._report_error("Nothing to render")
             return
 
-        self._render_btn.setEnabled(False)
         self._rendered_audio = None
         self._current_audio_path = None
         self._rendered_output_kind = ""
@@ -747,60 +772,184 @@ class MidiStudioView(QWidget):
         self._to_vocals_btn.setEnabled(False)
         self._status.setText("Rendering audio...")
 
+        import os
+        import time as time_mod
+        from core.settings import get_config_dir
+
+        output_dir = os.path.join(get_config_dir(), "generations", "midi_renders")
+        os.makedirs(output_dir, exist_ok=True)
+        ts = time_mod.strftime("%Y%m%d_%H%M%S")
+        output_path = os.path.join(output_dir, f"render_{ts}_{time_mod.time_ns()}.wav")
+        muted = self._mixer.get_muted_tracks()
+        solo_tracks = self._mixer.get_solo_tracks()
+        track_mix = self._mixer.get_track_mix()
+
+        self._render_worker = InferenceWorker(
+            self._run_render,
+            self._midi_data,
+            output_path,
+            muted,
+            solo_tracks,
+            track_mix,
+            job_kind="midi_render",
+            job_label="MIDI Studio audio render",
+            job_inputs={
+                "track_count": self._midi_data.track_count,
+                "total_notes": self._midi_data.total_notes,
+                "muted_tracks": sorted(muted),
+                "solo_tracks": sorted(solo_tracks),
+            },
+            job_metadata={
+                "module": "midi_studio",
+                "capability_id": CAP_MIDI_RENDER,
+            },
+        )
+        self._render_worker.progress.connect(
+            lambda pct: self._status.setText(f"MIDI render... {pct}%")
+        )
+        self._render_worker.step_info.connect(self._status.setText)
+        self._render_worker.finished.connect(self._on_render_finished)
+        self._render_worker.error.connect(self._on_render_error)
+        self._render_worker.cancelled.connect(self._on_render_cancelled)
+        self._render_worker.start()
+        self._render_btn.setText("Cancel Render")
+
+    def _run_render(
+        self,
+        midi_data: MidiData,
+        output_path: str,
+        muted: set[int],
+        solo_tracks: set[int],
+        track_mix: dict[int, dict[str, float]],
+        progress_cb=None,
+        step_cb=None,
+        log_cb=None,
+        cancel_event=None,
+    ) -> EngineRunResult:
+        """Render an immutable MIDI/mixer snapshot outside the Qt GUI thread."""
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError("MIDI render cancelled", outputs=[output_path])
+
+        from engines.fluidsynth_engine import (
+            MidiRenderCancelled,
+            MidiRenderResult,
+            render_midi_to_audio,
+        )
+
+        def progress(value: float, message: str = ""):
+            if progress_cb:
+                progress_cb(max(0, min(100, int(round(value * 100)))))
+            if step_cb and message:
+                step_cb(message)
+
+        owned_outputs = [output_path, str(sidecar_path_for(output_path))]
+
         try:
-            import os
-            import time as time_mod
-            from engines.fluidsynth_engine import render_midi_to_audio
-            from core.settings import get_config_dir
-
-            output_dir = os.path.join(get_config_dir(), "generations", "midi_renders")
-            os.makedirs(output_dir, exist_ok=True)
-            ts = time_mod.strftime("%Y%m%d_%H%M%S")
-            output_path = os.path.join(output_dir, f"render_{ts}.wav")
-
-            muted = self._mixer.get_muted_tracks()
-            solo = self._mixer.get_solo_track()
-
             render_result = render_midi_to_audio(
-                self._midi_data,
+                midi_data,
                 output_path=output_path,
+                mute_tracks=set(muted),
+                solo_tracks=set(solo_tracks),
+                track_mix={idx: dict(values) for idx, values in track_mix.items()},
+                progress_callback=progress,
                 return_metadata=True,
+                cancel_event=cancel_event,
             )
-            if hasattr(render_result, "audio"):
-                audio = render_result.audio
-                output_kind = render_result.output_kind
-                fallback_reason = render_result.fallback_reason
-            else:
-                # Keep compatibility with third-party/test adapters returning
-                # the historical ndarray-only result.
-                audio = render_result
-                output_kind = "export"
-                fallback_reason = ""
+        except MidiRenderCancelled as exc:
+            raise CancelledJobError(
+                "MIDI render cancelled",
+                outputs=owned_outputs,
+            ) from exc
+        if isinstance(render_result, MidiRenderResult):
+            result = render_result
+        else:
+            # Keep compatibility with older third-party render adapters.
+            result = MidiRenderResult(audio=render_result)
 
-            self._rendered_audio = audio
-            self._current_audio_path = output_path
-            self._rendered_output_kind = output_kind
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError("MIDI render cancelled", outputs=owned_outputs)
+        if result.audio is None:
+            raise RuntimeError("MIDI renderer returned no audio")
 
-            # Load into waveform view
-            if audio is not None and len(audio) > 0:
-                self._waveform.load_audio(audio, 44100)
-                self._tabs.setCurrentIndex(1)  # Switch to rendered audio tab
+        artifact = EngineArtifact(
+            kind=ArtifactKind.AUDIO,
+            path=output_path,
+            payload=result.audio,
+            provenance_path=str(sidecar_path_for(output_path)),
+            routable=not result.is_demo,
+            metadata={
+                "output_kind": result.output_kind,
+                "fallback_reason": result.fallback_reason,
+                "muted_tracks": sorted(muted),
+                "solo_tracks": sorted(solo_tracks),
+                "track_mix": track_mix,
+            },
+        )
+        return adapt_engine_result(CAP_MIDI_RENDER, result, [artifact])
 
-            is_demo = output_kind == "demo"
-            self._to_forge_btn.setEnabled(not is_demo)
-            self._to_vocals_btn.setEnabled(not is_demo)
-            if is_demo:
-                reason = fallback_reason or "FluidSynth was unavailable"
-                self._status.setText(
-                    f"Preview render (sine) — FluidSynth unavailable: {reason}"
-                )
-            else:
-                self._status.setText(f"Rendered: {output_path}")
+    def _on_render_finished(self, run: EngineRunResult):
+        self._render_worker = None
+        self._render_btn.setText("Render Audio")
+        self._render_btn.setEnabled(True)
+        self._contract_result = run
+        if not run.is_success:
+            self._report_error(f"Render failed: {run.error}")
+            return
 
-        except Exception as e:
-            self._report_error(f"Render error: {e}")
-        finally:
-            self._render_btn.setEnabled(True)
+        result = run.source_result
+        audio = result.audio
+        artifact = run.first_artifact(ArtifactKind.AUDIO)
+        output_path = artifact.path if artifact else getattr(result, "output_path", "")
+        self._rendered_audio = audio
+        self._current_audio_path = output_path
+        self._rendered_output_kind = result.output_kind
+
+        if audio is not None and len(audio) > 0:
+            self._waveform.load_audio(audio, 44100)
+            self._tabs.setCurrentIndex(1)
+
+        is_demo = run.is_demo
+        self._to_forge_btn.setEnabled(not is_demo)
+        self._to_vocals_btn.setEnabled(not is_demo)
+        if is_demo:
+            reason = result.fallback_reason or "FluidSynth was unavailable"
+            self._status.setText(
+                f"Preview render (sine) — FluidSynth unavailable: {reason}"
+            )
+        else:
+            self._status.setText(f"Rendered: {output_path}")
+
+    def _on_render_error(self, error: str):
+        self._render_worker = None
+        self._render_btn.setText("Render Audio")
+        self._render_btn.setEnabled(True)
+        self._contract_result = EngineRunResult.failure(CAP_MIDI_RENDER, error)
+        self._report_error(f"Render error: {error}")
+
+    def _on_render_cancelled(self):
+        self._render_worker = None
+        self._render_btn.setText("Render Audio")
+        self._render_btn.setEnabled(True)
+        self._contract_result = EngineRunResult.cancelled(
+            CAP_MIDI_RENDER,
+            "MIDI render cancelled",
+        )
+        self._status.setText("MIDI render cancelled")
+
+    def _on_mix_changed(self):
+        """Invalidate stale audio when a mixer control changes."""
+        if self._render_worker is not None:
+            self._render_worker.cancel()
+            self._render_btn.setEnabled(False)
+            self._status.setText("Mix changed; cancelling MIDI render...")
+            return
+        if self._rendered_audio is not None:
+            self._rendered_audio = None
+            self._current_audio_path = None
+            self._rendered_output_kind = ""
+            self._to_forge_btn.setEnabled(False)
+            self._to_vocals_btn.setEnabled(False)
+            self._status.setText("Mix changed; render MIDI audio again.")
 
     # ── Cross-Module Routing ───────────────────────────────────────────────────
 
@@ -811,6 +960,13 @@ class MidiStudioView(QWidget):
     def _on_send_to_vocals(self):
         if self._current_audio_path and self._rendered_output_kind != "demo":
             self.send_to_vocals.emit(self._current_audio_path)
+
+    def closeEvent(self, event):
+        """Request cancellation before the view is torn down."""
+        for worker in (self._generation_worker, self._render_worker):
+            if worker is not None:
+                worker.cancel()
+        super().closeEvent(event)
 
     # ── External API ───────────────────────────────────────────────────────────
 

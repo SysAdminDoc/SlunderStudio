@@ -83,27 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Run real MIDI generation as a cancellable background job
-  Why: MIDI Studio synchronously calls only the demo generator and does not use the installed MIDI model.
-  Evidence: `ui/midi_studio_view.py:421-439`; RVC/ACE-Step resource-aware inference patterns.
-  Touches: MIDI Studio, `engines/midi_llm_engine.py`, shared engine/job contract, mute/solo render path, tests.
-  Acceptance: A loaded model is used when selected; demo mode is explicit; generation is responsive/cancellable; mute/solo affects preview/export; fixed-seed fixtures are deterministic for the pinned runtime.
-  Complexity: M
-  Refined by the 2026-08-02 audit — the "mute/solo affects preview/export" clause is not merely
-    missing, it is actively mis-reported today, and the render is synchronous:
-    `ui/midi_studio_view.py:728-746` (`_on_render`) reads `muted = self._mixer.get_muted_tracks()`
-    and `solo = self._mixer.get_solo_track()` and then never uses them — `render_midi_to_audio`
-    (`engines/fluidsynth_engine.py:346-349`) has no mute/solo parameters, even though
-    `FluidSynthEngine.render_to_numpy` already supports `mute_tracks`/`solo_track`
-    (`engines/fluidsynth_engine.py:104-107`). `MidiMixer.mix_changed` (`ui/midi_mixer.py:295-331`)
-    is connected nowhere in the repo, so the volume and pan sliders do literally nothing.
-    The handler then reports `"Rendered: {output_path}"` as though the mix were honored.
-    When wiring, also fix `get_solo_track` (`ui/midi_mixer.py:327-331`), which returns
-    `min(self._soloed)` — soloing two tracks would silently solo only one.
-    `_on_render` also calls `render_midi_to_audio` directly on the GUI thread, although that
-    function's own docstring says "Called by InferenceWorker"; a full FluidSynth render of a
-    multi-minute arrangement freezes the UI with no repaint.
-
 - [ ] P2 — Complete UI localization with pseudolocale and RTL gates
   Why: The catalog/helper exist, but most views remain hard-coded English and there is no runtime locale control.
   Evidence: `core/i18n.py`, `assets/locales/en.json`, limited `tr()` call sites; ACE-Step/RVC multilingual UIs and Qt translation support.

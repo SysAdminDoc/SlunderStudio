@@ -75,6 +75,33 @@ class MidiGenResult:
     def is_demo(self) -> bool:
         return self.output_kind == "demo"
 
+    @property
+    def is_cancelled(self) -> bool:
+        return self.output_kind in {"cancelled", "canceled"}
+
+    @property
+    def cancelled(self) -> bool:
+        """Compatibility alias used by the shared worker contract."""
+        return self.is_cancelled
+
+
+class MidiGenerationCancelled(RuntimeError):
+    """Raised by algorithmic generation when cancellation is observed."""
+
+
+def _raise_if_generation_cancelled(cancel_event) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise MidiGenerationCancelled("MIDI generation cancelled")
+
+
+def _cancelled_generation_result(started_at: float) -> MidiGenResult:
+    return MidiGenResult(
+        error="MIDI generation cancelled",
+        generation_time=time.time() - started_at,
+        output_kind="cancelled",
+        can_route=False,
+    )
+
 
 # ── Prompt Templates ───────────────────────────────────────────────────────────
 
@@ -414,7 +441,11 @@ def select_drum_groove(params: MidiGenParams, rng) -> Optional[DrumGrooveTemplat
     return DRUM_GROOVE_TEMPLATES[rng.choice(["Straight Rock", "Hip-Hop Half-Time", "Four-on-the-Floor"])]
 
 
-def generate_drum_track(params: MidiGenParams, rng=None) -> Optional[TrackData]:
+def generate_drum_track(
+    params: MidiGenParams,
+    rng=None,
+    cancel_event=None,
+) -> Optional[TrackData]:
     """Generate a GM channel-9 drum track from the selected groove template."""
     if not wants_drum_track(params):
         return None
@@ -438,6 +469,7 @@ def generate_drum_track(params: MidiGenParams, rng=None) -> Optional[TrackData]:
     )
 
     for bar in range(params.duration_bars):
+        _raise_if_generation_cancelled(cancel_event)
         bar_start = bar * bar_dur
         for hit in template.hits:
             step = int(round(hit.step * bar_steps / template.steps_per_bar))
@@ -621,12 +653,18 @@ class MidiLLMEngine:
     def is_loaded(self) -> bool:
         return self.model is not None
 
+    @property
+    def model_id(self) -> str:
+        """Stable registry identity for the currently loaded model."""
+        return self._model_id or ""
+
     def load_model(
         self,
         model_path: str,
         device: str = "auto",
         progress_callback: Optional[Callable] = None,
         *,
+        model_id: Optional[str] = None,
         local_files_only: bool = True,
         trust_remote_code: bool = False,
         prefer_safetensors: bool = True,
@@ -686,7 +724,7 @@ class MidiLLMEngine:
                 self.model = self.model.to("cpu")
 
             self.model.eval()
-            self._model_id = model_path
+            self._model_id = model_id or model_path
             self._device = device
 
             if progress_callback:
@@ -712,8 +750,13 @@ class MidiLLMEngine:
             except ImportError:
                 pass
 
-    def generate(self, params: MidiGenParams) -> MidiGenResult:
-        """Generate MIDI from parameters."""
+    def generate(
+        self,
+        params: MidiGenParams,
+        progress_callback: Optional[Callable] = None,
+        cancel_event=None,
+    ) -> MidiGenResult:
+        """Generate MIDI from parameters with cooperative token cancellation."""
         if not self.is_loaded:
             return MidiGenResult(
                 error="MIDI-LLM model not loaded",
@@ -723,6 +766,7 @@ class MidiLLMEngine:
 
         t0 = time.time()
         try:
+            _raise_if_generation_cancelled(cancel_event)
             import torch
             prompt = build_generation_prompt(params)
             messages = [
@@ -730,7 +774,6 @@ class MidiLLMEngine:
                 {"role": "user", "content": prompt},
             ]
 
-            # Format for chat model
             if hasattr(self.tokenizer, "apply_chat_template"):
                 text = self.tokenizer.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True
@@ -740,6 +783,7 @@ class MidiLLMEngine:
 
             inputs = self.tokenizer(text, return_tensors="pt")
             input_ids = inputs["input_ids"].to(self._device)
+            _raise_if_generation_cancelled(cancel_event)
 
             gen_kwargs = {
                 "max_new_tokens": params.max_tokens,
@@ -750,24 +794,47 @@ class MidiLLMEngine:
             }
             if params.seed is not None:
                 torch.manual_seed(params.seed)
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed_all(params.seed)
+
+            if progress_callback:
+                progress_callback(0.2, "Generating MIDI tokens...")
+
+            if cancel_event is not None:
+                try:
+                    from transformers import StoppingCriteria, StoppingCriteriaList
+
+                    class _CancelStoppingCriteria(StoppingCriteria):
+                        def __call__(self, input_ids, scores, **kwargs):
+                            return bool(cancel_event.is_set())
+
+                    gen_kwargs["stopping_criteria"] = StoppingCriteriaList([
+                        _CancelStoppingCriteria()
+                    ])
+                except (ImportError, AttributeError):
+                    # Older/local test transformers may not expose stopping
+                    # criteria; the boundary checks still fail closed.
+                    pass
 
             with torch.no_grad():
                 output = self.model.generate(input_ids, **gen_kwargs)
 
-            # Decode only new tokens
+            _raise_if_generation_cancelled(cancel_event)
+            if progress_callback:
+                progress_callback(0.85, "Parsing MIDI tokens...")
+
             new_tokens = output[0][input_ids.shape[1]:]
             raw_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
-
-            # Parse tokens into MidiData
             midi_data = parse_midi_tokens(raw_text)
 
-            # Override tempo/time sig from params if not in output
             if midi_data.tempo == 120.0 and params.tempo != 120.0:
                 midi_data.tempo = params.tempo
             if midi_data.time_signature == (4, 4) and params.time_signature != (4, 4):
                 midi_data.time_signature = params.time_signature
 
             gen_time = time.time() - t0
+            if progress_callback:
+                progress_callback(1.0, "Done")
 
             return MidiGenResult(
                 midi_data=midi_data,
@@ -788,7 +855,11 @@ class MidiLLMEngine:
                 },
             )
 
+        except MidiGenerationCancelled:
+            return _cancelled_generation_result(t0)
         except Exception as e:
+            if cancel_event is not None and cancel_event.is_set():
+                return _cancelled_generation_result(t0)
             return MidiGenResult(
                 error=str(e),
                 generation_time=time.time() - t0,
@@ -796,11 +867,21 @@ class MidiLLMEngine:
                 can_route=False,
             )
 
-    def continue_sequence(self, existing: MidiData, params: MidiGenParams) -> MidiGenResult:
+    def continue_sequence(
+        self,
+        existing: MidiData,
+        params: MidiGenParams,
+        progress_callback: Optional[Callable] = None,
+        cancel_event=None,
+    ) -> MidiGenResult:
         """Continue an existing MIDI sequence."""
         context_tokens = midi_data_to_tokens(existing)
         params.continuation_context = context_tokens
-        return self.generate(params)
+        return self.generate(
+            params,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+        )
 
     def save_generation(self, result: MidiGenResult, name: Optional[str] = None) -> Optional[str]:
         """Save generation result to disk."""
@@ -849,7 +930,11 @@ class MidiLLMEngine:
 
 # ── Demo / Fallback Generator ─────────────────────────────────────────────────
 
-def generate_demo_midi(params: MidiGenParams) -> MidiData:
+def generate_demo_midi(
+    params: MidiGenParams,
+    progress_callback: Optional[Callable] = None,
+    cancel_event=None,
+) -> MidiData:
     """
     Generate a simple demo MIDI without a model (fallback/preview).
     Creates basic chord progressions and melodies algorithmically.
@@ -857,6 +942,7 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
     import random
 
     rng = random.Random(params.seed) if params.seed is not None else random
+    _raise_if_generation_cancelled(cancel_event)
 
     midi_data = MidiData(
         tempo=params.tempo,
@@ -895,6 +981,7 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
     # Piano chords track
     piano = TrackData(name="Piano", program=0, channel=0)
     for bar in range(params.duration_bars):
+        _raise_if_generation_cancelled(cancel_event)
         chord_deg = prog[bar % len(prog)]
         chord_notes = chord_tones(chord_deg)
         t = bar * bar_dur
@@ -904,6 +991,11 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
                 start=t, end=t + bar_dur * 0.95,
                 velocity=rng.randint(70, 90),
             ))
+        if progress_callback:
+            progress_callback(
+                0.2 + 0.2 * ((bar + 1) / max(1, params.duration_bars)),
+                "Building chord track...",
+            )
     midi_data.tracks.append(piano)
 
     # Melody track
@@ -911,6 +1003,7 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
     t = 0.0
     prev_deg = 0
     while t < total_dur:
+        _raise_if_generation_cancelled(cancel_event)
         bar = min(params.duration_bars - 1, int(t // bar_dur))
         chord_deg = prog[bar % len(prog)]
         chord_bias = [chord_deg, chord_deg + 2, chord_deg + 4]
@@ -934,10 +1027,13 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
         prev_deg = deg
         t += dur
     midi_data.tracks.append(melody)
+    if progress_callback:
+        progress_callback(0.55, "Building melody track...")
 
     # Bass track
     bass = TrackData(name="Bass", program=33, channel=2)
     for bar in range(params.duration_bars):
+        _raise_if_generation_cancelled(cancel_event)
         chord_deg = prog[bar % len(prog)]
         bass_pitch = scale_note(chord_deg, -2)
         t = bar * bar_dur
@@ -952,11 +1048,16 @@ def generate_demo_midi(params: MidiGenParams) -> MidiData:
                 ))
     midi_data.tracks.append(bass)
 
-    drum_track = generate_drum_track(params, rng=rng)
+    if progress_callback:
+        progress_callback(0.75, "Building bass track...")
+    drum_track = generate_drum_track(params, rng=rng, cancel_event=cancel_event)
     if drum_track is not None:
         midi_data.tracks.append(drum_track)
 
     midi_data.duration = total_dur
+    _raise_if_generation_cancelled(cancel_event)
+    if progress_callback:
+        progress_callback(1.0, "Done")
     return midi_data
 
 
@@ -972,20 +1073,43 @@ def get_engine() -> MidiLLMEngine:
     return _engine
 
 
-def generate_midi(params: MidiGenParams,
-                  progress_callback: Optional[Callable] = None) -> MidiGenResult:
+def generate_midi(
+    params: MidiGenParams,
+    progress_callback: Optional[Callable] = None,
+    *,
+    model_id: Optional[str] = None,
+    cancel_event=None,
+) -> MidiGenResult:
     """
     Generate MIDI - uses model if loaded, falls back to demo generator.
     Called by InferenceWorker.
     """
     engine = get_engine()
+    started_at = time.time()
+    if cancel_event is not None and cancel_event.is_set():
+        return _cancelled_generation_result(started_at)
 
     if engine.is_loaded:
+        if (
+            model_id
+            and getattr(engine, "model_id", "")
+            and engine.model_id != model_id
+        ):
+            return MidiGenResult(
+                error=(
+                    f"Active MIDI model is {engine.model_id}, not the selected "
+                    f"model {model_id}."
+                ),
+                output_kind="error",
+                can_route=False,
+            )
         if progress_callback:
             progress_callback(0.1, "Generating MIDI sequence...")
-        result = engine.generate(params)
-        if progress_callback:
-            progress_callback(1.0, "Done")
+        result = engine.generate(
+            params,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+        )
         return result
     if not params.allow_demo_output:
         return MidiGenResult(
@@ -1002,11 +1126,15 @@ def generate_midi(params: MidiGenParams,
         if progress_callback:
             progress_callback(0.2, "Generating demo MIDI (no model loaded)...")
         t0 = time.time()
-        midi_data = generate_demo_midi(params)
+        try:
+            midi_data = generate_demo_midi(
+                params,
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+            )
+        except MidiGenerationCancelled:
+            return _cancelled_generation_result(t0)
         gen_time = time.time() - t0
-
-        if progress_callback:
-            progress_callback(1.0, "Done")
 
         return MidiGenResult(
             midi_data=midi_data,
@@ -1049,6 +1177,7 @@ def load_model(
 
     engine.load_model(
         str(local),
+        model_id=model_id,
         local_files_only=bool(kwargs.get("local_files_only", True)),
         trust_remote_code=bool(kwargs.get("trust_remote_code", False)),
         prefer_safetensors=bool(kwargs.get("prefer_safetensors", True)),

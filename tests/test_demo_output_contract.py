@@ -1,6 +1,7 @@
 import os
 import os
 import tempfile
+import time
 import unittest
 import wave
 from unittest.mock import patch
@@ -41,6 +42,16 @@ class DemoOutputContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls._app = QApplication.instance() or QApplication([])
 
+    def _wait_for(self, predicate, timeout=5.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self._app.processEvents()
+            if predicate():
+                return True
+            time.sleep(0.01)
+        self._app.processEvents()
+        return bool(predicate())
+
     def test_fluidsynth_failure_marks_sine_preview_as_demo(self):
         with tempfile.TemporaryDirectory() as tmp:
             output_path = os.path.join(tmp, "preview.wav")
@@ -77,6 +88,7 @@ class DemoOutputContractTests(unittest.TestCase):
                     return_value=preview,
                 ):
                     view._on_render()
+                    self.assertTrue(self._wait_for(lambda: view._render_worker is None))
 
             self.assertIn("Preview render (sine)", view._status.text())
             self.assertIn("FluidSynth DLL missing", view._status.text())
