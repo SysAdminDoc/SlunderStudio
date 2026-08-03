@@ -264,6 +264,12 @@ class ReferencePanel(QWidget):
         worker.cancelled.connect(
             lambda t=token, w=worker: self._on_analysis_cancelled(t, w)
         )
+        # InferenceWorker's result-bearing ``finished`` signal fires before
+        # QThread has fully stopped.  The distinct completion signal lets the
+        # wrapper be released after task cleanup without a blocking wait.
+        worker.thread_stopped.connect(
+            lambda w=worker: self._release_worker_later(w)
+        )
         self._analysis_workers.add(worker)
         self._worker = worker
         worker.start()

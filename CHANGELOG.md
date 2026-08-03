@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Added a project-level AI disclosure and human-authorship report. Project Manager can record
+  user-declared lyrics, MIDI, edit, and take-selection evidence and export a JSON report plus a
+  tab-separated sheet mapping generated elements to DDEX disclosure fields. Unknown authorship,
+  model metadata, and training disclosure remain explicit instead of being inferred.
 - Moved audio file decode, waveform/spectrogram work, quality scoring, mixer mixdown,
   playback loading, and audio exports onto cancellable worker paths with determinate
   progress. Batch previews now decode once and reuse the same buffer for scoring and

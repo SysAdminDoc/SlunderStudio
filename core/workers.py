@@ -113,6 +113,7 @@ class InferenceWorker(QThread):
     finished = Signal(object)
     error = Signal(str)
     cancelled = Signal()
+    thread_stopped = Signal()
 
     def __init__(
         self,
@@ -237,8 +238,14 @@ class InferenceWorker(QThread):
                 self._job_store.mark_failed(self.job_id, f"{type(e).__name__}: {e}")
             self.error.emit(f"{type(e).__name__}: {e}")
         finally:
-            if self._job_log:
-                self._job_log.save()
+            try:
+                if self._job_log:
+                    self._job_log.save()
+            finally:
+                # This is distinct from the result-bearing ``finished``
+                # signal: receivers can release their QThread wrapper only
+                # after all task cleanup has completed, without calling wait.
+                self.thread_stopped.emit()
 
     def start(self, *args, **kwargs):
         """Register the thread before it can begin work."""

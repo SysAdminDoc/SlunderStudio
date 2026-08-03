@@ -81,29 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Export an AI-disclosure and human-authorship record
-  Why: 2026 made disclosure mandatory at distribution, penalties are account-level rather than
-    per-track, and the provenance sidecars already hold almost all the required data — no consumer
-    tool ships this.
-  Evidence: Spotify shipped an impersonation policy plus a DDEX-based AI-disclosure credit standard
-    and removed 75M spam tracks; the DDEX fields in play are `IsAIGenerated`, `AIComponentType`
-    (vocal/instrument/lyric/melody/full-composition) and `AITrainingDisclosure`. DistroKid requires
-    a disclosure checkbox; **CD Baby/Downtown bans AI-*generated* musical content outright while
-    permitting AI *production* tools over human material** — so a boolean flag cannot satisfy both
-    policies, only per-element granularity can. The US Copyright Office requires demonstrable human
-    authorship and states prompting alone does not qualify. Deezer reports >50% of daily uploads as
-    AI-generated with 85% of their streams flagged fraudulent, so accurate tagging is defensive as
-    well as compliant. A n=1,734 producer survey found 81% want clear labelling and 83% support
-    mandatory disclosure. Source data already exists in `core/provenance.py:171-240` (module,
-    operation, model id/revision/hash/license, seed, prompt, lyrics, source paths, artifact SHA-256).
-  Touches: `core/provenance.py`, a new report module, `ui/project_manager.py`, export paths, tests.
-  Acceptance: A project-level report enumerates each contributing element as generated, processed or
-    human-authored, names the model and license behind each generated element, maps to the DDEX
-    field values, and lists the human contributions (lyrics authored, MIDI notes drawn, edits,
-    takes chosen) as registration evidence. Exports as a copy-pasteable sheet plus JSON. It states
-    what it cannot know rather than guessing.
-  Complexity: M
-
 - [ ] P1 — Publish releases and repair the release record
   Why: 31 versions of shipped work exist and none of it is obtainable except by cloning; the
     changelog's oldest entry is corrupted generator output.

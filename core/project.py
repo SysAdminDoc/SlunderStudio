@@ -25,7 +25,7 @@ from core.provenance import (
 from core.settings import APP_VERSION, get_config_dir
 from core.trash import TrashEntry, TrashError, TrashManager
 
-PROJECT_SCHEMA_VERSION = 2
+PROJECT_SCHEMA_VERSION = 3
 logger = logging.getLogger(__name__)
 
 
@@ -109,6 +109,9 @@ class Project:
     mixer_state: dict = field(default_factory=dict)
     lyrics_text: str = ""
     notes: str = ""
+    # Explicit, user-entered registration evidence.  The disclosure report
+    # keeps these declarations separate from observed project data.
+    human_contributions: list[dict] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.id:
@@ -544,6 +547,7 @@ class ProjectManager:
             "tags": project.tags,
             "lyrics_text": project.lyrics_text,
             "notes": project.notes,
+            "human_contributions": project.human_contributions,
             "mixer_state": project.mixer_state,
             "assets": [asdict(a) for a in project.assets],
             "versions": [asdict(v) for v in project.versions],
@@ -552,6 +556,9 @@ class ProjectManager:
     @staticmethod
     def _project_from_data(data: dict, project_id: str) -> Project:
         """Build a Project from a stored payload (current file or a snapshot)."""
+        raw_contributions = data.get("human_contributions", [])
+        if not isinstance(raw_contributions, list):
+            raw_contributions = []
         project = Project(
             schema_version=data.get("schema_version", PROJECT_SCHEMA_VERSION),
             app_version=data.get("app_version", APP_VERSION),
@@ -565,6 +572,10 @@ class ProjectManager:
             tags=data.get("tags", []),
             lyrics_text=data.get("lyrics_text", ""),
             notes=data.get("notes", ""),
+            human_contributions=[
+                item for item in raw_contributions
+                if isinstance(item, (dict, str))
+            ],
             mixer_state=data.get("mixer_state", {}),
         )
         ts = data.get("time_signature", [4, 4])
@@ -648,6 +659,10 @@ class ProjectManager:
             updated.setdefault("lyrics_text", "")
             updated.setdefault("notes", "")
             messages.append("Migrated project schema from v1 to v2.")
+            migrated = True
+        if schema_version < 3:
+            updated.setdefault("human_contributions", [])
+            messages.append("Migrated project schema from v2 to v3.")
             migrated = True
         elif schema_version > PROJECT_SCHEMA_VERSION:
             messages.append(

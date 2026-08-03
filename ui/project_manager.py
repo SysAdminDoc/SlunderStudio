@@ -18,6 +18,11 @@ from PySide6.QtCore import Qt, Signal
 from ui.theme import ThemeEngine, rgba
 from ui.accessibility import install_accessibility
 from core.project import ProjectManager, Project, ProjectAsset, get_project_manager
+from core.disclosure import (
+    format_human_contributions,
+    parse_human_contributions,
+    write_disclosure_report,
+)
 from core.provenance import read_provenance_sidecar
 
 
@@ -150,6 +155,29 @@ class ProjectDetailPanel(QWidget):
         """)
         layout.addWidget(self._notes)
 
+        contributions_label = QLabel("Human contributions (registration evidence)")
+        contributions_label.setStyleSheet(
+            f"color: {t['text']}; font-weight: bold; font-size: 12px;"
+        )
+        layout.addWidget(contributions_label)
+
+        self._contributions = QTextEdit()
+        self._contributions.setPlaceholderText(
+            "One declaration per line, for example:\n"
+            "lyrics: wrote the chorus\n"
+            "midi: drew the bass notes\n"
+            "edits: chose the final vocal take"
+        )
+        self._contributions.setMaximumHeight(92)
+        self._contributions.setStyleSheet(f"""
+            QTextEdit {{
+                background: {t['surface']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 4px;
+                padding: 6px; font-size: 11px;
+            }}
+        """)
+        layout.addWidget(self._contributions)
+
         # Assets list
         assets_label = QLabel("Assets")
         assets_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
@@ -226,6 +254,11 @@ class ProjectDetailPanel(QWidget):
         self._provenance_btn.setEnabled(False)
         self._provenance_btn.clicked.connect(self._on_open_provenance)
 
+        self._disclosure_btn = QPushButton("Export AI Disclosure")
+        self._disclosure_btn.setStyleSheet(btn_style)
+        self._disclosure_btn.setEnabled(False)
+        self._disclosure_btn.clicked.connect(self._on_export_disclosure)
+
         self._restore_btn = QPushButton("Restore Version")
         self._restore_btn.setStyleSheet(btn_style)
         self._restore_btn.setEnabled(False)
@@ -236,6 +269,7 @@ class ProjectDetailPanel(QWidget):
         btn_row.addWidget(self._restore_btn)
         btn_row.addWidget(self._import_btn)
         btn_row.addWidget(self._provenance_btn)
+        btn_row.addWidget(self._disclosure_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -244,6 +278,11 @@ class ProjectDetailPanel(QWidget):
             "Project details",
             named_controls=[
                 (self._notes, "Project notes", "Edits notes saved with the current project."),
+                (
+                    self._contributions,
+                    "Human contributions",
+                    "Records user-declared authorship evidence for the disclosure report.",
+                ),
                 (self._asset_list, "Project assets", "Lists assets in the current project."),
                 (self._version_list, "Project versions", "Lists saved project versions."),
                 (self._save_btn, "Save project", "Saves the current project data."),
@@ -251,6 +290,11 @@ class ProjectDetailPanel(QWidget):
                 (self._restore_btn, "Restore project version", "Restores the selected version."),
                 (self._import_btn, "Import project asset", "Imports an asset into the project."),
                 (self._provenance_btn, "Open asset provenance", "Opens provenance for the selected asset."),
+                (
+                    self._disclosure_btn,
+                    "Export AI disclosure",
+                    "Exports a JSON and copy-pasteable TSV AI disclosure and human-authorship record.",
+                ),
             ],
         )
 
@@ -268,6 +312,10 @@ class ProjectDetailPanel(QWidget):
         )
 
         self._notes.setPlainText(project.notes)
+        self._contributions.setPlainText(
+            format_human_contributions(project.human_contributions)
+        )
+        self._disclosure_btn.setEnabled(True)
 
         # Assets
         self._asset_list.clear()
@@ -302,9 +350,11 @@ class ProjectDetailPanel(QWidget):
         self._name_label.setText("No Project Open")
         self._meta_label.setText("")
         self._notes.clear()
+        self._contributions.clear()
         self._asset_list.clear()
         self._asset_by_id = {}
         self._provenance_btn.setEnabled(False)
+        self._disclosure_btn.setEnabled(False)
         self._version_list.clear()
 
     def sync_pending_edits(self):
@@ -312,6 +362,11 @@ class ProjectDetailPanel(QWidget):
         project = get_project_manager().current
         if project is not None:
             project.notes = self._notes.toPlainText()
+            contributions = getattr(self, "_contributions", None)
+            if contributions is not None:
+                project.human_contributions = parse_human_contributions(
+                    contributions.toPlainText()
+                )
 
     def _on_save(self):
         mgr = get_project_manager()
@@ -464,6 +519,40 @@ class ProjectDetailPanel(QWidget):
         close_btn.clicked.connect(dialog.accept)
         layout.addWidget(close_btn, alignment=Qt.AlignRight)
         dialog.exec()
+
+    def _on_export_disclosure(self):
+        """Write the project disclosure record as JSON and TSV."""
+        manager = get_project_manager()
+        project = manager.current
+        if project is None:
+            if self.toast_mgr:
+                self.toast_mgr.error("No project is open to report.")
+            return
+
+        self.sync_pending_edits()
+        output_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Export AI Disclosure",
+            os.path.dirname(project.assets[0].file_path) if project.assets else "",
+        )
+        if not output_dir:
+            return
+        if not manager.save(project):
+            if self.toast_mgr:
+                self.toast_mgr.error(
+                    "Could not save the project before exporting its disclosure record."
+                )
+            return
+        try:
+            json_path, tsv_path = write_disclosure_report(project, output_dir)
+        except (OSError, TypeError, ValueError) as exc:
+            if self.toast_mgr:
+                self.toast_mgr.error(f"AI disclosure export failed: {exc}")
+            return
+        if self.toast_mgr:
+            self.toast_mgr.success(
+                f"AI disclosure exported: {json_path.name} and {tsv_path.name}"
+            )
 
 
 # ── Project Manager View ───────────────────────────────────────────────────────
