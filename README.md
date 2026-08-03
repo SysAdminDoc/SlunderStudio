@@ -161,15 +161,25 @@ SlunderStudio/
 
 ## Building
 
-Create a standalone executable with PyInstaller:
+Create a standalone executable from a temporary, hash-locked build environment:
 
-```bash
-py -3.12 -m pip install pyinstaller
-py -3.12 build/build.py           # One-folder distribution
-py -3.12 build/build.py --onefile # Single .exe (Windows)
+```powershell
+py -3.12 build/build.py --clean-env
+py -3.12 build/build.py --clean-env --onefile # Single .exe (Windows)
 ```
 
-The build script removes stale `dist/` outputs before packaging, resolves the platform icon, smoke-launches the packaged executable to verify one onedir process or the expected onefile bootloader-parent/child tree, and writes `dist/SHA256SUMS.txt` for the distributable artifacts. The default build also creates `dist/SlunderStudio-vX.Y.Z-<platform>-<arch>.zip` beside `dist/SlunderStudio/`. Every version string — the window title, settings and project schemas, provenance sidecars, the README badge, artifact names, and the embedded Windows file version — comes from `core/version.py`.
+The `--clean-env` build installs `requirements-lock.txt` and the pinned
+`build/requirements-build-lock.txt` with `--require-hashes`, rejects extra
+installed distributions, excludes test/cloud/unused Qt modules, and audits the
+one-folder bundle before it can be packaged. The Windows smoke check always
+uses the private non-input virtual-display isolation helper. The build removes
+stale `dist/` outputs, resolves the platform icon, verifies one onedir process
+or the expected onefile bootloader-parent/child tree, and writes
+`dist/SHA256SUMS.txt`. The default build also creates
+`dist/SlunderStudio-vX.Y.Z-<platform>-<arch>.zip` beside `dist/SlunderStudio/`.
+Every version string — the window title, settings and project schemas,
+provenance sidecars, the README badge, artifact names, and the embedded Windows
+file version — comes from `core/version.py`.
 
 **Releases are unsigned.** There is no code-signing step and none will be added. Windows SmartScreen will warn on first run of an unsigned executable; choose "More info" then "Run anyway", or verify the download against `SHA256SUMS.txt` first.
 
@@ -231,7 +241,9 @@ SlunderStudio/
 │   ├── batch_view.py           # Batch generation
 │   └── toast.py                # Toast notifications
 ├── assets/templates/           # 33 genre JSON templates
-├── build/build.py              # PyInstaller packaging
+├── build/build.py              # locked PyInstaller packaging
+├── build/requirements-build.txt
+├── build/requirements-build-lock.txt
 ├── requirements.txt            # Dependencies
 └── LICENSE                     # MIT License
 ```

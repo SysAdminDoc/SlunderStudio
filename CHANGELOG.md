@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Gated PyInstaller packaging behind temporary Python 3.12 environments installed from hashed
+  runtime and build locks, excluded polluted/dead module graphs, audited frozen packages, and
+  moved Windows smoke launches onto the private virtual-display isolation contract.
 - Removed the unconditional startup `__pycache__` purge so Python can reuse valid bytecode caches
   on subsequent launches.
 - Cached successful and failed torch availability probes and deferred the initial GPU status update

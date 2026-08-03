@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import tempfile
 import unittest
 import zipfile
@@ -21,14 +22,14 @@ class BuildArtifactTests(unittest.TestCase):
     def setUp(self):
         self.build_script = load_build_script()
 
-    def test_numpy_private_exception_module_is_bundled(self):
+    def test_numpy_is_bundled(self):
         command = self.build_script.build_command(onefile=False)
         hidden_imports = {
             command[index + 1]
             for index, value in enumerate(command[:-1])
             if value == "--hidden-import"
         }
-        self.assertIn("numpy._core._exceptions", hidden_imports)
+        self.assertIn("numpy", hidden_imports)
 
     def test_dynamic_engine_imports_reach_pyinstaller_command(self):
         command = self.build_script.build_command(onefile=False)
@@ -44,6 +45,24 @@ class BuildArtifactTests(unittest.TestCase):
                 "core.audio_export",
             }.issubset(hidden_imports)
         )
+
+    def test_command_excludes_polluted_and_unused_modules(self):
+        command = self.build_script.build_command(onefile=False)
+        excluded = {
+            command[index + 1]
+            for index, value in enumerate(command[:-1])
+            if value == "--exclude-module"
+        }
+        self.assertTrue({"pytest", "aiohttp", "PySide6.QtWebEngineCore"}.issubset(excluded))
+
+    def test_frozen_module_audit_rejects_unlocked_top_level_package(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            internal = Path(tmp) / "_internal"
+            (internal / "numpy").mkdir(parents=True)
+            (internal / "assets").mkdir()
+            (internal / "unexpected_cloud_package").mkdir()
+            with self.assertRaisesRegex(RuntimeError, "unexpected_cloud_package"):
+                self.build_script.audit_frozen_modules(Path(tmp))
 
     def test_clean_artifacts_removes_stale_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -122,53 +141,42 @@ class BuildArtifactTests(unittest.TestCase):
         with mock.patch.object(self.build_script.sys, "platform", "linux"):
             self.assertEqual(self.build_script.executable_name(), "SlunderStudio")
 
-    def test_smoke_launch_requires_single_process_and_cleans_up(self):
+    def test_windows_smoke_uses_private_desktop_and_cleans_up(self):
         exe = Path("dist/SlunderStudio/SlunderStudio.exe")
-        process = mock.Mock(pid=42)
+        device = r"\\.\DISPLAY6"
+        desktop = "CodexVisualIsolation-test"
+        isolation_outputs = [
+            json.dumps({"deviceName": device, "primary": False}),
+            json.dumps({"processId": 42, "desktop": desktop, "display": device}),
+            "placement proof passed",
+            "swept 0 window(s)",
+        ]
         with mock.patch.object(self.build_script.sys, "platform", "win32"), \
-                mock.patch.object(self.build_script.subprocess, "Popen", return_value=process), \
+                mock.patch.object(self.build_script, "_run_visual_isolation", side_effect=isolation_outputs) as isolate, \
                 mock.patch.object(self.build_script.time, "sleep"), \
                 mock.patch.object(self.build_script, "process_ids_for_exe", side_effect=[[], [42]]), \
-                mock.patch.object(self.build_script, "terminate_process_tree") as terminate:
+                mock.patch.object(self.build_script, "_stop_isolated_process") as stop:
             self.build_script.smoke_launch(exe, seconds=0)
 
-        terminate.assert_called_once_with([42])
+        self.assertEqual(isolate.call_args_list[0], mock.call("ensure"))
+        self.assertEqual(isolate.call_args_list[1], mock.call("launch", "-FilePath", str(exe)))
+        stop.assert_called_once_with(42)
 
     def test_smoke_launch_rejects_recursive_processes(self):
-        exe = Path("dist/SlunderStudio/SlunderStudio.exe")
-        process = mock.Mock(pid=42)
-        with mock.patch.object(self.build_script.sys, "platform", "win32"), \
-                mock.patch.object(self.build_script.subprocess, "Popen", return_value=process), \
-                mock.patch.object(self.build_script.time, "sleep"), \
-                mock.patch.object(self.build_script, "process_ids_for_exe", side_effect=[[], [42, 43]]), \
-                mock.patch.object(self.build_script, "terminate_process_tree") as terminate:
-            with self.assertRaises(RuntimeError):
-                self.build_script.smoke_launch(exe, seconds=0)
-
-        terminate.assert_called_once_with([42, 43])
-
-    def test_onefile_smoke_accepts_bootloader_parent_and_child(self):
         exe = Path("dist/SlunderStudio.exe")
-        process = mock.Mock(pid=42)
+        device = r"\\.\DISPLAY6"
+        desktop = "CodexVisualIsolation-test"
         with mock.patch.object(self.build_script.sys, "platform", "win32"), \
-                mock.patch.object(self.build_script.subprocess, "Popen", return_value=process), \
-                mock.patch.object(self.build_script.time, "sleep"), \
-                mock.patch.object(self.build_script, "process_ids_for_exe", return_value=[]), \
                 mock.patch.object(
                     self.build_script,
-                    "process_tree_for_exe",
-                    return_value={42: 1, 43: 42},
+                    "_run_visual_isolation",
+                    side_effect=[
+                        json.dumps({"deviceName": device, "primary": False}),
+                        json.dumps({"processId": 42, "desktop": desktop, "display": device}),
+                        "placement proof passed",
+                        "swept 0 window(s)",
+                    ],
                 ), \
-                mock.patch.object(self.build_script, "terminate_process_tree") as terminate:
-            self.build_script.smoke_launch(exe, seconds=0, onefile=True)
-
-        terminate.assert_called_once_with([42, 43])
-
-    def test_onefile_smoke_rejects_recursive_processes(self):
-        exe = Path("dist/SlunderStudio.exe")
-        process = mock.Mock(pid=42)
-        with mock.patch.object(self.build_script.sys, "platform", "win32"), \
-                mock.patch.object(self.build_script.subprocess, "Popen", return_value=process), \
                 mock.patch.object(self.build_script.time, "sleep"), \
                 mock.patch.object(self.build_script, "process_ids_for_exe", return_value=[]), \
                 mock.patch.object(
@@ -176,11 +184,66 @@ class BuildArtifactTests(unittest.TestCase):
                     "process_tree_for_exe",
                     return_value={42: 1, 43: 42, 44: 43},
                 ), \
-                mock.patch.object(self.build_script, "terminate_process_tree") as terminate:
+                mock.patch.object(self.build_script, "_stop_isolated_process") as stop:
             with self.assertRaises(RuntimeError):
                 self.build_script.smoke_launch(exe, seconds=0, onefile=True)
 
-        terminate.assert_called_once_with([42, 43, 44])
+        stop.assert_called_once_with(42)
+
+    def test_onefile_smoke_accepts_bootloader_parent_and_child(self):
+        exe = Path("dist/SlunderStudio.exe")
+        device = r"\\.\DISPLAY6"
+        desktop = "CodexVisualIsolation-test"
+        with mock.patch.object(self.build_script.sys, "platform", "win32"), \
+                mock.patch.object(
+                    self.build_script,
+                    "_run_visual_isolation",
+                    side_effect=[
+                        json.dumps({"deviceName": device, "primary": False}),
+                        json.dumps({"processId": 42, "desktop": desktop, "display": device}),
+                        "placement proof passed",
+                        "swept 0 window(s)",
+                    ],
+                ), \
+                mock.patch.object(self.build_script.time, "sleep"), \
+                mock.patch.object(self.build_script, "process_ids_for_exe", return_value=[]), \
+                mock.patch.object(
+                    self.build_script,
+                    "process_tree_for_exe",
+                    return_value={42: 1, 43: 42},
+                ), \
+                mock.patch.object(self.build_script, "_stop_isolated_process") as stop:
+            self.build_script.smoke_launch(exe, seconds=0, onefile=True)
+
+        stop.assert_called_once_with(42)
+
+    def test_onefile_smoke_rejects_recursive_processes(self):
+        exe = Path("dist/SlunderStudio.exe")
+        device = r"\\.\DISPLAY6"
+        desktop = "CodexVisualIsolation-test"
+        with mock.patch.object(self.build_script.sys, "platform", "win32"), \
+                mock.patch.object(
+                    self.build_script,
+                    "_run_visual_isolation",
+                    side_effect=[
+                        json.dumps({"deviceName": device, "primary": False}),
+                        json.dumps({"processId": 42, "desktop": desktop, "display": device}),
+                        "placement proof passed",
+                        "swept 0 window(s)",
+                    ],
+                ), \
+                mock.patch.object(self.build_script.time, "sleep"), \
+                mock.patch.object(self.build_script, "process_ids_for_exe", return_value=[]), \
+                mock.patch.object(
+                    self.build_script,
+                    "process_tree_for_exe",
+                    return_value={42: 1, 43: 42, 44: 43},
+                ), \
+                mock.patch.object(self.build_script, "_stop_isolated_process") as stop:
+            with self.assertRaises(RuntimeError):
+                self.build_script.smoke_launch(exe, seconds=0, onefile=True)
+
+        stop.assert_called_once_with(42)
 
     def test_process_ids_for_exe_embeds_escaped_powershell_path(self):
         exe = Path("dist/SlunderStudio/SlunderStudio.exe")

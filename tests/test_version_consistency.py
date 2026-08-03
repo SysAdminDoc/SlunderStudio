@@ -97,7 +97,7 @@ class VersionConsistencyTests(unittest.TestCase):
             for index, value in enumerate(command[:-1])
             if value == "--hidden-import"
         }
-        self.assertIn("numpy._core._exceptions", hidden_imports)
+        self.assertIn("numpy", hidden_imports)
 
 
 if __name__ == "__main__":

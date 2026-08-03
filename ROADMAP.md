@@ -81,24 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P0
 
-- [ ] P0 — Rebuild the distributable from a clean locked environment and gate it
-  Why: The shipped artifact contains 188 packages that no lock file names, voiding every
-    supply-chain control in the repo at the exact boundary users consume.
-  Evidence: `dist/SlunderStudio/_internal/` holds `botocore`, `asyncpg`, `aiohttp`,
-    `cryptography-49.0.0`, `duckdb`, `hypothesis`, `bcrypt`, `google`, `jsonschema`, `keyring`,
-    `email_validator`, `greenlet`, Pythonwin and Tcl/Tk — none in `requirements-lock.txt` or any
-    profile lock; `dist/SlunderStudio-v0.1.31-win-x64.zip` is 389.5 MB. `build/build.py` passes no
-    `--exclude-module` at all, so PyInstaller froze whatever was importable in a polluted
-    interpreter. Bundle bloat from unexcluded Qt modules is a known PyInstaller failure mode
-    (pyinstaller#6447, `libQt6WebEngineCore` ~176 MB).
-  Touches: `build/build.py`, `tests/test_build_artifacts.py`, a build-requirements file, release docs.
-  Acceptance: The build creates or requires a venv installed from `requirements-lock.txt` with
-    `--require-hashes`; `--exclude-module` covers test/dev/cloud packages and unused Qt modules; a
-    test asserts every top-level name in `_internal` maps to a lock entry or an explicit allowlist,
-    and fails the build otherwise; the resulting zip is materially smaller and the smoke check
-    still passes.
-  Complexity: M
-
 - [ ] P0 — Resolve the transformers config-injection RCE exposure
   Why: The pinned version sits inside a window for a bug that bypasses `trust_remote_code=False` —
     the specific control this app's model-trust design depends on.

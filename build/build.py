@@ -19,7 +19,11 @@ import sys
 import subprocess
 import shutil
 import hashlib
+import importlib.metadata
+import json
 import platform
+import re
+import tempfile
 import time
 import zipfile
 from pathlib import Path
@@ -31,24 +35,248 @@ if str(PROJECT_ROOT) not in sys.path:
 from core.version import APP_NAME, APP_VERSION  # noqa: E402 - needs sys.path above
 
 ENTRY_POINT = "main.py"
+RUNTIME_LOCK_PATH = PROJECT_ROOT / "requirements-lock.txt"
+BUILD_LOCK_PATH = PROJECT_ROOT / "build" / "requirements-build-lock.txt"
+VISUAL_ISOLATION_SCRIPT = Path.home() / ".claude" / "scripts" / "visual-isolation.ps1"
+
+# These are build-only packages. They are allowed in the isolated builder but
+# are excluded from the application graph and must never leak into the bundle.
+BUILD_TOOL_PACKAGES = {"pip", "setuptools", "wheel"}
+
+# PyInstaller hooks can discover optional packages that are present in a
+# polluted developer interpreter. Keep the application graph limited to the
+# runtime lock and the optional engines' lazy-import boundary.
+EXCLUDED_MODULES = (
+    "pytest",
+    "pytest_asyncio",
+    "pytest_cov",
+    "hypothesis",
+    "coverage",
+    "mypy",
+    "mcp",
+    "aiohttp",
+    "asyncpg",
+    "boto3",
+    "botocore",
+    "duckdb",
+    "email_validator",
+    "keyring",
+    "redis",
+    "sqlalchemy",
+    "psycopg2",
+    "watchfiles",
+    "websockets",
+    "tornado",
+    "httptools",
+    "lxml",
+    "pythonnet",
+    "clr_loader",
+    "win32com",
+    "tkinter",
+    "_tkinter",
+    "setuptools",
+    "pip",
+    "wheel",
+    # The shell uses Core, Gui and Widgets only. These Qt modules are not
+    # imported by the app and can pull hundreds of megabytes of unused DLLs.
+    "PySide6.Qt3DAnimation",
+    "PySide6.Qt3DCore",
+    "PySide6.Qt3DExtras",
+    "PySide6.Qt3DInput",
+    "PySide6.Qt3DLogic",
+    "PySide6.Qt3DRender",
+    "PySide6.QtBluetooth",
+    "PySide6.QtCharts",
+    "PySide6.QtDataVisualization",
+    "PySide6.QtHttpServer",
+    "PySide6.QtLocation",
+    "PySide6.QtMultimedia",
+    "PySide6.QtMultimediaWidgets",
+    "PySide6.QtNetworkAuth",
+    "PySide6.QtNfc",
+    "PySide6.QtPositioning",
+    "PySide6.QtPrintSupport",
+    "PySide6.QtQml",
+    "PySide6.QtQuick",
+    "PySide6.QtQuick3D",
+    "PySide6.QtRemoteObjects",
+    "PySide6.QtScxml",
+    "PySide6.QtSensors",
+    "PySide6.QtSerialBus",
+    "PySide6.QtSerialPort",
+    "PySide6.QtShaderTools",
+    "PySide6.QtSpatialAudio",
+    "PySide6.QtSql",
+    "PySide6.QtTest",
+    "PySide6.QtTextToSpeech",
+    "PySide6.QtVirtualKeyboard",
+    "PySide6.QtWebChannel",
+    "PySide6.QtWebEngineCore",
+    "PySide6.QtWebEngineWidgets",
+    "PySide6.QtWebSockets",
+    "PySide6.QtXml",
+    "PySide6.QtXmlPatterns",
+)
+
+# Non-package directories intentionally copied by PyInstaller. Every other
+# top-level directory in _internal must resolve to a package in a lock file.
+FROZEN_SUPPORT_DIRECTORIES = {
+    "_sounddevice_data",
+    "_soundfile_data",
+    "_tcl_data",
+    "_tk_data",
+    "assets",
+    "requirements",
+    "tcl8",
+    "tk8",
+}
 
 
 def require_pyinstaller():
-    """Fail with setup instructions if PyInstaller is not present."""
+    """Fail with setup instructions if the locked build tool is not present."""
     try:
         import PyInstaller  # noqa: F401
     except ImportError:
         print("PyInstaller is not installed.")
         print("Run this setup command before building:")
-        print(f'  "{sys.executable}" -m pip install pyinstaller')
+        print(
+            f'  "{sys.executable}" -m pip install --require-hashes '
+            f'-r "{BUILD_LOCK_PATH}"'
+        )
         print("Then rerun:")
-        print(f'  "{sys.executable}" build/build.py')
+        print(f'  "{sys.executable}" build/build.py --no-smoke')
         sys.exit(2)
+
+
+def _normalize_distribution_name(name: str) -> str:
+    """Normalize a distribution name using the PEP 503 comparison form."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _locked_packages(path: Path) -> dict[str, str]:
+    """Read pinned package versions from a pip-compile lock file."""
+    if not path.is_file():
+        raise RuntimeError(f"Required lock file is missing: {path}")
+    packages: dict[str, str] = {}
+    pattern = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9_.-]*)==([^\s\\]+)")
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = pattern.match(line)
+        if match:
+            packages[_normalize_distribution_name(match.group(1))] = match.group(2)
+    if not packages:
+        raise RuntimeError(f"Lock file has no pinned packages: {path}")
+    return packages
+
+
+def _installed_packages() -> dict[str, str]:
+    """Return installed distribution versions without consulting user metadata."""
+    return {
+        _normalize_distribution_name(distribution.metadata["Name"]): distribution.version
+        for distribution in importlib.metadata.distributions()
+        if distribution.metadata.get("Name")
+    }
+
+
+def validate_build_environment():
+    """Require a venv containing exactly the two hash-locked package sets."""
+    if sys.prefix == sys.base_prefix:
+        raise RuntimeError(
+            "Refusing to build from the base Python installation. "
+            "Run `py -3.12 build/build.py --clean-env` to create a temporary "
+            "hash-locked builder."
+        )
+
+    runtime = _locked_packages(RUNTIME_LOCK_PATH)
+    build_tools = _locked_packages(BUILD_LOCK_PATH)
+    expected = {**runtime, **build_tools}
+    installed = _installed_packages()
+
+    version_mismatches = {
+        name: f"expected {version}, found {installed.get(name, 'missing')}"
+        for name, version in expected.items()
+        if installed.get(name) != version
+    }
+    unexpected = sorted(
+        name
+        for name in installed
+        if name not in expected and name not in {_normalize_distribution_name(p) for p in BUILD_TOOL_PACKAGES}
+    )
+    if version_mismatches or unexpected:
+        details = []
+        if version_mismatches:
+            details.append(
+                "version mismatches: "
+                + ", ".join(f"{name} ({detail})" for name, detail in sorted(version_mismatches.items()))
+            )
+        if unexpected:
+            details.append("unexpected packages: " + ", ".join(unexpected))
+        raise RuntimeError(
+            "The build environment is not the locked runtime/build environment; "
+            + "; ".join(details)
+            + ". Run `py -3.12 build/build.py --clean-env`."
+        )
+    require_pyinstaller()
+
+
+def _python_in_venv(venv_path: Path) -> Path:
+    """Return the platform-specific Python executable in a venv."""
+    executable = "python.exe" if sys.platform == "win32" else "python"
+    subdir = "Scripts" if sys.platform == "win32" else "bin"
+    return venv_path / subdir / executable
+
+
+def _run_checked(command: list[str], *, env: dict[str, str] | None = None):
+    """Run a setup/build child process and preserve its useful output."""
+    print(f"Running: {' '.join(command)}")
+    result = subprocess.run(command, cwd=PROJECT_ROOT, env=env)
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
+
+
+def run_in_clean_environment(arguments: list[str]):
+    """Create, populate, use, and remove a temporary locked build venv."""
+    temp_root = Path(tempfile.mkdtemp(prefix="slunder-build-")).resolve()
+    temp_parent = Path(tempfile.gettempdir()).resolve()
+    if temp_root.parent != temp_parent:
+        raise RuntimeError(f"Unexpected temporary build location: {temp_root}")
+    venv_path = temp_root / "venv"
+    try:
+        _run_checked([sys.executable, "-m", "venv", str(venv_path)])
+        python = _python_in_venv(venv_path)
+        _run_checked(
+            [
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "--require-hashes",
+                "-r",
+                str(RUNTIME_LOCK_PATH),
+            ]
+        )
+        _run_checked(
+            [
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "--require-hashes",
+                "-r",
+                str(BUILD_LOCK_PATH),
+            ]
+        )
+        child_env = os.environ.copy()
+        child_env["PYTHONNOUSERSITE"] = "1"
+        child_env["SLUNDER_CLEAN_BUILD"] = "1"
+        forwarded = [argument for argument in arguments if argument != "--clean-env"]
+        _run_checked([str(python), str(Path(__file__).resolve()), *forwarded], env=child_env)
+    finally:
+        shutil.rmtree(temp_root)
 
 
 def build(onefile: bool = False, smoke: bool = True):
     """Run the PyInstaller build."""
-    require_pyinstaller()
+    validate_build_environment()
 
     os.chdir(PROJECT_ROOT)
     clean_artifacts()
@@ -69,6 +297,9 @@ def build(onefile: bool = False, smoke: bool = True):
     if not exe_path.is_file():
         print(f"\nBuild failed: expected executable was not created: {exe_path}")
         sys.exit(1)
+
+    if not onefile:
+        audit_frozen_modules(onefolder_dir())
 
     if smoke:
         smoke_launch(exe_path, onefile=onefile)
@@ -129,7 +360,6 @@ def build_command(onefile: bool = False) -> list[str]:
         "core.voice_bank",
         "core.workers",
         "numpy",
-        "numpy._core._exceptions",
         "sounddevice",
         "soundfile",
     ]
@@ -156,6 +386,11 @@ def build_command(onefile: bool = False) -> list[str]:
     for imp in hidden:
         cmd.extend(["--hidden-import", imp])
 
+    # Keep optional developer/cloud packages and unused Qt modules out of the
+    # application graph even if a caller bypasses the clean-env bootstrap.
+    for module in EXCLUDED_MODULES:
+        cmd.extend(["--exclude-module", module])
+
     runtime_hook = os.path.join("assets", "runtime_hook_mp.py")
     if os.path.isfile(runtime_hook):
         cmd.extend(["--runtime-hook", runtime_hook])
@@ -177,6 +412,49 @@ def build_command(onefile: bool = False) -> list[str]:
     cmd.append(ENTRY_POINT)
 
     return cmd
+
+
+def _frozen_package_candidates(name: str, locked: set[str] | None = None) -> set[str]:
+    """Map a frozen top-level directory to possible locked distributions."""
+    package_name = name
+    if package_name.endswith(".dist-info"):
+        package_name = package_name[: -len(".dist-info")]
+    candidates = {_normalize_distribution_name(package_name)}
+    if name.endswith(".dist-info") and locked:
+        normalized = _normalize_distribution_name(package_name)
+        candidates.update(
+            lock_name
+            for lock_name in locked
+            if normalized == lock_name or normalized.startswith(lock_name + "-")
+        )
+    if package_name.endswith(".libs"):
+        candidates.add(_normalize_distribution_name(package_name[: -len(".libs")]))
+
+    package_map = importlib.metadata.packages_distributions()
+    for import_name in (name, package_name):
+        for distribution in package_map.get(import_name, []):
+            candidates.add(_normalize_distribution_name(distribution))
+    return candidates
+
+
+def audit_frozen_modules(distribution_dir: Path):
+    """Reject bundled package directories that are absent from a lock file."""
+    internal_dir = distribution_dir / "_internal"
+    if not internal_dir.is_dir():
+        raise RuntimeError(f"PyInstaller internal directory is missing: {internal_dir}")
+
+    locked = set(_locked_packages(RUNTIME_LOCK_PATH)) | set(_locked_packages(BUILD_LOCK_PATH))
+    unknown: list[str] = []
+    for entry in sorted(internal_dir.iterdir(), key=lambda path: path.name.lower()):
+        if not entry.is_dir() or entry.name in FROZEN_SUPPORT_DIRECTORIES:
+            continue
+        if not _frozen_package_candidates(entry.name, locked) & locked:
+            unknown.append(entry.name)
+    if unknown:
+        raise RuntimeError(
+            "Distributable contains top-level packages absent from the locked "
+            "runtime/build inputs: " + ", ".join(unknown)
+        )
 
 
 def clean_artifacts():
@@ -325,23 +603,43 @@ def smoke_launch(
 
 
 def _smoke_launch_windows(exe_path: Path, seconds: float, *, onefile: bool = False):
+    """Smoke-test Windows builds on the isolated non-input virtual display."""
     before = set(process_ids_for_exe(exe_path))
     if before:
         raise RuntimeError(f"Smoke launch blocked: {exe_path} is already running ({sorted(before)})")
 
-    process = subprocess.Popen(
-        [str(exe_path)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    ensure_info = _last_json_object(_run_visual_isolation("ensure"))
+    if not ensure_info or not ensure_info.get("deviceName") or ensure_info.get("primary"):
+        raise RuntimeError(
+            "Visual isolation did not prove a non-primary virtual display; refusing GUI smoke test"
+        )
+
+    launch_info = _last_json_object(
+        _run_visual_isolation("launch", "-FilePath", str(exe_path))
     )
-    time.sleep(seconds)
-    ids: list[int] = []
+    if not launch_info:
+        raise RuntimeError("Visual isolation did not return launch proof")
+    if launch_info.get("display") != ensure_info["deviceName"]:
+        raise RuntimeError(
+            "Visual isolation launch display does not match the ensured virtual display"
+        )
+    process_id = launch_info.get("processId")
+    desktop = launch_info.get("desktop")
+    if not isinstance(process_id, int) or not desktop:
+        raise RuntimeError("Visual isolation launch proof is missing process or desktop identity")
+
     try:
+        time.sleep(seconds)
+        _run_visual_isolation(
+            "verify",
+            "-ProcessId",
+            str(process_id),
+            "-DesktopName",
+            desktop,
+        )
         if onefile:
             tree = process_tree_for_exe(exe_path)
-            ids = sorted(tree)
-            parent_pid, child_pid = validate_onefile_process_tree(tree, process.pid)
+            parent_pid, child_pid = validate_onefile_process_tree(tree, process_id)
             print(
                 "Packaged smoke ok: process_count=2 "
                 f"parent_pid={parent_pid} child_pid={child_pid}"
@@ -355,7 +653,76 @@ def _smoke_launch_windows(exe_path: Path, seconds: float, *, onefile: bool = Fal
                 )
             print(f"Packaged smoke ok: process_count=1 pid={ids[0]}")
     finally:
-        terminate_process_tree(ids or [process.pid])
+        try:
+            _run_visual_isolation(
+                "sweep",
+                "-ProcessId",
+                str(process_id),
+                "-DesktopName",
+                desktop,
+            )
+        finally:
+            _stop_isolated_process(process_id)
+
+
+def _run_visual_isolation(*arguments: str) -> str:
+    """Run the repository-approved private-desktop isolation helper."""
+    if not VISUAL_ISOLATION_SCRIPT.is_file():
+        raise RuntimeError(
+            f"Visual isolation helper is missing: {VISUAL_ISOLATION_SCRIPT}; refusing GUI smoke test"
+        )
+    result = subprocess.run(
+        ["pwsh", "-File", str(VISUAL_ISOLATION_SCRIPT), *arguments],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Visual isolation command failed ({result.returncode}): {' '.join(arguments)}"
+        )
+    return result.stdout
+
+
+def _last_json_object(output: str) -> dict | None:
+    """Read the last JSON object emitted by the isolation helper."""
+    for line in reversed(output.splitlines()):
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
+
+
+def _stop_isolated_process(process_id: int):
+    """Stop only the process tree returned by the isolation launch proof."""
+    subprocess.run(
+        ["taskkill", "/F", "/T", "/PID", str(process_id)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    verify_script = (
+        "for ($attempt = 0; $attempt -lt 10; $attempt++) { "
+        f"$targetProcess = Get-Process -Id {process_id} -ErrorAction SilentlyContinue; "
+        "if (-not $targetProcess) { exit 0 }; "
+        "Start-Sleep -Milliseconds 500 }; "
+        f"throw 'isolated process {process_id} still running'"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", verify_script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"isolated process {process_id} was not cleaned up")
 
 
 def _smoke_launch_posix(exe_path: Path, seconds: float, *, onefile: bool = False):
@@ -554,7 +921,20 @@ VSVersionInfo(
         f.write(content.strip())
 
 
-if __name__ == "__main__":
-    onefile = "--onefile" in sys.argv
-    smoke = "--no-smoke" not in sys.argv
+def main(arguments: list[str] | None = None):
+    """Run a build, bootstrapping the locked venv when requested."""
+    arguments = list(sys.argv[1:] if arguments is None else arguments)
+    if "--clean-env" in arguments:
+        run_in_clean_environment(arguments)
+        return
+    onefile = "--onefile" in arguments
+    smoke = "--no-smoke" not in arguments
     build(onefile=onefile, smoke=smoke)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except RuntimeError as exc:
+        print(f"Build blocked: {exc}", file=sys.stderr)
+        sys.exit(2)
