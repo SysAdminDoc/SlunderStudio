@@ -470,6 +470,8 @@ class ProjectManager:
                 "updated_at": project.updated_at,
             }
             self._save_index()
+            if self._current is project:
+                self._saved_fingerprint = self._state_fingerprint(project)
             return True
         except (IOError, OSError, json.JSONDecodeError) as e:
             print(f"[Slunder Studio] Failed to save project: {e}")
@@ -597,9 +599,6 @@ class ProjectManager:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp_path, meta_path)
-        if self._current is project:
-            self._saved_fingerprint = self._state_fingerprint(project)
-
     # ── Listing ────────────────────────────────────────────────────────────────
 
     def list_projects(self) -> list[dict]:

@@ -15,6 +15,51 @@ from core.job_state import JobLog, JobStore, extract_output_paths
 
 
 JOB_PROGRESS_PERSIST_INTERVAL = 0.1
+WORKER_SHUTDOWN_TIMEOUT_MS = 10_000
+
+_worker_registry_lock = threading.RLock()
+_active_workers: set[QThread] = set()
+
+
+def _register_worker(worker: QThread) -> None:
+    with _worker_registry_lock:
+        _active_workers.add(worker)
+
+
+def active_workers() -> tuple[QThread, ...]:
+    """Return running workers and discard completed thread wrappers."""
+    with _worker_registry_lock:
+        completed = {worker for worker in _active_workers if not worker.isRunning()}
+        _active_workers.difference_update(completed)
+        return tuple(_active_workers)
+
+
+def shutdown_workers(timeout_ms: int = WORKER_SHUTDOWN_TIMEOUT_MS) -> bool:
+    """Cancel and join every running inference/download worker.
+
+    A worker that ignores cancellation is left running and makes the operation
+    fail closed, so callers never unload a model while a worker may still use it.
+    """
+    workers = active_workers()
+    cancellation_failed = False
+    for worker in workers:
+        try:
+            worker.cancel()
+        except Exception:  # noqa: BLE001 - shutdown must continue to other jobs
+            cancellation_failed = True
+
+    deadline = time.monotonic() + max(0, int(timeout_ms)) / 1000
+    for worker in workers:
+        if not worker.isRunning():
+            continue
+        remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+        try:
+            worker.wait(remaining_ms)
+        except RuntimeError:
+            cancellation_failed = True
+
+    still_running = any(worker.isRunning() for worker in workers)
+    return not cancellation_failed and not still_running
 
 
 def _result_is_cancelled(result: Any) -> bool:
@@ -190,6 +235,16 @@ class InferenceWorker(QThread):
             if self._job_log:
                 self._job_log.save()
 
+    def start(self, *args, **kwargs):
+        """Register the thread before it can begin work."""
+        _register_worker(self)
+        try:
+            return super().start(*args, **kwargs)
+        except Exception:
+            with _worker_registry_lock:
+                _active_workers.discard(self)
+            raise
+
     @property
     def result(self) -> Any:
         """Last result, including the partial batch reported on cancellation."""
@@ -319,6 +374,16 @@ class DownloadWorker(QThread):
                 outputs={"model_id": self.model_id},
             )
             self.error.emit(f"{type(e).__name__}: {e}")
+
+    def start(self, *args, **kwargs):
+        """Register the thread before it can begin downloading."""
+        _register_worker(self)
+        try:
+            return super().start(*args, **kwargs)
+        except Exception:
+            with _worker_registry_lock:
+                _active_workers.discard(self)
+            raise
 
     def cancel(self):
         self._cancel_event.set()

@@ -110,6 +110,22 @@ class AutosaveCoordinator(QObject):
             self.skipped.emit("No unsaved changes.")
             return None
 
+        return self._persist_dirty_project()
+
+    def flush(self) -> Optional[ProjectVersion]:
+        """Persist dirty work immediately, even when interval autosave is off."""
+        if self._running:
+            self.skipped.emit("An autosave is already running.")
+            return None
+        if self._projects.current is None:
+            self.skipped.emit("No project is open.")
+            return None
+        if not self._projects.is_dirty:
+            self.skipped.emit("No unsaved changes.")
+            return None
+        return self._persist_dirty_project()
+
+    def _persist_dirty_project(self) -> Optional[ProjectVersion]:
         self._running = True
         try:
             version = self._projects.autosave()

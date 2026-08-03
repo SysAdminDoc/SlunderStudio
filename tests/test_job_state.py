@@ -1,15 +1,40 @@
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
 from core.job_state import JobLog, JobStatus, JobStore
-from core.workers import DownloadWorker, InferenceWorker, CancelledJobError
+from core.workers import (
+    DownloadWorker,
+    InferenceWorker,
+    CancelledJobError,
+    active_workers,
+    shutdown_workers,
+)
 from engines.ace_step_engine import ACEStepEngine, GenerationParams, GenerationResult
 from engines.demucs_engine import SeparationResult, StemResult
 
 
 class JobStateTests(unittest.TestCase):
+    def test_shutdown_workers_cancels_and_joins_running_inference(self):
+        started = threading.Event()
+
+        def task(cancel_event=None, **_kwargs):
+            started.set()
+            while not cancel_event.is_set():
+                time.sleep(0.005)
+            return None
+
+        worker = InferenceWorker(task)
+        worker.start()
+        self.assertTrue(started.wait(timeout=2))
+        self.assertIn(worker, active_workers())
+
+        self.assertTrue(shutdown_workers(timeout_ms=2_000))
+        self.assertFalse(worker.isRunning())
+        self.assertNotIn(worker, active_workers())
+
     def test_failed_separation_result_marks_job_failed(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = JobStore(Path(tmp) / "jobs")

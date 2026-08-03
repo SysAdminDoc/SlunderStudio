@@ -8,6 +8,10 @@ All notable changes to SlunderStudio will be documented in this file.
   controls for the config-injection RCE window: deny-listed `kernels` profile/runtime checks,
   startup validation of every optional lock, and recursive local `config.json` scans before
   Transformers loaders reject malformed or underscore-prefixed keys.
+- Preserved dirty projects when either metadata or index persistence fails, surfaced Project
+  Manager save failures, and flushed pending notes on close even with interval autosave disabled.
+  Closing now cancels and joins all active inference/download workers before unloading models,
+  and refuses teardown if a worker will not stop safely.
 - Gated PyInstaller packaging behind temporary Python 3.12 environments installed from hashed
   runtime and build locks, excluded polluted/dead module graphs, audited frozen packages, and
   moved Windows smoke launches onto the private virtual-display isolation contract.

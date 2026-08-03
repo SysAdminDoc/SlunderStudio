@@ -307,11 +307,28 @@ class ProjectDetailPanel(QWidget):
         self._provenance_btn.setEnabled(False)
         self._version_list.clear()
 
+    def sync_pending_edits(self):
+        """Copy editor contents into the open project before a shell flush."""
+        project = get_project_manager().current
+        if project is not None:
+            project.notes = self._notes.toPlainText()
+
     def _on_save(self):
         mgr = get_project_manager()
         if mgr.current:
-            mgr.current.notes = self._notes.toPlainText()
-            mgr.save()
+            self.sync_pending_edits()
+            saved = mgr.save()
+            if self.toast_mgr:
+                if saved:
+                    self.toast_mgr.success("Project saved.")
+                else:
+                    self.toast_mgr.error("Could not save the project; your changes remain dirty.")
+            if saved:
+                self.load_project(mgr.current)
+            return saved
+        if self.toast_mgr:
+            self.toast_mgr.error("No project is open to save.")
+        return False
 
     def _on_snapshot(self):
         mgr = get_project_manager()
@@ -594,6 +611,10 @@ class ProjectManagerView(QWidget):
             self.toast_mgr.warning(repair_text)
         if repair_text:
             self._last_repair_notice = repair_text
+
+    def sync_pending_edits(self):
+        """Flush the detail editor into ProjectManager without writing yet."""
+        self._detail.sync_pending_edits()
 
     def _on_rescan_projects(self):
         mgr = get_project_manager()

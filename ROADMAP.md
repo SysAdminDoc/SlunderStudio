@@ -81,26 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P0
 
-- [ ] P0 — Stop losing user work on save failure and on window close
-  Why: Three independent paths discard work or state silently; one of them is the plain Save button.
-  Evidence: (a) `ui/project_manager.py:310-314` `_on_save` discards the boolean from `mgr.save()`
-    and shows nothing on either outcome, while the sibling `_on_snapshot` immediately below does
-    handle failure — so a save that fails on a full or read-only disk is indistinguishable from
-    success. (b) `ui/main_window.py:798-803` `closeEvent` flushes via `self._autosave.tick()` under
-    the comment "A dirty project must not be lost because the window closed", but
-    `core/autosave.py:103-105` returns early when autosave is disabled — so with autosave off, a
-    dirty project is discarded on close. (c) the same `closeEvent` calls `event.accept()`
-    unconditionally and never cancels or joins worker QThreads, then calls
-    `self._model_mgr.unload()` — which reaches `model.to("cpu")`/`cleanup_gpu()` while a worker may
-    be mid-inference on that exact object. No view defines a `closeEvent`.
-  Touches: `ui/main_window.py`, `ui/project_manager.py`, `core/autosave.py`, `core/workers.py`,
-    per-view teardown, tests.
-  Acceptance: A failed save surfaces an error and leaves the project marked dirty; closing with
-    autosave disabled still flushes a dirty project (or states plainly that it will not, before
-    closing); closing with jobs running cancels and joins them before teardown, and unload never
-    runs while a worker holds the model. Tests cover all three.
-  Complexity: M
-
 - [ ] P0 — Give every view one reporting boundary so failures are visible
   Why: Four of ten views cannot show an error at all, and worker tracebacks are discarded
     permanently — this is the root cause behind several separately-reported symptoms.

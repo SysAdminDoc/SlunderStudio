@@ -15,6 +15,7 @@ from core.settings import Settings, APP_VERSION
 from core.audio_engine import AudioEngine, format_time
 from core.i18n import tr
 from core.model_manager import ModelManager
+from core.workers import shutdown_workers
 from ui.theme import Palette, build_stylesheet
 from ui.toast import ToastManager
 from ui.accessibility import install_accessibility, set_accessible
@@ -790,6 +791,30 @@ class MainWindow(QMainWindow):
         else:
             self._autosave_label.setText("Autosave  ·  off")
 
+    def _flush_project_before_close(self) -> bool:
+        """Flush dirty editor state and keep the window open on failure."""
+        project_view = getattr(self, "_project_mgr_view", None)
+        sync = getattr(project_view, "sync_pending_edits", None)
+        if callable(sync):
+            sync()
+
+        from core.project import get_project_manager
+
+        projects = get_project_manager()
+        if projects.current is None or not projects.is_dirty:
+            return True
+
+        version = self._autosave.flush()
+        if version is not None and not projects.is_dirty:
+            return True
+
+        self.toast_mgr.error(
+            "Could not save the open project; it remains dirty. Fix the storage issue before closing."
+        )
+        if self._autosave.enabled:
+            self._autosave.start()
+        return False
+
     def resizeEvent(self, event):
         """Keep transient notifications anchored to the current window bounds."""
         super().resizeEvent(event)
@@ -800,8 +825,15 @@ class MainWindow(QMainWindow):
         """Clean up on close."""
         if hasattr(self, "_autosave"):
             self._autosave.stop()
-            # A dirty project must not be lost because the window closed.
-            self._autosave.tick()
+            if not self._flush_project_before_close():
+                event.ignore()
+                return
+        if not shutdown_workers():
+            self.toast_mgr.error(
+                "A background job is still running; it was not safe to unload the active model."
+            )
+            event.ignore()
+            return
         AudioEngine().cleanup()
         self._gpu_timer.stop()
         self._model_mgr.unload()

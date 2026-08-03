@@ -59,6 +59,12 @@ class ProjectVersionTests(unittest.TestCase):
         self.mgr.save()
         self.assertFalse(self.mgr.is_dirty)
 
+    def test_failed_save_leaves_project_dirty(self):
+        self.project.notes = "keep this edit"
+        with mock.patch.object(self.mgr, "_save_project", side_effect=OSError("disk full")):
+            self.assertFalse(self.mgr.save())
+        self.assertTrue(self.mgr.is_dirty)
+
     def test_reopening_a_project_is_clean(self):
         self.project.notes = "chorus"
         self.mgr.save()
@@ -219,6 +225,17 @@ class ProjectVersionTests(unittest.TestCase):
         self.assertIsNone(coordinator.tick())
         coordinator.start()
         self.assertFalse(coordinator.is_active())
+
+    def test_close_flush_saves_dirty_work_when_autosave_is_disabled(self):
+        self.settings.set("general.auto_save_enabled", False)
+        coordinator = AutosaveCoordinator(self.mgr, self.settings)
+        self.project.notes = "must survive close"
+
+        version = coordinator.flush()
+
+        self.assertIsNotNone(version)
+        self.assertFalse(self.mgr.is_dirty)
+        self.assertEqual(version.kind, VERSION_KIND_AUTO)
 
     def test_interval_change_restarts_the_timer(self):
         coordinator = AutosaveCoordinator(self.mgr, self.settings)
