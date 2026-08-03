@@ -6,12 +6,16 @@ cancellation support, and progress aggregation.
 import threading
 import time
 import traceback
+import logging
 from typing import Any, Callable, Optional
 from collections import deque
 
 from PySide6.QtCore import QThread, Signal, QObject, QTimer
 
 from core.job_state import JobLog, JobStore, extract_output_paths
+
+
+logger = logging.getLogger(__name__)
 
 
 JOB_PROGRESS_PERSIST_INTERVAL = 0.1
@@ -225,6 +229,7 @@ class InferenceWorker(QThread):
             self.cancelled.emit()
         except Exception as e:
             tb = traceback.format_exc()
+            logger.exception("Inference worker failed")
             if self._job_log:
                 self._job_log.error(f"{type(e).__name__}: {e}")
             self.log.emit(f"Worker error:\n{tb}")
@@ -368,6 +373,7 @@ class DownloadWorker(QThread):
             )
             self.cancelled.emit(self.model_id)
         except Exception as e:
+            logger.exception("Download worker failed for model %s", self.model_id)
             self._job_store.mark_failed(
                 self.job_id,
                 f"{type(e).__name__}: {e}",

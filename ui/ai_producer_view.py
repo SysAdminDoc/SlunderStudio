@@ -203,8 +203,9 @@ class StageIndicator(QFrame):
 class AIProducerView(QWidget):
     """AI Producer page — one prompt to full song."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, toast_mgr=None):
         super().__init__(parent)
+        self.toast_mgr = toast_mgr
         self._result: Optional[ProducerResult] = None
         self._contract_result: Optional[EngineRunResult] = None
         self._worker: Optional[InferenceWorker] = None
@@ -637,8 +638,11 @@ class AIProducerView(QWidget):
             error_msg,
             model_id="ace-step-v1.5",
         )
+        message = f"Production failed: {error_msg}"
         self._output_title.setText("Production failed")
-        self._output_info.setText(f"Error: {error_msg}")
+        self._output_info.setText(message)
+        if self.toast_mgr is not None:
+            self.toast_mgr.error(message)
         self._export_btn.setEnabled(False)
         self._retry_btn.setEnabled(True)
         self._finish_worker_ui(keep_retry=True)

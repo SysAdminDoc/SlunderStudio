@@ -48,8 +48,9 @@ class VocalSuiteView(QWidget):
     send_to_forge = Signal(str)    # audio path -> Song Forge
     send_to_mixer = Signal(str)    # audio path -> Mixer (Phase 6)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, toast_mgr=None):
         super().__init__(parent)
+        self.toast_mgr = toast_mgr
         self._settings = Settings()
         self._current_audio_path: Optional[str] = None
         self._melody_midi_path: Optional[str] = None
@@ -1087,6 +1088,12 @@ class VocalSuiteView(QWidget):
 
     # ── Event Handlers ─────────────────────────────────────────────────────────
 
+    def _report_error(self, message: str):
+        """Keep the shared status line and notification history synchronized."""
+        self._status.setText(message)
+        if self.toast_mgr is not None:
+            self.toast_mgr.error(message)
+
     def _on_sing_generate(self):
         if self._sing_worker is not None:
             self._sing_worker.cancel()
@@ -1101,13 +1108,13 @@ class VocalSuiteView(QWidget):
             profile_ready=profile_ready,
         )
         if not lyrics:
-            self._status.setText("Enter lyrics before synthesizing vocals")
+            self._report_error("Enter lyrics before synthesizing vocals")
             return
         if profile_error:
-            self._status.setText(f"DiffSinger profile blocked: {profile_error}")
+            self._report_error(f"DiffSinger profile blocked: {profile_error}")
             return
         if not readiness.can_run:
-            self._status.setText(readiness.remedy)
+            self._report_error(readiness.remedy)
             self._refresh_capability_states()
             return
 
@@ -1202,7 +1209,7 @@ class VocalSuiteView(QWidget):
         self._sing_worker = None
         self._contract_results[CAP_VOCAL_SYNTHESIZE] = run
         if not run.is_success:
-            self._status.setText(f"DiffSinger synthesis failed: {run.error}")
+            self._report_error(f"DiffSinger synthesis failed: {run.error}")
             self._refresh_capability_states()
             return
         result = run.source_result
@@ -1225,7 +1232,7 @@ class VocalSuiteView(QWidget):
             error,
             model_id="diffsinger",
         )
-        self._status.setText(f"DiffSinger synthesis failed: {error}")
+        self._report_error(f"DiffSinger synthesis failed: {error}")
         self._refresh_capability_states()
 
     def _on_sing_cancelled(self):
@@ -1344,7 +1351,7 @@ class VocalSuiteView(QWidget):
         self._melody_worker = None
         self._melody_generate_btn.setText(tr("vocal.melody.generate"))
         self._melody_generate_btn.setEnabled(True)
-        self._status.setText(f"Lyric melody generation failed: {error}")
+        self._report_error(f"Lyric melody generation failed: {error}")
 
     def _on_melody_cancelled(self):
         self._melody_worker = None
@@ -1379,7 +1386,7 @@ class VocalSuiteView(QWidget):
             return
         issues = VoiceBank().validate_profile(profile, VOICE_OPERATION_CONVERSION)
         if issues:
-            self._status.setText("RVC profile blocked: " + "; ".join(issues[:2]))
+            self._report_error("RVC profile blocked: " + "; ".join(issues[:2]))
             self._rvc_consent_label.setText(self._format_profile_consent(profile, VOICE_OPERATION_CONVERSION))
             return
         input_path = self._rvc_input_label.property("path")
@@ -1392,7 +1399,7 @@ class VocalSuiteView(QWidget):
             profile_ready=True,
         )
         if not readiness.can_run:
-            self._status.setText(readiness.remedy)
+            self._report_error(readiness.remedy)
             self._refresh_capability_states()
             return
 
@@ -1494,7 +1501,7 @@ class VocalSuiteView(QWidget):
         self._rvc_worker = None
         self._contract_results[CAP_VOCAL_CONVERT] = run
         if not run.is_success:
-            self._status.setText(f"RVC conversion failed: {run.error}")
+            self._report_error(f"RVC conversion failed: {run.error}")
             self._refresh_capability_states()
             return
         result = run.source_result
@@ -1518,7 +1525,7 @@ class VocalSuiteView(QWidget):
             error,
             model_id="rvc-v2",
         )
-        self._status.setText(f"RVC conversion failed: {error}")
+        self._report_error(f"RVC conversion failed: {error}")
         self._refresh_capability_states()
 
     def _on_rvc_cancelled(self):
@@ -1577,7 +1584,7 @@ class VocalSuiteView(QWidget):
 
         issues = VoiceBank().validate_profile(profile, VOICE_OPERATION_CLONE)
         if issues:
-            self._status.setText("Voice profile blocked: " + "; ".join(issues[:2]))
+            self._report_error("Voice profile blocked: " + "; ".join(issues[:2]))
             self._clone_consent_label.setText(self._format_profile_consent(profile, VOICE_OPERATION_CLONE))
             return
 
@@ -1585,7 +1592,7 @@ class VocalSuiteView(QWidget):
 
         quality = assess_clone_reference(profile.ref_audio_path)
         if not quality.can_onboard:
-            self._status.setText("Reference failed guardrails: " + "; ".join(quality.issues[:2]))
+            self._report_error("Reference failed guardrails: " + "; ".join(quality.issues[:2]))
             return
 
         readiness = self._model_mgr.get_capability_readiness(
@@ -1594,7 +1601,7 @@ class VocalSuiteView(QWidget):
             profile_ready=True,
         )
         if not readiness.can_run:
-            self._status.setText(readiness.remedy)
+            self._report_error(readiness.remedy)
             self._refresh_capability_states()
             return
 
@@ -1836,7 +1843,7 @@ class VocalSuiteView(QWidget):
         self._contract_results[CAP_VOCAL_CLONE] = run
         if not run or not run.is_success:
             error = run.error if run else "Engine returned no result"
-            self._status.setText(f"GPT-SoVITS clone failed: {error}")
+            self._report_error(f"GPT-SoVITS clone failed: {error}")
             self._refresh_capability_states()
             return
         result = run.source_result
@@ -1860,7 +1867,7 @@ class VocalSuiteView(QWidget):
             error,
             model_id="gpt-sovits-v2",
         )
-        self._status.setText(f"GPT-SoVITS clone failed: {error}")
+        self._report_error(f"GPT-SoVITS clone failed: {error}")
         self._refresh_capability_states()
 
     def _on_clone_cancelled(self):
@@ -1967,7 +1974,7 @@ class VocalSuiteView(QWidget):
         self._autotune_worker = None
         self._autotune_apply_btn.setText(tr("vocal.autotune.apply"))
         self._autotune_apply_btn.setEnabled(True)
-        self._status.setText(f"Auto-tune failed: {error}")
+        self._report_error(f"Auto-tune failed: {error}")
 
     def _on_autotune_cancelled(self):
         self._autotune_worker = None
@@ -1996,7 +2003,7 @@ class VocalSuiteView(QWidget):
             return
         readiness = self._model_mgr.get_capability_readiness(CAP_STEM_SEPARATE)
         if not readiness.can_run:
-            self._status.setText(readiness.remedy)
+            self._report_error(readiness.remedy)
             self._refresh_capability_states()
             return
 
@@ -2090,7 +2097,7 @@ class VocalSuiteView(QWidget):
         self._stem_worker = None
         self._contract_results[CAP_STEM_SEPARATE] = run
         if not run.is_success:
-            self._status.setText(f"Stem separation failed: {run.error}")
+            self._report_error(f"Stem separation failed: {run.error}")
             self._refresh_capability_states()
             return
         result = run.source_result
@@ -2122,7 +2129,7 @@ class VocalSuiteView(QWidget):
             error,
             model_id="demucs-v4",
         )
-        self._status.setText(f"Stem separation failed: {error}")
+        self._report_error(f"Stem separation failed: {error}")
         self._refresh_capability_states()
 
     def _on_stems_cancelled(self):
@@ -2165,16 +2172,16 @@ class VocalSuiteView(QWidget):
         try:
             engine = AudioEngine()
             if not engine.load_array(strip.audio, self._stem_mixer._sample_rate):
-                self._status.setText(f"Could not load the {stem_name} stem for playback")
+                self._report_error(f"Could not load the {stem_name} stem for playback")
                 return
             engine.play()
             self._status.setText(f"Playing {stem_name} stem")
         except Exception as exc:
-            self._status.setText(f"Playback error: {exc}")
+            self._report_error(f"Playback error: {exc}")
 
     def _on_export(self):
         if not self._current_audio_path:
-            self._status.setText("No vocal audio is available to export")
+            self._report_error("No vocal audio is available to export")
             return
 
         path, _ = QFileDialog.getSaveFileName(
@@ -2201,7 +2208,7 @@ class VocalSuiteView(QWidget):
             suffix = f" Warning: {warnings[0]}" if warnings else ""
             self._status.setText(f"Exported vocal WAV: {output}{suffix}")
         except Exception as exc:
-            self._status.setText(f"Vocal export failed: {exc}")
+            self._report_error(f"Vocal export failed: {exc}")
 
     def _on_send_to_forge(self):
         if self._current_audio_path:

@@ -5,9 +5,11 @@ Supports success/error/warning/info types with color-coded borders.
 """
 import re
 import time
+from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QFrame, QLabel, QHBoxLayout, QWidget, QPushButton,
+    QDialog, QFrame, QLabel, QHBoxLayout, QPlainTextEdit, QPushButton,
+    QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import QTimer, QPropertyAnimation, QRect, QEasingCurve, Signal
 
@@ -166,6 +168,51 @@ class Toast(QFrame):
         self.deleteLater()
 
 
+class ToastHistoryDialog(QDialog):
+    """Non-timed notification history that remains readable after dismissal."""
+
+    def __init__(self, toast_mgr: "ToastManager", parent=None):
+        super().__init__(parent)
+        self._toast_mgr = toast_mgr
+        self.setWindowTitle("Slunder Studio — Notification History")
+        self.setMinimumSize(640, 420)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+
+        self._summary = QLabel()
+        self._summary.setObjectName("notificationSummary")
+        layout.addWidget(self._summary)
+
+        self._history = QPlainTextEdit()
+        self._history.setReadOnly(True)
+        self._history.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._history.setPlaceholderText("No notifications yet.")
+        self._history.setAccessibleName("Notification history")
+        self._history.setAccessibleDescription(
+            "A non-timed record of application notifications and errors."
+        )
+        layout.addWidget(self._history, 1)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.close)
+        layout.addWidget(close, 0)
+
+        toast_mgr.on_message(self._on_message)
+        self._refresh()
+
+    def _on_message(self, _entry: dict):
+        self._refresh()
+
+    def _refresh(self):
+        entries = self._toast_mgr.history
+        self._summary.setText(
+            f"{len(entries)} notification(s) retained; newest messages appear last."
+        )
+        self._history.setPlainText(self._toast_mgr.history_text())
+
+
 class ToastManager:
     """
     Manages toast positioning and stacking.
@@ -197,6 +244,18 @@ class ToastManager:
             return ""
         entry = self._history[-1]
         return f"{entry['type'].capitalize()}: {entry['message']}"
+
+    def history_text(self) -> str:
+        """Format retained notifications for the history panel."""
+        lines = []
+        for entry in self._history:
+            timestamp = datetime.fromtimestamp(entry["timestamp"]).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            lines.append(
+                f"[{timestamp}] {entry['type'].capitalize()}: {entry['message']}"
+            )
+        return "\n".join(lines)
 
     def on_message(self, callback):
         """Register a listener for the non-timed message log."""

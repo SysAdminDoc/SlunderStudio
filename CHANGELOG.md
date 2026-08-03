@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Routed every top-level view through the shared toast manager, replaced user-visible failure
+  prints with structured logging, and added a rotating application log with worker tracebacks.
+  Dismissed notifications remain available through the command-bar history panel.
 - Kept the ACE-Step-compatible `transformers<4.58.0` ceiling while enforcing compensating
   controls for the config-injection RCE window: deny-listed `kernels` profile/runtime checks,
   startup validation of every optional lock, and recursive local `config.json` scans before

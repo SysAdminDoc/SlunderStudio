@@ -6,6 +6,7 @@ and asset tracking across all modules.
 import os
 import hashlib
 import json
+import logging
 import re
 import threading
 import time
@@ -25,6 +26,7 @@ from core.settings import APP_VERSION, get_config_dir
 from core.trash import TrashEntry, TrashError, TrashManager
 
 PROJECT_SCHEMA_VERSION = 2
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -474,7 +476,7 @@ class ProjectManager:
                 self._saved_fingerprint = self._state_fingerprint(project)
             return True
         except (IOError, OSError, json.JSONDecodeError) as e:
-            print(f"[Slunder Studio] Failed to save project: {e}")
+            logger.exception("Failed to save project")
             return False
 
     def delete(self, project_id: str) -> Optional[TrashEntry]:
@@ -494,7 +496,7 @@ class ProjectManager:
                 },
             )
         except TrashError as e:
-            print(f"[Slunder Studio] Failed to delete project: {e}")
+            logger.exception("Failed to delete project")
             return None
 
         del self._index[project_id]
@@ -508,7 +510,7 @@ class ProjectManager:
         try:
             entry = self._trash.restore(trash_entry_id)
         except TrashError as e:
-            print(f"[Slunder Studio] Failed to restore project: {e}")
+            logger.exception("Failed to restore project")
             return False
 
         project_id = entry.metadata.get("project_id")
@@ -737,7 +739,7 @@ class ProjectManager:
             if os.path.isfile(src):
                 shutil.copy2(src, ver_dir / "project.json")
         except OSError as exc:
-            print(f"[Slunder Studio] Failed to write version snapshot: {exc}")
+            logger.exception("Failed to write version snapshot")
             self._current.versions.remove(ver)
             self.save()
             return None
@@ -844,7 +846,7 @@ class ProjectManager:
                 if path.is_dir():
                     shutil.rmtree(path)
             except OSError as exc:
-                print(f"[Slunder Studio] Failed to prune version {ver.version}: {exc}")
+                logger.exception("Failed to prune version %s", ver.version)
                 continue
             self._current.versions.remove(ver)
             removed.append(ver.version)
@@ -1015,7 +1017,7 @@ class ProjectManager:
                 },
             )
         except TrashError as e:
-            print(f"[Slunder Studio] Failed to delete project asset: {e}")
+            logger.exception("Failed to delete project asset")
             return None
 
         self._current.remove_asset(asset_id)
@@ -1026,7 +1028,7 @@ class ProjectManager:
         try:
             entry = self._trash.restore(trash_entry_id)
         except TrashError as e:
-            print(f"[Slunder Studio] Failed to restore project asset: {e}")
+            logger.exception("Failed to restore project asset")
             return False
 
         project_id = entry.metadata.get("project_id")

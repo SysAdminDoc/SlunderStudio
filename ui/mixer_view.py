@@ -343,8 +343,14 @@ class MixerTrackStrip(QFrame):
 class MixerView(QWidget):
     """Multi-track mixer with mastering and export."""
 
-    def __init__(self, parent=None, project_sample_rate: Optional[int] = None):
+    def __init__(
+        self,
+        parent=None,
+        project_sample_rate: Optional[int] = None,
+        toast_mgr=None,
+    ):
         super().__init__(parent)
+        self.toast_mgr = toast_mgr
         if project_sample_rate is None:
             from core.settings import Settings
 
@@ -623,6 +629,12 @@ class MixerView(QWidget):
 
     # ── Track Management ───────────────────────────────────────────────────────
 
+    def _report_error(self, message: str):
+        """Keep inline mixer state and shared notification history aligned."""
+        self._status.setText(message)
+        if self.toast_mgr is not None:
+            self.toast_mgr.error(message)
+
     def add_track(self, name: str, audio: np.ndarray, sr: int = 44100):
         """Add an audio track to the mixer."""
         source_sr = validate_sample_rate(sr)
@@ -765,7 +777,7 @@ class MixerView(QWidget):
             if on_complete:
                 on_complete(True, index)
         except Exception as exc:
-            self._status.setText(f"Import error: {exc}")
+            self._report_error(f"Import error: {exc}")
             if on_complete:
                 on_complete(False, -1)
         finally:
@@ -779,7 +791,7 @@ class MixerView(QWidget):
         worker = self._import_worker
         self._settle_worker(worker)
         self._import_worker = None
-        self._status.setText(f"Import error: {message}")
+        self._report_error(f"Import error: {message}")
         if on_complete:
             on_complete(False, -1)
         self._update_mix_state()
@@ -881,7 +893,7 @@ class MixerView(QWidget):
             )
             self._status.setText(f"Loaded loudness reference: {name}")
         except Exception as exc:
-            self._status.setText(f"Reference load error: {exc}")
+            self._report_error(f"Reference load error: {exc}")
         finally:
             self._ref_btn.setEnabled(True)
 
@@ -890,7 +902,7 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._reference_worker = None
         self._ref_btn.setEnabled(True)
-        self._status.setText(f"Reference load error: {message}")
+        self._report_error(f"Reference load error: {message}")
 
     def _on_reference_cancelled(self):
         worker = self._reference_worker
@@ -1080,7 +1092,7 @@ class MixerView(QWidget):
         self._dynamic_eq_worker = None
         if token == self._dynamic_eq_analysis_token:
             self._dynamic_eq_suggestions = {}
-            self._status.setText(f"Dynamic EQ analysis error: {message}")
+            self._report_error(f"Dynamic EQ analysis error: {message}")
         self._update_mix_state()
 
     def _on_dynamic_eq_analysis_cancelled(self, token: int):
@@ -1230,7 +1242,7 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._dynamic_eq_operation_worker = None
         if token == self._dynamic_eq_operation_token:
-            self._status.setText(f"Dynamic EQ error: {message}")
+            self._report_error(f"Dynamic EQ error: {message}")
         self._update_mix_state()
 
     def _on_dynamic_eq_operation_cancelled(self, token: int):
@@ -1395,7 +1407,7 @@ class MixerView(QWidget):
 
             if result.error:
                 self._last_loudness_match = None
-                self._status.setText(f"Mastering error: {result.error}")
+                self._report_error(f"Mastering error: {result.error}")
                 return
 
             self._last_loudness_match = match
@@ -1483,7 +1495,7 @@ class MixerView(QWidget):
                     f"{result.processing_time:.1f}s"
                 )
         except Exception as exc:
-            self._status.setText(f"Error: {exc}")
+            self._report_error(f"Error: {exc}")
         finally:
             self._update_mix_state()
 
@@ -1491,7 +1503,7 @@ class MixerView(QWidget):
         worker = self._master_worker
         self._settle_worker(worker)
         self._master_worker = None
-        self._status.setText(f"Mastering error: {message}")
+        self._report_error(f"Mastering error: {message}")
         self._update_mix_state()
 
     def _on_master_cancelled(self):

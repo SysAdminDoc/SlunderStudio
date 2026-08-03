@@ -10,6 +10,7 @@ multiprocessing.freeze_support()
 
 import sys
 import os
+import logging
 import traceback
 from typing import Sequence
 
@@ -26,7 +27,9 @@ def _is_frozen() -> bool:
 def _phase1_bootstrap():
     """Report missing core dependencies before importing PySide6."""
     if sys.version_info < (3, 10):
-        print(f"Slunder Studio requires Python 3.10+. Current: {sys.version}")
+        sys.stderr.write(
+            f"Slunder Studio requires Python 3.10+. Current: {sys.version}\n"
+        )
         sys.exit(1)
 
     from core.dependency_profiles import (
@@ -37,7 +40,7 @@ def _phase1_bootstrap():
     try:
         validate_profile_registry_security()
     except DependencyProfileError as exc:
-        print(f"Unsafe optional dependency profile registry: {exc}", file=sys.stderr)
+        sys.stderr.write(f"Unsafe optional dependency profile registry: {exc}\n")
         sys.exit(1)
 
     if _is_frozen():
@@ -55,7 +58,7 @@ def _phase1_bootstrap():
 
 def _print_dependency_diagnostics(missing: Sequence[tuple[str, str]]) -> None:
     from core.deps import format_missing_dependency_message
-    print(format_missing_dependency_message(missing), file=sys.stderr)
+    sys.stderr.write(format_missing_dependency_message(missing) + "\n")
 
 
 def _show_dependency_diagnostics_tk(
@@ -232,6 +235,9 @@ def _setup_crash_handler():
     )
     os.makedirs(config_dir, exist_ok=True)
     crash_file = os.path.join(config_dir, "crash.log")
+    from core.logging_setup import configure_logging
+
+    configure_logging(config_dir)
 
     def handler(exc_type, exc_value, exc_tb):
         msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
@@ -258,7 +264,10 @@ def _setup_crash_handler():
             except Exception:
                 pass
 
-        print(f"FATAL: {msg}", file=sys.stderr)
+        logging.getLogger(__name__).critical(
+            "Unhandled exception",
+            exc_info=(exc_type, exc_value, exc_tb),
+        )
         sys.exit(1)
 
     sys.excepthook = handler

@@ -17,7 +17,7 @@ from core.i18n import tr
 from core.model_manager import ModelManager
 from core.workers import shutdown_workers
 from ui.theme import Palette, build_stylesheet
-from ui.toast import ToastManager
+from ui.toast import ToastHistoryDialog, ToastManager
 from ui.accessibility import install_accessibility, set_accessible
 from ui.model_hub import ModelHubView
 from ui.settings_view import SettingsView
@@ -343,6 +343,7 @@ class MainWindow(QMainWindow):
 
         # Toast manager
         self.toast_mgr = ToastManager(self)
+        self._notification_log_dialog = None
 
         self._build_ui()
         self._start_gpu_monitor()
@@ -462,6 +463,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._last_message_label)
         self.toast_mgr.on_message(self._on_toast_message)
 
+        self._notification_button = QPushButton("Notifications")
+        self._notification_button.setFixedHeight(30)
+        self._notification_button.clicked.connect(self._show_notification_log)
+        layout.addWidget(self._notification_button)
+
         self._compute_status_label = QLabel("Checking compute")
         self._compute_status_label.setObjectName("computeStatus")
         layout.addWidget(self._compute_status_label)
@@ -493,6 +499,11 @@ class MainWindow(QMainWindow):
             "Last notification",
             "Keeps the most recent notification readable after its toast closes.",
         )
+        set_accessible(
+            self._notification_button,
+            "Notification history",
+            "Opens the retained application notifications and errors.",
+        )
         return bar
 
     def _on_toast_message(self, entry: dict):
@@ -501,6 +512,20 @@ class MainWindow(QMainWindow):
         self._last_message_label.setText(text)
         self._last_message_label.setToolTip(text)
         self._last_message_label.setAccessibleDescription(text)
+        if hasattr(self, "_notification_button"):
+            self._notification_button.setText(
+                f"Notifications ({len(self.toast_mgr.history)})"
+            )
+
+    def _show_notification_log(self):
+        """Show retained notifications without blocking the workspace."""
+        if self._notification_log_dialog is None:
+            self._notification_log_dialog = ToastHistoryDialog(
+                self.toast_mgr,
+                self,
+            )
+        self._notification_log_dialog.show()
+        self._notification_log_dialog.raise_()
 
     def _build_workspace_header(self) -> QFrame:
         header = QFrame()
@@ -536,13 +561,13 @@ class MainWindow(QMainWindow):
         self._pages.addWidget(self._song_forge_view)
 
         # Page 2: MIDI Studio (Phase 4)
-        self._midi_studio_view = MidiStudioView()
+        self._midi_studio_view = MidiStudioView(toast_mgr=self.toast_mgr)
         self._midi_studio_view.send_to_forge.connect(self._on_midi_to_forge)
         self._midi_studio_view.send_to_vocals.connect(self._on_midi_to_vocals)
         self._pages.addWidget(self._midi_studio_view)
 
         # Page 3: Vocals (Phase 5)
-        self._vocal_suite_view = VocalSuiteView()
+        self._vocal_suite_view = VocalSuiteView(toast_mgr=self.toast_mgr)
         self._vocal_suite_view.send_to_forge.connect(self._on_vocal_to_forge)
         self._vocal_suite_view.send_to_mixer.connect(self._on_vocal_to_mixer)
         self._pages.addWidget(self._vocal_suite_view)
@@ -553,11 +578,11 @@ class MainWindow(QMainWindow):
         self._pages.addWidget(self._sfx_view)
 
         # Page 5: Mixer (Phase 6)
-        self._mixer_view = MixerView()
+        self._mixer_view = MixerView(toast_mgr=self.toast_mgr)
         self._pages.addWidget(self._mixer_view)
 
         # Page 6: AI Producer (Phase 7)
-        self._ai_producer_view = AIProducerView()
+        self._ai_producer_view = AIProducerView(toast_mgr=self.toast_mgr)
         self._pages.addWidget(self._ai_producer_view)
 
         # Page 7: Projects (Phase 6)

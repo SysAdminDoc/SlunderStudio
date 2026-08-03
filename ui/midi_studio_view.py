@@ -73,8 +73,9 @@ class MidiStudioView(QWidget):
     send_to_forge = Signal(str)     # audio file path -> Song Forge
     send_to_vocals = Signal(str)    # audio file path -> Vocal Suite
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, toast_mgr=None):
         super().__init__(parent)
+        self.toast_mgr = toast_mgr
         self._midi_data: Optional[MidiData] = None
         self._rendered_audio = None
         self._current_audio_path: Optional[str] = None
@@ -555,7 +556,7 @@ class MidiStudioView(QWidget):
         self._generation_worker = None
         self._contract_result = run
         if not run.is_success:
-            self._status.setText(f"MIDI generation failed: {run.error}")
+            self._report_error(f"MIDI generation failed: {run.error}")
             self._refresh_capability_state()
             return
         result = run.source_result
@@ -576,8 +577,14 @@ class MidiStudioView(QWidget):
             error,
             model_id="midi-llm-1b",
         )
-        self._status.setText(f"MIDI generation failed: {error}")
+        self._report_error(f"MIDI generation failed: {error}")
         self._refresh_capability_state()
+
+    def _report_error(self, message: str):
+        """Keep inline status and the application notification log in sync."""
+        self._status.setText(message)
+        if self.toast_mgr is not None:
+            self.toast_mgr.error(message)
 
     def _on_generation_cancelled(self):
         self._generation_worker = None
@@ -678,11 +685,11 @@ class MidiStudioView(QWidget):
                 self._load_midi_data(midi_data)
                 self._status.setText(f"Imported: {path}")
             except Exception as e:
-                self._status.setText(f"Import error: {e}")
+                self._report_error(f"Import error: {e}")
 
     def _on_export(self):
         if not self._midi_data:
-            self._status.setText("Nothing to export")
+            self._report_error("Nothing to export")
             return
 
         path, _ = QFileDialog.getSaveFileName(
@@ -693,13 +700,13 @@ class MidiStudioView(QWidget):
                 save_midi(self._midi_data, path)
                 self._status.setText(f"Exported: {path}")
             except Exception as e:
-                self._status.setText(f"Export error: {e}")
+                self._report_error(f"Export error: {e}")
 
     # ── Render ─────────────────────────────────────────────────────────────────
 
     def _on_export_chart(self):
         if not self._midi_data:
-            self._status.setText("Nothing to export")
+            self._report_error("Nothing to export")
             return
 
         path, selected_filter = QFileDialog.getSaveFileName(
@@ -724,12 +731,12 @@ class MidiStudioView(QWidget):
             )
             self._status.setText(f"Exported chart: {output}")
         except Exception as e:
-            self._status.setText(f"Chart export error: {e}")
+            self._report_error(f"Chart export error: {e}")
 
     def _on_render(self):
         """Render MIDI to audio via FluidSynth or fallback."""
         if not self._midi_data:
-            self._status.setText("Nothing to render")
+            self._report_error("Nothing to render")
             return
 
         self._render_btn.setEnabled(False)
@@ -791,7 +798,7 @@ class MidiStudioView(QWidget):
                 self._status.setText(f"Rendered: {output_path}")
 
         except Exception as e:
-            self._status.setText(f"Render error: {e}")
+            self._report_error(f"Render error: {e}")
         finally:
             self._render_btn.setEnabled(True)
 

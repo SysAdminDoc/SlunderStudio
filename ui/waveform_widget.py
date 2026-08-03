@@ -3,6 +3,8 @@ Slunder Studio — Waveform Widget
 pyqtgraph-based waveform and spectrogram display with playback cursor,
 selection regions, and zoom/pan.
 """
+import logging
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QStackedWidget,
 )
@@ -13,6 +15,9 @@ import numpy as np
 from pathlib import Path
 
 from ui.theme import Palette
+
+
+logger = logging.getLogger(__name__)
 
 try:
     import pyqtgraph as pg
@@ -25,7 +30,7 @@ except ImportError:
         import pyqtgraph as pg
         HAS_PYQTGRAPH = True
     except Exception as _e:
-        print(f"[Slunder Studio] pyqtgraph unavailable: {_e}")
+        logger.warning("pyqtgraph unavailable", exc_info=True)
         HAS_PYQTGRAPH = False
         pg = None
 

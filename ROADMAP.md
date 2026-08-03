@@ -79,28 +79,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ## Research-Driven Additions
 
-### P0
-
-- [ ] P0 — Give every view one reporting boundary so failures are visible
-  Why: Four of ten views cannot show an error at all, and worker tracebacks are discarded
-    permanently — this is the root cause behind several separately-reported symptoms.
-  Evidence: `ui/main_window.py:538,544,555,559` construct `MidiStudioView()`, `VocalSuiteView()`,
-    `MixerView()` and `AIProducerView()` **without `toast_mgr`**, so every failure in them surfaces
-    only as small inline `_status` label text. `ui/toast.py` maintains a bounded history with
-    `add_history_listener` and has **zero consumers**, so a dismissed error is unrecoverable.
-    `core/project.py:475,495,509,741,848,1019,1030` report save/delete/restore/prune failures via
-    `print()`, discarded entirely under `--windowed` (`build/build.py:140`).
-    `core/workers.py:181-188` formats a traceback and emits it only on `InferenceWorker.log`, which
-    is **never connected anywhere** — every engine crash loses its stack. The whole tree has two
-    `logging.getLogger` calls (`core/audio_engine.py:16`, `core/job_state.py:21`).
-  Touches: `ui/main_window.py`, all views, `core/project.py`, `core/workers.py`, a new logging
-    setup module, `ui/toast.py`, tests.
-  Acceptance: Every view receives the toast manager; no `print()` remains on a user-visible failure
-    path; app-wide logging writes a rotating file next to the crash log with tracebacks from
-    workers included; a notification/log panel lets the user re-read dismissed messages; a test
-    asserts no view is constructed without a reporting channel.
-  Complexity: M
-
 ### P1
 
 - [ ] P1 — Close the fail-open hole in provenance license metadata
