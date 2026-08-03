@@ -81,23 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Publish releases and repair the release record
-  Why: 31 versions of shipped work exist and none of it is obtainable except by cloning; the
-    changelog's oldest entry is corrupted generator output.
-  Evidence: The only tag is `v0.1.0` at `7461d51` (2026-02-27), **137 commits behind HEAD**, and
-    the only GitHub release is v0.1.0 from 2026-04-13, while `core/version.py` declares 0.1.31.
-    `CHANGELOG.md` documents releases v0.1.0–v0.1.30, of which 30 were never tagged, and everything
-    after v0.1.30 (2026-07-01) sits in one ~128-line `## Unreleased - 2026-08-02` block.
-    `CHANGELOG.md:354` reads literally
-    `## [v0.1.0] - %Y->- (HEAD -> main, tag: v0.1.0, origin/main, origin/HEAD)` with body
-    `- up / - up / - v1` — an unexpanded date format plus leaked `git log` ref decoration.
-  Touches: `CHANGELOG.md`, tags, release process docs.
-  Acceptance: `CHANGELOG.md:354` is rewritten as a real entry or removed; the Unreleased block is
-    cut as 0.1.31 and tagged; a release publishes the unsigned zip plus `SHA256SUMS.txt`, gated on
-    the P0 clean-rebuild item so the first published artifact is not the contaminated one. Releases
-    stay unsigned — no signing step is to be added.
-  Complexity: S
-
 - [ ] P1 — Let the user choose an audio output device
   Why: A music production tool plays through whatever sounddevice picks, with no way to change it.
   Evidence: `core/audio_engine.py` never passes a `device` argument and there is no device control
