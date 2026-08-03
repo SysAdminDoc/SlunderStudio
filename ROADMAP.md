@@ -83,31 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Add a maintained separator adapter with honest model capabilities
-  Why: Archived Demucs is the only real backend while current tools expose maintained MDX/MDXC/Roformer/ensemble options and model-specific limitations.
-  Evidence: `engines/demucs_engine.py`; UVR, python-audio-separator, Ableton stem separation.
-  Touches: separator interface, Vocal Suite, Model Hub, job/export/provenance paths, quality/resource presets.
-  Acceptance: Demucs remains one adapter; at least one maintained backend is selectable; each model declares stems, license, device, RAM/VRAM, chunking, quality/speed, and known limitations; originals and per-run settings are preserved.
-  Complexity: L
-  Refined by the 2026-08-02 research — concrete backend choice and one added acceptance clause.
-    `facebookresearch/demucs` is **archived** (last push 2024-04-24); the `adefossez/demucs` fork's
-    README states plainly that no new features are coming. Recommended adapter:
-    `nomadkaraoke/python-audio-separator` (MIT, releases roughly fortnightly) — it wraps MDX,
-    MDXC/Roformer, VR and Demucs behind one `Separator` class with auto-download/cache and a JSON
-    model registry queryable as `--list_models --list_filter=drums --format=json`, which is exactly
-    the API a GUI should consume. `ZFTurbo/Music-Source-Separation-Training` (MIT) has the widest
-    model coverage if more is needed later.
-    **New mandatory acceptance clause — per-checkpoint license, not per-framework license.** Several
-    best-in-class separation weights (Roformer/SCNet/Mel-Band variants) are published for research
-    and non-commercial use while their *framework* is MIT, and python-audio-separator additionally
-    carries a credit-to-UVR requirement for UVR-trained models. Without a per-checkpoint license
-    field surfaced at run time and stamped into provenance, an MIT product silently ships
-    non-commercial weights. Slunder already has model-level license metadata; this needs to be
-    per-checkpoint.
-    Model tiers worth exposing once the adapter exists: 6-stem, and drum-split (DrumSep Mel-Band
-    Roformer separates kick/snare/toms/cymbals) — UVR has open requests for both (#973 drumsep,
-    #241 chorus split, #276 piano) that nobody has packaged.
-
 - [ ] P2 — Build a reproducible engine evaluation harness
   Why: Engine claims lack fixed prompts, model revisions, hardware measurements, failure rates, and human-review baselines.
   Evidence: ACE-Step/DiffRhythm papers; VERSA, MAD/MusicPrefs, and MusicEval; current absence of real-inference tests.
