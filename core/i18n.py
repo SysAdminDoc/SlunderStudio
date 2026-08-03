@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import ast
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
@@ -267,6 +268,31 @@ def catalog_keys(locale: str = DEFAULT_LOCALE) -> set[str]:
 def missing_keys(required: Iterable[str], locale: str = DEFAULT_LOCALE) -> list[str]:
     keys = catalog_keys(locale)
     return sorted(key for key in required if key not in keys)
+
+
+def extract_i18n_keys(paths: Iterable[Path]) -> set[str]:
+    """Extract literal ``tr()`` keys for catalog completeness checks."""
+    keys: set[str] = set()
+    for path in paths:
+        source_path = Path(path)
+        if not source_path.is_file() or source_path.suffix != ".py":
+            continue
+        tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            function = node.func
+            name = (
+                function.id
+                if isinstance(function, ast.Name)
+                else function.attr
+                if isinstance(function, ast.Attribute)
+                else ""
+            )
+            if name == "tr" and isinstance(node.args[0], ast.Constant):
+                if isinstance(node.args[0].value, str):
+                    keys.add(node.args[0].value)
+    return keys
 
 
 def tr(key: str, locale: str | None = None, **params) -> str:

@@ -6,6 +6,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 - Added persisted English/Arabic/pseudo-locale selection, startup locale restoration, RTL layout
   direction, and translated main-shell page metadata with catalog coverage and keyboard gates.
+- Added AST-backed extraction checks so every literal `tr()` key used by the application shell and
+  views is present in the English and Arabic merged catalogs.
 - Added dedicated direct coverage for worker cancellation, preserved outputs, semantic failures,
   progress throttling, autosave branches, MIDI transforms, settings persistence, and style-tag
   search/favorites.

@@ -19,6 +19,7 @@ from core.i18n import (
     available_locales,
     clear_missing_key_log,
     current_locale,
+    extract_i18n_keys,
     get_missing_key_log,
     is_rtl,
     language_code_from_label,
@@ -64,6 +65,13 @@ class I18nTests(unittest.TestCase):
         self.assertIn(PSEUDO_LOCALE, available_locales())
         self.assertEqual([], missing_keys(REQUIRED_I18N_KEYS, "ar"))
         self.assertEqual([], missing_keys(REQUIRED_I18N_KEYS, PSEUDO_LOCALE))
+
+    def test_source_translation_keys_are_present_in_every_builtin_catalog(self):
+        root = Path(__file__).resolve().parents[1]
+        keys = extract_i18n_keys([root / "main.py", *(root / "ui").glob("*.py")])
+        self.assertTrue(keys)
+        self.assertEqual([], missing_keys(keys, DEFAULT_LOCALE))
+        self.assertEqual([], missing_keys(keys, "ar"))
 
     def test_pseudolocale_preserves_placeholders_and_exposes_overflow_gate(self):
         translated = pseudolocalize("Open {label}")
