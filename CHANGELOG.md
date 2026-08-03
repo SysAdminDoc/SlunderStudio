@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Added explicit Vocal Suite trust actions for unsafe RVC and GPT-SoVITS checkpoints, with
+  persisted acknowledgment, visible pickle/deserialization risk copy, and an error remedy that
+  points users to the exact control while keeping the loader fail closed.
 - Made model-license provenance fail closed: registry/manifest failures now write explicit
   indeterminate metadata and force export warnings instead of silently asserting permissive rights.
 - Routed every top-level view through the shared toast manager, replaced user-visible failure

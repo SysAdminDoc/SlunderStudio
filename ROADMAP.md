@@ -81,21 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Make the voice-checkpoint trust gate reachable
-  Why: The gate refuses unsafe checkpoints and then instructs the user to perform an action that
-    does not exist anywhere in the product.
-  Evidence: `core/voice_bank.py:263` `trust_profile` is the only writer of `VoiceProfile.trusted`
-    and appears exactly once in the entire repo — its own definition.
-    `engines/rvc_engine.py:267-270` refuses any non-safetensors/ONNX checkpoint unless
-    `profile.trusted` and raises "Mark this voice profile as trusted before loading it". The gate
-    fails closed, which is right; the advertised remedy is impossible, which is not.
-  Touches: `ui/vocal_suite_view.py` voice-profile UI, `core/voice_bank.py`,
-    `tests/test_model_trust.py`.
-  Acceptance: An explicit, clearly-worded trust action exists on the voice profile with the risk
-    stated, it persists, and the RVC error message names the exact place to perform it — or, if
-    trusting is intentionally unsupported, the message stops offering it and says so.
-  Complexity: S
-
 - [ ] P1 — Correct the declared dependency security floors
   Why: The floors the repo advertises are older than the advisories that supersede them, and one
     unbounded floor admits a reachable heap-overflow class.

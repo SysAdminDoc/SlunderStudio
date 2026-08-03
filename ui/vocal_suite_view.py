@@ -186,12 +186,14 @@ class VocalSuiteView(QWidget):
                 (self._melody_generate_btn, "Generate melody MIDI", "Extracts a MIDI melody from humming audio."),
                 (self._rvc_browse_btn, "Browse RVC input", "Selects input audio for voice conversion."),
                 (self._rvc_voice, "RVC voice", "Selects the target RVC voice model."),
+                (self._rvc_trust_btn, "Trust unsafe RVC checkpoint", self._rvc_trust_btn.toolTip()),
                 (self._rvc_pitch, "RVC pitch shift", "Adjusts pitch shift in semitones."),
                 (self._rvc_f0, "RVC pitch detector", "Selects the F0 pitch extraction method."),
                 (self._rvc_index, "RVC index strength", "Adjusts retrieval index blend strength."),
                 (self._rvc_demo_check, "RVC demo conversion", "Explicitly enables the demo spectral-conversion pipeline."),
                 (self._rvc_convert_btn, "Convert voice", "Starts RVC voice conversion."),
                 (self._clone_voice, "Voice clone profile", "Selects a saved GPT-SoVITS voice profile."),
+                (self._clone_trust_btn, "Trust unsafe GPT-SoVITS checkpoint", self._clone_trust_btn.toolTip()),
                 (self._clone_profile_name, "Voice profile name", "Names a new voice profile."),
                 (self._clone_owner_name, "Voice owner", "Records the voice owner or rights holder for consent provenance."),
                 (self._clone_consent_source, "Voice consent source", "Records how consent or use rights were obtained."),
@@ -234,12 +236,14 @@ class VocalSuiteView(QWidget):
                 self._melody_generate_btn,
                 self._rvc_browse_btn,
                 self._rvc_voice,
+                self._rvc_trust_btn,
                 self._rvc_pitch,
                 self._rvc_f0,
                 self._rvc_index,
                 self._rvc_demo_check,
                 self._rvc_convert_btn,
                 self._clone_voice,
+                self._clone_trust_btn,
                 self._clone_profile_name,
                 self._clone_owner_name,
                 self._clone_consent_source,
@@ -593,6 +597,33 @@ class VocalSuiteView(QWidget):
         voice_row.addWidget(self._rvc_voice)
         ctrl_layout.addLayout(voice_row)
 
+        self._rvc_trust_btn = QPushButton("Trust unsafe checkpoint")
+        self._rvc_trust_btn.setEnabled(False)
+        self._rvc_trust_btn.setToolTip(
+            "Trust only a checkpoint from a source you understand. "
+            "This permits pickle-backed loading, which can execute code during deserialization."
+        )
+        self._rvc_trust_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['surface_hover']}; color: {t['warning']};
+                border: 1px solid {t['warning']}; border-radius: 4px;
+                padding: 5px 8px; font-size: 10px; font-weight: bold;
+            }}
+            QPushButton:hover {{ background: {t['warning']}; color: {t['background']}; }}
+            QPushButton:disabled {{ color: {t['muted']}; border-color: {t['border']}; }}
+        """)
+        self._rvc_trust_btn.clicked.connect(self._on_trust_rvc_profile)
+        ctrl_layout.addWidget(self._rvc_trust_btn)
+
+        self._rvc_trust_label = QLabel(
+            "Checkpoint safety: select a profile to inspect its format."
+        )
+        self._rvc_trust_label.setWordWrap(True)
+        self._rvc_trust_label.setStyleSheet(
+            f"color: {t['text_secondary']}; font-size: 10px; border: none;"
+        )
+        ctrl_layout.addWidget(self._rvc_trust_label)
+
         self._rvc_consent_label = QLabel("Consent guardrails: select a voice profile.")
         self._rvc_consent_label.setWordWrap(True)
         self._rvc_consent_label.setStyleSheet(
@@ -739,6 +770,33 @@ class VocalSuiteView(QWidget):
         profile_row.addWidget(profile_label)
         profile_row.addWidget(self._clone_voice)
         ctrl_layout.addLayout(profile_row)
+
+        self._clone_trust_btn = QPushButton("Trust unsafe checkpoint")
+        self._clone_trust_btn.setEnabled(False)
+        self._clone_trust_btn.setToolTip(
+            "Trust only a GPT-SoVITS checkpoint from a source you understand. "
+            "This permits pickle-backed loading, which can execute code during deserialization."
+        )
+        self._clone_trust_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['surface_hover']}; color: {t['warning']};
+                border: 1px solid {t['warning']}; border-radius: 4px;
+                padding: 5px 8px; font-size: 10px; font-weight: bold;
+            }}
+            QPushButton:hover {{ background: {t['warning']}; color: {t['background']}; }}
+            QPushButton:disabled {{ color: {t['muted']}; border-color: {t['border']}; }}
+        """)
+        self._clone_trust_btn.clicked.connect(self._on_trust_clone_profile)
+        ctrl_layout.addWidget(self._clone_trust_btn)
+
+        self._clone_trust_label = QLabel(
+            "Checkpoint safety: select a profile to inspect its format."
+        )
+        self._clone_trust_label.setWordWrap(True)
+        self._clone_trust_label.setStyleSheet(
+            f"color: {t['text_secondary']}; font-size: 10px; border: none;"
+        )
+        ctrl_layout.addWidget(self._clone_trust_label)
 
         self._clone_profile_name = QLineEdit()
         self._clone_profile_name.setPlaceholderText("New voice profile name...")
@@ -1543,12 +1601,27 @@ class VocalSuiteView(QWidget):
             return
         profile_id = self._rvc_voice.currentData()
         profile = VoiceBank().get(profile_id) if profile_id else None
+        self._update_checkpoint_trust_ui(
+            profile,
+            self._rvc_trust_btn,
+            self._rvc_trust_label,
+            "RVC",
+        )
         if not profile:
             self._rvc_consent_label.setText("Consent guardrails: select a voice profile.")
             self._refresh_capability_states()
             return
         self._rvc_consent_label.setText(self._format_profile_consent(profile, VOICE_OPERATION_CONVERSION))
         self._refresh_capability_states()
+
+    def _on_trust_rvc_profile(self):
+        self._trust_selected_profile(
+            self._rvc_voice,
+            self._rvc_trust_btn,
+            self._rvc_trust_label,
+            "RVC",
+        )
+        self._on_rvc_profile_changed(self._rvc_voice.currentIndex())
 
     def _on_clone_browse_ref(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -1649,6 +1722,12 @@ class VocalSuiteView(QWidget):
             return
         profile_id = self._clone_voice.currentData()
         profile = VoiceBank().get(profile_id) if profile_id else None
+        self._update_checkpoint_trust_ui(
+            profile,
+            self._clone_trust_btn,
+            self._clone_trust_label,
+            "GPT-SoVITS",
+        )
         if not profile:
             self._refresh_capability_states()
             return
@@ -1665,6 +1744,97 @@ class VocalSuiteView(QWidget):
             self._update_clone_reference_quality(profile.ref_audio_path)
         self._clone_consent_label.setText(self._format_profile_consent(profile, VOICE_OPERATION_CLONE))
         self._refresh_capability_states()
+
+    def _on_trust_clone_profile(self):
+        self._trust_selected_profile(
+            self._clone_voice,
+            self._clone_trust_btn,
+            self._clone_trust_label,
+            "GPT-SoVITS",
+        )
+        self._on_clone_profile_changed(self._clone_voice.currentIndex())
+
+    @staticmethod
+    def _update_checkpoint_trust_ui(
+        profile: Optional[VoiceProfile],
+        button: QPushButton,
+        label: QLabel,
+        engine_name: str,
+    ):
+        """Show whether a selected local checkpoint needs explicit trust."""
+        if profile is None:
+            button.setEnabled(False)
+            button.setText("Trust unsafe checkpoint")
+            label.setText("Checkpoint safety: select a profile to inspect its format.")
+            return
+
+        path = profile.model_path or ""
+        extension = profile.checkpoint_extension or "unknown format"
+        if not path:
+            button.setEnabled(False)
+            button.setText("No checkpoint configured")
+            label.setText(
+                f"Checkpoint safety ({engine_name}): this profile has no local checkpoint configured."
+            )
+        elif profile.uses_safer_checkpoint:
+            button.setEnabled(False)
+            button.setText("Trust not required")
+            label.setText(
+                f"Checkpoint safety ({engine_name}): {extension} is loaded through the safer format path."
+            )
+        elif profile.trusted:
+            button.setEnabled(False)
+            button.setText("Checkpoint trusted")
+            note = profile.trust_note or "explicit local trust"
+            label.setText(
+                f"Checkpoint safety ({engine_name}): explicitly trusted ({note})."
+            )
+        else:
+            button.setEnabled(True)
+            button.setText("Trust unsafe checkpoint")
+            label.setText(
+                f"Checkpoint safety ({engine_name}): {extension} is unsafe or unknown. "
+                "Trusting it permits pickle-backed loading and may execute code; use only if you trust the source."
+            )
+
+    def _trust_selected_profile(
+        self,
+        combo: QComboBox,
+        button: QPushButton,
+        label: QLabel,
+        engine_name: str,
+    ):
+        profile = self._selected_voice_profile(combo)
+        if profile is None:
+            self._report_error("Select a voice profile before trusting a checkpoint")
+            return
+        if not profile.model_path:
+            self._report_error("The selected voice profile has no local checkpoint to trust")
+            return
+        if profile.uses_safer_checkpoint:
+            self._status.setText("Trust is not required for this safer checkpoint format")
+            return
+        if profile.trusted:
+            self._status.setText("This checkpoint is already trusted")
+            return
+
+        note = (
+            f"Explicitly trusted from Vocal Suite {engine_name} voice profile; "
+            "pickle-backed loading acknowledged."
+        )
+        if not VoiceBank().trust_profile(profile.id, note=note):
+            self._report_error("Could not persist checkpoint trust for this voice profile")
+            return
+
+        refreshed = VoiceBank().get(profile.id)
+        self._update_checkpoint_trust_ui(refreshed, button, label, engine_name)
+        message = f"Trusted {engine_name} checkpoint for {profile.name}."
+        self._status.setText(message)
+        if self.toast_mgr is not None:
+            self.toast_mgr.warning(
+                message + " Pickle-backed loading is now permitted for this profile.",
+                duration_ms=8000,
+            )
 
     def _update_clone_reference_quality(self, path: str):
         from engines.rvc_engine import assess_clone_reference
@@ -2456,6 +2626,12 @@ class VocalSuiteView(QWidget):
             self._on_rvc_profile_changed(0)
         else:
             self._rvc_voice.addItem("(No RVC models)")
+            self._update_checkpoint_trust_ui(
+                None,
+                self._rvc_trust_btn,
+                self._rvc_trust_label,
+                "RVC",
+            )
             if hasattr(self, "_rvc_consent_label"):
                 self._rvc_consent_label.setText("Consent guardrails: select a voice profile.")
 
@@ -2472,6 +2648,13 @@ class VocalSuiteView(QWidget):
         if clone_voices:
             self._clone_voice.setCurrentIndex(0)
             self._on_clone_profile_changed(0)
-        elif hasattr(self, "_clone_consent_label"):
-            self._clone_consent_label.setText("Consent guardrails: save a consent-ready voice profile.")
+        else:
+            self._update_checkpoint_trust_ui(
+                None,
+                self._clone_trust_btn,
+                self._clone_trust_label,
+                "GPT-SoVITS",
+            )
+            if hasattr(self, "_clone_consent_label"):
+                self._clone_consent_label.setText("Consent guardrails: save a consent-ready voice profile.")
         self._refresh_capability_states()

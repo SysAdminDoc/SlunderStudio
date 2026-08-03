@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 import wave
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -12,6 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from engines.sfx_engine import SFXResult
+from core.voice_bank import VoiceBank, VoiceProfile
 from ui.sfx_view import SFXView
 from ui.vocal_suite_view import VocalSuiteView
 
@@ -90,6 +92,41 @@ class ActionEffectTests(unittest.TestCase):
         finally:
             view.close()
             self._app.processEvents()
+
+    def test_vocal_suite_exposes_and_persists_unsafe_checkpoint_trust(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            VoiceBank._instance = None
+            try:
+                with mock.patch("core.voice_bank.get_config_dir", return_value=root):
+                    bank = VoiceBank()
+                    checkpoint = root / "voice.pth"
+                    checkpoint.write_bytes(b"checkpoint")
+                    profile = VoiceProfile(
+                        name="Reviewable RVC",
+                        engine="rvc",
+                        model_path=str(checkpoint),
+                    )
+                    bank.add(profile)
+
+                    view = VocalSuiteView()
+                    try:
+                        index = view._rvc_voice.findData(profile.id)
+                        self.assertGreaterEqual(index, 0)
+                        view._rvc_voice.setCurrentIndex(index)
+                        self.assertTrue(view._rvc_trust_btn.isEnabled())
+                        self.assertIn("may execute code", view._rvc_trust_label.text())
+
+                        view._on_trust_rvc_profile()
+
+                        self.assertTrue(bank.get(profile.id).trusted)
+                        self.assertFalse(view._rvc_trust_btn.isEnabled())
+                        self.assertIn("explicitly trusted", view._rvc_trust_label.text())
+                    finally:
+                        view.close()
+                        self._app.processEvents()
+            finally:
+                VoiceBank._instance = None
 
 
 if __name__ == "__main__":

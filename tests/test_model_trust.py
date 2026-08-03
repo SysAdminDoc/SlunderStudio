@@ -17,13 +17,44 @@ from core.model_manager import (
     OfflineModeError,
     is_commit_sha,
 )
-from core.voice_bank import VoiceProfile
+from core.voice_bank import VoiceBank, VoiceProfile
 from engines.demucs_engine import DemucsEngine, separate_stems
 from engines.midi_llm_engine import MidiLLMEngine
 from engines.rvc_engine import RVCEngine
 
 
 class ModelTrustTests(unittest.TestCase):
+    def test_voice_bank_trust_action_persists_checkpoint_acknowledgement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            VoiceBank._instance = None
+            try:
+                with patch("core.voice_bank.get_config_dir", return_value=Path(tmp)):
+                    bank = VoiceBank()
+                    checkpoint = Path(tmp) / "voice.pth"
+                    checkpoint.write_bytes(b"checkpoint")
+                    profile = VoiceProfile(
+                        name="Trusted locally",
+                        engine="rvc",
+                        model_path=str(checkpoint),
+                    )
+                    bank.add(profile)
+
+                    self.assertFalse(profile.trusted)
+                    self.assertTrue(
+                        bank.trust_profile(profile.id, "Reviewed by the operator")
+                    )
+                    self.assertTrue(profile.trusted)
+                    self.assertEqual(profile.trust_note, "Reviewed by the operator")
+
+                    VoiceBank._instance = None
+                    reloaded = VoiceBank()
+                    restored = reloaded.get(profile.id)
+                    self.assertIsNotNone(restored)
+                    self.assertTrue(restored.trusted)
+                    self.assertEqual(restored.trust_note, "Reviewed by the operator")
+            finally:
+                VoiceBank._instance = None
+
     def test_builtin_huggingface_sources_use_immutable_revisions(self):
         for model_id, info in BUILTIN_MODELS.items():
             if not info.source or info.pip_managed:
@@ -434,6 +465,7 @@ class ModelTrustTests(unittest.TestCase):
                 engine.load_model(profile, device="cpu")
 
             self.assertIn("unsafe local checkpoint", str(ctx.exception))
+            self.assertIn("Vocal Suite > Voice Conversion", str(ctx.exception))
 
     def test_rvc_rejects_untrusted_unknown_checkpoint_extensions_before_torch_load(self):
         with tempfile.TemporaryDirectory() as tmp:

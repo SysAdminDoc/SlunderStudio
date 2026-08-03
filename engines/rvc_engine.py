@@ -267,7 +267,8 @@ def load_voice_checkpoint(profile: VoiceProfile, path: str, device: str):
     if ext not in SAFER_CHECKPOINT_EXTENSIONS and not profile.trusted:
         raise RuntimeError(
             f"{os.path.basename(path)} is an unsafe local checkpoint format. "
-            "Mark this voice profile as trusted before loading it, or use a safetensors/ONNX model."
+            "Open Vocal Suite > Voice Conversion and click 'Trust unsafe checkpoint' "
+            "for this profile before loading it, or use a safetensors/ONNX model."
         )
 
     if ext == ".safetensors":
