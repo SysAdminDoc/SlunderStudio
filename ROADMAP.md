@@ -83,35 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Audit settings and onboarding against actual runtime behavior
-  Why: Several controls claim immediate effect without consumers, onboarding completes even when dismissed, and readiness checks can report false-green on exceptions.
-  Evidence: `ui/settings_view.py`, `core/settings.py`, `main.py:337-342`, onboarding UI; local-model onboarding patterns.
-  Touches: settings schema/consumers, onboarding dialog and readiness probes, first-run state, copy, tests.
-  Acceptance: Every visible setting has a tested consumer or is removed; dismissing onboarding does not mark completion; readiness distinguishes installed/downloaded/loadable/loaded/offline/error; disk/VRAM estimates and reopen steps match the selected engine.
-  Complexity: M
-  Refined by the 2026-08-02 audit — concrete inventory, so the implementer need not re-derive it.
-    Settings keys written by a control with ZERO runtime consumers (grep across `ui/`, `core/`, `engines/`, `main.py`):
-    `song_forge.timestep_shift`, `song_forge.inference_steps`, `song_forge.batch_count`,
-    `song_forge.default_duration` (Song Forge uses its own in-view spinboxes, e.g. `_batch_spin`
-    at `ui/song_forge_view.py:728`); `production.mastering_target`, `production.mastering_auto_eq`,
-    `production.mastering_auto_compress` (Mixer uses its own combos); `midi_studio.default_bpm`
-    (MIDI Studio hard-codes 120); `general.gpu_device`; `general.audio_format`;
-    `general.experience_level`; `general.max_cache_gb` — whose help text at
-    `ui/settings_view.py:381` ("Auto-cleanup old generations beyond this limit") describes a
-    feature that does not exist. `general.output_dir` is read ONLY for path redaction in
-    `core/diagnostics.py:231,420`; no export flow defaults to it.
-    Controls at `ui/settings_view.py`: Song Forge group :294-328, Production/Mastering group
-    :350-366, MIDI `default_bpm` :336-342, `general.gpu_device` :169-178,
-    `general.audio_format` :145-150, `general.output_dir` :130-143, `general.max_cache_gb`
-    :374-381, `general.experience_level` :208-217.
-    Onboarding, exact defects: (a) `main.py:337-341` sets `general.onboarding_complete = True`
-    unconditionally after `wizard.exec()`, so closing with X/Esc on page 1 permanently completes
-    onboarding and the wizard's own `_finish` gating at `ui/onboarding.py:457-462` is moot —
-    only mark complete on an accepted result; (b) `run_checks()` (`ui/onboarding.py:152-193`)
-    appends rows to `_checks_layout` without clearing, so Welcome -> Next -> Back -> Next renders
-    every system-check row twice, and again per round trip.
-    Add a test asserting every key in the settings schema has at least one consumer.
-
 - [ ] P2 — Make first run end with a working installation
   Why: The wizard promises model setup and preferences, delivers a static table, and leaves the user
     with zero models and no idea where to get them.
