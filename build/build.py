@@ -339,6 +339,7 @@ def build_command(onefile: bool = False) -> list[str]:
         "engines.diffsinger_engine",
         "engines.rvc_engine",
         "engines.demucs_engine",
+        "engines.audio_separator_engine",
         "engines.sfx_engine",
         "engines.ai_producer",
         "engines.audio_analyzer",

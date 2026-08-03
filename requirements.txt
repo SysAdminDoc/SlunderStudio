@@ -33,6 +33,7 @@ tqdm>=4.0
 
 # Stem Separation
 # demucs>=4.0
+# audio-separator[cpu]>=0.44.5  # maintained MDX/MDXC/Roformer adapter; install explicitly
 
 # SFX Generation
 # stable-audio-tools>=0.0.12

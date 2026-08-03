@@ -8,6 +8,9 @@ All notable changes to SlunderStudio will be documented in this file.
   direction, and translated main-shell page metadata with catalog coverage and keyboard gates.
 - Added AST-backed extraction checks so every literal `tr()` key used by the application shell and
   views is present in the English and Arabic merged catalogs.
+- Added a backend-neutral separator registry and maintained `python-audio-separator` adapter beside
+  Demucs. Vocal Suite can select declared MDX/MDXC/Roformer or Demucs checkpoints, and every stem
+  run records checkpoint license, resource, chunking, quality, limitation, and source metadata.
 - Added dedicated direct coverage for worker cancellation, preserved outputs, semantic failures,
   progress throttling, autosave branches, MIDI transforms, settings persistence, and style-tag
   search/favorites.

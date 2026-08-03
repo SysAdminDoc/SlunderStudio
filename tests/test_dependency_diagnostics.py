@@ -150,6 +150,7 @@ class DependencyDiagnosticsTests(unittest.TestCase):
         # engine profiles rather than the small core runtime lock.
         optional_imports = {
             "demucs",
+            "audio_separator",
             "diffusers",
             "faiss",
             "fluidsynth",

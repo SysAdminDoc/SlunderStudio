@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from core.provenance import write_provenance_sidecar
+from core.provenance import sidecar_path_for, write_provenance_sidecar
 from core.settings import get_config_dir
 
 
@@ -56,6 +56,7 @@ class StemResult:
     audio: Optional[np.ndarray] = None  # float32, shape (samples, channels)
     sample_rate: int = 44100
     file_path: Optional[str] = None
+    provenance_path: Optional[str] = None
 
 
 @dataclass
@@ -67,6 +68,9 @@ class SeparationResult:
     separation_time: float = 0.0
     model_name: str = ""
     error: Optional[str] = None
+    backend_id: str = "demucs"
+    checkpoint_id: str = ""
+    checkpoint_metadata: dict = field(default_factory=dict)
 
     @property
     def is_success(self) -> bool:
@@ -206,6 +210,17 @@ class DemucsEngine:
         except ImportError:
             pass
 
+    def _checkpoint_metadata(self) -> dict:
+        from core.separator_registry import (
+            checkpoint_id_for_demucs_model,
+            get_separator_checkpoint,
+        )
+
+        checkpoint = get_separator_checkpoint(
+            checkpoint_id_for_demucs_model(self._model_name or "htdemucs")
+        )
+        return checkpoint.metadata()
+
     def separate(self, input_path: str,
                  progress_callback: Optional[Callable] = None) -> SeparationResult:
         """Separate audio file into stems."""
@@ -270,6 +285,7 @@ class DemucsEngine:
                     audio=stem_audio.astype(np.float32),
                     sample_rate=sr,
                     file_path=stem_path,
+                    provenance_path=str(sidecar_path_for(stem_path)),
                 ))
 
             sep_time = time.time() - t0
@@ -284,6 +300,13 @@ class DemucsEngine:
                 duration=duration,
                 separation_time=sep_time,
                 model_name=self._model_name or "",
+                backend_id="demucs",
+                checkpoint_id=(
+                    "demucs-htdemucs-6s"
+                    if self._model_name == "htdemucs_6s"
+                    else "demucs-htdemucs"
+                ),
+                checkpoint_metadata=self._checkpoint_metadata(),
             )
 
         except Exception as e:
@@ -343,6 +366,7 @@ class DemucsEngine:
                     name=name,
                     audio=stem_audio.astype(np.float32),
                     sample_rate=model_sr,
+                    provenance_path=None,
                 ))
 
             if progress_callback:
@@ -354,6 +378,13 @@ class DemucsEngine:
                 duration=wav.shape[-1] / model_sr,
                 separation_time=time.time() - t0,
                 model_name=self._model_name or "",
+                backend_id="demucs",
+                checkpoint_id=(
+                    "demucs-htdemucs-6s"
+                    if self._model_name == "htdemucs_6s"
+                    else "demucs-htdemucs"
+                ),
+                checkpoint_metadata=self._checkpoint_metadata(),
             )
 
         except Exception as e:
@@ -363,6 +394,10 @@ class DemucsEngine:
                    input_path: str) -> str:
         """Save a stem to WAV file."""
         import wave
+        from core.separator_registry import (
+            checkpoint_id_for_demucs_model,
+            get_separator_checkpoint,
+        )
 
         base = os.path.splitext(os.path.basename(input_path))[0]
         ts = time.strftime("%Y%m%d_%H%M%S")
@@ -379,22 +414,30 @@ class DemucsEngine:
             wf.setframerate(sr)
             wf.writeframes(int_audio.tobytes())
 
+        checkpoint = get_separator_checkpoint(
+            checkpoint_id_for_demucs_model(self._model_name or "htdemucs")
+        )
+
         write_provenance_sidecar(
             path,
             module="stem_separation",
             operation="separate_stem",
-            model_id="demucs-v4",
-            model_name=self._model_name or "",
+            model_id=checkpoint.id,
+            model_name=checkpoint.name,
+            model_license=checkpoint.checkpoint_license,
             prompt="",
             parameters={
                 "stem_name": stem_name,
                 "sample_rate": sr,
                 "model_name": self._model_name or "",
                 "source_file": input_path,
+                "backend_id": "demucs",
+                "checkpoint": checkpoint.metadata(),
             },
             source_paths=[input_path],
             export_format="wav",
             output_kind="model",
+            extra={"checkpoint_metadata": checkpoint.metadata()},
         )
         return path
 
@@ -472,12 +515,15 @@ def recover_vocal_stem(
         return VocalStemRecoveryResult(error=f"Vocals stem file not found: {vocal_path}")
 
     resolved_model = getattr(result, "model_name", "") or model_name
+    checkpoint_id = getattr(result, "checkpoint_id", "") or "demucs-htdemucs"
+    checkpoint_metadata = getattr(result, "checkpoint_metadata", {}) or {}
     sidecar = write_provenance_sidecar(
         vocal_path,
         module="song_forge",
         operation="recover_vocal_stem",
-        model_id="demucs-v4",
+        model_id=checkpoint_id,
         model_name=resolved_model,
+        model_license=checkpoint_metadata.get("checkpoint_license", ""),
         parameters={
             "stem_name": "vocals",
             "model_name": resolved_model,
@@ -490,6 +536,7 @@ def recover_vocal_stem(
         export_format="wav",
         output_kind="model",
         extra={
+            "checkpoint_metadata": checkpoint_metadata,
             "stems_exported": [
                 stem.name for stem in getattr(result, "stems", [])
                 if getattr(stem, "file_path", None)

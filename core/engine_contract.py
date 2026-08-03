@@ -358,7 +358,7 @@ ENGINE_CAPABILITIES: dict[str, EngineCapability] = {
     CAP_STEM_SEPARATE: EngineCapability(
         id=CAP_STEM_SEPARATE,
         label="Separate stems",
-        model_ids=("demucs-v4",),
+        model_ids=("demucs-v4", "audio-separator"),
         outputs=(ArtifactKind.STEMS, ArtifactKind.AUDIO, ArtifactKind.PROVENANCE),
     ),
 }

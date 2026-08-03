@@ -42,7 +42,7 @@ through PyTorch 2.4.1, below the PyTorch 2.10.0 security floor.
 | Song Forge | ACE-Step 1.5 XL Turbo song generation, reference covers, source repaint/extend, stitched long-form songs, and recovered vocal-stem export | ACE-Step, Demucs |
 | Lyrics Engine | AI-powered lyrics writing with 33 genre templates | Llama 3.1 8B |
 | MIDI Studio | Piano roll editor with quantize/swing/humanize tools, CC lanes, text-to-MIDI composition, groove-template drums, and chord chart export | MIDI-LLM |
-| Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, voice conversion, voice cloning, and vocal auto-tune pitch correction | DiffSinger, RVC v2, GPT-SoVITS, librosa |
+| Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, voice conversion, voice cloning, selectable Demucs/MDX/MDXC/Roformer stem separation, and vocal auto-tune pitch correction | DiffSinger, RVC v2, GPT-SoVITS, Audio Separator |
 | Stem Separation | Isolate vocals, drums, bass, and other instruments | Demucs (htdemucs) |
 | SFX Generator | Text-to-sound-effect generation | Stable Audio Open |
 | Mixer | Project-rate mixing with validated resampling, channel normalization, dynamic EQ, Mid/Side trims, reference matching, and mastering | Built-in DSP |

@@ -32,6 +32,7 @@ _PIP_NAMES = {
     "acestep": "ace-step",
     "whisper": "openai-whisper",
     "demucs": "demucs",
+    "audio_separator": "audio-separator",
     "llama_cpp": "llama-cpp-python",
     "pretty_midi": "pretty-midi",
     "torch": "torch",

@@ -1,7 +1,7 @@
 """
 Slunder Studio — Vocal Suite View
 Main Vocal Suite page combining singing synthesis (DiffSinger),
-voice conversion (RVC), voice cloning (GPT-SoVITS), stem separation (Demucs),
+voice conversion (RVC), voice cloning (GPT-SoVITS), and backend-selectable stem separation,
 and stem remix/export.
 """
 import os
@@ -28,6 +28,12 @@ from core.i18n import (
 )
 from core.settings import Settings
 from core.audio_engine import AudioEngine
+from core.separator_registry import (
+    SEPARATOR_CHECKPOINTS,
+    checkpoint_id_for_demucs_model,
+    get_separator_checkpoint,
+    separator_checkpoints,
+)
 from core.voice_bank import VOICE_OPERATION_CLONE, VOICE_OPERATION_CONVERSION, VoiceBank, VoiceProfile
 from core.workers import CancelledJobError, InferenceWorker
 from core.engine_contract import (
@@ -113,6 +119,7 @@ class VocalSuiteView(QWidget):
         self._clone_worker: Optional[InferenceWorker] = None
         self._autotune_worker: Optional[InferenceWorker] = None
         self._stem_worker: Optional[InferenceWorker] = None
+        self._stem_model_id = "demucs-v4"
         self._export_worker: Optional[InferenceWorker] = None
         self._export_workers = set()
         self._model_mgr = ModelManager()
@@ -266,7 +273,7 @@ class VocalSuiteView(QWidget):
                 (self._autotune_strength, "Auto-tune strength", "Controls how strongly pitch is pulled toward the nearest semitone."),
                 (self._autotune_apply_btn, "Apply auto-tune", "Writes a pitch-corrected vocal WAV."),
                 (self._stem_browse_btn, "Browse stem input", "Selects audio for stem separation."),
-                (self._stem_model, "Stem separation model", "Selects the Demucs model."),
+                (self._stem_model, "Stem separation checkpoint", "Selects a Demucs or maintained Audio Separator checkpoint."),
                 (self._stem_separate_btn, "Separate stems", "Starts stem separation."),
                 (self._to_forge_btn, "Send vocals to Song Forge", "Routes current vocal output to Song Forge."),
                 (self._to_mixer_btn, "Send vocals to Mixer", "Routes current vocal output to Mixer."),
@@ -1139,7 +1146,7 @@ class VocalSuiteView(QWidget):
         return widget
 
     def _build_stems_tab(self) -> QWidget:
-        """Demucs stem separation tab."""
+        """Backend-selectable stem separation tab."""
         t = ThemeEngine.get_colors()
         widget = QWidget()
         layout = QVBoxLayout(widget)
@@ -1170,7 +1177,8 @@ class VocalSuiteView(QWidget):
         self._stem_browse_btn.clicked.connect(self._on_stems_browse)
 
         self._stem_model = QComboBox()
-        self._stem_model.addItems(["htdemucs", "htdemucs_ft", "htdemucs_6s"])
+        for checkpoint in separator_checkpoints():
+            self._stem_model.addItem(checkpoint.name, checkpoint.id)
         self._stem_model.setStyleSheet(f"""
             QComboBox {{
                 background: {t['surface']}; color: {t['text']};
@@ -2231,19 +2239,24 @@ class VocalSuiteView(QWidget):
             self._refresh_capability_states()
             return
 
-        model_name = self._stem_model.currentText()
+        checkpoint_id = str(self._stem_model.currentData() or "demucs-htdemucs")
+        checkpoint = get_separator_checkpoint(checkpoint_id)
+        self._stem_model_id = (
+            "demucs-v4" if checkpoint.backend_id == "demucs" else "audio-separator"
+        )
         self._reset_engine_routing()
         self._stem_separate_btn.setEnabled(False)
-        self._status.setText(f"Separating stems with {model_name}...")
+        self._status.setText(f"Separating stems with {checkpoint.name}...")
         self._stem_worker = InferenceWorker(
             self._run_stem_separation,
             path,
-            model_name,
+            checkpoint_id,
             job_kind="stem_separation",
-            job_label=f"{model_name} stem separation",
+            job_label=f"{checkpoint.name} stem separation",
             job_inputs={
                 "input_path": path,
-                "model_name": model_name,
+                "checkpoint_id": checkpoint_id,
+                "backend_id": checkpoint.backend_id,
             },
             job_metadata={
                 "module": "vocal_suite",
@@ -2269,18 +2282,38 @@ class VocalSuiteView(QWidget):
         log_cb=None,
         cancel_event=None,
     ):
-        from engines.demucs_engine import get_demucs
+        checkpoint_id = (
+            checkpoint_id_for_demucs_model(model_name)
+            if model_name not in SEPARATOR_CHECKPOINTS
+            else model_name
+        )
+        checkpoint = get_separator_checkpoint(checkpoint_id)
 
         if cancel_event and cancel_event.is_set():
             raise CancelledJobError("Stem separation cancelled")
-        engine = get_demucs()
-        if not engine.is_loaded or engine._model_name != model_name:
-            if step_cb:
-                step_cb(f"Loading {model_name}...")
-            engine.load_model(
-                model_name,
-                progress_callback=self._progress_bridge(progress_cb, step_cb),
-            )
+        if checkpoint.backend_id == "audio-separator":
+            from engines.audio_separator_engine import get_audio_separator
+
+            engine = get_audio_separator()
+            if not engine.is_loaded or engine.checkpoint_id != checkpoint.id:
+                if step_cb:
+                    step_cb(f"Loading {checkpoint.name}...")
+                engine.load_model(
+                    checkpoint.id,
+                    progress_callback=self._progress_bridge(progress_cb, step_cb),
+                )
+        else:
+            from engines.demucs_engine import get_demucs
+
+            engine = get_demucs()
+            demucs_model = checkpoint.model_filename
+            if not engine.is_loaded or engine._model_name != demucs_model:
+                if step_cb:
+                    step_cb(f"Loading {checkpoint.name}...")
+                engine.load_model(
+                    demucs_model,
+                    progress_callback=self._progress_bridge(progress_cb, step_cb),
+                )
         if cancel_event and cancel_event.is_set():
             raise CancelledJobError("Stem separation cancelled")
         result = engine.separate(
@@ -2297,7 +2330,12 @@ class VocalSuiteView(QWidget):
                 kind=ArtifactKind.STEMS,
                 payload=result.stems,
                 routable=False,
-                metadata={"sample_rate": result.sample_rate},
+                metadata={
+                    "sample_rate": result.sample_rate,
+                    "backend_id": getattr(result, "backend_id", "demucs"),
+                    "checkpoint_id": getattr(result, "checkpoint_id", ""),
+                    "checkpoint": getattr(result, "checkpoint_metadata", {}),
+                },
             )
         ] if result.stems else []
         artifacts.extend(
@@ -2305,8 +2343,15 @@ class VocalSuiteView(QWidget):
                 kind=ArtifactKind.AUDIO,
                 path=stem.file_path or "",
                 payload=stem.audio,
+                provenance_path=getattr(stem, "provenance_path", None) or "",
                 routable=bool(stem.file_path),
-                metadata={"stem": stem.name, "sample_rate": stem.sample_rate},
+                metadata={
+                    "stem": stem.name,
+                    "sample_rate": stem.sample_rate,
+                    "backend_id": getattr(result, "backend_id", "demucs"),
+                    "checkpoint_id": getattr(result, "checkpoint_id", ""),
+                    "checkpoint": getattr(result, "checkpoint_metadata", {}),
+                },
             )
             for stem in result.stems
         )
@@ -2314,7 +2359,9 @@ class VocalSuiteView(QWidget):
             CAP_STEM_SEPARATE,
             result,
             artifacts,
-            model_id="demucs-v4",
+            model_id=(
+                "demucs-v4" if checkpoint.backend_id == "demucs" else "audio-separator"
+            ),
         )
 
     def _on_stems_ready(self, run: EngineRunResult):
@@ -2351,7 +2398,7 @@ class VocalSuiteView(QWidget):
         self._contract_results[CAP_STEM_SEPARATE] = EngineRunResult.failure(
             CAP_STEM_SEPARATE,
             error,
-            model_id="demucs-v4",
+            model_id=getattr(self, "_stem_model_id", "demucs-v4"),
         )
         self._report_error(f"Stem separation failed: {error}")
         self._refresh_capability_states()
@@ -2361,7 +2408,7 @@ class VocalSuiteView(QWidget):
         self._contract_results[CAP_STEM_SEPARATE] = EngineRunResult.cancelled(
             CAP_STEM_SEPARATE,
             "Stem separation cancelled",
-            model_id="demucs-v4",
+            model_id=getattr(self, "_stem_model_id", "demucs-v4"),
         )
         self._status.setText("Stem separation cancelled")
         self._refresh_capability_states()
