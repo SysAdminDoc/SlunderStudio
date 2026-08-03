@@ -83,13 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Build a reproducible engine evaluation harness
-  Why: Engine claims lack fixed prompts, model revisions, hardware measurements, failure rates, and human-review baselines.
-  Evidence: ACE-Step/DiffRhythm papers; VERSA, MAD/MusicPrefs, and MusicEval; current absence of real-inference tests.
-  Touches: test fixtures, benchmark runner, provenance/report schema, release checklist, optional metrics dependencies.
-  Acceptance: Fixed prompts/seeds/durations/languages record latency, peak RAM/VRAM, failure, adherence, lyric timing, structure, loudness/true peak, and artifacts; reports include model/runtime hashes and a blinded listener rubric; no release is gated on FAD alone.
-  Complexity: L
-
 - [ ] P2 — Audit settings and onboarding against actual runtime behavior
   Why: Several controls claim immediate effect without consumers, onboarding completes even when dismissed, and readiness checks can report false-green on exceptions.
   Evidence: `ui/settings_view.py`, `core/settings.py`, `main.py:337-342`, onboarding UI; local-model onboarding patterns.
