@@ -81,23 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Close the fail-open hole in provenance license metadata
-  Why: A blanket exception handler makes restricted-model exports report clean success, defeating
-    the v0.1.15 export-warning feature entirely whenever anything upstream of it errors.
-  Evidence: `core/provenance.py:114-166` wraps the whole `ModelManager` / `get_model_info` /
-    `license_metadata()` / `get_download_manifest` block in one `try`, ending `except Exception:
-    pass`. The defaults set at `:88-110` are permissive — `"license": ""`,
-    `"requires_export_warning": False`, `"trusted_source": None`. Any failure therefore writes a
-    sidecar asserting no warning and no license, and `get_export_license_warnings`
-    (`ui/song_forge_view.py:1147`, `ui/vocal_suite_view.py:2193`, `core/audio_export.py:411`) then
-    shows an unqualified success for a non-commercial model.
-  Touches: `core/provenance.py`, export paths, `tests/test_model_license_metadata.py`.
-  Acceptance: Metadata collection failure is recorded in the sidecar as unknown/indeterminate, not
-    as permissive, and the export path treats unknown as warn-worthy; narrow the handler to the
-    specific expected exceptions and log the rest; a test injects a failing `ModelManager` and
-    asserts the export still warns.
-  Complexity: S
-
 - [ ] P1 — Make the voice-checkpoint trust gate reachable
   Why: The gate refuses unsafe checkpoints and then instructs the user to perform an action that
     does not exist anywhere in the product.

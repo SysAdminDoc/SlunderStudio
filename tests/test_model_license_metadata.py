@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -141,6 +142,45 @@ class ModelLicenseMetadataTests(unittest.TestCase):
             self.assertEqual(
                 data["extra"]["source_model_license"]["commercial_use"],
                 COMMERCIAL_USE_NON_COMMERCIAL,
+            )
+
+    def test_metadata_failure_is_indeterminate_and_export_still_warns(self):
+        class FailingModelManager:
+            def __init__(self):
+                raise RuntimeError("registry unavailable")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.wav"
+            target = root / "export.wav"
+            _write_wav(source)
+
+            with mock.patch(
+                "core.model_manager.ModelManager",
+                FailingModelManager,
+            ):
+                write_provenance_sidecar(
+                    source,
+                    module="song_forge",
+                    operation="generate",
+                    model_id="unavailable-model",
+                    export_format="wav",
+                )
+
+            source_data = read_provenance_sidecar(source)
+            model = source_data["model"]
+            self.assertEqual(model["metadata_status"], "indeterminate")
+            self.assertEqual(model["license"], "unknown")
+            self.assertEqual(model["commercial_use"], "unknown")
+            self.assertTrue(model["requires_export_warning"])
+            self.assertTrue(get_export_license_warnings(str(source)))
+
+            export_audio(str(source), str(target), ExportSettings(format="wav"))
+            exported = read_provenance_sidecar(target)
+            self.assertTrue(exported["extra"]["license_warnings"])
+            self.assertEqual(
+                exported["extra"]["source_model_license"]["metadata_status"],
+                "indeterminate",
             )
 
 

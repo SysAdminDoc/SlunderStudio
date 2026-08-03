@@ -4,6 +4,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Made model-license provenance fail closed: registry/manifest failures now write explicit
+  indeterminate metadata and force export warnings instead of silently asserting permissive rights.
 - Routed every top-level view through the shared toast manager, replaced user-visible failure
   prints with structured logging, and added a rotating application log with worker tracebacks.
   Dismissed notifications remain available through the command-bar history panel.

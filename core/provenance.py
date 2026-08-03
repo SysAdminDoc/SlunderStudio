@@ -7,6 +7,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from enum import Enum
@@ -17,6 +18,10 @@ from core.settings import APP_VERSION
 
 PROVENANCE_SCHEMA_VERSION = 1
 PROVENANCE_SUFFIX = ".provenance.json"
+UNKNOWN_LICENSE_WARNING = (
+    "Model license metadata is indeterminate; review the model license before release."
+)
+logger = logging.getLogger(__name__)
 
 
 def sidecar_path_for(artifact_path: str | Path) -> Path:
@@ -99,6 +104,8 @@ def collect_model_metadata(
         "commercial_use_note": "",
         "license_warning": "",
         "requires_export_warning": False,
+        "metadata_status": "not_applicable" if not model_id else "indeterminate",
+        "metadata_error": "" if not model_id else "metadata_not_collected",
         "file_hash_count": 0,
         "trusted_source": None,
         "requires_remote_code": False,
@@ -162,10 +169,47 @@ def collect_model_metadata(
                 "access": metadata["access"] or manifest.get("access", ""),
                 "serialization": manifest.get("serialization", ""),
             })
-    except Exception:
-        pass
+        if info is None and not manifest:
+            _mark_model_metadata_indeterminate(metadata, "model_not_registered")
+        elif info is None and not any(
+            manifest.get(key)
+            for key in ("license", "commercial_use", "license_warning")
+        ):
+            _mark_model_metadata_indeterminate(metadata, "manifest_incomplete")
+        else:
+            metadata["metadata_status"] = "known"
+            metadata["metadata_error"] = ""
+    except (ImportError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+        _mark_model_metadata_indeterminate(metadata, type(exc).__name__)
+        logger.warning(
+            "Model license metadata unavailable for %s: %s",
+            model_id,
+            type(exc).__name__,
+        )
+    except Exception:  # noqa: BLE001 - preserve export with a fail-closed warning
+        _mark_model_metadata_indeterminate(metadata, "unexpected_error")
+        logger.exception("Unexpected model metadata failure for %s", model_id)
 
     return metadata
+
+
+def _mark_model_metadata_indeterminate(
+    metadata: dict[str, Any],
+    reason: str,
+) -> None:
+    """Make metadata failures explicit and warn-worthy without blocking export."""
+    metadata.update({
+        "license": "unknown",
+        "license_url": "",
+        "commercial_use": "unknown",
+        "commercial_use_label": "Unknown",
+        "commercial_use_note": "",
+        "license_warning": UNKNOWN_LICENSE_WARNING,
+        "requires_export_warning": True,
+        "metadata_status": "indeterminate",
+        "metadata_error": reason,
+        "trusted_source": None,
+    })
 
 
 def write_provenance_sidecar(

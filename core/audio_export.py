@@ -297,6 +297,8 @@ def _source_model_license_metadata(source_path: str) -> dict:
         "commercial_use_note",
         "license_warning",
         "requires_export_warning",
+        "metadata_status",
+        "metadata_error",
         "gated",
         "access",
     )
@@ -308,7 +310,14 @@ def get_export_license_warnings(source_path: str) -> list[str]:
     if not metadata:
         return []
     warning = metadata.get("license_warning") or ""
-    if not metadata.get("requires_export_warning") and not warning:
+    indeterminate = metadata.get("metadata_status") == "indeterminate"
+    unknown_commercial_use = metadata.get("commercial_use") == "unknown"
+    if (
+        not metadata.get("requires_export_warning")
+        and not warning
+        and not indeterminate
+        and not unknown_commercial_use
+    ):
         return []
     model_name = metadata.get("name") or metadata.get("id") or "Source model"
     if warning:
