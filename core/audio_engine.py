@@ -5,8 +5,9 @@ seek, loop, and waveform data extraction for mini-display.
 """
 import logging
 import threading
+from dataclasses import dataclass
 import numpy as np
-from typing import Optional
+from typing import Any, Optional
 
 from PySide6.QtCore import QObject, Signal, QTimer
 
@@ -14,15 +15,141 @@ from PySide6.QtCore import QObject, Signal, QTimer
 _sd = None
 _sf = None
 logger = logging.getLogger(__name__)
+AUDIO_OUTPUT_DEVICE_SETTING = "general.audio_output_device"
+
+
+@dataclass(frozen=True)
+class AudioOutputDevice:
+    """A stable, user-facing description of a PortAudio output device."""
+
+    index: int
+    name: str
+    host_api: str
+    max_output_channels: int
+    default_sample_rate: float
+
+    @property
+    def identity(self) -> str:
+        """Return a persistent identity that does not depend on device index."""
+        return f"{self.host_api}::{self.name}"
+
+    @property
+    def label(self) -> str:
+        """Return the label shown in Settings."""
+        return f"{self.name} ({self.host_api})"
+
+
+def _record_value(record: Any, key: str, default: Any = None) -> Any:
+    """Read a sounddevice record without assuming it is a plain dict."""
+    if isinstance(record, dict):
+        return record.get(key, default)
+    try:
+        return record[key]
+    except (KeyError, IndexError, TypeError):
+        return getattr(record, key, default)
+
+
+def _device_label_from_identity(identity: str) -> str:
+    """Make a missing device identity readable in a status message."""
+    host_api, separator, name = identity.partition("::")
+    return f"{name} ({host_api})" if separator and name else identity
+
+
+def format_output_device_identity(identity: Optional[str]) -> str:
+    """Return a readable label for a persisted output-device identity."""
+    return _device_label_from_identity(str(identity or "").strip())
+
+
+def _ensure_sounddevice():
+    """Lazy-import sounddevice without forcing soundfile to load."""
+    global _sd
+    if _sd is None:
+        import sounddevice as sounddevice
+
+        _sd = sounddevice
+    return _sd
 
 
 def _ensure_audio_libs():
     """Lazy-import sounddevice and soundfile."""
     global _sd, _sf
-    if _sd is None:
-        import sounddevice as _sd
+    _ensure_sounddevice()
     if _sf is None:
         import soundfile as _sf
+
+
+def enumerate_output_devices(
+    sd_module=None,
+) -> tuple[list[AudioOutputDevice], Optional[str]]:
+    """Enumerate PortAudio output devices and return an optional error message.
+
+    Device indices are retained only for the current PortAudio session.  The
+    persisted identity is the host API plus device name so it survives index
+    changes after a device is unplugged or a driver is refreshed.
+    """
+    try:
+        sd_module = sd_module or _ensure_sounddevice()
+        hostapis = list(sd_module.query_hostapis())
+        records = sd_module.query_devices()
+        if isinstance(records, dict):
+            records = [records]
+
+        devices: list[AudioOutputDevice] = []
+        for index, record in enumerate(records):
+            try:
+                max_channels = int(_record_value(record, "max_output_channels", 0) or 0)
+            except (TypeError, ValueError):
+                max_channels = 0
+            if max_channels <= 0:
+                continue
+
+            name = str(_record_value(record, "name", "Unnamed output") or "Unnamed output").strip()
+            try:
+                host_index = int(_record_value(record, "hostapi", -1))
+            except (TypeError, ValueError):
+                host_index = -1
+            host_record = hostapis[host_index] if 0 <= host_index < len(hostapis) else None
+            host_api = str(
+                _record_value(host_record, "name", "Unknown host API")
+                or "Unknown host API"
+            ).strip()
+            try:
+                default_sample_rate = float(
+                    _record_value(record, "default_samplerate", 0.0) or 0.0
+                )
+            except (TypeError, ValueError):
+                default_sample_rate = 0.0
+
+            devices.append(
+                AudioOutputDevice(
+                    index=index,
+                    name=name,
+                    host_api=host_api,
+                    max_output_channels=max_channels,
+                    default_sample_rate=default_sample_rate,
+                )
+            )
+        return devices, None
+    except Exception as exc:
+        logger.warning("Could not enumerate audio output devices: %s", exc)
+        return [], str(exc)
+
+
+def query_output_devices(sd_module=None) -> list[AudioOutputDevice]:
+    """Return currently available PortAudio output devices."""
+    devices, _error = enumerate_output_devices(sd_module)
+    return devices
+
+
+def resolve_output_device(
+    identity: Optional[str],
+    devices: list[AudioOutputDevice],
+) -> Optional[AudioOutputDevice]:
+    """Resolve a persisted device identity against the current device list."""
+    normalized = str(identity or "").strip()
+    if not normalized:
+        return None
+    return next((device for device in devices if device.identity == normalized), None)
 
 
 def decode_playback_file(
@@ -55,6 +182,7 @@ class AudioEngine(QObject):
         playback_finished()       - reached end of audio
         duration_changed(float)   - total duration in seconds
         waveform_ready(ndarray)   - downsampled waveform data for visualization
+        output_device_status(str)  - device selection or fallback message
     """
     position_changed = Signal(float)
     playback_started = Signal()
@@ -63,6 +191,7 @@ class AudioEngine(QObject):
     playback_finished = Signal()
     duration_changed = Signal(float)
     waveform_ready = Signal(object)
+    output_device_status = Signal(str)
 
     _instance: Optional["AudioEngine"] = None
     _singleton_lock = threading.Lock()
@@ -93,6 +222,9 @@ class AudioEngine(QObject):
         self._stream = None
         self._lock = threading.Lock()
         self._source_path: Optional[str] = None
+        # None means read the persisted setting lazily.  An explicit string,
+        # including "", is a runtime override set by SettingsView.
+        self._output_device_identity: Optional[str] = None
 
         # Position update timer (fires ~30 times/sec during playback)
         self._pos_timer = QTimer(self)
@@ -130,6 +262,31 @@ class AudioEngine(QObject):
     @volume.setter
     def volume(self, value: float):
         self._volume = max(0.0, min(1.0, value))
+
+    @property
+    def output_device_identity(self) -> str:
+        """Return the configured PortAudio device identity, or system default."""
+        if self._output_device_identity is None:
+            try:
+                from core.settings import Settings
+
+                value = Settings().get(AUDIO_OUTPUT_DEVICE_SETTING, "")
+            except Exception:
+                value = ""
+        else:
+            value = self._output_device_identity
+        return str(value or "").strip()
+
+    @property
+    def output_device_label(self) -> str:
+        """Return a readable label for the configured output device."""
+        identity = self.output_device_identity
+        return _device_label_from_identity(identity) if identity else "System default"
+
+    def set_output_device(self, identity: Optional[str]) -> str:
+        """Set the runtime output selection used by the next transport start."""
+        self._output_device_identity = str(identity or "").strip()
+        return self._output_device_identity
 
     # ── Loading ────────────────────────────────────────────────────────────────
 
@@ -187,6 +344,50 @@ class AudioEngine(QObject):
 
     # ── Transport Controls ─────────────────────────────────────────────────────
 
+    def _resolve_configured_output_device(self) -> Optional[AudioOutputDevice]:
+        """Resolve the saved device and report a visible default fallback."""
+        identity = self.output_device_identity
+        if not identity:
+            return None
+
+        devices, error = enumerate_output_devices()
+        selected = resolve_output_device(identity, devices)
+        if selected is not None:
+            return selected
+
+        label = _device_label_from_identity(identity)
+        detail = f" ({error})" if error else ""
+        self.output_device_status.emit(
+            f"Saved output device '{label}' is unavailable{detail}; "
+            "using the system default."
+        )
+        logger.warning("Saved output device %s is unavailable%s", identity, detail)
+        return None
+
+    def _open_stream(self, device_index: Optional[int]):
+        """Create and start one output stream, closing it if start fails."""
+        stream = None
+        try:
+            stream = _sd.OutputStream(
+                samplerate=self._sample_rate,
+                channels=self._audio_data.shape[1]
+                if self._audio_data is not None and self._audio_data.ndim > 1
+                else 1,
+                dtype="float32",
+                callback=self._callback,
+                blocksize=1024,
+                device=device_index,
+            )
+            stream.start()
+            return stream
+        except Exception:
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            raise
+
     def play(self):
         """Start or resume playback."""
         if self._audio_data is None:
@@ -204,22 +405,38 @@ class AudioEngine(QObject):
         self._is_playing = True
         self._is_paused = False
 
-        channels = self._audio_data.shape[1] if self._audio_data.ndim > 1 else 1
-
+        selected_device = self._resolve_configured_output_device()
         try:
-            self._stream = _sd.OutputStream(
-                samplerate=self._sample_rate,
-                channels=channels,
-                dtype="float32",
-                callback=self._callback,
-                blocksize=1024,
+            stream = self._open_stream(
+                selected_device.index if selected_device is not None else None
             )
-            self._stream.start()
-            self.playback_started.emit()
-            self._pos_timer.start()
-        except Exception:
-            logger.exception("Audio playback failed")
-            self._is_playing = False
+        except Exception as exc:
+            if selected_device is None:
+                logger.exception("Audio playback failed")
+                self._is_playing = False
+                return
+
+            # A device can disappear between enumeration and stream creation.
+            # Retry the system default and make the fallback explicit.
+            self.output_device_status.emit(
+                f"Output device '{selected_device.label}' could not be opened; "
+                "using the system default."
+            )
+            logger.warning(
+                "Output device %s could not be opened; retrying system default: %s",
+                selected_device.identity,
+                exc,
+            )
+            try:
+                stream = self._open_stream(None)
+            except Exception:
+                logger.exception("Audio playback failed after output device fallback")
+                self._is_playing = False
+                return
+
+        self._stream = stream
+        self.playback_started.emit()
+        self._pos_timer.start()
 
     def _callback(self, outdata, frames, time_info=None, status=None):
         """Fill one sounddevice output block from the current transport state."""

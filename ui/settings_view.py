@@ -18,6 +18,11 @@ from core.i18n import language_code_from_label, language_combo_items, language_l
 from core.mastering import LUFS_TARGETS
 from core.credentials import CredentialError
 from core.settings import Settings, APP_VERSION, SECRET_SETTING_KEYS
+from core.audio_engine import (
+    AudioEngine,
+    enumerate_output_devices,
+    format_output_device_identity,
+)
 
 
 class SettingRow(QHBoxLayout):
@@ -51,8 +56,10 @@ class SettingsView(QWidget):
         super().__init__(parent)
         self.toast_mgr = toast_mgr
         self._settings = Settings()
+        self._audio = AudioEngine()
         self._recovery = None
         self._build_ui()
+        self._audio.output_device_status.connect(self._on_audio_device_status)
         self._load_values()
         self._install_accessibility()
 
@@ -159,6 +166,37 @@ class SettingsView(QWidget):
             self._sample_rate_combo,
             tr("settings.output.sample_rate_help"),
         ))
+
+        self._audio_device_combo = QComboBox()
+        self._audio_device_combo.setMinimumWidth(300)
+        self._audio_device_combo.currentIndexChanged.connect(
+            self._on_audio_device_selected
+        )
+
+        self._refresh_audio_devices_btn = QPushButton("Refresh")
+        self._refresh_audio_devices_btn.setObjectName("secondaryBtn")
+        self._refresh_audio_devices_btn.setFixedHeight(34)
+        self._refresh_audio_devices_btn.clicked.connect(self._refresh_audio_devices)
+
+        device_controls = QWidget()
+        device_controls_layout = QHBoxLayout(device_controls)
+        device_controls_layout.setContentsMargins(0, 0, 0, 0)
+        device_controls_layout.setSpacing(8)
+        device_controls_layout.addWidget(self._audio_device_combo, 1)
+        device_controls_layout.addWidget(self._refresh_audio_devices_btn)
+        output_layout.addLayout(SettingRow(
+            "Audio output device",
+            device_controls,
+            "Uses PortAudio and shows the host API so similarly named devices are distinguishable.",
+        ))
+
+        self._audio_device_status = QLabel("")
+        self._audio_device_status.setWordWrap(True)
+        self._audio_device_status.setStyleSheet(
+            f"color: {Palette.YELLOW}; font-size: 11px; padding: 2px 0;"
+        )
+        self._audio_device_status.setVisible(False)
+        output_layout.addWidget(self._audio_device_status)
 
         layout.addWidget(output_group)
 
@@ -537,6 +575,72 @@ class SettingsView(QWidget):
         if self.toast_mgr:
             self.toast_mgr.success(f"Recovery cleanup removed {total} item(s).")
 
+    def _set_audio_device_status(self, message: str):
+        """Show an audio-device warning without hiding the selected setting."""
+        text = str(message or "").strip()
+        self._audio_device_status.setText(text)
+        self._audio_device_status.setVisible(bool(text))
+
+    def _on_audio_device_status(self, message: str):
+        """Display runtime PortAudio fallback messages in Settings when open."""
+        self._set_audio_device_status(message)
+
+    def _refresh_audio_devices(self):
+        """Refresh PortAudio devices without restarting the application."""
+        saved_identity = str(
+            self._settings.get("general.audio_output_device", "") or ""
+        ).strip()
+        devices, error = enumerate_output_devices()
+
+        self._audio_device_combo.blockSignals(True)
+        try:
+            self._audio_device_combo.clear()
+            self._audio_device_combo.addItem("System default", "")
+            for device in devices:
+                self._audio_device_combo.addItem(device.label, device.identity)
+
+            selected_index = self._audio_device_combo.findData(saved_identity)
+            saved_unavailable = bool(saved_identity and selected_index < 0)
+            if saved_unavailable:
+                selected_index = self._audio_device_combo.count()
+                self._audio_device_combo.addItem(
+                    f"Unavailable: {format_output_device_identity(saved_identity)}",
+                    saved_identity,
+                )
+            self._audio_device_combo.setCurrentIndex(max(0, selected_index))
+        finally:
+            self._audio_device_combo.blockSignals(False)
+
+        # Keep the singleton transport in sync with the persisted selection,
+        # including an unavailable identity so a hot-plugged device can recover
+        # on a later refresh without losing the user's preference.
+        self._audio.set_output_device(saved_identity)
+
+        if error:
+            self._set_audio_device_status(
+                "Could not enumerate audio output devices; playback will use "
+                f"the system default until the list is refreshed. ({error})"
+            )
+        elif saved_unavailable:
+            self._set_audio_device_status(
+                f"Saved output device '{format_output_device_identity(saved_identity)}' "
+                "is unavailable; playback will use the system default until it returns."
+            )
+        elif not devices:
+            self._set_audio_device_status(
+                "No PortAudio output devices were found; playback will use the system default."
+            )
+        else:
+            self._set_audio_device_status("")
+
+    def _on_audio_device_selected(self, _index: int):
+        """Persist a device identity and apply it to the shared transport."""
+        identity = str(self._audio_device_combo.currentData() or "").strip()
+        self._save("general.audio_output_device", identity)
+        self._audio.set_output_device(identity)
+        if identity:
+            self._set_audio_device_status("")
+
     def _load_values(self):
         """Load current settings into UI controls."""
         s = self._settings
@@ -620,6 +724,7 @@ class SettingsView(QWidget):
         finally:
             for w in _widgets:
                 w.blockSignals(False)
+        self._refresh_audio_devices()
         self._update_repair_status()
         self._refresh_credential_status()
         self._refresh_recovery_center()
@@ -648,6 +753,7 @@ class SettingsView(QWidget):
         if self.toast_mgr and key in (
             "general.audio_format",
             "general.sample_rate",
+            "general.audio_output_device",
             "lyrics.default_language",
             "lyrics.model_id",
         ):
@@ -712,6 +818,8 @@ class SettingsView(QWidget):
                 (self._browse_output_btn, "Browse output directory", "Chooses the default render output directory."),
                 (self._format_combo, "Default audio format", "Selects the default export format."),
                 (self._sample_rate_combo, "Sample rate", "Selects the default audio sample rate."),
+                (self._audio_device_combo, "Audio output device", "Selects the PortAudio output device and shows its host API."),
+                (self._refresh_audio_devices_btn, "Refresh audio output devices", "Refreshes the PortAudio output-device list without restarting."),
                 (self._gpu_device, "GPU device index", "Selects the GPU device index."),
                 (self._offline_mode, "Offline mode", "Disables internet access for Model Hub."),
                 (self._hf_token, "HuggingFace token", "Stores a token for gated model downloads."),
@@ -744,6 +852,8 @@ class SettingsView(QWidget):
                 self._browse_output_btn,
                 self._format_combo,
                 self._sample_rate_combo,
+                self._audio_device_combo,
+                self._refresh_audio_devices_btn,
                 self._gpu_device,
                 self._offline_mode,
                 self._hf_token,

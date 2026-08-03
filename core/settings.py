@@ -39,6 +39,9 @@ DEFAULTS = {
         "output_dir": "",
         "audio_format": "wav",
         "sample_rate": 48000,
+        # Empty means PortAudio's system default. Otherwise this is the
+        # host-api/name identity exposed by core.audio_engine.
+        "audio_output_device": "",
         "bit_depth": 24,
         "gpu_device": 0,
         "theme_accent": "#a293ff",

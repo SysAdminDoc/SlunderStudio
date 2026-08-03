@@ -161,6 +161,8 @@ class AccessibilityBaselineTests(unittest.TestCase):
                             "_browse_output_btn",
                             "_format_combo",
                             "_sample_rate_combo",
+                            "_audio_device_combo",
+                            "_refresh_audio_devices_btn",
                             "_gpu_device",
                             "_offline_mode",
                             "_hf_token",
@@ -309,6 +311,8 @@ class AccessibilityBaselineTests(unittest.TestCase):
                 try:
                     self.assertIs(self._next_named_focus(song._quick_lyrics), song._quick_tags)
                     self.assertIs(self._next_named_focus(settings._output_dir), settings._browse_output_btn)
+                    self.assertIs(self._next_named_focus(settings._sample_rate_combo), settings._audio_device_combo)
+                    self.assertIs(self._next_named_focus(settings._audio_device_combo), settings._refresh_audio_devices_btn)
                     self.assertIs(self._next_named_focus(hub._search), hub._category_filter)
                 finally:
                     song.deleteLater()

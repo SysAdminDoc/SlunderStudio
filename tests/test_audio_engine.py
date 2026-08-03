@@ -10,7 +10,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 import core.audio_engine as audio_engine
-from core.audio_engine import AudioEngine, format_time
+from core.audio_engine import (
+    AudioEngine,
+    AudioOutputDevice,
+    enumerate_output_devices,
+    format_time,
+)
 
 
 class _CallbackStop(Exception):
@@ -19,6 +24,7 @@ class _CallbackStop(Exception):
 
 class _Stream:
     def __init__(self, **kwargs):
+        self.kwargs = kwargs
         self.callback = kwargs["callback"]
         self.started = False
         self.stopped = False
@@ -46,6 +52,7 @@ class AudioEngineTests(unittest.TestCase):
         self.engine._loop_enabled = False
         self.engine._loop_start = 0
         self.engine._loop_end = 0
+        self.engine.set_output_device("")
 
     def tearDown(self):
         self.engine.cleanup()
@@ -144,6 +151,77 @@ class AudioEngineTests(unittest.TestCase):
             self.assertEqual(self.engine._loop_end, 15)
             self.engine.set_loop(False)
             self.assertFalse(self.engine.loop_enabled)
+
+    def test_enumerate_output_devices_filters_inputs_and_names_host_api(self):
+        fake_sd = SimpleNamespace(
+            query_hostapis=lambda: [
+                {"name": "MME"},
+                {"name": "Windows WASAPI"},
+            ],
+            query_devices=lambda: [
+                {
+                    "name": "Microphone",
+                    "hostapi": 0,
+                    "max_output_channels": 0,
+                    "default_samplerate": 44100,
+                },
+                {
+                    "name": "Speakers",
+                    "hostapi": 1,
+                    "max_output_channels": 2,
+                    "default_samplerate": 48000,
+                },
+            ],
+        )
+
+        devices, error = enumerate_output_devices(fake_sd)
+
+        self.assertIsNone(error)
+        self.assertEqual(len(devices), 1)
+        self.assertEqual(devices[0].index, 1)
+        self.assertEqual(devices[0].host_api, "Windows WASAPI")
+        self.assertEqual(devices[0].label, "Speakers (Windows WASAPI)")
+        self.assertEqual(devices[0].identity, "Windows WASAPI::Speakers")
+
+    def test_play_passes_persisted_output_device_index_to_stream(self):
+        device = AudioOutputDevice(
+            index=7,
+            name="Headphones",
+            host_api="Windows WASAPI",
+            max_output_channels=2,
+            default_sample_rate=48000,
+        )
+        self.engine.set_output_device(device.identity)
+        fake_sd = self._fake_sd()
+        self.engine.load_array(np.zeros((20, 2), dtype=np.float32), 10)
+
+        with mock.patch.object(audio_engine, "_sd", fake_sd), mock.patch.object(
+            audio_engine,
+            "enumerate_output_devices",
+            return_value=([device], None),
+        ), mock.patch.object(audio_engine, "_sf", object()):
+            self.engine.play()
+
+        self.assertEqual(self.engine._stream.kwargs["device"], 7)
+
+    def test_unavailable_saved_device_uses_default_and_reports_fallback(self):
+        self.engine.set_output_device("Windows WASAPI::Dock speakers")
+        fake_sd = self._fake_sd()
+        messages = []
+        self.engine.output_device_status.connect(messages.append)
+        self.engine.load_array(np.zeros((20, 2), dtype=np.float32), 10)
+
+        with mock.patch.object(audio_engine, "_sd", fake_sd), mock.patch.object(
+            audio_engine,
+            "enumerate_output_devices",
+            return_value=([], None),
+        ), mock.patch.object(audio_engine, "_sf", object()):
+            self.engine.play()
+
+        self.assertTrue(messages)
+        self.assertIn("Dock speakers (Windows WASAPI)", messages[-1])
+        self.assertIn("system default", messages[-1])
+        self.assertIsNone(self.engine._stream.kwargs["device"])
 
     def test_load_file_failure_leaves_existing_audio_untouched(self):
         data = np.arange(12, dtype=np.float32).reshape(6, 2)

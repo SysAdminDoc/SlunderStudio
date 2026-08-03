@@ -352,6 +352,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self._settings = Settings()
+        self._audio = AudioEngine()
         self._model_mgr = ModelManager()
         self._gpu_worker = None
         self._gpu_workers = set()
@@ -409,6 +410,7 @@ class MainWindow(QMainWindow):
         self._status_bar = QStatusBar()
         self._status_bar.setObjectName("statusBar")
         self.setStatusBar(self._status_bar)
+        self._audio.output_device_status.connect(self._on_audio_output_status)
 
         self._gpu_status_label = QLabel(tr("status.gpu_detecting"))
         self._gpu_status_label.setStyleSheet(f"font-size: 11px; color: {Palette.OVERLAY0};")
@@ -423,7 +425,7 @@ class MainWindow(QMainWindow):
         set_accessible(
             self._status_bar,
             "Application status",
-            "Shows GPU, VRAM, and active model status.",
+            "Shows GPU, VRAM, active model, and audio output status.",
         )
         set_accessible(
             self._gpu_status_label,
@@ -680,6 +682,12 @@ class MainWindow(QMainWindow):
         self._vram_label.setText("")
         self._compute_status_label.setText("●  Hardware status unavailable")
         self._status_bar.showMessage(message, 5000)
+
+    def _on_audio_output_status(self, message: str):
+        """Keep device fallback visible in both the status bar and toast history."""
+        self._status_bar.showMessage(message, 10000)
+        if self.toast_mgr:
+            self.toast_mgr.warning(message, duration_ms=10000)
 
     def _apply_gpu_status(self, gpu: dict):
         """Update GPU status widgets from a completed background probe."""
