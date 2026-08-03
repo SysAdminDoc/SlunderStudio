@@ -119,6 +119,28 @@ class DependencyDiagnosticsTests(unittest.TestCase):
                 f"Core dependency '{name}' from requirements.txt missing from lock file",
             )
 
+    def test_numeric_runtime_lock_uses_supported_numpy_scipy_range(self):
+        root = Path(__file__).resolve().parents[1]
+        requirements = (root / "requirements.txt").read_text(encoding="utf-8")
+        lock = (root / "requirements-lock.txt").read_text(encoding="utf-8")
+
+        self.assertIn("numpy>=2.0,<2.5", requirements)
+        self.assertIn("scipy>=1.18", requirements)
+
+        def locked_version(name):
+            match = re.search(
+                rf"(?m)^{re.escape(name)}==([^\s\\]+)",
+                lock,
+            )
+            self.assertIsNotNone(match, f"{name} missing from runtime lock")
+            return tuple(int(part) for part in match.group(1).split("."))
+
+        numpy_version = locked_version("numpy")
+        self.assertGreaterEqual(numpy_version, (2, 0))
+        self.assertLess(numpy_version, (2, 5))
+        self.assertEqual(locked_version("scipy"), (1, 18, 0))
+        self.assertEqual(locked_version("numba"), (0, 66, 0))
+
     def test_direct_runtime_imports_have_declared_or_optional_dependencies(self):
         root = Path(__file__).resolve().parents[1]
         req_names = self._requirement_names(root / "requirements.txt")

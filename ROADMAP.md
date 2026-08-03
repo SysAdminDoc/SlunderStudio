@@ -81,24 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Run the numpy → scipy → torch → transformers upgrade train
-  Why: numpy is pinned to a release that has been end-of-life since 2025-09, so it can never
-    receive another security patch, and it blocks everything downstream.
-  Evidence: `requirements-lock.txt` pins `numpy==1.26.4` (EOL 2025-09) and `scipy==1.17.1`; scipy
-    1.18.0 requires `numpy>=2.0`. `numba` 0.66.0 accepts `numpy<2.5`, so numba is **not** what
-    holds the pin — it is unforced. torch 2.11 → 2.13 additionally brings native
-    `torch.load(*.safetensors)` (collapsing the format gating in `core/model_manager.py` to one
-    call), FlexAttention on MPS, native-Metal MPS ops, and Intel XPU telemetry making a
-    `windows-xpu`/`linux-xpu` profile feasible. Breaking since 2.11: named tensors removed,
-    `all_gather_into_tensor` → `all_gather_single`, `reduce_scatter_tensor` → `reduce_scatter_single`.
-  Touches: `requirements-lock.txt`, all five profile locks, `core/dependency_profiles.py`,
-    engine loaders, the full test suite.
-  Acceptance: numpy 2.x (<=2.5 for numba) and scipy 1.18 in the app lock; torch/torchaudio 2.13 in
-    the profiles; 476 tests still green; the mastering conformance and mixer resampling suites in
-    particular re-verified against NumPy 2 semantics. Sequence strictly after the transformers CVE
-    decision, since that determines whether the transformers bump rides along.
-  Complexity: L
-
 - [ ] P1 — Make the single-instance lock trustworthy in both directions
   Why: It currently produces both false positives that block startup with no stated remedy, and
     false negatives that let two instances share one SQLite database.

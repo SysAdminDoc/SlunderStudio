@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Updated the core runtime lock to NumPy 2.4.6 and SciPy 1.18.0, capped NumPy below 2.5
+  for the supported Numba release, and reverified the mastering conformance and mixer
+  resampling suites against the NumPy 2 runtime. The optional torch profile train remains
+  deferred because upstream does not publish the required torchaudio 2.13 artifact.
 - Raised the declared torch security floor to 2.10.0 for CVE-2026-24747 / GHSA-63cw-57p8-fm3p,
   pinned optional GGUF lyrics support to `llama-cpp-python==0.3.34`, and made profile startup
   validation enforce the same advisory floors as installation. Kept `psutil` consistently core,
