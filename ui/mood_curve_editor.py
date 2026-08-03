@@ -323,8 +323,12 @@ class MoodCurveEditor(QWidget):
         fill_path.closeSubpath()
 
         grad = QLinearGradient(0, 0, 0, self.SCENE_H)
-        grad.setColorAt(0, QColor(137, 180, 250, 60))
-        grad.setColorAt(1, QColor(137, 180, 250, 10))
+        gradient_start = QColor(Palette.BLUE)
+        gradient_start.setAlpha(60)
+        gradient_end = QColor(Palette.BLUE)
+        gradient_end.setAlpha(10)
+        grad.setColorAt(0, gradient_start)
+        grad.setColorAt(1, gradient_end)
 
         self._fill_item = self._scene.addPath(
             fill_path, QPen(Qt.NoPen), QBrush(grad)

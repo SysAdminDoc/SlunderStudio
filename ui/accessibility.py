@@ -27,8 +27,9 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QWidget,
 )
+from ui.theme import Palette
 
-FOCUS_RING_COLOR = "#f9e2af"
+FOCUS_RING_COLOR = Palette.YELLOW
 
 CONTROL_TYPES = (
     QAbstractButton,

@@ -120,24 +120,6 @@ therefore new work, not a pre-existing red build.
 
 ### P3
 
-- [ ] P3 — Stale duplicated color constants that drift silently from the gated palette
-  Category: maintainability
-  Where: `ui/accessibility.py:28` (`FOCUS_RING_COLOR = "#f9e2af"` duplicates `Palette.YELLOW`);
-    `ui/mood_curve_editor.py:210-211` (fill gradient `QColor(137, 180, 250, ...)` is the old
-    Catppuccin blue `#89b4fa` while the curve line above uses `Palette.BLUE` `#a293ff` — two
-    different blues in one graphic); `ui/piano_roll.py:93` (selected-note `QColor(255, 180, 60)`
-    raw literal, and selection is indicated by this fill alone); `t.get('surface', '#161b22')`-style
-    fallbacks throughout `ui/piano_roll.py`, `ui/midi_mixer.py` and `ui/midi_studio_view.py`
-    (retired GitHub-dark defaults that are dead code, since `ThemeEngine.get_colors()` always
-    supplies every key); `ui/theme.py:235` (`#ff9bad` danger-hover literal inside the theme itself)
-  Problem: If a token is retuned — as OVERLAY0 and BLUE already were — these copies diverge and the
-    contrast gate cannot see it, since it iterates Palette tokens only.
-  Fix: Point all of them at `Palette.*`; replace `t.get(key, stale_default)` with `t[key]`.
-  Acceptance: A test asserting `ui/*.py` contains no raw hex literal outside `ui/theme.py` and
-    `ui/contrast.py`.
-  Confidence: Verified
-  Effort: S
-
 - [ ] P3 — Stale comment invites restoring pip-at-runtime, which was deliberately removed
   Category: docs
   Where: `ui/waveform_widget.py:21-24`

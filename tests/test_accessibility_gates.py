@@ -83,6 +83,19 @@ class ContrastGateTests(unittest.TestCase):
                 offenders.append(str(path.relative_to(ROOT)))
         self.assertEqual(offenders, [])
 
+    def test_ui_hex_literals_live_only_in_the_palette_modules(self):
+        hex_literal = re.compile(r"#[0-9a-fA-F]{3,8}\b")
+        offenders = []
+        for path in (ROOT / "ui").rglob("*.py"):
+            if path.name in {"theme.py", "contrast.py"}:
+                continue
+            for line_number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1
+            ):
+                if hex_literal.search(line):
+                    offenders.append(f"{path.relative_to(ROOT)}:{line_number}")
+        self.assertEqual(offenders, [])
+
     def test_dynamic_hex_alpha_uses_rgb_ordered_rgba(self):
         offenders = []
         suffix = re.compile(r"\{[^{}\n]+\}[0-9a-fA-F]{2}(?=[;}\s])")

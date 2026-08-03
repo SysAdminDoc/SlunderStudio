@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
-from ui.theme import ThemeEngine
+from ui.theme import Palette, ThemeEngine
 from ui.accessibility import install_accessibility
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.engine_contract import (
@@ -82,7 +82,7 @@ class SFXCard(QFrame):
         info.addWidget(dur_label)
         if result.is_demo:
             demo_label = QLabel("Demo synthesis")
-            demo_label.setStyleSheet(f"color: #f9e2af; font-size: 9px;")
+            demo_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 9px;")
             info.addWidget(demo_label)
         info.addStretch()
         layout.addLayout(info, 1)

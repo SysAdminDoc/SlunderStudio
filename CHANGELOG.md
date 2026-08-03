@@ -30,6 +30,8 @@ All notable changes to SlunderStudio will be documented in this file.
   actual PyInstaller command contains its hidden imports.
 - Reconciled Markdown tracking policy: the research notes are local-only while README, CHANGELOG,
   and the active ROADMAP remain explicit tracked documentation.
+- Routed UI focus, selection, mood-curve, stem, SFX, and waveform colors through the approved
+  palette tokens and added a regression gate against raw UI hex literals.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

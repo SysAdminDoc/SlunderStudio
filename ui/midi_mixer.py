@@ -39,15 +39,15 @@ class TrackStrip(QFrame):
         self.setFrameShape(QFrame.StyledPanel)
         self._base_style = f"""
             TrackStrip {{
-                background: {t.get('surface', '#161b22')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['surface']};
+                border: 1px solid {t['border']};
                 border-radius: 6px;
             }}
         """
         self._selected_style = f"""
             TrackStrip {{
-                background: {t.get('surface_hover', '#1c2333')};
-                border: 1px solid {t.get('accent', '#58a6ff')};
+                background: {t['surface_hover']};
+                border: 1px solid {t['accent']};
                 border-radius: 6px;
             }}
         """
@@ -61,9 +61,9 @@ class TrackStrip(QFrame):
         # Track name + note count
         header = QHBoxLayout()
         name_label = QLabel(track.name)
-        name_label.setStyleSheet(f"color: {t.get('text', '#e6edf3')}; font-weight: bold; font-size: 11px;")
+        name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 11px;")
         count_label = QLabel(f"{track.note_count} notes")
-        count_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 10px;")
+        count_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         header.addWidget(name_label)
         header.addStretch()
         header.addWidget(count_label)
@@ -74,9 +74,9 @@ class TrackStrip(QFrame):
         self._program_combo.setFixedHeight(24)
         self._program_combo.setStyleSheet(f"""
             QComboBox {{
-                background: {t.get('background', '#0d1117')};
-                color: {t.get('text', '#e6edf3')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['background']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
                 border-radius: 3px;
                 padding: 2px 6px;
                 font-size: 10px;
@@ -100,7 +100,7 @@ class TrackStrip(QFrame):
         vol_row = QHBoxLayout()
         vol_row.setSpacing(4)
         vol_label = QLabel("Vol")
-        vol_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 10px;")
+        vol_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         vol_label.setFixedWidth(22)
         self._volume_slider = QSlider(Qt.Horizontal)
         self._volume_slider.setRange(0, 127)
@@ -109,7 +109,7 @@ class TrackStrip(QFrame):
         self._volume_slider.valueChanged.connect(
             lambda v: self.volume_changed.emit(self.track_idx, v))
         self._vol_value = ElidedLabel("100", minimum_width=24)
-        self._vol_value.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 10px;")
+        self._vol_value.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         self._volume_slider.valueChanged.connect(lambda v: self._vol_value.setText(str(v)))
 
         vol_row.addWidget(vol_label)
@@ -121,7 +121,7 @@ class TrackStrip(QFrame):
         pan_row = QHBoxLayout()
         pan_row.setSpacing(4)
         pan_label = QLabel("Pan")
-        pan_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 10px;")
+        pan_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         pan_label.setFixedWidth(22)
         self._pan_slider = QSlider(Qt.Horizontal)
         self._pan_slider.setRange(-64, 63)
@@ -130,7 +130,7 @@ class TrackStrip(QFrame):
         self._pan_slider.valueChanged.connect(
             lambda v: self.pan_changed.emit(self.track_idx, v))
         self._pan_value = ElidedLabel("C", minimum_width=24)
-        self._pan_value.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 10px;")
+        self._pan_value.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         self._pan_slider.valueChanged.connect(self._update_pan_label)
 
         pan_row.addWidget(pan_label)
@@ -206,11 +206,11 @@ class TrackStrip(QFrame):
                     border-radius: 3px; font-weight: bold; font-size: 10px; }}
             """
         return f"""
-            QPushButton {{ background: {t.get('surface', '#161b22')};
-                color: {t.get('text_secondary', '#8b949e')};
-                border: 1px solid {t.get('border', '#1e2733')};
+            QPushButton {{ background: {t['surface']};
+                color: {t['text_secondary']};
+                border: 1px solid {t['border']};
                 border-radius: 3px; font-weight: bold; font-size: 10px; }}
-            QPushButton:hover {{ background: {t.get('surface_hover', '#1c2333')}; }}
+            QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
 
     def _solo_style(self, active: bool) -> str:
@@ -252,15 +252,15 @@ class MidiMixer(QWidget):
         # Header
         header = QHBoxLayout()
         title = QLabel("Mixer")
-        title.setStyleSheet(f"color: {t.get('text', '#e6edf3')}; font-weight: bold; font-size: 12px;")
+        title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
         self._add_track_btn = QPushButton("+ Track")
         self._add_track_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {t.get('accent', '#58a6ff')};
-                color: {t.get('background', '#07111b')}; border: none; border-radius: 4px;
+                background: {t['accent']};
+                color: {t['background']}; border: none; border-radius: 4px;
                 padding: 4px 10px; font-size: 11px; font-weight: bold;
             }}
-            QPushButton:hover {{ background: {t.get('accent_hover', '#79c0ff')}; }}
+            QPushButton:hover {{ background: {t['accent_hover']}; }}
         """)
         header.addWidget(title)
         header.addStretch()

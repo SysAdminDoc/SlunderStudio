@@ -92,7 +92,7 @@ class NoteItem(QGraphicsRectItem):
         b = int(220 - 80 * vel_factor)
         base = QColor(r, g, b)
         if self.isSelected():
-            base = QColor(255, 180, 60)
+            base = QColor(Palette.PEACH)
         self.setBrush(QBrush(base))
         self.setPen(QPen(base.darker(130), 1))
 
@@ -195,9 +195,9 @@ class PianoRollScene(QGraphicsScene):
     def _draw_grid(self):
         """Draw piano roll background grid."""
         t = ThemeEngine.get_colors()
-        bg = QColor(t.get("background", "#0d1117"))
-        grid_color = QColor(t.get("border", "#1e2733"))
-        bar_color = QColor(t.get("accent", "#58a6ff")).darker(200)
+        bg = QColor(t["background"])
+        grid_color = QColor(t["border"])
+        bar_color = QColor(t["accent"]).darker(200)
 
         total_height = TOTAL_KEYS * NOTE_HEIGHT
         beat_dur = 60.0 / self.tempo
@@ -363,11 +363,11 @@ class PianoRollView(QGraphicsView):
         self.setProperty("accessibility_canvas", True)
 
         t = ThemeEngine.get_colors()
-        bg = t.get("background", "#0d1117")
+        bg = t["background"]
         self.setStyleSheet(f"""
             QGraphicsView {{
                 background: {bg};
-                border: 1px solid {t.get('border', '#1e2733')};
+                border: 1px solid {t['border']};
                 border-radius: 6px;
             }}
         """)
@@ -436,14 +436,14 @@ class CCAutomationLane(QWidget):
         controls.setSpacing(6)
 
         label = QLabel("CC Lane:")
-        label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        label.setStyleSheet(f"color: {t['text_secondary']};")
         self._controller_combo = QComboBox()
         for name, controller in CC_LANES.items():
             self._controller_combo.addItem(name, controller)
         self._controller_combo.currentIndexChanged.connect(self._refresh)
 
         beat_label = QLabel("Beat:")
-        beat_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        beat_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._beat_spin = QDoubleSpinBox()
         self._beat_spin.setRange(0.0, 512.0)
         self._beat_spin.setDecimals(2)
@@ -452,7 +452,7 @@ class CCAutomationLane(QWidget):
         self._beat_spin.setFixedWidth(72)
 
         value_label = QLabel("Value:")
-        value_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        value_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._value_spin = QSpinBox()
         self._value_spin.setRange(0, 127)
         self._value_spin.setValue(64)
@@ -460,14 +460,14 @@ class CCAutomationLane(QWidget):
 
         btn_style = f"""
             QPushButton {{
-                background: {t.get('surface', '#161b22')};
-                color: {t.get('text', '#e6edf3')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['surface']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 4px 10px;
                 font-size: 11px;
             }}
-            QPushButton:hover {{ background: {t.get('surface_hover', '#1c2333')}; }}
+            QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
         self._add_cc_btn = QPushButton("Add CC")
         self._add_cc_btn.setStyleSheet(btn_style)
@@ -494,16 +494,16 @@ class CCAutomationLane(QWidget):
         self._table.setMaximumHeight(94)
         self._table.setStyleSheet(f"""
             QTableWidget {{
-                background: {t.get('background', '#0d1117')};
-                color: {t.get('text', '#e6edf3')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['background']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
                 border-radius: 4px;
-                gridline-color: {t.get('border', '#1e2733')};
+                gridline-color: {t['border']};
                 font-size: 11px;
             }}
             QHeaderView::section {{
-                background: {t.get('surface', '#161b22')};
-                color: {t.get('text_secondary', '#8b949e')};
+                background: {t['surface']};
+                color: {t['text_secondary']};
                 border: none;
                 padding: 3px 6px;
             }}
@@ -605,7 +605,7 @@ class PianoRollWidget(QWidget):
 
         # Snap selector
         snap_label = QLabel("Snap:")
-        snap_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        snap_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._snap_combo = QComboBox()
         self._snap_combo.addItems(SNAP_VALUES.keys())
         self._snap_combo.setCurrentText("1/16")
@@ -614,7 +614,7 @@ class PianoRollWidget(QWidget):
 
         # Velocity
         vel_label = QLabel("Velocity:")
-        vel_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        vel_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._velocity_spin = QSpinBox()
         self._velocity_spin.setRange(1, 127)
         self._velocity_spin.setValue(100)
@@ -622,7 +622,7 @@ class PianoRollWidget(QWidget):
         self._velocity_spin.valueChanged.connect(self._on_velocity_changed)
 
         swing_label = QLabel("Swing:")
-        swing_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        swing_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._swing_spin = QSpinBox()
         self._swing_spin.setRange(0, 75)
         self._swing_spin.setValue(33)
@@ -630,7 +630,7 @@ class PianoRollWidget(QWidget):
         self._swing_spin.setFixedWidth(64)
 
         human_label = QLabel("Human:")
-        human_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')};")
+        human_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._humanize_spin = QSpinBox()
         self._humanize_spin.setRange(0, 32)
         self._humanize_spin.setValue(8)
@@ -639,14 +639,14 @@ class PianoRollWidget(QWidget):
         # Quantize button
         btn_style = f"""
             QPushButton {{
-                background: {t.get('surface', '#161b22')};
-                color: {t.get('text', '#e6edf3')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['surface']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 4px 10px;
                 font-size: 11px;
             }}
-            QPushButton:hover {{ background: {t.get('surface_hover', '#1c2333')}; }}
+            QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
         self._quantize_btn = QPushButton("Quantize")
         self._quantize_btn.setStyleSheet(btn_style)

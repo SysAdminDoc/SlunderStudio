@@ -22,12 +22,12 @@ from core.panning import pan_gains
 # ── Stem Colors ────────────────────────────────────────────────────────────────
 
 STEM_COLORS = {
-    "vocals": "#f38ba8",   # red/pink
-    "drums": "#fab387",    # orange
-    "bass": "#a6e3a1",     # green
-    "other": "#89b4fa",    # blue
-    "piano": "#cba6f7",    # purple
-    "guitar": "#f9e2af",   # yellow
+    "vocals": Palette.RED,
+    "drums": Palette.PEACH,
+    "bass": Palette.GREEN,
+    "other": Palette.SKY,
+    "piano": Palette.MAUVE,
+    "guitar": Palette.YELLOW,
 }
 
 

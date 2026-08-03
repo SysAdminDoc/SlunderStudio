@@ -256,7 +256,7 @@ QPushButton[class="danger"] {{
 }}
 QPushButton#dangerBtn:hover,
 QPushButton[class="danger"]:hover {{
-    background-color: #ff9bad;
+    background-color: {p.FLAMINGO};
 }}
 QPushButton#ghostBtn,
 QPushButton[class="ghost"] {{

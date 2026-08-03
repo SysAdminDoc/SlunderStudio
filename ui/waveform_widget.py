@@ -344,7 +344,7 @@ class WaveformWidget(QWidget):
                 pos=[0.0, 0.33, 0.66, 1.0],
                 color=[
                     QColor(Palette.CRUST),
-                    QColor("#1E1E6E"),
+                    QColor(Palette.MANTLE),
                     QColor(Palette.BLUE),
                     QColor(Palette.YELLOW),
                 ],

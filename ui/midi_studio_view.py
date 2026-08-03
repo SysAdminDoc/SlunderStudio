@@ -96,8 +96,8 @@ class MidiStudioView(QWidget):
         gen_frame = QFrame()
         gen_frame.setStyleSheet(f"""
             QFrame {{
-                background: {t.get('surface', '#161b22')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['surface']};
+                border: 1px solid {t['border']};
                 border-radius: 8px;
             }}
         """)
@@ -106,7 +106,7 @@ class MidiStudioView(QWidget):
         gen_layout.setSpacing(6)
 
         gen_title = QLabel("Text-to-MIDI")
-        gen_title.setStyleSheet(f"color: {t.get('accent', '#58a6ff')}; font-weight: bold; font-size: 13px; border: none;")
+        gen_title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
         gen_layout.addWidget(gen_title)
 
         # Prompt
@@ -115,9 +115,9 @@ class MidiStudioView(QWidget):
         self._prompt.setMaximumHeight(70)
         self._prompt.setStyleSheet(f"""
             QTextEdit {{
-                background: {t.get('background', '#0d1117')};
-                color: {t.get('text', '#e6edf3')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['background']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 6px;
                 font-size: 12px;
@@ -129,15 +129,15 @@ class MidiStudioView(QWidget):
         # Style
         style_row = QHBoxLayout()
         style_label = QLabel("Style:")
-        style_label.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 11px; border:none;")
+        style_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border:none;")
         style_label.setFixedWidth(40)
         self._style_input = QLineEdit()
         self._style_input.setPlaceholderText("jazz piano ballad, soft, legato")
         self._style_input.setStyleSheet(f"""
             QLineEdit {{
-                background: {t.get('background', '#0d1117')};
-                color: {t.get('text', '#e6edf3')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['background']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
                 border-radius: 4px; padding: 4px 8px; font-size: 11px;
             }}
         """)
@@ -148,12 +148,12 @@ class MidiStudioView(QWidget):
         # Parameters grid
         param_style = f"""
             QComboBox, QSpinBox, QDoubleSpinBox {{
-                background: {t.get('background', '#0d1117')};
-                color: {t.get('text', '#e6edf3')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['background']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
                 border-radius: 3px; padding: 3px 6px; font-size: 11px;
             }}
-            QLabel {{ color: {t.get('text_secondary', '#8b949e')}; font-size: 11px; border:none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border:none; }}
         """
 
         # Row 1: Key + Tempo
@@ -250,9 +250,9 @@ class MidiStudioView(QWidget):
         self._chart_lyrics.setMaximumHeight(54)
         self._chart_lyrics.setStyleSheet(f"""
             QTextEdit {{
-                background: {t.get('background', '#0d1117')};
-                color: {t.get('text', '#e6edf3')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['background']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 5px;
                 font-size: 11px;
@@ -274,12 +274,12 @@ class MidiStudioView(QWidget):
         self._gen_btn.setFixedHeight(36)
         self._gen_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {t.get('accent', Palette.BLUE)};
-                color: {t.get('background', '#07111b')}; border: none; border-radius: 5px;
+                background: {t['accent']};
+                color: {t['background']}; border: none; border-radius: 5px;
                 font-weight: bold; font-size: 13px;
             }}
-            QPushButton:hover {{ background: {t.get('accent_hover', '#79c0ff')}; }}
-            QPushButton:disabled {{ background: {t.get('border', Palette.SURFACE0)}; color: {t.get('muted', Palette.OVERLAY0)}; }}
+            QPushButton:hover {{ background: {t['accent_hover']}; }}
+            QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
         self._gen_btn.clicked.connect(self._on_generate)
         gen_layout.addWidget(self._gen_btn)
@@ -288,7 +288,7 @@ class MidiStudioView(QWidget):
         self._status = QLabel("")
         self._status.setWordWrap(True)
         self._status.setMinimumHeight(28)
-        self._status.setStyleSheet(f"color: {t.get('text_secondary', '#8b949e')}; font-size: 10px; border:none;")
+        self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border:none;")
         gen_layout.addWidget(self._status)
 
         left.addWidget(gen_frame)
@@ -304,13 +304,13 @@ class MidiStudioView(QWidget):
 
         btn_style = f"""
             QPushButton {{
-                background: {t.get('surface', '#161b22')};
-                color: {t.get('text', '#e6edf3')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['surface']};
+                color: {t['text']};
+                border: 1px solid {t['border']};
                 border-radius: 5px; padding: 6px 12px;
                 font-size: 11px; font-weight: bold;
             }}
-            QPushButton:hover {{ background: {t.get('surface_hover', '#1c2333')}; }}
+            QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
 
         self._import_btn = QPushButton("Import .mid")
@@ -361,14 +361,14 @@ class MidiStudioView(QWidget):
         self._tabs = QTabWidget()
         self._tabs.setStyleSheet(f"""
             QTabWidget::pane {{
-                background: {t.get('background', '#0d1117')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['background']};
+                border: 1px solid {t['border']};
                 border-radius: 6px;
             }}
             QTabBar::tab {{
-                background: {t.get('surface', '#161b22')};
-                color: {t.get('text_secondary', '#8b949e')};
-                border: 1px solid {t.get('border', '#1e2733')};
+                background: {t['surface']};
+                color: {t['text_secondary']};
+                border: 1px solid {t['border']};
                 border-bottom: none;
                 padding: 6px 16px;
                 font-size: 11px;
@@ -376,8 +376,8 @@ class MidiStudioView(QWidget):
                 border-top-right-radius: 6px;
             }}
             QTabBar::tab:selected {{
-                background: {t.get('background', '#0d1117')};
-                color: {t.get('text', '#e6edf3')};
+                background: {t['background']};
+                color: {t['text']};
             }}
         """)
 
@@ -395,11 +395,11 @@ class MidiStudioView(QWidget):
         # Info bar
         self._info = QLabel("No MIDI loaded. Generate or import a file.")
         self._info.setStyleSheet(f"""
-            color: {t.get('text_secondary', '#8b949e')};
+            color: {t['text_secondary']};
             font-size: 11px;
             padding: 4px 8px;
-            background: {t.get('surface', '#161b22')};
-            border: 1px solid {t.get('border', '#1e2733')};
+            background: {t['surface']};
+            border: 1px solid {t['border']};
             border-radius: 4px;
         """)
         right.addWidget(self._info)
