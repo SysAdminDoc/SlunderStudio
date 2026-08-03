@@ -750,5 +750,3 @@ QRadioButton::indicator:checked {{
     border-color: {accent};
 }}
 """
-
-
