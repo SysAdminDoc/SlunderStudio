@@ -183,6 +183,11 @@ file version — comes from `core/version.py`.
 
 **Releases are unsigned.** There is no code-signing step and none will be added. Windows SmartScreen will warn on first run of an unsigned executable; choose "More info" then "Run anyway", or verify the download against `SHA256SUMS.txt` first.
 
+## Releases
+
+Windows releases are published on the [GitHub Releases page](https://github.com/SysAdminDoc/SlunderStudio/releases).
+Each release includes an unsigned ZIP and `SHA256SUMS.txt`; verify the checksum before running the app.
+
 ## Project Structure
 
 ```
@@ -196,6 +201,7 @@ SlunderStudio/
 │   ├── mastering.py            # DSP mastering chain
 │   ├── midi_utils.py           # MIDI I/O (pretty_midi wrapper)
 │   ├── model_manager.py        # HuggingFace model downloads
+│   ├── disclosure.py           # AI disclosure and human-authorship reports
 │   ├── provenance.py           # Generation sidecars and project metadata
 │   ├── project.py              # Project save/load/versioning
 │   ├── settings.py             # Persistent settings

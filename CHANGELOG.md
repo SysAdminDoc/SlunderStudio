@@ -2,7 +2,9 @@
 
 All notable changes to SlunderStudio will be documented in this file.
 
-## Unreleased - 2026-08-02
+## Unreleased
+
+## [v0.1.31] - 2026-08-02
 
 - Added a project-level AI disclosure and human-authorship report. Project Manager can record
   user-declared lyrics, MIDI, edit, and take-selection evidence and export a JSON report plus a
@@ -398,8 +400,6 @@ All notable changes to SlunderStudio will be documented in this file.
 - Added PyInstaller multiprocessing freeze guards for the packaged GUI build.
 - Added focused unit tests for long-form section planning and audio stitching.
 
-## [v0.1.0] - %Y->- (HEAD -> main, tag: v0.1.0, origin/main, origin/HEAD)
+## [v0.1.0] - 2026-02-27
 
-- up
-- up
-- v1
+- Initial Slunder Studio release.
