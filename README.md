@@ -21,6 +21,18 @@ py -3.12 main.py
 
 Python 3.11 or 3.12 is required. Install core dependencies explicitly before launch; if anything is missing, Slunder Studio opens a diagnostics screen with the exact setup command. AI models are downloaded on-demand from HuggingFace via the built-in Model Hub.
 
+The reproducible engine evaluation harness uses fixed prompts, seeds, durations, and
+languages. It records runtime/model provenance, latency, RAM/VRAM, failures, audio
+loudness/true peak, artifact hashes, and a separate blinded listener rubric. Run the
+report-only fixture pass with:
+
+```bash
+py -3.12 tools/evaluate_engines.py --output evaluation-report.json --artifact-dir evaluation-artifacts
+```
+
+Pass a project runner using `--runner module:function` for real engine measurements;
+the default runner deliberately marks cases as skipped and never gates a release on FAD.
+
 Optional AI runtimes use platform-specific, SHA-256-locked profiles for CPython
 3.12. Prepare a wheelhouse while connected, then the installation command
 operates with `--no-index` and writes a complete CycloneDX SBOM:
@@ -197,6 +209,7 @@ SlunderStudio/
 │   ├── audio_engine.py         # Playback engine (sounddevice)
 │   ├── audio_export.py         # WAV/FLAC/MP3 export
 │   ├── chord_chart.py          # MIDI chord inference and ChordPro/CRD export
+│   ├── evaluation.py            # Fixed-case engine measurements and listener rubric
 │   ├── lyrics_db.py            # Lyrics database with search
 │   ├── mastering.py            # DSP mastering chain
 │   ├── midi_utils.py           # MIDI I/O (pretty_midi wrapper)

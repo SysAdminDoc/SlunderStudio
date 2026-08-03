@@ -20,6 +20,10 @@ All notable changes to SlunderStudio will be documented in this file.
 - Moved MIDI-LLM generation and MIDI audio rendering onto cancellable worker jobs. Loaded
   models are selected explicitly, demo mode remains labeled, and preview/export rendering now
   honors multiple solo tracks, mute, volume, and pan snapshots with direct coverage.
+- Added a reproducible, runner-neutral engine evaluation harness with fixed multilingual cases,
+  seed/duration/structure contracts, latency and RAM/VRAM sampling, model/runtime provenance,
+  artifact hashes, loudness/true-peak measurements, failure capture, and a blinded listener
+  rubric. FAD is explicitly informational and never a release gate.
 
 ## [v0.1.31] - 2026-08-02
 
