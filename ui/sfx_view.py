@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QComboBox, QSpinBox, QDoubleSpinBox, QFrame, QScrollArea,
     QGridLayout, QSlider, QLineEdit, QFileDialog, QCheckBox,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 
 from ui.theme import Palette, ThemeEngine
 from ui.accessibility import install_accessibility
@@ -25,9 +25,13 @@ from core.engine_contract import (
     adapt_engine_result,
 )
 from core.model_manager import ModelManager
-from core.audio_engine import AudioEngine
+from core.audio_engine import AudioEngine, decode_playback_file
 from core.workers import CancelledJobError, InferenceWorker
 from engines.sfx_engine import SFXParams, SFXResult, SFX_CATEGORIES
+
+
+def _sfx_playback_task(path: str, **kwargs):
+    return decode_playback_file(path, **kwargs)
 
 
 # ── SFX Card ───────────────────────────────────────────────────────────────────
@@ -147,6 +151,8 @@ class SFXView(QWidget):
         self._cards: list[SFXCard] = []
         self._model_mgr = ModelManager()
         self._generation_worker: Optional[InferenceWorker] = None
+        self._playback_worker = None
+        self._playback_workers = set()
         self._contract_batch: Optional[EngineBatchResult] = None
 
         t = ThemeEngine.get_colors()
@@ -650,21 +656,63 @@ class SFXView(QWidget):
         self._results_layout.insertWidget(self._results_layout.count() - 1, card)
 
     def _on_play_sfx(self, result: SFXResult):
+        if result.audio is not None:
+            self._play_decoded_sfx(result.audio, result.sample_rate)
+            return
+        if not result.file_path:
+            self._status.setText("Could not load SFX audio for playback")
+            return
+        if self._playback_worker is not None and self._playback_worker.isRunning():
+            self._playback_worker.cancel()
+        worker = InferenceWorker(_sfx_playback_task, result.file_path)
+        self._playback_workers.add(worker)
+        self._playback_worker = worker
+        worker.progress.connect(
+            lambda pct: self._status.setText(f"Loading SFX preview... {pct}%")
+        )
+        worker.finished.connect(self._on_sfx_playback_ready)
+        worker.error.connect(self._on_sfx_playback_error)
+        worker.cancelled.connect(self._on_sfx_playback_cancelled)
+        self._status.setText("Loading SFX preview... 0%")
+        worker.start()
+
+    def _play_decoded_sfx(self, audio, sample_rate):
         try:
             engine = AudioEngine()
-            if result.file_path:
-                loaded = engine.load_file(result.file_path)
-            elif result.audio is not None:
-                loaded = engine.load_array(result.audio, result.sample_rate)
-            else:
-                loaded = False
-            if not loaded:
-                self._status.setText("Could not load SFX audio for playback")
-                return
+            if not engine.load_array(audio, sample_rate):
+                raise RuntimeError("Audio playback rejected the decoded buffer")
             engine.play()
             self._status.setText("Playing SFX preview")
         except Exception as exc:
             self._status.setText(f"SFX playback error: {exc}")
+
+    def _release_playback_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._release_playback_worker_later(worker))
+            return
+        self._playback_workers.discard(worker)
+        if self._playback_worker is worker:
+            self._playback_worker = None
+
+    def _on_sfx_playback_ready(self, payload):
+        worker = self._playback_worker
+        self._release_playback_worker_later(worker)
+        self._playback_worker = None
+        self._play_decoded_sfx(*payload)
+
+    def _on_sfx_playback_error(self, message: str):
+        worker = self._playback_worker
+        self._release_playback_worker_later(worker)
+        self._playback_worker = None
+        self._status.setText(f"SFX playback error: {message}")
+
+    def _on_sfx_playback_cancelled(self):
+        worker = self._playback_worker
+        self._release_playback_worker_later(worker)
+        self._playback_worker = None
+        self._status.setText("SFX preview loading cancelled")
 
     def _on_use_sfx(self, result: SFXResult):
         if result.file_path and result.can_route:

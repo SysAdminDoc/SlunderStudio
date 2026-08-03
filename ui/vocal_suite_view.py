@@ -5,6 +5,7 @@ voice conversion (RVC), voice cloning (GPT-SoVITS), stem separation (Demucs),
 and stem remix/export.
 """
 import os
+import numpy as np
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
@@ -42,6 +43,57 @@ from core.engine_contract import (
 from core.model_manager import ModelManager
 
 
+def _vocal_remix_export_task(
+    audio: np.ndarray,
+    output_path: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    from core.audio_export import ExportSettings, export_from_numpy
+
+    written = export_from_numpy(
+        audio,
+        44100,
+        output_path,
+        ExportSettings(format="wav", sample_rate=44100),
+        module="vocal_suite",
+        operation="remix_export",
+        progress_cb=progress_cb,
+        cancel_event=cancel_event,
+    )
+    return {"kind": "remix", "path": written}
+
+
+def _vocal_audio_export_task(
+    source_path: str,
+    output_path: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    from core.audio_export import (
+        ExportSettings,
+        export_audio,
+        get_export_license_warnings,
+    )
+
+    written = export_audio(
+        source_path,
+        output_path,
+        ExportSettings(format="wav"),
+        module="vocal_suite",
+        operation="export_vocal_wav",
+        progress_cb=progress_cb,
+        cancel_event=cancel_event,
+    )
+    return {
+        "kind": "vocal",
+        "path": written,
+        "license_warnings": get_export_license_warnings(source_path),
+    }
+
+
 class VocalSuiteView(QWidget):
     """Main Vocal Suite page with tabbed sub-views."""
 
@@ -61,6 +113,8 @@ class VocalSuiteView(QWidget):
         self._clone_worker: Optional[InferenceWorker] = None
         self._autotune_worker: Optional[InferenceWorker] = None
         self._stem_worker: Optional[InferenceWorker] = None
+        self._export_worker: Optional[InferenceWorker] = None
+        self._export_workers = set()
         self._model_mgr = ModelManager()
         self._contract_results: dict[str, EngineRunResult] = {}
         self._capability_refresh_timer = QTimer(self)
@@ -2313,6 +2367,10 @@ class VocalSuiteView(QWidget):
         self._refresh_capability_states()
 
     def _on_remix_export(self):
+        if self._export_worker is not None and self._export_worker.isRunning():
+            self._export_worker.cancel()
+            self._status.setText("Cancelling export...")
+            return
         audio = self._stem_mixer.get_remix_audio()
         if audio is None:
             self._status.setText("No stems to remix")
@@ -2322,16 +2380,23 @@ class VocalSuiteView(QWidget):
             self, "Export Remix", "remix.wav", "WAV (*.wav)"
         )
         if path:
-            import wave
-            int_audio = (audio * 32767).clip(-32768, 32767).astype(__import__("numpy").int16)
-            with wave.open(path, "w") as wf:
-                wf.setnchannels(2)
-                wf.setsampwidth(2)
-                wf.setframerate(44100)
-                wf.writeframes(int_audio.tobytes())
-            self._current_audio_path = path
-            self._status.setText(f"Remix exported: {path}")
-            self._enable_routing()
+            worker = InferenceWorker(
+                _vocal_remix_export_task,
+                audio.copy(),
+                path,
+            )
+            worker.progress.connect(
+                lambda pct: self._status.setText(f"Exporting remix... {pct}%")
+            )
+            worker.finished.connect(self._on_export_finished)
+            worker.error.connect(self._on_export_error)
+            worker.cancelled.connect(self._on_export_cancelled)
+            self._export_workers.add(worker)
+            self._export_worker = worker
+            self._export_btn.setEnabled(False)
+            self._export_btn.setText("Cancel Export")
+            self._status.setText("Exporting remix... 0%")
+            worker.start()
 
     def _on_play_stem(self, stem_name: str):
         strip = self._stem_mixer._strips.get(stem_name)
@@ -2350,6 +2415,10 @@ class VocalSuiteView(QWidget):
             self._report_error(f"Playback error: {exc}")
 
     def _on_export(self):
+        if self._export_worker is not None and self._export_worker.isRunning():
+            self._export_worker.cancel()
+            self._status.setText("Cancelling export...")
+            return
         if not self._current_audio_path:
             self._report_error("No vocal audio is available to export")
             return
@@ -2360,25 +2429,61 @@ class VocalSuiteView(QWidget):
         if not path:
             return
 
-        try:
-            from core.audio_export import (
-                ExportSettings,
-                export_audio,
-                get_export_license_warnings,
-            )
+        worker = InferenceWorker(
+            _vocal_audio_export_task,
+            self._current_audio_path,
+            path,
+        )
+        worker.progress.connect(
+            lambda pct: self._status.setText(f"Exporting vocal WAV... {pct}%")
+        )
+        worker.finished.connect(self._on_export_finished)
+        worker.error.connect(self._on_export_error)
+        worker.cancelled.connect(self._on_export_cancelled)
+        self._export_workers.add(worker)
+        self._export_worker = worker
+        self._export_btn.setEnabled(False)
+        self._export_btn.setText("Cancel Export")
+        self._status.setText("Exporting vocal WAV... 0%")
+        worker.start()
 
-            warnings = get_export_license_warnings(self._current_audio_path)
-            output = export_audio(
-                self._current_audio_path,
-                path,
-                ExportSettings(format="wav"),
-                module="vocal_suite",
-                operation="export_vocal_wav",
-            )
+    def _release_export_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._release_export_worker_later(worker))
+            return
+        self._export_workers.discard(worker)
+        if self._export_worker is worker:
+            self._export_worker = None
+
+    def _on_export_finished(self, payload: dict):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        output = payload["path"]
+        self._current_audio_path = output
+        if payload.get("kind") == "remix":
+            self._status.setText(f"Remix exported: {output}")
+        else:
+            warnings = payload.get("license_warnings", [])
             suffix = f" Warning: {warnings[0]}" if warnings else ""
             self._status.setText(f"Exported vocal WAV: {output}{suffix}")
-        except Exception as exc:
-            self._report_error(f"Vocal export failed: {exc}")
+        self._enable_routing()
+
+    def _on_export_error(self, message: str):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        self._report_error(f"Vocal export failed: {message}")
+        self._enable_routing()
+
+    def _on_export_cancelled(self):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        self._status.setText("Vocal export cancelled")
+        self._enable_routing()
 
     def _on_send_to_forge(self):
         if self._current_audio_path:
@@ -2392,6 +2497,7 @@ class VocalSuiteView(QWidget):
         self._to_forge_btn.setEnabled(True)
         self._to_mixer_btn.setEnabled(True)
         self._export_btn.setEnabled(True)
+        self._export_btn.setText(tr("vocal.actions.export_wav"))
 
     def _reset_engine_routing(self):
         self._current_audio_path = None

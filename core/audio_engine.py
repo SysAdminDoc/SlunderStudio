@@ -25,6 +25,23 @@ def _ensure_audio_libs():
         import soundfile as _sf
 
 
+def decode_playback_file(
+    file_path: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    """Decode a playback source for a worker-backed UI preview."""
+    from core.audio_buffers import decode_audio_file
+
+    return decode_audio_file(
+        file_path,
+        target_channels=2,
+        progress_cb=progress_cb,
+        cancel_event=cancel_event,
+    )
+
+
 class AudioEngine(QObject):
     """
     Central audio playback engine.

@@ -81,34 +81,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P1
 
-- [ ] P1 — Move blocking decode, analysis and export off the GUI thread
-  Why: `core/workers.py` exists and is used correctly for generation, but every preview, analysis
-    and export path bypasses it, so routine actions freeze the window for seconds to minutes.
-  Evidence: `ui/waveform_widget.py:185-187` does a full synchronous `sf.read` of an entire file
-    (a 4-minute 48 kHz stereo master is ~90 MB float32), reached from six GUI-thread call sites
-    with file paths: `ui/ai_producer_view.py:785`, `ui/batch_view.py:131`,
-    `ui/reference_panel.py:330`, `ui/seed_explorer.py:152`, `ui/song_forge_view.py:1073`,
-    `ui/vocal_suite_view.py:2227`. `ui/waveform_widget.py:329-340` imports librosa and computes a
-    mel spectrogram on the GUI thread when the Spectrogram toggle is clicked.
-    `ui/batch_view.py:288-291` calls `score_generation_quality`, which re-reads the same file, so
-    **every batch card decodes its audio twice** — 16 serialized decodes for an 8-variation batch.
-    Exports at `ui/song_forge_view.py:1147-1148`, `ui/vocal_suite_view.py:2193-2200` and
-    `ui/mixer_view.py:1448` run read → resample → normalize → `sf.write` → a
-    `subprocess.run(ffmpeg, timeout=300)` inline, so a lossy export can block for minutes looking
-    hung, with no cancel. `ui/onboarding.py:60-70` imports torch on the GUI thread on the *first
-    screen a new user sees*. `ui/main_window.py:594-600` pays that torch import again on a 2 s
-    repeating timer. Also `ui/reference_panel.py:272-274` calls `worker.wait(10000)` on Cancel then
-    sets `self._worker = None` regardless of whether the wait timed out, dropping the last
-    reference to a possibly-running QThread — destroying a running QThread aborts the process.
-  Touches: `ui/waveform_widget.py`, `ui/batch_view.py`, `ui/reference_panel.py`,
-    `ui/seed_explorer.py`, `ui/song_forge_view.py`, `ui/vocal_suite_view.py`, `ui/mixer_view.py`,
-    `ui/onboarding.py`, `ui/main_window.py`, `core/workers.py`.
-  Acceptance: No file decode, spectrogram, quality score, mixdown or export runs on the GUI thread;
-    each shows determinate progress and can be cancelled; batch cards decode once; `worker.wait`
-    with a timeout never drops a live reference on timeout; a test asserts the export entry points
-    dispatch through a worker.
-  Complexity: L
-
 - [ ] P1 — Export an AI-disclosure and human-authorship record
   Why: 2026 made disclosure mandatory at distribution, penalties are account-level rather than
     per-track, and the provenance sidecars already hold almost all the required data — no consumer

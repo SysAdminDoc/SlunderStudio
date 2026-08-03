@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 import unittest
 import wave
 from pathlib import Path
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import QApplication
 from engines.sfx_engine import SFXResult
 from core.voice_bank import VoiceBank, VoiceProfile
 from ui.sfx_view import SFXView
-from ui.vocal_suite_view import VocalSuiteView
+from ui.vocal_suite_view import VocalSuiteView, _vocal_audio_export_task
 
 
 def _write_wav(path: str, frames: int = 128, sample_rate: int = 8000):
@@ -31,6 +32,16 @@ class ActionEffectTests(unittest.TestCase):
     def setUpClass(cls):
         cls._app = QApplication.instance() or QApplication([])
 
+    def _wait_for(self, predicate, timeout=5.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self._app.processEvents()
+            if predicate():
+                return True
+            time.sleep(0.01)
+        self._app.processEvents()
+        return bool(predicate())
+
     def test_vocal_export_writes_selected_wav(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "source.wav")
@@ -45,11 +56,39 @@ class ActionEffectTests(unittest.TestCase):
                 ):
                     view._on_export()
 
+                self.assertTrue(
+                    self._wait_for(
+                        lambda: "Exported vocal WAV" in view._status.text()
+                    )
+                )
                 self.assertTrue(os.path.isfile(target))
                 self.assertIn("Exported vocal WAV", view._status.text())
             finally:
                 view.close()
                 self._app.processEvents()
+
+    def test_vocal_export_entry_point_dispatches_through_worker(self):
+        view = VocalSuiteView()
+        try:
+            view._current_audio_path = "source.wav"
+            with mock.patch(
+                "ui.vocal_suite_view.QFileDialog.getSaveFileName",
+                return_value=("target.wav", "WAV (*.wav)"),
+            ), mock.patch(
+                "ui.vocal_suite_view.InferenceWorker"
+            ) as worker_type:
+                worker = worker_type.return_value
+                worker.isRunning.return_value = False
+                view._on_export()
+
+                self.assertIs(
+                    worker_type.call_args.args[0],
+                    _vocal_audio_export_task,
+                )
+                worker.start.assert_called_once_with()
+        finally:
+            view.close()
+            self._app.processEvents()
 
     def test_sfx_card_play_loads_its_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -58,7 +97,7 @@ class ActionEffectTests(unittest.TestCase):
             view = SFXView()
             try:
                 result = SFXResult(
-                    audio=np.zeros((32, 2), dtype=np.float32),
+                    audio=None,
                     sample_rate=8000,
                     file_path=source,
                 )
@@ -68,7 +107,8 @@ class ActionEffectTests(unittest.TestCase):
                     view._add_result_card(result)
                     view._cards[-1].play_requested.emit(result)
 
-                    engine.load_file.assert_called_once_with(source)
+                    self.assertTrue(self._wait_for(lambda: engine.play.called))
+                    engine.load_array.assert_called_once()
                     engine.play.assert_called_once_with()
             finally:
                 view.close()

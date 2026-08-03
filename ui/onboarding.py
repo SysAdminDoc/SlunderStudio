@@ -12,13 +12,14 @@ from PySide6.QtWidgets import (
     QFrame, QStackedWidget, QWidget, QCheckBox, QComboBox,
     QProgressBar,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
 
 from core.settings import APP_VERSION
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
+from core.workers import InferenceWorker
 
 
 # ── System Check ───────────────────────────────────────────────────────────────
@@ -151,11 +152,45 @@ class SystemCheckPage(QWidget):
         self._summary.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
         layout.addWidget(self._summary)
         layout.addStretch()
+        self._check_worker = None
+        self._check_workers = set()
         install_accessibility(self, "Onboarding system check")
 
     def run_checks(self):
+        if self._check_worker is not None and self._check_worker.isRunning():
+            return
+        self._summary.setText("Checking Python, dependencies, hardware, and disk...")
+        worker = InferenceWorker(check_system)
+        self._check_workers.add(worker)
+        self._check_worker = worker
+        worker.finished.connect(self._on_checks_finished)
+        worker.error.connect(self._on_checks_error)
+        worker.start()
+
+    def _release_check_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._release_check_worker_later(worker))
+            return
+        self._check_workers.discard(worker)
+        if self._check_worker is worker:
+            self._check_worker = None
+
+    def _on_checks_finished(self, checks: dict):
+        worker = self._check_worker
+        self._release_check_worker_later(worker)
+        self._check_worker = None
+        self._display_checks(checks)
+
+    def _on_checks_error(self, message: str):
+        worker = self._check_worker
+        self._release_check_worker_later(worker)
+        self._check_worker = None
+        self._summary.setText(f"System check failed: {message}")
+
+    def _display_checks(self, checks: dict):
         t = ThemeEngine.get_colors()
-        checks = check_system()
 
         items = [
             ("Python", checks["python"], checks["python_ok"],

@@ -501,20 +501,65 @@ class QualityScore:
 def score_generation_quality(
     audio_path: str,
     expected_duration: float = 0.0,
+    progress_cb=None,
+    cancel_event=None,
 ) -> QualityScore:
     """
     Score the quality of a generated audio file on a 0-100 scale.
     Components: silence (20), clipping (20), duration (20), loudness (20),
     spectral balance (20).
     """
-    import soundfile as sf
-
-    score = QualityScore()
-
     try:
-        audio, sr = sf.read(audio_path, dtype="float32")
-    except Exception:
-        return score
+        from core.audio_buffers import decode_audio_file
+
+        audio, sr = decode_audio_file(
+            audio_path,
+            target_channels=2,
+            progress_cb=(
+                (lambda value: progress_cb(int(value * 0.6)))
+                if progress_cb else None
+            ),
+            cancel_event=cancel_event,
+        )
+    except Exception as exc:
+        from core.workers import CancelledJobError
+
+        if isinstance(exc, CancelledJobError):
+            raise
+        return QualityScore()
+
+    return score_audio_buffer(
+        audio,
+        sr,
+        expected_duration=expected_duration,
+        progress_cb=(
+            (lambda value: progress_cb(60 + int(value * 0.4)))
+            if progress_cb else None
+        ),
+        cancel_event=cancel_event,
+    )
+
+
+def score_audio_buffer(
+    audio: np.ndarray,
+    sample_rate: int,
+    expected_duration: float = 0.0,
+    progress_cb=None,
+    cancel_event=None,
+) -> QualityScore:
+    """Score an already-decoded buffer without performing file I/O.
+
+    The separate buffer entry point lets batch previews share one decode with
+    their waveform while keeping the legacy path-based API intact.
+    """
+    from core.workers import CancelledJobError
+
+    def _raise_if_cancelled():
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError("Quality scoring cancelled")
+
+    _raise_if_cancelled()
+    score = QualityScore()
 
     if audio.ndim == 2:
         mono = np.mean(audio, axis=1)
@@ -524,10 +569,11 @@ def score_generation_quality(
     if len(mono) == 0:
         return score
 
-    actual_duration = len(mono) / sr
+    actual_duration = len(mono) / sample_rate
+    if progress_cb:
+        progress_cb(10)
 
     rms = np.sqrt(np.mean(mono ** 2))
-    peak = np.max(np.abs(mono))
 
     silent_frames = np.sum(np.abs(mono) < 1e-5)
     silence_ratio = silent_frames / len(mono)
@@ -543,6 +589,10 @@ def score_generation_quality(
         score.duration = max(0.0, 20.0 * (1.0 - deviation * 2.0))
     else:
         score.duration = 20.0 if actual_duration > 1.0 else 5.0
+
+    _raise_if_cancelled()
+    if progress_cb:
+        progress_cb(45)
 
     if rms < 1e-6:
         score.loudness = 0.0
@@ -560,7 +610,7 @@ def score_generation_quality(
         if n_fft >= 64:
             spectrum = np.abs(np.fft.rfft(mono[:n_fft]))
             if spectrum.sum() > 0:
-                freqs = np.fft.rfftfreq(n_fft, d=1.0 / sr)
+                freqs = np.fft.rfftfreq(n_fft, d=1.0 / sample_rate)
                 centroid = np.sum(freqs * spectrum) / np.sum(spectrum)
                 if 500.0 <= centroid <= 4000.0:
                     score.spectral_balance = 20.0
@@ -575,7 +625,10 @@ def score_generation_quality(
     except Exception:
         score.spectral_balance = 10.0
 
+    _raise_if_cancelled()
     score.total = score.silence + score.clipping + score.duration + score.loudness + score.spectral_balance
+    if progress_cb:
+        progress_cb(100)
     return score
 
 

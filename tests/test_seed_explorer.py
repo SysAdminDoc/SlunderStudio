@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 import unittest
 import wave
 from pathlib import Path
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import QApplication
 
 from engines.audio_analyzer import QualityScore, score_generation_quality
 from core.provenance import sidecar_path_for
-from ui.batch_view import BatchView
+from ui.batch_view import BatchView, _prepare_batch_card_task
 from ui.seed_explorer import SeedExplorer
 
 
@@ -63,11 +64,39 @@ class QualityScoringTests(unittest.TestCase):
             s2 = score_generation_quality(path)
             self.assertEqual(s1.total, s2.total)
 
+    def test_batch_preview_decodes_once_and_scores_that_same_buffer(self):
+        audio = np.zeros((128, 2), dtype=np.float32)
+        score = QualityScore(total=73.0)
+        with mock.patch(
+            "ui.batch_view.decode_audio_file",
+            return_value=(audio, 44100),
+        ) as decode, mock.patch(
+            "engines.audio_analyzer.score_audio_buffer",
+            return_value=score,
+        ) as score_buffer:
+            result = _prepare_batch_card_task("variation.wav")
+
+        decode.assert_called_once()
+        score_buffer.assert_called_once()
+        self.assertIs(score_buffer.call_args.args[0], audio)
+        self.assertIs(result["audio"], audio)
+        self.assertEqual(73.0, result["quality"].total)
+
 
 class BatchUseBestTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._app = QApplication.instance() or QApplication([])
+
+    def _wait_for_scores(self, view):
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            self._app.processEvents()
+            if all(card._quality_worker is None for card in view._cards):
+                return True
+            time.sleep(0.01)
+        self._app.processEvents()
+        return all(card._quality_worker is None for card in view._cards)
 
     def test_use_best_selects_highest_scored_when_no_star(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -79,6 +108,7 @@ class BatchUseBestTests(unittest.TestCase):
             view = BatchView()
             view.add_result(low_path, seed=1)
             view.add_result(high_path, seed=2)
+            self.assertTrue(self._wait_for_scores(view))
 
             emitted = []
             view.use_result.connect(emitted.append)
@@ -98,6 +128,7 @@ class BatchUseBestTests(unittest.TestCase):
             view = BatchView()
             view.add_result(low_path, seed=1)
             view.add_result(high_path, seed=2)
+            self.assertTrue(self._wait_for_scores(view))
             view._cards[0]._toggle_star()
 
             emitted = []
@@ -113,6 +144,16 @@ class SeedExplorerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._app = QApplication.instance() or QApplication([])
+
+    def _wait_for(self, predicate, timeout=5.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self._app.processEvents()
+            if predicate():
+                return True
+            time.sleep(0.01)
+        self._app.processEvents()
+        return bool(predicate())
 
     def test_distance_slider_syncs_seed_range(self):
         explorer = SeedExplorer()
@@ -159,10 +200,15 @@ class SeedExplorerTests(unittest.TestCase):
             with mock.patch(
                 "ui.seed_explorer.QFileDialog.getExistingDirectory",
                 return_value=str(destination),
-            ):
-                explorer._export_starred()
+                ):
+                    explorer._export_starred()
 
             exported = destination / "seed_0_0_123.wav"
+            self.assertTrue(
+                self._wait_for(
+                    lambda: "Exported 1 starred" in explorer._info.text()
+                )
+            )
             self.assertTrue(exported.is_file())
             self.assertTrue(sidecar_path_for(exported).is_file())
             self.assertIn("Exported 1 starred", explorer._info.text())
@@ -175,6 +221,9 @@ class SeedExplorerTests(unittest.TestCase):
             explorer = SeedExplorer()
             cell = explorer._cells[0][0]
             cell.set_result(source, seed=123)
+            self.assertTrue(
+                self._wait_for(lambda: cell._waveform._waveform.has_audio)
+            )
             played = []
             explorer.play_requested.connect(played.append)
 

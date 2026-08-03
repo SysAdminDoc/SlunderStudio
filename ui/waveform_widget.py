@@ -15,9 +15,20 @@ import numpy as np
 from pathlib import Path
 
 from ui.theme import Palette
+from core.workers import CancelledJobError, InferenceWorker
 
 
 logger = logging.getLogger(__name__)
+
+
+def _qt_object_alive(obj) -> bool:
+    """Return whether the wrapped QWidget still has a native Qt object."""
+    try:
+        import shiboken6
+
+        return bool(shiboken6.isValid(obj))
+    except (ImportError, RuntimeError):
+        return True
 
 try:
     import pyqtgraph as pg
@@ -35,6 +46,88 @@ except ImportError:
         pg = None
 
 
+def _decode_waveform_file(
+    file_path: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+) -> tuple[np.ndarray, int]:
+    """Decode a waveform in chunks so the GUI never owns file I/O."""
+    import soundfile as sf
+
+    path = Path(file_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Audio file not found: {path}")
+
+    chunks = []
+    with sf.SoundFile(str(path), mode="r") as source:
+        sample_rate = int(source.samplerate)
+        total_frames = max(0, int(len(source)))
+        frames_read = 0
+        if progress_cb:
+            progress_cb(0)
+        while True:
+            if cancel_event is not None and cancel_event.is_set():
+                raise CancelledJobError("Audio loading cancelled")
+            chunk = source.read(
+                frames=1_048_576,
+                dtype="float32",
+                always_2d=True,
+            )
+            if len(chunk) == 0:
+                break
+            chunks.append(chunk)
+            frames_read += len(chunk)
+            if progress_cb and total_frames:
+                progress_cb(min(99, int(frames_read * 100 / total_frames)))
+
+    if not chunks:
+        raise ValueError("Audio file contains no frames")
+    audio = np.concatenate(chunks, axis=0)
+    if progress_cb:
+        progress_cb(100)
+    return np.ascontiguousarray(audio), sample_rate
+
+
+def _compute_spectrogram(
+    mono: np.ndarray,
+    sample_rate: int,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+) -> np.ndarray:
+    """Compute a mel image away from the Qt GUI thread."""
+    if cancel_event is not None and cancel_event.is_set():
+        raise CancelledJobError("Spectrogram computation cancelled")
+    if len(mono) < 32:
+        return np.empty((0, 0), dtype=np.float32)
+
+    import librosa
+
+    if progress_cb:
+        progress_cb(10)
+    n_fft = 1 << min(11, len(mono).bit_length() - 1)
+    spectrogram = librosa.feature.melspectrogram(
+        y=mono,
+        sr=sample_rate,
+        n_fft=n_fft,
+        hop_length=max(1, n_fft // 4),
+        n_mels=min(64, n_fft // 2),
+        fmax=min(8000, sample_rate / 2),
+    )
+    if cancel_event is not None and cancel_event.is_set():
+        raise CancelledJobError("Spectrogram computation cancelled")
+    if progress_cb:
+        progress_cb(75)
+    result = librosa.power_to_db(spectrogram, ref=np.max).astype(
+        np.float32,
+        copy=False,
+    )
+    if progress_cb:
+        progress_cb(100)
+    return result
+
+
 class WaveformWidget(QWidget):
     """
     Waveform + spectrogram display with playback cursor overlay.
@@ -42,6 +135,10 @@ class WaveformWidget(QWidget):
     """
     position_clicked = Signal(float)  # normalized 0-1 position
     region_selected = Signal(float, float)  # start, end in seconds
+    audio_load_started = Signal(str)
+    audio_load_progress = Signal(int)
+    audio_load_finished = Signal(bool)
+    spectrogram_progress = Signal(int)
 
     def __init__(self, parent=None, show_controls: bool = True):
         super().__init__(parent)
@@ -54,6 +151,13 @@ class WaveformWidget(QWidget):
         self._show_controls = show_controls
         self._mode = "waveform"  # waveform or spectrogram
         self._last_error = ""
+        self._audio_load_token = 0
+        self._audio_load_worker = None
+        self._audio_load_workers = set()
+        self._spectrogram_token = 0
+        self._spectrogram_worker = None
+        self._spectrogram_workers = set()
+        self._closed = False
 
         # Operable by keyboard: Left/Right seek, PageUp/Down scrub, Home/End
         # jump, M switches waveform and spectrogram.
@@ -187,9 +291,8 @@ class WaveformWidget(QWidget):
                 path = Path(source)
                 if not path.is_file():
                     raise FileNotFoundError(f"Audio file not found: {path}")
-                import soundfile as sf
-
-                audio, resolved_rate = sf.read(str(path), dtype="float32")
+                self._start_audio_load(path)
+                return True
             else:
                 if sample_rate is None:
                     raise ValueError("sample_rate is required for audio arrays")
@@ -206,6 +309,108 @@ class WaveformWidget(QWidget):
             self._last_error = str(exc)
             self._set_info(f"Error: {exc}")
             return False
+
+    def _start_audio_load(self, path: Path) -> None:
+        """Queue a file decode and keep the latest selection authoritative."""
+        self._audio_load_token += 1
+        token = self._audio_load_token
+        worker = InferenceWorker(_decode_waveform_file, str(path))
+        self._audio_load_workers.add(worker)
+        self._audio_load_worker = worker
+        self._set_info(f"Loading {path.name}... 0%")
+        self.audio_load_started.emit(str(path))
+        worker.progress.connect(
+            lambda percent, t=token: self._on_audio_load_progress(t, percent)
+        )
+        worker.finished.connect(
+            lambda payload, t=token, w=worker: self._on_audio_load_finished(t, w, payload)
+        )
+        worker.error.connect(
+            lambda message, t=token, w=worker: self._on_audio_load_error(t, w, message)
+        )
+        worker.cancelled.connect(
+            lambda t=token, w=worker: self._on_audio_load_cancelled(t, w)
+        )
+        try:
+            worker.start()
+        except Exception as exc:
+            self._on_audio_load_error(token, worker, f"{type(exc).__name__}: {exc}")
+
+    def _forget_worker_later(self, worker, registry: set) -> None:
+        """Release a worker only after its QThread has actually stopped."""
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._forget_worker_later(worker, registry))
+            return
+        registry.discard(worker)
+
+    @staticmethod
+    def _disconnect_worker(worker) -> None:
+        """Remove queued callbacks before a widget is destroyed."""
+        for signal in (
+            worker.progress,
+            worker.finished,
+            worker.error,
+            worker.cancelled,
+        ):
+            try:
+                signal.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+
+    def _on_audio_load_progress(self, token: int, percent: int) -> None:
+        if not _qt_object_alive(self) or self._closed or token != self._audio_load_token:
+            return
+        self.audio_load_progress.emit(percent)
+        self._set_info(f"Loading audio... {percent}%")
+
+    def _on_audio_load_finished(self, token: int, worker, payload) -> None:
+        self._forget_worker_later(worker, self._audio_load_workers)
+        if not _qt_object_alive(self) or self._closed or token != self._audio_load_token:
+            return
+        self._audio_load_worker = None
+        try:
+            audio, sample_rate = payload
+            normalized = self._normalize_audio(audio)
+            if not HAS_PYQTGRAPH:
+                raise RuntimeError("Waveform display is unavailable")
+            self._display_audio(normalized, self._validate_sample_rate(sample_rate))
+            self._set_info("")
+            self.audio_load_finished.emit(True)
+        except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            self._last_error = str(exc)
+            self._set_info(f"Error: {exc}")
+            self.audio_load_finished.emit(False)
+
+    def _on_audio_load_error(self, token: int, worker, message: str) -> None:
+        self._forget_worker_later(worker, self._audio_load_workers)
+        if not _qt_object_alive(self) or self._closed or token != self._audio_load_token:
+            return
+        self._audio_load_worker = None
+        self._last_error = str(message)
+        self._set_info(f"Error: {message}")
+        self.audio_load_finished.emit(False)
+
+    def _on_audio_load_cancelled(self, token: int, worker) -> None:
+        self._forget_worker_later(worker, self._audio_load_workers)
+        if not _qt_object_alive(self) or self._closed or token != self._audio_load_token:
+            return
+        self._audio_load_worker = None
+        self._last_error = "Audio loading cancelled"
+        self._set_info(self._last_error)
+        self.audio_load_finished.emit(False)
+
+    def cancel_audio_load(self, *, notify: bool = True) -> None:
+        """Request cancellation without blocking the GUI thread."""
+        worker = self._audio_load_worker
+        if worker is None or not worker.isRunning():
+            return
+        self._audio_load_token += 1
+        self._audio_load_worker = None
+        worker.cancel()
+        if notify:
+            self._last_error = "Audio loading cancelled"
+            self._set_info(self._last_error)
+            self.audio_load_finished.emit(False)
 
     def load_file(self, file_path: str | Path) -> bool:
         """Compatibility wrapper; use :meth:`load_audio` for new callers."""
@@ -322,51 +527,92 @@ class WaveformWidget(QWidget):
             return
         audio = self._audio_data
         mono = audio.mean(axis=1, dtype=np.float32) if audio.ndim == 2 else audio
-        self._update_spectrogram(mono, self._sample_rate)
-        self._spectrogram_ready = True
-
-    def _update_spectrogram(self, mono: np.ndarray, sr: int):
-        """Compute and display mel spectrogram."""
+        if self._spectrogram_worker is not None and self._spectrogram_worker.isRunning():
+            return
+        self._spectrogram_token += 1
+        token = self._spectrogram_token
+        worker = InferenceWorker(_compute_spectrogram, mono.copy(), self._sample_rate)
+        self._spectrogram_workers.add(worker)
+        self._spectrogram_worker = worker
+        self._set_info("Computing spectrogram... 0%")
+        worker.progress.connect(
+            lambda percent, t=token: self._on_spectrogram_progress(t, percent)
+        )
+        worker.finished.connect(
+            lambda data, t=token, w=worker: self._on_spectrogram_finished(t, w, data)
+        )
+        worker.error.connect(
+            lambda message, t=token, w=worker: self._on_spectrogram_error(t, w, message)
+        )
+        worker.cancelled.connect(
+            lambda t=token, w=worker: self._on_spectrogram_cancelled(t, w)
+        )
         try:
-            if len(mono) < 32:
-                self._spectro_item.clear()
-                return
-            import librosa
+            worker.start()
+        except Exception as exc:
+            self._on_spectrogram_error(token, worker, f"{type(exc).__name__}: {exc}")
 
-            n_fft = 1 << min(11, len(mono).bit_length() - 1)
-            S = librosa.feature.melspectrogram(
-                y=mono,
-                sr=sr,
-                n_fft=n_fft,
-                hop_length=max(1, n_fft // 4),
-                n_mels=min(64, n_fft // 2),
-                fmax=min(8000, sr / 2),
-            )
-            S_dB = librosa.power_to_db(S, ref=np.max)
+    def _on_spectrogram_progress(self, token: int, percent: int) -> None:
+        if not _qt_object_alive(self) or self._closed or token != self._spectrogram_token:
+            return
+        self.spectrogram_progress.emit(percent)
+        self._set_info(f"Computing spectrogram... {percent}%")
 
-            # Custom colormap: dark blue -> blue -> cyan -> yellow
-            cmap = pg.ColorMap(
-                pos=[0.0, 0.33, 0.66, 1.0],
-                color=[
-                    QColor(Palette.CRUST),
-                    QColor(Palette.MANTLE),
-                    QColor(Palette.BLUE),
-                    QColor(Palette.YELLOW),
-                ],
-            )
-            lut = cmap.getLookupTable(nPts=256)
-            self._spectro_item.setImage(S_dB.T, autoLevels=True)
-            self._spectro_item.setLookupTable(lut)
+    def _on_spectrogram_finished(self, token: int, worker, data: np.ndarray) -> None:
+        self._forget_worker_later(worker, self._spectrogram_workers)
+        if not _qt_object_alive(self) or self._closed or token != self._spectrogram_token:
+            return
+        self._spectrogram_worker = None
+        self._apply_spectrogram(data, self._sample_rate)
+        self._spectrogram_ready = True
+        self._set_info("")
 
-            # Scale to time axis
-            self._spectro_item.setTransform(
-                QTransform().scale(
-                    self._duration / S_dB.shape[1],
-                    sr / (2 * S_dB.shape[0]),
-                )
-            )
-        except Exception:
+    def _on_spectrogram_error(self, token: int, worker, message: str) -> None:
+        self._forget_worker_later(worker, self._spectrogram_workers)
+        if not _qt_object_alive(self) or self._closed or token != self._spectrogram_token:
+            return
+        self._spectrogram_worker = None
+        self._spectro_item.clear()
+        self._set_info(f"Spectrogram unavailable: {message}")
+
+    def _on_spectrogram_cancelled(self, token: int, worker) -> None:
+        self._forget_worker_later(worker, self._spectrogram_workers)
+        if not _qt_object_alive(self) or self._closed or token != self._spectrogram_token:
+            return
+        self._spectrogram_worker = None
+        self._set_info("Spectrogram computation cancelled")
+
+    def _cancel_spectrogram(self) -> None:
+        worker = self._spectrogram_worker
+        if worker is None or not worker.isRunning():
+            return
+        self._spectrogram_token += 1
+        self._spectrogram_worker = None
+        worker.cancel()
+
+    def _apply_spectrogram(self, S_dB: np.ndarray, sr: int) -> None:
+        """Apply an already-computed mel image on the GUI thread."""
+        if S_dB.size == 0:
             self._spectro_item.clear()
+            return
+        cmap = pg.ColorMap(
+            pos=[0.0, 0.33, 0.66, 1.0],
+            color=[
+                QColor(Palette.CRUST),
+                QColor(Palette.MANTLE),
+                QColor(Palette.BLUE),
+                QColor(Palette.YELLOW),
+            ],
+        )
+        lut = cmap.getLookupTable(nPts=256)
+        self._spectro_item.setImage(S_dB.T, autoLevels=True)
+        self._spectro_item.setLookupTable(lut)
+        self._spectro_item.setTransform(
+            QTransform().scale(
+                self._duration / S_dB.shape[1],
+                sr / (2 * S_dB.shape[0]),
+            )
+        )
 
     def set_playback_position(self, seconds: float):
         """Update playback cursor position."""
@@ -473,6 +719,10 @@ class WaveformWidget(QWidget):
 
     def clear(self):
         """Clear display."""
+        self.cancel_audio_load(notify=False)
+        self._cancel_spectrogram()
+        self._audio_load_token += 1
+        self._spectrogram_token += 1
         if HAS_PYQTGRAPH:
             self._waveform_curve.setData([], [])
             self._spectro_item.clear()
@@ -485,6 +735,17 @@ class WaveformWidget(QWidget):
         self._duration = 0.0
         self._last_error = ""
         self._set_info("")
+
+    def closeEvent(self, event):
+        self._closed = True
+        workers = set(self._audio_load_workers) | set(self._spectrogram_workers)
+        for worker in workers:
+            self._disconnect_worker(worker)
+            if worker.isRunning():
+                worker.cancel()
+        self._audio_load_worker = None
+        self._spectrogram_worker = None
+        super().closeEvent(event)
 
     def _set_info(self, text: str) -> None:
         if self._show_controls and hasattr(self, "_info_label"):

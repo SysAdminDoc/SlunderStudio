@@ -12,13 +12,51 @@ from PySide6.QtWidgets import (
     QSlider, QFileDialog,
     QLineEdit,
 )
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QTimer
 from PySide6.QtGui import QKeyEvent
 
 from ui.theme import Palette
 from ui.accessibility import FOCUS_RING_COLOR, install_accessibility, set_accessible
 from ui.waveform_widget import MiniWaveform
 from core.provenance import sidecar_path_for
+from core.workers import CancelledJobError, InferenceWorker
+
+
+def _export_starred_task(
+    starred: list[dict],
+    destination: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    """Copy starred audio and sidecars away from the GUI thread."""
+    destination_path = Path(destination)
+    copied = sidecars = skipped = 0
+    total = max(1, len(starred))
+    for position, item in enumerate(starred, 1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError("Starred export cancelled")
+        source = Path(item["audio_path"])
+        if not source.is_file():
+            skipped += 1
+            continue
+        target = destination_path / (
+            f"seed_{item['row']}_{item['col']}_{item['seed']}{source.suffix}"
+        )
+        try:
+            if target.resolve() == source.resolve():
+                target = target.with_name(f"{target.stem}_export{target.suffix}")
+            shutil.copy2(source, target)
+            copied += 1
+            source_sidecar = sidecar_path_for(source)
+            if source_sidecar.is_file():
+                shutil.copy2(source_sidecar, sidecar_path_for(target))
+                sidecars += 1
+        except OSError:
+            skipped += 1
+        if progress_cb:
+            progress_cb(int(position * 100 / total))
+    return {"copied": copied, "sidecars": sidecars, "skipped": skipped}
 
 
 class SeedCell(QFrame):
@@ -235,6 +273,8 @@ class SeedExplorer(QWidget):
         super().__init__(parent)
         self._grid_size = 3  # 3x3 default
         self._cells: list[list[SeedCell]] = []
+        self._export_worker = None
+        self._export_workers = set()
         self._center_seed = 42
         self._seed_range = 100
         self._shift_min = 1.0
@@ -507,41 +547,61 @@ class SeedExplorer(QWidget):
             if not destination:
                 return
 
-            copied = 0
-            sidecars = 0
-            skipped = 0
-            destination_path = Path(destination)
-            for item in starred:
-                source = Path(item["audio_path"])
-                if not source.is_file():
-                    skipped += 1
-                    continue
-
-                target = destination_path / (
-                    f"seed_{item['row']}_{item['col']}_{item['seed']}{source.suffix}"
-                )
-                if target.resolve() == source.resolve():
-                    target = target.with_name(f"{target.stem}_export{target.suffix}")
-                try:
-                    shutil.copy2(source, target)
-                    copied += 1
-                    source_sidecar = sidecar_path_for(source)
-                    if source_sidecar.is_file():
-                        shutil.copy2(source_sidecar, sidecar_path_for(target))
-                        sidecars += 1
-                except OSError:
-                    skipped += 1
-
-            if copied:
-                detail = f"; skipped {skipped}" if skipped else ""
-                self._set_info(
-                    f"Exported {copied} starred variation(s) to {destination}"
-                    f" ({sidecars} provenance sidecar(s){detail})"
-                )
-            else:
-                self._set_info("No starred audio files were available to export")
+            if self._export_worker is not None and self._export_worker.isRunning():
+                return
+            worker = InferenceWorker(_export_starred_task, starred, destination)
+            worker.progress.connect(
+                lambda pct: self._set_info(f"Exporting starred variations... {pct}%")
+            )
+            worker.finished.connect(
+                lambda result, d=destination: self._on_starred_export_finished(result, d)
+            )
+            worker.error.connect(self._on_starred_export_error)
+            worker.cancelled.connect(self._on_starred_export_cancelled)
+            self._export_workers.add(worker)
+            self._export_worker = worker
+            self._export_btn.setEnabled(False)
+            self._set_info("Exporting starred variations... 0%")
+            worker.start()
         else:
             self._set_info("No starred cells to export")
+
+    def _release_export_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._release_export_worker_later(worker))
+            return
+        self._export_workers.discard(worker)
+        if self._export_worker is worker:
+            self._export_worker = None
+        self._export_btn.setEnabled(True)
+
+    def _on_starred_export_finished(self, result: dict, destination: str):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        copied = result["copied"]
+        if copied:
+            detail = f"; skipped {result['skipped']}" if result["skipped"] else ""
+            self._set_info(
+                f"Exported {copied} starred variation(s) to {destination}"
+                f" ({result['sidecars']} provenance sidecar(s){detail})"
+            )
+        else:
+            self._set_info("No starred audio files were available to export")
+
+    def _on_starred_export_error(self, message: str):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        self._set_info(f"Starred export failed: {message}")
+
+    def _on_starred_export_cancelled(self):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        self._set_info("Starred export cancelled")
 
     def zoom_into(self, row: int, col: int):
         """Zoom into a cell - re-center seed and narrow ranges."""

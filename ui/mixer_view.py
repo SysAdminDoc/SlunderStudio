@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QFrame, QScrollArea, QSlider, QFileDialog, QDoubleSpinBox,
     QProgressBar, QTabWidget,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 
 import numpy as np
 
@@ -19,13 +19,12 @@ from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
 from ui.waveform_widget import WaveformWidget, MiniWaveform
-from core.workers import InferenceWorker
+from core.workers import CancelledJobError, InferenceWorker
 from core.panning import pan_gains
 from core.audio_export import (
     DELIVERY_FORMATS,
     ExportSettings,
     export_from_numpy,
-    probe_codecs,
 )
 from core.audio_buffers import (
     decode_audio_file,
@@ -51,20 +50,95 @@ from core.mastering import (
 )
 
 
+def _mix_track_snapshots(
+    track_snapshots,
+    project_sample_rate: int,
+    progress_cb=None,
+    cancel_event=None,
+) -> Optional[np.ndarray]:
+    """Mix immutable track snapshots away from the GUI thread."""
+    if not track_snapshots:
+        return None
+
+    def _cancelled():
+        return cancel_event is not None and cancel_event.is_set()
+
+    prepared_tracks = []
+    total = max(len(track_snapshots), 1)
+    for position, (audio, sample_rate, *_settings) in enumerate(track_snapshots, 1):
+        if _cancelled():
+            raise CancelledJobError("Mixer operation cancelled")
+        frames = validate_audio_buffer(audio)
+        if sample_rate != project_sample_rate or frames.ndim != 2 or frames.shape[1] != 2:
+            frames = prepare_audio_buffer(
+                frames,
+                sample_rate,
+                project_sample_rate,
+                target_channels=2,
+            )
+        prepared_tracks.append(frames)
+        if progress_cb:
+            progress_cb(int(position * 45 / total))
+
+    max_len = max((len(audio) for audio in prepared_tracks), default=0)
+    if max_len == 0:
+        return None
+
+    soloed = [snapshot for snapshot in track_snapshots if snapshot[5]]
+    active = soloed if soloed else [snapshot for snapshot in track_snapshots if not snapshot[4]]
+    active_ids = {id(snapshot) for snapshot in active}
+    output = np.zeros((max_len, 2), dtype=np.float32)
+
+    for index, snapshot in enumerate(track_snapshots):
+        if _cancelled():
+            raise CancelledJobError("Mixer operation cancelled")
+        if id(snapshot) not in active_ids:
+            continue
+        audio = prepared_tracks[index]
+        length = min(len(audio), max_len)
+        _volume, _pan = snapshot[2], snapshot[3]
+        left_gain, right_gain = pan_gains(_pan, _volume)
+        output[:length, 0] += audio[:length, 0] * left_gain
+        output[:length, 1] += audio[:length, 1] * right_gain
+        if progress_cb:
+            progress_cb(45 + int((index + 1) * 45 / total))
+
+    peak = np.max(np.abs(output))
+    if peak > 1.0:
+        output /= peak
+    if progress_cb:
+        progress_cb(95)
+    return output
+
+
 def _master_audio_task(
-    mixed: np.ndarray,
+    track_snapshots,
     sample_rate: int,
     preset: MasteringPreset,
     reference_audio: Optional[np.ndarray] = None,
     reference_sample_rate: int = 44100,
     progress_cb=None,
     step_cb=None,
+    cancel_event=None,
     **_kwargs,
 ):
     """Run mastering and reference matching off the Qt GUI thread."""
+    mixed = _mix_track_snapshots(
+        track_snapshots,
+        sample_rate,
+        progress_cb=(
+            (lambda value: progress_cb(int(value * 0.25)))
+            if progress_cb else None
+        ),
+        cancel_event=cancel_event,
+    )
+    if mixed is None:
+        raise ValueError("No active mixer audio is available")
+
     def _progress(value: float, message: str):
         if progress_cb:
-            progress_cb(int(float(value) * 100 if value <= 1 else value))
+            normalized = float(value) * 100 if value <= 1 else float(value)
+            progress_cb(25 + int(normalized * 0.75))
         if step_cb:
             step_cb(message)
 
@@ -76,6 +150,9 @@ def _master_audio_task(
     )
     if getattr(result, "error", None) or getattr(result, "audio", None) is None:
         return result, None
+
+    if cancel_event is not None and cancel_event.is_set():
+        raise CancelledJobError("Mastering cancelled")
 
     if reference_audio is not None:
         match = match_loudness_to_reference(
@@ -94,11 +171,18 @@ def _master_audio_task(
     return result, None
 
 
-def _dynamic_eq_analysis_task(track_snapshots, progress_cb=None, **_kwargs):
+def _dynamic_eq_analysis_task(
+    track_snapshots,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
     """Analyze copied track buffers without touching widgets or live state."""
     suggestions = {}
     total = max(len(track_snapshots), 1)
     for position, (index, audio, sample_rate, name) in enumerate(track_snapshots, 1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError("Dynamic EQ analysis cancelled")
         suggestions[index] = suggest_dynamic_eq_curve(audio, sample_rate, name)
         if progress_cb:
             progress_cb(int(position * 100 / total))
@@ -121,13 +205,21 @@ def _gain_matched_dynamic_eq(
     return processed
 
 
-def _dynamic_eq_operation_task(operation_snapshots, strength, progress_cb=None, **_kwargs):
+def _dynamic_eq_operation_task(
+    operation_snapshots,
+    strength,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
     """Apply copied EQ buffers off-thread and return replacements by track index."""
     processed = {}
     total = max(len(operation_snapshots), 1)
     for position, (index, audio, sample_rate, suggestion) in enumerate(
         operation_snapshots, 1
     ):
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError("Dynamic EQ operation cancelled")
         output = _gain_matched_dynamic_eq(audio, sample_rate, suggestion, strength)
         if output is not None:
             processed[index] = output
@@ -136,18 +228,35 @@ def _dynamic_eq_operation_task(operation_snapshots, strength, progress_cb=None, 
     return processed
 
 
-def _decode_mixer_track_task(file_path: str, project_sample_rate: int, **_kwargs):
+def _decode_mixer_track_task(
+    file_path: str,
+    project_sample_rate: int,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
     """Decode and resample a track before handing it back to the GUI."""
     source_audio, source_sample_rate = decode_audio_file(
         file_path,
         target_channels=2,
+        progress_cb=(
+            (lambda value: progress_cb(int(value * 0.7)))
+            if progress_cb else None
+        ),
+        cancel_event=cancel_event,
     )
+    if cancel_event is not None and cancel_event.is_set():
+        raise CancelledJobError("Mixer import cancelled")
+    if progress_cb:
+        progress_cb(75)
     audio = prepare_audio_buffer(
         source_audio,
         source_sample_rate,
         project_sample_rate,
         target_channels=2,
     )
+    if progress_cb:
+        progress_cb(100)
     return {
         "audio": audio,
         "sample_rate": project_sample_rate,
@@ -156,9 +265,24 @@ def _decode_mixer_track_task(file_path: str, project_sample_rate: int, **_kwargs
     }
 
 
-def _reference_track_task(file_path: str, name: str, **_kwargs):
+def _reference_track_task(
+    file_path: str,
+    name: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
     """Decode and analyze a loudness reference without blocking the mixer."""
-    audio, sample_rate = decode_audio_file(file_path, target_channels=2)
+    audio, sample_rate = decode_audio_file(
+        file_path,
+        target_channels=2,
+        progress_cb=progress_cb,
+        cancel_event=cancel_event,
+    )
+    if cancel_event is not None and cancel_event.is_set():
+        raise CancelledJobError("Reference loading cancelled")
+    if progress_cb:
+        progress_cb(80)
     return {
         "audio": audio,
         "sample_rate": sample_rate,
@@ -367,10 +491,12 @@ class MixerView(QWidget):
         self._dynamic_eq_previewing = False
         self._dynamic_eq_applied = False
         self._master_worker: Optional[InferenceWorker] = None
+        self._export_worker: Optional[InferenceWorker] = None
         self._dynamic_eq_worker: Optional[InferenceWorker] = None
         self._dynamic_eq_operation_worker: Optional[InferenceWorker] = None
         self._import_worker: Optional[InferenceWorker] = None
         self._reference_worker: Optional[InferenceWorker] = None
+        self._worker_references: set[InferenceWorker] = set()
         self._dynamic_eq_analysis_token = 0
         self._dynamic_eq_operation_token = 0
         self._dynamic_eq_operation_mode = ""
@@ -956,15 +1082,24 @@ class MixerView(QWidget):
         has_tracks = len(self._strips) > 0
         has_suggestions = bool(self._dynamic_eq_suggestions)
         master_busy = self._master_worker is not None and self._master_worker.isRunning()
+        export_busy = self._export_worker is not None and self._export_worker.isRunning()
         analysis_busy = self._dynamic_eq_worker is not None and self._dynamic_eq_worker.isRunning()
         operation_busy = (
             self._dynamic_eq_operation_worker is not None
             and self._dynamic_eq_operation_worker.isRunning()
         )
         import_busy = self._import_worker is not None and self._import_worker.isRunning()
-        self._master_btn.setEnabled(
-            has_tracks and not master_busy and not operation_busy and not import_busy
-        )
+        if master_busy:
+            self._master_btn.setEnabled(True)
+            self._master_btn.setText("Cancel Mastering")
+        elif export_busy:
+            self._master_btn.setEnabled(True)
+            self._master_btn.setText("Cancel Export")
+        else:
+            self._master_btn.setEnabled(
+                has_tracks and not operation_busy and not import_busy
+            )
+            self._master_btn.setText("Master + Export")
         self._dynamic_eq_btn.setEnabled(
             has_tracks and not analysis_busy and not operation_busy and not import_busy
         )
@@ -981,11 +1116,15 @@ class MixerView(QWidget):
         self._dynamic_eq_revert_btn.setEnabled(bool(self._dynamic_eq_originals))
         self._add_btn.setEnabled(not import_busy)
 
-    @staticmethod
-    def _settle_worker(worker: Optional[InferenceWorker]):
-        """Keep a completed worker alive until its QThread has actually exited."""
-        if worker is not None and worker.isRunning():
-            worker.wait()
+    def _settle_worker(self, worker: Optional[InferenceWorker]):
+        """Keep a worker alive until its QThread exits without blocking Qt."""
+        if worker is None:
+            return
+        self._worker_references.add(worker)
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._settle_worker(worker))
+            return
+        self._worker_references.discard(worker)
 
     def _set_target_combo_key(self, key: str):
         for idx in range(self._target_combo.count()):
@@ -1339,11 +1478,28 @@ class MixerView(QWidget):
 
     def _on_master_export(self):
         if self._master_worker is not None and self._master_worker.isRunning():
+            self._master_worker.cancel()
+            self._status.setText("Cancelling mastering...")
             return
-        mixed = self._get_mixed_audio()
-        if mixed is None:
+        if self._export_worker is not None and self._export_worker.isRunning():
+            self._export_worker.cancel()
+            self._status.setText("Cancelling export...")
+            return
+        if not self._tracks:
             self._status.setText("No audio to master")
             return
+
+        track_snapshots = [
+            (
+                track["audio"].copy(),
+                int(track["sr"]),
+                float(strip.volume),
+                float(strip.pan),
+                bool(strip.is_muted),
+                bool(strip.is_soloed),
+            )
+            for track, strip in zip(self._tracks, self._strips)
+        ]
 
         sr = self._project_sample_rate
 
@@ -1366,7 +1522,7 @@ class MixerView(QWidget):
         reference_sr = self._reference_sr
         worker = InferenceWorker(
             _master_audio_task,
-            mixed.copy(),
+            track_snapshots,
             sr,
             preset,
             reference_audio,
@@ -1377,6 +1533,7 @@ class MixerView(QWidget):
                 "preset": preset_name,
                 "sample_rate": sr,
                 "has_reference": reference_audio is not None,
+                "track_count": len(track_snapshots),
             },
         )
         worker.progress.connect(self._on_master_progress)
@@ -1434,17 +1591,10 @@ class MixerView(QWidget):
                     f"True peak: {result.true_peak_dbtp:.2f} dBTP"
                 )
 
-            # Export dialog. Only formats this installation can actually
-            # write are offered.
-            codecs = probe_codecs()
-            filters = [
-                f"{fmt.upper()} (*.{fmt})"
-                for fmt in DELIVERY_FORMATS if codecs[fmt].available
-            ]
-            unavailable = [
-                f"{fmt.upper()}: {codecs[fmt].detail}"
-                for fmt in DELIVERY_FORMATS if not codecs[fmt].available
-            ]
+            # Codec probing and encoding both belong to the worker path. The
+            # dialog offers the known formats; an unavailable encoder reports
+            # its reason from the export worker without freezing the shell.
+            filters = [f"{fmt.upper()} (*.{fmt})" for fmt in DELIVERY_FORMATS]
             path, _ = QFileDialog.getSaveFileName(
                 self, "Export Mastered Audio", "master.wav", ";;".join(filters)
             )
@@ -1457,30 +1607,19 @@ class MixerView(QWidget):
                     title=os.path.splitext(os.path.basename(path))[0],
                     comment=" | ".join(result.report_lines()),
                 )
-                written = export_from_numpy(
-                    result.audio, sr, path, settings,
-                    module="mixer",
-                    operation="master_export",
-                    provenance_extra={
-                        "mastering": {
-                            "preset": result.preset_name,
-                            "input_lufs": result.input_lufs,
-                            "output_lufs": result.output_lufs,
-                            "output_lra_lu": result.output_lra_lu,
-                            "true_peak_dbtp": result.true_peak_dbtp,
-                            "target_lufs": result.target_lufs,
-                            "meets_target": result.meets_target,
-                        }
+                self._start_master_export(
+                    result.audio.copy(), sr, path, settings,
+                    {
+                        "preset": result.preset_name,
+                        "input_lufs": result.input_lufs,
+                        "output_lufs": result.output_lufs,
+                        "output_lra_lu": result.output_lra_lu,
+                        "true_peak_dbtp": result.true_peak_dbtp,
+                        "target_lufs": result.target_lufs,
+                        "meets_target": result.meets_target,
                     },
                 )
-
-                warning = f" | Unavailable: {unavailable[0]}" if unavailable else ""
-                self._status.setText(
-                    f"Exported: {written} | "
-                    f"{result.output_lufs:.1f} LUFS | "
-                    f"{result.true_peak_dbtp:.2f} dBTP | "
-                    f"{result.processing_time:.1f}s{warning}"
-                )
+                return
             elif self._last_loudness_match:
                 self._status.setText(
                     f"Mastered ({preset_name}) matched to {self._reference_name} | "
@@ -1498,6 +1637,57 @@ class MixerView(QWidget):
             self._report_error(f"Error: {exc}")
         finally:
             self._update_mix_state()
+
+    def _start_master_export(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        path: str,
+        settings: ExportSettings,
+        mastering_metadata: dict,
+    ):
+        if self._export_worker is not None and self._export_worker.isRunning():
+            return
+        worker = InferenceWorker(
+            export_from_numpy,
+            audio,
+            sample_rate,
+            path,
+            settings,
+            module="mixer",
+            operation="master_export",
+            provenance_extra={"mastering": mastering_metadata},
+        )
+        worker.progress.connect(
+            lambda pct: self._status.setText(f"Exporting master... {pct}%")
+        )
+        worker.finished.connect(self._on_master_export_finished)
+        worker.error.connect(self._on_master_export_error)
+        worker.cancelled.connect(self._on_master_export_cancelled)
+        self._export_worker = worker
+        self._update_mix_state()
+        worker.start()
+
+    def _on_master_export_finished(self, written: str):
+        worker = self._export_worker
+        self._settle_worker(worker)
+        self._export_worker = None
+        self._status.setText(f"Exported master: {written}")
+        self._update_mix_state()
+
+    def _on_master_export_error(self, message: str):
+        worker = self._export_worker
+        self._settle_worker(worker)
+        self._export_worker = None
+        self._report_error(f"Master export error: {message}")
+        self._update_mix_state()
+
+    def _on_master_export_cancelled(self):
+        worker = self._export_worker
+        self._settle_worker(worker)
+        self._export_worker = None
+        self._status.setText("Master export cancelled")
+        self._update_mix_state()
 
     def _on_master_error(self, message: str):
         worker = self._master_worker

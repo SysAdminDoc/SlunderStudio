@@ -3,12 +3,13 @@ Slunder Studio — AI Producer View
 One-prompt-to-full-song interface with creative brief input,
 live pipeline stage visualization, and final output preview.
 """
+import os
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
     QComboBox, QSpinBox, QFrame, QCheckBox, QProgressBar,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 from ui.theme import Palette, ThemeEngine, rgba
 from ui.accessibility import install_accessibility
@@ -53,6 +54,40 @@ STAGE_LABELS = {
     PipelineStage.MIXING: "Mixing",
     PipelineStage.MASTERING: "Mastering",
 }
+
+
+def _producer_export_task(
+    source_path: str,
+    output_path: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+) -> str:
+    """Copy a verified producer artifact without blocking the GUI."""
+    from core.workers import CancelledJobError
+
+    total = max(1, os.path.getsize(source_path))
+    copied = 0
+    try:
+        with open(source_path, "rb") as source, open(output_path, "wb") as target:
+            while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise CancelledJobError(
+                        "Producer export cancelled",
+                        outputs=[output_path],
+                    )
+                chunk = source.read(1_048_576)
+                if not chunk:
+                    break
+                target.write(chunk)
+                copied += len(chunk)
+                if progress_cb:
+                    progress_cb(min(100, int(copied * 100 / total)))
+    except CancelledJobError:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        raise
+    return output_path
 
 
 class StageIndicator(QFrame):
@@ -209,6 +244,8 @@ class AIProducerView(QWidget):
         self._result: Optional[ProducerResult] = None
         self._contract_result: Optional[EngineRunResult] = None
         self._worker: Optional[InferenceWorker] = None
+        self._export_worker: Optional[InferenceWorker] = None
+        self._export_workers = set()
         self._last_job_id = ""
         self._stage_indicators: dict[PipelineStage, StageIndicator] = {}
         self._model_mgr = ModelManager()
@@ -795,6 +832,10 @@ class AIProducerView(QWidget):
             self._export_btn.setEnabled(False)
 
     def _on_export(self):
+        if self._export_worker is not None and self._export_worker.isRunning():
+            self._export_worker.cancel()
+            self._output_info.setText("Cancelling export...")
+            return
         if not self._result or not self._result.can_export:
             self._export_btn.setEnabled(False)
             self._output_info.setText(
@@ -803,11 +844,63 @@ class AIProducerView(QWidget):
             return
 
         from PySide6.QtWidgets import QFileDialog
-        import shutil
 
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Final Song", "song.wav", "WAV (*.wav)"
         )
         if path:
-            shutil.copy2(self._result.final_audio_path, path)
-            self._output_info.setText(f"Exported: {path}")
+            worker = InferenceWorker(
+                _producer_export_task,
+                self._result.final_audio_path,
+                path,
+            )
+            worker.progress.connect(
+                lambda pct: self._output_info.setText(f"Exporting... {pct}%")
+            )
+            worker.finished.connect(self._on_export_finished)
+            worker.error.connect(self._on_export_error)
+            worker.cancelled.connect(self._on_export_cancelled)
+            self._export_workers.add(worker)
+            self._export_worker = worker
+            self._export_btn.setEnabled(False)
+            self._export_btn.setText("Cancel Export")
+            self._output_info.setText("Exporting... 0%")
+            worker.start()
+
+    def _release_export_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._release_export_worker_later(worker))
+            return
+        self._export_workers.discard(worker)
+        if self._export_worker is worker:
+            self._export_worker = None
+
+    def _restore_export_button(self):
+        if self._result and self._result.can_export:
+            self._export_btn.setEnabled(True)
+            self._export_btn.setText(
+                "Export Demo" if self._result.is_demo else "Export Final Song"
+            )
+
+    def _on_export_finished(self, path: str):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        self._output_info.setText(f"Exported: {path}")
+        self._restore_export_button()
+
+    def _on_export_error(self, message: str):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        self._output_info.setText(f"Export failed: {message}")
+        self._restore_export_button()
+
+    def _on_export_cancelled(self):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        self._output_info.setText("Export cancelled")
+        self._restore_export_button()

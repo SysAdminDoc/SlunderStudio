@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt
 
 from core.workers import InferenceWorker
-from core.audio_engine import AudioEngine
+from core.audio_engine import AudioEngine, decode_playback_file
 from engines.style_tags import StyleTagDB, CATEGORIES
 from ui.waveform_widget import WaveformWidget
 from ui.batch_view import BatchView
@@ -24,6 +24,32 @@ from ui.mood_curve_editor import MoodCurveEditor
 from ui.reference_panel import ReferencePanel
 from ui.accessibility import install_accessibility
 from ui.theme import Palette
+
+
+def _song_forge_export_task(
+    source_path: str,
+    output_path: str,
+    settings,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    """Export a Song Forge result on a worker thread."""
+    from core.audio_export import export_audio, get_export_license_warnings
+
+    written = export_audio(
+        source_path,
+        output_path,
+        settings,
+        module="song_forge",
+        operation="song_export",
+        progress_cb=progress_cb,
+        cancel_event=cancel_event,
+    )
+    return {
+        "path": written,
+        "license_warnings": get_export_license_warnings(source_path),
+    }
 
 
 class StyleTagBrowser(QWidget):
@@ -163,6 +189,11 @@ class SongForgeView(QWidget):
         self._current_vocal_stem_path = ""
         self._is_generating = False
         self._worker = None
+        self._export_worker = None
+        self._export_workers = set()
+        self._playback_worker = None
+        self._playback_workers = set()
+        self._playback_token = 0
         self._seed_explore_params: list[dict] = []
         self._routed_reference_context_tags: list[str] = []
         self._setup_ui()
@@ -1114,16 +1145,72 @@ class SongForgeView(QWidget):
             self._play_audio(self._current_audio_path)
 
     def _play_audio(self, path: str):
+        if self._playback_worker is not None and self._playback_worker.isRunning():
+            self._playback_token += 1
+            self._playback_worker.cancel()
+        self._playback_token += 1
+        token = self._playback_token
+        worker = InferenceWorker(decode_playback_file, path)
+        self._playback_workers.add(worker)
+        self._playback_worker = worker
+        worker.progress.connect(
+            lambda pct, t=token: self._on_playback_progress(t, pct)
+        )
+        worker.finished.connect(
+            lambda payload, t=token, w=worker: self._on_playback_ready(t, w, payload)
+        )
+        worker.error.connect(
+            lambda message, t=token, w=worker: self._on_playback_error(t, w, message)
+        )
+        worker.cancelled.connect(
+            lambda t=token, w=worker: self._on_playback_cancelled(t, w)
+        )
+        self._status.setText("Loading preview... 0%")
+        worker.start()
+
+    def _release_playback_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(10, lambda: self._release_playback_worker_later(worker))
+            return
+        self._playback_workers.discard(worker)
+        if self._playback_worker is worker:
+            self._playback_worker = None
+
+    def _on_playback_progress(self, token: int, percent: int):
+        if token == self._playback_token:
+            self._status.setText(f"Loading preview... {percent}%")
+
+    def _on_playback_ready(self, token: int, worker, payload):
+        self._release_playback_worker_later(worker)
+        if token != self._playback_token:
+            return
+        self._playback_worker = None
         try:
+            audio, sample_rate = payload
             engine = AudioEngine()
-            if not engine.load_file(path):
-                if self._toast:
-                    self._toast.show_toast(f"Could not load {path}", "error")
-                return
+            if not engine.load_array(audio, sample_rate):
+                raise RuntimeError("Audio playback rejected the decoded buffer")
             engine.play()
-        except Exception as e:
-            if self._toast:
-                self._toast.show_toast(f"Playback error: {e}", "error")
+            self._status.setText("Playing preview")
+        except Exception as exc:
+            self._on_playback_error(token, worker, str(exc))
+
+    def _on_playback_error(self, token: int, worker, message: str):
+        self._release_playback_worker_later(worker)
+        if token != self._playback_token:
+            return
+        self._playback_worker = None
+        if self._toast:
+            self._toast.show_toast(f"Playback error: {message}", "error")
+
+    def _on_playback_cancelled(self, token: int, worker):
+        self._release_playback_worker_later(worker)
+        if token == self._playback_token:
+            self._playback_worker = None
+            self._status.setText("Preview loading cancelled")
 
     def _on_send_vocal_stem(self):
         if self._current_vocal_stem_path:
@@ -1132,6 +1219,10 @@ class SongForgeView(QWidget):
     # ── Export ────────────────────────────────────────────────────────────────
 
     def _on_export(self):
+        if self._export_worker is not None and self._export_worker.isRunning():
+            self._export_worker.cancel()
+            self._output_info.setText("Cancelling export...")
+            return
         if not self._current_audio_path:
             return
 
@@ -1140,23 +1231,73 @@ class SongForgeView(QWidget):
             "WAV (*.wav);;FLAC (*.flac);;MP3 (*.mp3);;OGG (*.ogg)",
         )
         if path:
-            try:
-                from core.audio_export import export_audio, get_export_license_warnings, ExportSettings
-                fmt = path.rsplit(".", 1)[-1].lower()
-                settings = ExportSettings(format=fmt)
-                license_warnings = get_export_license_warnings(self._current_audio_path)
-                export_audio(self._current_audio_path, path, settings)
-                if self._toast:
-                    if license_warnings:
-                        self._toast.show_toast(
-                            f"Exported with license warning: {license_warnings[0]}",
-                            "warning",
-                        )
-                    else:
-                        self._toast.show_toast(f"Exported to {path}", "success")
-            except Exception as e:
-                if self._toast:
-                    self._toast.show_toast(f"Export failed: {e}", "error")
+            from core.audio_export import ExportSettings
+
+            fmt = path.rsplit(".", 1)[-1].lower()
+            worker = InferenceWorker(
+                _song_forge_export_task,
+                self._current_audio_path,
+                path,
+                ExportSettings(format=fmt),
+            )
+            worker.progress.connect(
+                lambda pct: self._output_info.setText(f"Exporting... {pct}%")
+            )
+            worker.finished.connect(self._on_export_finished)
+            worker.error.connect(self._on_export_error)
+            worker.cancelled.connect(self._on_export_cancelled)
+            self._export_workers.add(worker)
+            self._export_worker = worker
+            self._export_btn.setEnabled(False)
+            self._export_btn.setText("Cancel Export")
+            self._output_info.setText("Exporting... 0%")
+            worker.start()
+
+    def _release_export_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(10, lambda: self._release_export_worker_later(worker))
+            return
+        self._export_workers.discard(worker)
+        if self._export_worker is worker:
+            self._export_worker = None
+
+    def _restore_export_button(self):
+        if self._current_audio_path:
+            self._export_btn.setEnabled(True)
+            self._export_btn.setText("Export")
+
+    def _on_export_finished(self, payload: dict):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        warnings = payload.get("license_warnings", [])
+        if self._toast:
+            if warnings:
+                self._toast.show_toast(
+                    f"Exported with license warning: {warnings[0]}",
+                    "warning",
+                )
+            else:
+                self._toast.show_toast(f"Exported to {payload['path']}", "success")
+        self._restore_export_button()
+
+    def _on_export_error(self, message: str):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        if self._toast:
+            self._toast.show_toast(f"Export failed: {message}", "error")
+        self._restore_export_button()
+
+    def _on_export_cancelled(self):
+        worker = self._export_worker
+        self._release_export_worker_later(worker)
+        self._export_worker = None
+        self._output_info.setText("Export cancelled")
+        self._restore_export_button()
 
     # ── Batch Result ──────────────────────────────────────────────────────────
 

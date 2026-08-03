@@ -12,10 +12,11 @@ from PySide6.QtCore import Qt, QTimer, QSize, Signal
 from PySide6.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent
 
 from core.settings import Settings, APP_VERSION
-from core.audio_engine import AudioEngine, format_time
+from core.audio_engine import AudioEngine, decode_playback_file, format_time
 from core.i18n import tr
 from core.model_manager import ModelManager
 from core.workers import shutdown_workers
+from core.workers import InferenceWorker
 from ui.theme import Palette, build_stylesheet
 from ui.toast import ToastHistoryDialog, ToastManager
 from ui.accessibility import install_accessibility, set_accessible
@@ -43,6 +44,18 @@ PAGE_META = (
     ("SYSTEM", "Model Hub", "Install and manage the local models behind each workflow."),
     ("SYSTEM", "Settings", "Control storage, compute, appearance and diagnostics."),
 )
+
+
+def _gpu_status_task(progress_cb=None, **_kwargs):
+    """Probe the accelerator without importing torch on the GUI thread."""
+    from core.model_manager import get_gpu_info
+
+    if progress_cb:
+        progress_cb(10)
+    gpu = get_gpu_info()
+    if progress_cb:
+        progress_cb(100)
+    return gpu
 
 
 # ── Sidebar Navigation ────────────────────────────────────────────────────────
@@ -340,6 +353,10 @@ class MainWindow(QMainWindow):
 
         self._settings = Settings()
         self._model_mgr = ModelManager()
+        self._gpu_worker = None
+        self._gpu_workers = set()
+        self._drop_playback_worker = None
+        self._drop_playback_workers = set()
 
         # Toast manager
         self.toast_mgr = ToastManager(self)
@@ -622,8 +639,50 @@ class MainWindow(QMainWindow):
         self._gpu_timer.start(2000)
 
     def _update_gpu_status(self):
-        """Update GPU status in the status bar."""
-        gpu = self._model_mgr.get_gpu_status()
+        """Queue a GPU status probe; torch import and CUDA calls stay off-thread."""
+        if self._gpu_worker is not None and self._gpu_worker.isRunning():
+            return
+        worker = InferenceWorker(_gpu_status_task)
+        self._gpu_workers.add(worker)
+        self._gpu_worker = worker
+        worker.finished.connect(self._on_gpu_status_finished)
+        worker.error.connect(self._on_gpu_status_error)
+        worker.start()
+
+    def _release_gpu_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._release_gpu_worker_later(worker))
+            return
+        self._gpu_workers.discard(worker)
+        if self._gpu_worker is worker:
+            self._gpu_worker = None
+
+    def _on_gpu_status_finished(self, gpu: dict):
+        worker = self._gpu_worker
+        self._release_gpu_worker_later(worker)
+        self._gpu_worker = None
+        with self._model_mgr._state_lock:
+            current_id = self._model_mgr._current_model_id
+        gpu["current_model_name"] = (
+            self._model_mgr._registry[current_id].name
+            if current_id and current_id in self._model_mgr._registry
+            else None
+        )
+        self._apply_gpu_status(gpu)
+
+    def _on_gpu_status_error(self, message: str):
+        worker = self._gpu_worker
+        self._release_gpu_worker_later(worker)
+        self._gpu_worker = None
+        self._gpu_status_label.setText("⚠ GPU status unavailable")
+        self._vram_label.setText("")
+        self._compute_status_label.setText("●  Hardware status unavailable")
+        self._status_bar.showMessage(message, 5000)
+
+    def _apply_gpu_status(self, gpu: dict):
+        """Update GPU status widgets from a completed background probe."""
         if gpu.get("available"):
             self._gpu_status_label.setText(f"\U0001f4bb {gpu['name']}")
             used = gpu["used_gb"]
@@ -661,10 +720,7 @@ class MainWindow(QMainWindow):
             if path:
                 ext = path.lower().rsplit(".", 1)[-1] if "." in path else ""
                 if ext in ("wav", "flac", "mp3", "ogg", "aiff"):
-                    audio = AudioEngine()
-                    if audio.load_file(path):
-                        self.toast_mgr.success(f"Loaded: {path.rsplit('/', 1)[-1].rsplit(chr(92), 1)[-1]}")
-                        audio.play()
+                    self._play_dropped_audio(path)
                 elif ext in ("mid", "midi"):
                     self.toast_mgr.info("MIDI file detected — loading in MIDI Studio")
                     self._sidebar.select_page(2)
@@ -839,6 +895,64 @@ class MainWindow(QMainWindow):
         if self._autosave.enabled:
             self._autosave.start()
         return False
+
+    def _play_dropped_audio(self, path: str):
+        """Decode a dropped audio file before handing it to playback."""
+        if self._drop_playback_worker is not None and self._drop_playback_worker.isRunning():
+            self._drop_playback_worker.cancel()
+        worker = InferenceWorker(decode_playback_file, path)
+        self._drop_playback_workers.add(worker)
+        self._drop_playback_worker = worker
+        worker.progress.connect(
+            lambda pct: self.statusBar().showMessage(f"Loading audio... {pct}%")
+        )
+        worker.finished.connect(self._on_dropped_audio_ready)
+        worker.error.connect(self._on_dropped_audio_error)
+        worker.cancelled.connect(self._on_dropped_audio_cancelled)
+        self.statusBar().showMessage("Loading audio... 0%")
+        worker.start()
+
+    def _release_drop_playback_worker_later(self, worker):
+        if worker is None:
+            return
+        if worker.isRunning():
+            QTimer.singleShot(
+                10,
+                lambda: self._release_drop_playback_worker_later(worker),
+            )
+            return
+        self._drop_playback_workers.discard(worker)
+        if self._drop_playback_worker is worker:
+            self._drop_playback_worker = None
+
+    def _on_dropped_audio_ready(self, payload):
+        worker = self._drop_playback_worker
+        self._release_drop_playback_worker_later(worker)
+        self._drop_playback_worker = None
+        try:
+            audio, sample_rate = payload
+            engine = AudioEngine()
+            if not engine.load_array(audio, sample_rate):
+                raise RuntimeError("Audio playback rejected the decoded buffer")
+            engine.play()
+            self.statusBar().clearMessage()
+            self.toast_mgr.success("Audio loaded")
+        except Exception as exc:
+            self.toast_mgr.error(f"Audio playback failed: {exc}")
+
+    def _on_dropped_audio_error(self, message: str):
+        worker = self._drop_playback_worker
+        self._release_drop_playback_worker_later(worker)
+        self._drop_playback_worker = None
+        self.statusBar().clearMessage()
+        self.toast_mgr.error(f"Audio playback failed: {message}")
+
+    def _on_dropped_audio_cancelled(self):
+        worker = self._drop_playback_worker
+        self._release_drop_playback_worker_later(worker)
+        self._drop_playback_worker = None
+        self.statusBar().clearMessage()
+        self.toast_mgr.info("Audio loading cancelled")
 
     def resizeEvent(self, event):
         """Keep transient notifications anchored to the current window bounds."""

@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from typing import Optional
 from pathlib import Path
 from dataclasses import asdict, dataclass
@@ -233,6 +234,105 @@ def _verify_written_file(path: str) -> dict:
     }
 
 
+def _raise_if_export_cancelled(cancel_event, message: str, outputs=None):
+    if cancel_event is not None and cancel_event.is_set():
+        from core.workers import CancelledJobError
+
+        raise CancelledJobError(message, outputs=outputs or [])
+
+
+def _read_audio_file(
+    path: str,
+    *,
+    progress_cb=None,
+    cancel_event=None,
+) -> tuple[np.ndarray, int]:
+    """Read a source in bounded chunks while preserving mono/stereo layout."""
+    import soundfile as sf
+
+    source_path = str(path)
+    with sf.SoundFile(source_path, mode="r") as source:
+        sample_rate = int(source.samplerate)
+        channels = int(source.channels)
+        total_frames = max(0, int(len(source)))
+        frames_read = 0
+        chunks = []
+        if progress_cb:
+            progress_cb(0)
+        while True:
+            _raise_if_export_cancelled(
+                cancel_event,
+                "Audio export decode cancelled",
+            )
+            chunk = source.read(
+                frames=1_048_576,
+                dtype="float32",
+                always_2d=True,
+            )
+            if len(chunk) == 0:
+                break
+            chunks.append(chunk)
+            frames_read += len(chunk)
+            if progress_cb and total_frames:
+                progress_cb(min(100, int(frames_read * 100 / total_frames)))
+
+    if not chunks:
+        raise RuntimeError(f"Source audio is empty: {source_path}")
+    audio = np.concatenate(chunks, axis=0)
+    if channels == 1:
+        audio = audio[:, 0]
+    return np.ascontiguousarray(audio), sample_rate
+
+
+def _write_audio_file(
+    path: str,
+    audio: np.ndarray,
+    sample_rate: int,
+    *,
+    subtype: str,
+    progress_cb=None,
+    cancel_event=None,
+) -> None:
+    """Write a buffer in chunks so cancellation remains observable."""
+    import soundfile as sf
+
+    frames = np.asarray(audio)
+    if frames.ndim == 1:
+        channels = 1
+    elif frames.ndim == 2:
+        channels = frames.shape[1]
+    else:
+        raise ValueError(f"Audio must be one or two dimensional, got {frames.shape}")
+
+    total_frames = len(frames)
+    try:
+        with sf.SoundFile(
+            str(path),
+            mode="w",
+            samplerate=int(sample_rate),
+            channels=int(channels),
+            subtype=subtype,
+        ) as target:
+            if progress_cb:
+                progress_cb(0)
+            for start in range(0, total_frames, 1_048_576):
+                _raise_if_export_cancelled(
+                    cancel_event,
+                    "Audio export write cancelled",
+                    outputs=[str(path)],
+                )
+                end = min(total_frames, start + 1_048_576)
+                target.write(frames[start:end])
+                if progress_cb and total_frames:
+                    progress_cb(int(end * 100 / total_frames))
+    except Exception as exc:
+        from core.workers import CancelledJobError
+
+        if isinstance(exc, CancelledJobError) and os.path.exists(path):
+            os.remove(path)
+        raise
+
+
 def _find_ffmpeg() -> Optional[str]:
     """Find ffmpeg in PATH or common locations."""
     ffmpeg = shutil.which("ffmpeg")
@@ -335,13 +435,13 @@ def export_audio(
     source_asset_ids: Optional[list[str]] = None,
     source_paths: Optional[list[str]] = None,
     provenance_extra: Optional[dict] = None,
+    progress_cb=None,
+    cancel_event=None,
 ) -> str:
     """
     Export audio file to target format with optional processing.
     Returns final output path.
     """
-    import soundfile as sf
-
     if settings is None:
         settings = ExportSettings()
 
@@ -353,23 +453,37 @@ def export_audio(
     if not output_path.lower().endswith(ext):
         output_path = os.path.splitext(output_path)[0] + ext
 
+    def _progress(value: float):
+        if progress_cb:
+            progress_cb(int(value))
+
     # Load source
-    audio, sr = sf.read(source_path, dtype="float32")
+    audio, sr = _read_audio_file(
+        source_path,
+        progress_cb=lambda value: _progress(value * 0.25),
+        cancel_event=cancel_event,
+    )
+    _raise_if_export_cancelled(cancel_event, "Audio export cancelled")
 
     # Resample if needed
     if sr != settings.sample_rate:
         audio = resample_audio(audio, sr, settings.sample_rate)
         sr = settings.sample_rate
+    _progress(35)
 
     # Apply processing
     if settings.fade_in_ms > 0 or settings.fade_out_ms > 0:
         audio = apply_fade(audio, sr, settings.fade_in_ms, settings.fade_out_ms)
+    _progress(45)
 
     if settings.normalize:
         audio = normalize_audio(audio, settings.normalize_target_db)
+    _raise_if_export_cancelled(cancel_event, "Audio export cancelled")
+    _progress(50)
 
     availability = require_codec(settings.format)
     tags = settings.metadata_tags()
+    _progress(55)
 
     # Export based on format
     if settings.format in LOSSLESS_FORMATS:
@@ -381,16 +495,35 @@ def export_audio(
             (24, "flac"): "PCM_24",
         }
         subtype = subtype_map.get((settings.bit_depth, settings.format), "PCM_16")
-        sf.write(output_path, audio, sr, subtype=subtype)
+        _write_audio_file(
+            output_path,
+            audio,
+            sr,
+            subtype=subtype,
+            progress_cb=lambda value: _progress(55 + value * 0.3),
+            cancel_event=cancel_event,
+        )
         _write_lossless_tags(output_path, settings.format, tags)
 
     else:
         # Write temp WAV, then convert via ffmpeg
         ffmpeg = _find_ffmpeg()
         temp_wav = output_path + ".tmp.wav"
-        sf.write(temp_wav, audio, sr, subtype="PCM_16")
+        _write_audio_file(
+            temp_wav,
+            audio,
+            sr,
+            subtype="PCM_16",
+            progress_cb=lambda value: _progress(55 + value * 0.15),
+            cancel_event=cancel_event,
+        )
 
         try:
+            _raise_if_export_cancelled(
+                cancel_event,
+                "Audio export cancelled",
+                outputs=[output_path],
+            )
             cmd = [ffmpeg, "-y", "-i", temp_wav]
             for key, value in tags.items():
                 cmd += ["-metadata", f"{key}={_sanitize_meta(value)}"]
@@ -403,14 +536,54 @@ def export_audio(
                 cmd += ["-codec:a", "libopus", "-b:a", f"{settings.opus_bitrate}k"]
 
             cmd.append(output_path)
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            started_at = time.monotonic()
+            while process.poll() is None:
+                if cancel_event is not None and cancel_event.is_set():
+                    process.terminate()
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    if os.path.exists(output_path):
+                        os.remove(output_path)
+                    from core.workers import CancelledJobError
 
-            result = subprocess.run(cmd, capture_output=True, timeout=300)
-            if result.returncode != 0:
-                raise RuntimeError(f"ffmpeg failed: {result.stderr.decode()[:200]}")
+                    raise CancelledJobError(
+                        "Audio export cancelled",
+                        outputs=[output_path],
+                    )
+                if time.monotonic() - started_at > 300:
+                    process.kill()
+                    process.wait()
+                    raise RuntimeError("ffmpeg export timed out after 300 seconds")
+                _progress(70)
+                time.sleep(0.05)
+            stderr = process.stderr.read().decode(errors="replace") if process.stderr else ""
+            if process.returncode != 0:
+                raise RuntimeError(f"ffmpeg failed: {stderr[:200]}")
+            _progress(98)
         finally:
             if os.path.exists(temp_wav):
                 os.remove(temp_wav)
 
+    try:
+        _raise_if_export_cancelled(
+            cancel_event,
+            "Audio export cancelled",
+            outputs=[output_path],
+        )
+    except Exception as exc:
+        from core.workers import CancelledJobError
+
+        if isinstance(exc, CancelledJobError) and os.path.exists(output_path):
+            os.remove(output_path)
+        raise
     verification = _verify_written_file(output_path)
 
     extra = dict(provenance_extra or {})
@@ -438,6 +611,7 @@ def export_audio(
         output_kind="export",
         extra=extra,
     )
+    _progress(100)
     return output_path
 
 
@@ -485,18 +659,27 @@ def export_from_numpy(
     source_asset_ids: Optional[list[str]] = None,
     source_paths: Optional[list[str]] = None,
     provenance_extra: Optional[dict] = None,
+    progress_cb=None,
+    cancel_event=None,
 ) -> str:
     """Export a numpy audio array directly to file."""
-    import soundfile as sf
-
     if settings is None:
         settings = ExportSettings()
 
     # Write temp WAV then use main export
     temp_path = output_path + ".tmp_src.wav"
-    sf.write(temp_path, audio, sr, subtype="FLOAT")
-
     try:
+        _write_audio_file(
+            temp_path,
+            audio,
+            sr,
+            subtype="FLOAT",
+            progress_cb=(
+                (lambda value: progress_cb(int(value * 0.15)))
+                if progress_cb else None
+            ),
+            cancel_event=cancel_event,
+        )
         extra = {"input_sample_rate": sr, "input_shape": list(audio.shape)}
         if provenance_extra:
             extra.update(provenance_extra)
@@ -509,6 +692,11 @@ def export_from_numpy(
             source_asset_ids=source_asset_ids or [],
             source_paths=source_paths or [],
             provenance_extra=extra,
+            progress_cb=(
+                (lambda value: progress_cb(15 + int(value * 0.85)))
+                if progress_cb else None
+            ),
+            cancel_event=cancel_event,
         )
     finally:
         if os.path.exists(temp_path):

@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 import unittest
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
@@ -27,6 +28,16 @@ class WaveformContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def _wait_for(self, predicate, timeout=5.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if predicate():
+                return True
+            time.sleep(0.01)
+        self.app.processEvents()
+        return bool(predicate())
+
     def test_canonical_loader_renders_file_mono_and_both_stereo_layouts(self):
         widget = WaveformWidget()
         try:
@@ -51,6 +62,7 @@ class WaveformContractTests(unittest.TestCase):
                 audio_path = Path(tmp) / "preview.wav"
                 sf.write(audio_path, stereo, 8000, subtype="PCM_16")
                 self.assertTrue(widget.load_audio(audio_path))
+                self.assertTrue(self._wait_for(lambda: widget.has_audio))
                 self.assertEqual((4096, 2), widget._audio_data.shape)
                 self.assertEqual(8000, widget._sample_rate)
         finally:
@@ -99,6 +111,7 @@ class WaveformContractTests(unittest.TestCase):
                 melspectrogram.assert_not_called()
 
                 widget._set_mode("spectrogram")
+                self.assertTrue(self._wait_for(lambda: widget._spectrogram_ready))
                 self.assertEqual(1, melspectrogram.call_count)
                 widget._set_mode("waveform")
                 widget._set_mode("spectrogram")
@@ -135,6 +148,7 @@ class WaveformContractTests(unittest.TestCase):
                 )
                 ai_view._display_result(result)
 
+                self.assertTrue(self._wait_for(lambda: ai_view._waveform.has_audio))
                 self.assertTrue(ai_view._waveform.has_audio)
                 self.assertTrue(ai_view._export_btn.isEnabled())
         finally:
@@ -167,6 +181,14 @@ class WaveformContractTests(unittest.TestCase):
                     )
 
                     view.set_audio(str(routed_path))
+                    self.assertTrue(
+                        self._wait_for(
+                            lambda: (
+                                view._melody_waveform.has_audio
+                                and view._autotune_waveform.has_audio
+                            )
+                        )
+                    )
                     self.assertTrue(view._melody_waveform.has_audio)
                     self.assertTrue(view._autotune_waveform.has_audio)
                     self.assertEqual(

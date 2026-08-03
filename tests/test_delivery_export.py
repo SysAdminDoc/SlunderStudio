@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -186,6 +187,23 @@ class DeliveryRoundTripTests(unittest.TestCase):
             _verify_written_file(str(empty))
         with self.assertRaises(RuntimeError):
             _verify_written_file(str(self.root / "missing.wav"))
+
+    def test_pre_cancelled_numpy_export_leaves_no_temporary_file(self):
+        from core.workers import CancelledJobError
+
+        cancel = threading.Event()
+        cancel.set()
+        output = self.root / "cancelled.wav"
+        with self.assertRaises(CancelledJobError):
+            export_from_numpy(
+                self.audio,
+                SR,
+                str(output),
+                ExportSettings(format="wav", sample_rate=SR),
+                cancel_event=cancel,
+            )
+        self.assertFalse(output.exists())
+        self.assertFalse(Path(str(output) + ".tmp_src.wav").exists())
 
 
 if __name__ == "__main__":

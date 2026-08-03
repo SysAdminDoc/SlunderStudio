@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QFrame, QFileDialog, QListWidget, QListWidgetItem, QScrollArea,
     QGroupBox, QGridLayout,
 )
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
 from ui.theme import Palette
@@ -51,6 +51,7 @@ class ReferencePanel(QWidget):
         super().__init__(parent)
         self._analysis = None
         self._worker = None
+        self._analysis_workers = set()
         # Monotonic token so a result from a superseded file is discarded.
         self._analysis_token = 0
         self._pending_path = ""
@@ -254,25 +255,51 @@ class ReferencePanel(QWidget):
             lambda pct, t=token: self._on_analysis_progress(t, pct)
         )
         worker.finished.connect(
-            lambda result, t=token, p=str(file_path): self._on_analysis_done(t, p, result)
+            lambda result, t=token, p=str(file_path), w=worker:
+            self._on_analysis_done(t, p, result, w)
         )
         worker.error.connect(
-            lambda message, t=token: self._on_analysis_error(t, message)
+            lambda message, t=token, w=worker: self._on_analysis_error(t, message, w)
         )
-        worker.cancelled.connect(lambda t=token: self._on_analysis_cancelled(t))
+        worker.cancelled.connect(
+            lambda t=token, w=worker: self._on_analysis_cancelled(t, w)
+        )
+        self._analysis_workers.add(worker)
         self._worker = worker
         worker.start()
 
     def cancel_analysis(self):
-        """Stop any in-flight analysis and wait for the worker to exit."""
-        worker = getattr(self, "_worker", None)
+        """Request cancellation without blocking or dropping a live worker."""
+        current = getattr(self, "_worker", None)
+        workers = set(getattr(self, "_analysis_workers", set()))
+        if current is not None:
+            workers.add(current)
+        running_workers = [worker for worker in workers if worker.isRunning()]
+        if not running_workers:
+            if current is not None:
+                self._release_worker_later(current)
+            return
+        self._analysis_token += 1
+        for worker in running_workers:
+            worker.cancel()
+            self._release_worker_later(worker)
+        if current in running_workers:
+            self._cancel_btn.setEnabled(False)
+            self._progress_label.setText("Cancelling...")
+            return
+
+    def _release_worker_later(self, worker):
+        """Retain a QThread wrapper until its native thread has stopped."""
         if worker is None:
             return
         if worker.isRunning():
-            worker.cancel()
-            worker.wait(10000)
-        self._worker = None
-        self._cancel_btn.setVisible(False)
+            QTimer.singleShot(10, lambda: self._release_worker_later(worker))
+            return
+        self._analysis_workers.discard(worker)
+        if self._worker is worker:
+            self._worker = None
+            self._cancel_btn.setEnabled(True)
+            self._cancel_btn.setVisible(False)
 
     def _is_current(self, token: int) -> bool:
         """A result from a superseded selection must never be applied."""
@@ -288,29 +315,32 @@ class ReferencePanel(QWidget):
                 f"{self._progress_label.text().split(' - ')[0]} - {percent}%"
             )
 
-    def _on_analysis_done(self, token: int, file_path: str, analysis):
+    def _on_analysis_done(self, token: int, file_path: str, analysis, worker=None):
         from pathlib import Path
 
-        self._cancel_btn.setVisible(False)
-        self._progress_label.setText("")
+        self._release_worker_later(worker)
         if not self._is_current(token) or analysis is None:
             return
-        self._display_analysis(analysis, Path(file_path).name)
-
-    def _on_analysis_error(self, token: int, message: str):
         self._cancel_btn.setVisible(False)
         self._progress_label.setText("")
+        self._display_analysis(analysis, Path(file_path).name)
+
+    def _on_analysis_error(self, token: int, message: str, worker=None):
+        self._release_worker_later(worker)
         if not self._is_current(token):
             return
+        self._cancel_btn.setVisible(False)
+        self._progress_label.setText("")
         if "librosa" in message.lower() or "import" in message.lower():
             self._drop_zone.setText("Audio analysis unavailable - install librosa")
         else:
             self._drop_zone.setText(f"Analysis failed: {message[:60]}")
 
-    def _on_analysis_cancelled(self, token: int):
-        self._cancel_btn.setVisible(False)
-        self._progress_label.setText("")
+    def _on_analysis_cancelled(self, token: int, worker=None):
+        self._release_worker_later(worker)
         if self._is_current(token):
+            self._cancel_btn.setVisible(False)
+            self._progress_label.setText("")
             self._drop_zone.setText("Analysis cancelled")
 
     def _display_analysis(self, analysis, filename: str):

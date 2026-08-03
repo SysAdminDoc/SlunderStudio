@@ -164,36 +164,74 @@ def decode_audio_file(
     *,
     target_sample_rate: Optional[int] = None,
     target_channels: int = 2,
+    progress_cb=None,
+    cancel_event=None,
 ) -> tuple[np.ndarray, int]:
-    """Decode a local audio file and optionally prepare it for a project rate."""
+    """Decode a local audio file and optionally prepare it for a project rate.
+
+    Reading is chunked so callers can report determinate progress and cancel a
+    large decode without leaving the GUI thread blocked.
+    """
     path = Path(file_path)
     if not path.is_file():
         raise FileNotFoundError(f"Audio file not found: {path}")
 
     import soundfile as sf
+    from core.workers import CancelledJobError
+
+    def _raise_if_cancelled():
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError(f"Audio decode cancelled: {path.name}")
 
     try:
-        audio, source_rate = sf.read(
-            str(path),
-            dtype="float32",
-            always_2d=True,
-        )
+        with sf.SoundFile(str(path), mode="r") as source:
+            source_rate = validate_sample_rate(source.samplerate)
+            total_frames = max(0, int(len(source)))
+            frames_read = 0
+            chunks = []
+            if progress_cb:
+                progress_cb(0)
+            while True:
+                _raise_if_cancelled()
+                chunk = source.read(
+                    frames=1_048_576,
+                    dtype="float32",
+                    always_2d=True,
+                )
+                if len(chunk) == 0:
+                    break
+                chunks.append(chunk)
+                frames_read += len(chunk)
+                if progress_cb and total_frames:
+                    progress_cb(min(60, int(frames_read * 60 / total_frames)))
+            _raise_if_cancelled()
+        if not chunks:
+            raise AudioBufferError("Audio file contains no frames")
+        audio = np.concatenate(chunks, axis=0)
+    except CancelledJobError:
+        raise
     except (OSError, RuntimeError, ValueError) as exc:
         raise AudioBufferError(f"Could not decode {path.name}: {exc}") from exc
 
-    source_rate = validate_sample_rate(source_rate)
+    _raise_if_cancelled()
     if target_sample_rate is None:
-        return (
+        result = (
             normalize_channel_layout(audio, target_channels=target_channels),
             source_rate,
         )
+        if progress_cb:
+            progress_cb(100)
+        return result
     target_rate = validate_sample_rate(target_sample_rate)
-    return (
-        prepare_audio_buffer(
-            audio,
-            source_rate,
-            target_rate,
-            target_channels=target_channels,
-        ),
+    if progress_cb:
+        progress_cb(65)
+    result = prepare_audio_buffer(
+        audio,
+        source_rate,
         target_rate,
+        target_channels=target_channels,
     )
+    _raise_if_cancelled()
+    if progress_cb:
+        progress_cb(100)
+    return result, target_rate

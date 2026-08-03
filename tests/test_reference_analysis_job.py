@@ -184,13 +184,17 @@ class ReferencePanelJobTests(unittest.TestCase):
         self.panel._on_analysis_cancelled(1)
         self.assertEqual(self.panel._drop_zone.text(), "current")
 
-    def test_cancel_waits_for_the_worker_to_exit(self):
+    def test_cancel_is_nonblocking_and_retains_worker_until_exit(self):
         path = write_tone(self.root / "a.wav", seconds=3.0)
         self.panel._analyze_file(str(path))
         worker = self.panel._worker
+        started = time.monotonic()
         self.panel.cancel_analysis()
+        self.assertLess(time.monotonic() - started, 1.0)
+        if worker.isRunning():
+            self.assertIs(self.panel._worker, worker)
+        self.assertTrue(self._wait(lambda: not worker.isRunning()))
         self.assertIsNone(self.panel._worker)
-        self.assertFalse(worker.isRunning())
         self.assertFalse(self.panel._cancel_btn.isVisible())
 
     def test_starting_a_new_analysis_cancels_the_previous_one(self):
@@ -200,7 +204,7 @@ class ReferencePanelJobTests(unittest.TestCase):
         previous = self.panel._worker
         self.panel._analyze_file(str(second))
         self.assertIsNot(self.panel._worker, previous)
-        self.assertFalse(previous.isRunning())
+        self.assertTrue(self._wait(lambda: not previous.isRunning()))
         self.panel.cancel_analysis()
 
 

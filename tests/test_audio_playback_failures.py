@@ -1,4 +1,5 @@
 import os
+import time
 import unittest
 from unittest import mock
 from types import SimpleNamespace
@@ -100,12 +101,16 @@ class AudioPlaybackFailureTests(unittest.TestCase):
 
                 view._play_audio(path)
 
-                engine.load_file.assert_called_once_with(path)
                 engine.play.assert_not_called()
 
-            self.assertEqual(
-                [(f"Could not load {path}", "error")], toast.messages
-            )
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline and not toast.messages:
+                self._app.processEvents()
+                time.sleep(0.01)
+
+            self.assertEqual(1, len(toast.messages))
+            self.assertIn("Playback error", toast.messages[0][0])
+            self.assertEqual("error", toast.messages[0][1])
         finally:
             view.deleteLater()
             self._app.processEvents()

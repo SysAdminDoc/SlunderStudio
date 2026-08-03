@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased - 2026-08-02
 
+- Moved audio file decode, waveform/spectrogram work, quality scoring, mixer mixdown,
+  playback loading, and audio exports onto cancellable worker paths with determinate
+  progress. Batch previews now decode once and reuse the same buffer for scoring and
+  display; worker references remain retained until their native QThreads stop.
 - Replaced the PID-only single-instance check with a held OS file lock (`msvcrt` on Windows,
   `fcntl` elsewhere), recorded executable identity for diagnostics, retained the lock inode
   across exits, and made lock-path and permission failures fail closed with actionable guidance.

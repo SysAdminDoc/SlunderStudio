@@ -11,13 +11,54 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel,
     QFrame, QScrollArea, QSpinBox,
 )
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QTimer
 
 from ui.accessibility import install_accessibility
 from ui.theme import Palette
 from ui.waveform_widget import MiniWaveform
 from core.job_state import JobStatus, JobStore
 from core.settings import get_config_dir
+from core.audio_buffers import decode_audio_file
+from core.workers import CancelledJobError, InferenceWorker
+
+
+def _prepare_batch_card_task(
+    audio_path: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    """Decode once, then score the exact buffer shown by a batch card."""
+    from engines.audio_analyzer import score_audio_buffer
+
+    def _decode_progress(value: int):
+        if progress_cb:
+            progress_cb(int(value * 0.7))
+
+    audio, sample_rate = decode_audio_file(
+        audio_path,
+        target_channels=2,
+        progress_cb=_decode_progress,
+        cancel_event=cancel_event,
+    )
+    if cancel_event is not None and cancel_event.is_set():
+        raise CancelledJobError("Batch preview cancelled")
+
+    def _score_progress(value: int):
+        if progress_cb:
+            progress_cb(70 + int(value * 0.3))
+
+    quality = score_audio_buffer(
+        audio,
+        sample_rate,
+        progress_cb=_score_progress,
+        cancel_event=cancel_event,
+    )
+    return {
+        "audio": audio,
+        "sample_rate": sample_rate,
+        "quality": quality,
+    }
 
 
 class BatchCard(QFrame):
@@ -33,6 +74,10 @@ class BatchCard(QFrame):
         self._seed = 0
         self._gen_time = 0.0
         self._quality_score = 0.0
+        self._quality_token = 0
+        self._quality_worker = None
+        self._quality_workers = set()
+        self._closed = False
         self._is_starred = False
         self._is_playing = False
 
@@ -130,10 +175,94 @@ class BatchCard(QFrame):
         if gen_time > 0:
             self._time_label.setText(f"{gen_time:.1f}s")
 
+        self._start_quality_job()
+
+    def _start_quality_job(self):
+        path = self._audio_path
+        if not path or not os.path.isfile(path):
+            self._score_label.setText("Q: unavailable")
+            return
+
+        self._quality_token += 1
+        token = self._quality_token
+        worker = InferenceWorker(_prepare_batch_card_task, path)
+        self._quality_workers.add(worker)
+        self._quality_worker = worker
+        self._score_label.setText("Q: 0%")
+        worker.progress.connect(
+            lambda percent, t=token: self._on_quality_progress(t, percent)
+        )
+        worker.finished.connect(
+            lambda payload, t=token, w=worker: self._on_quality_finished(t, w, payload)
+        )
+        worker.error.connect(
+            lambda message, t=token, w=worker: self._on_quality_error(t, w, message)
+        )
+        worker.cancelled.connect(
+            lambda t=token, w=worker: self._on_quality_cancelled(t, w)
+        )
         try:
-            self._waveform.load_audio(audio_path)
-        except Exception:
-            pass
+            worker.start()
+        except Exception as exc:
+            self._on_quality_error(token, worker, f"{type(exc).__name__}: {exc}")
+
+    def _forget_quality_worker_later(self, worker):
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._forget_quality_worker_later(worker))
+            return
+        self._quality_workers.discard(worker)
+
+    def _on_quality_progress(self, token: int, percent: int):
+        if token == self._quality_token and not self._closed:
+            self._score_label.setText(f"Q: {percent}%")
+
+    def _on_quality_finished(self, token: int, worker, payload: dict):
+        self._forget_quality_worker_later(worker)
+        if token != self._quality_token or self._closed:
+            return
+        self._quality_worker = None
+        try:
+            self._waveform.set_audio(payload["audio"], payload["sample_rate"])
+            self.set_quality_score(payload["quality"].total)
+        except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+            self._on_quality_error(token, worker, str(exc))
+
+    def _on_quality_error(self, token: int, worker, message: str):
+        self._forget_quality_worker_later(worker)
+        if token != self._quality_token or self._closed:
+            return
+        self._quality_worker = None
+        self._score_label.setText("Q: unavailable")
+
+    def _on_quality_cancelled(self, token: int, worker):
+        self._forget_quality_worker_later(worker)
+        if token != self._quality_token or self._closed:
+            return
+        self._quality_worker = None
+        self._score_label.setText("Q: cancelled")
+
+    def cancel_quality_score(self):
+        """Request cancellation without waiting on the GUI thread."""
+        worker = self._quality_worker
+        if worker is None or not worker.isRunning():
+            return
+        self._quality_token += 1
+        worker.cancel()
+        self._score_label.setText("Q: cancelling...")
+
+    def closeEvent(self, event):
+        self._closed = True
+        for worker in tuple(self._quality_workers):
+            try:
+                worker.cancel()
+                worker.progress.disconnect()
+                worker.finished.disconnect()
+                worker.error.disconnect()
+                worker.cancelled.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+        self._quality_worker = None
+        super().closeEvent(event)
 
     def _on_play(self):
         if self._audio_path:
@@ -302,14 +431,6 @@ class BatchView(QWidget):
         card.star_toggled.connect(self._on_star_toggled)
         card.delete_requested.connect(self._on_delete)
 
-        if audio_path and os.path.isfile(audio_path):
-            try:
-                from engines.audio_analyzer import score_generation_quality
-                quality = score_generation_quality(audio_path)
-                card.set_quality_score(quality.total)
-            except Exception:
-                pass
-
         row = idx // 2
         col = idx % 2
         self._grid_layout.addWidget(card, row, col)
@@ -379,6 +500,7 @@ class BatchView(QWidget):
     def _on_delete(self, index: int):
         if 0 <= index < len(self._cards):
             card = self._cards[index]
+            card.cancel_quality_score()
             self._grid_layout.removeWidget(card)
             card.deleteLater()
             self._cards.pop(index)
@@ -416,6 +538,7 @@ class BatchView(QWidget):
 
     def clear(self):
         for card in self._cards:
+            card.cancel_quality_score()
             self._grid_layout.removeWidget(card)
             card.deleteLater()
         self._cards.clear()
