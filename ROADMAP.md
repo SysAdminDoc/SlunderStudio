@@ -83,30 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Make first run end with a working installation
-  Why: The wizard promises model setup and preferences, delivers a static table, and leaves the user
-    with zero models and no idea where to get them.
-  Evidence: `ui/onboarding.py` is four pages — Welcome, System Check, Model Guide, Quick Start. Its
-    own docstring at `:3` promises a "model download prompt" and "preference setup"; `ModelGuidePage`
-    (`:210-285`) is a read-only table with no button and no navigation to Model Hub, and no
-    preference is collected despite Settings exposing output directory, experience level and default
-    language. There is no HuggingFace token step even though gated models need one — the token
-    prompt only appears at `ui/model_hub.py:48` *after* a download has already failed. There is no
-    skip/close button (`:397` Back and `:409` Next only) and no way to re-open the wizard later.
-    System Check has no remediation action: `:166` says "Run setup command from launch diagnostics"
-    without showing the command. `:277-279` tells first-run users "generation will use built-in
-    fallbacks", contradicting the shipped fail-closed demo behaviour and priming them to expect
-    output that will actually be refused or hard-labelled DEMO.
-  Touches: `ui/onboarding.py`, `main.py`, `ui/model_hub.py`, `ui/settings_view.py`, tests.
-  Acceptance: Onboarding can start a core model download or hand off to Model Hub with the choice
-    carried over; it collects output directory and any preference it claims to; a token step exists
-    before gated downloads rather than after a failure; System Check offers a working action per
-    failed row; an explicit Skip exists and is distinguishable from completion; the wizard can be
-    reopened from Settings; the fallback copy matches actual behaviour.
-  Complexity: M
-  Companion to the existing settings/onboarding audit item above, which covers the
-    complete-on-dismiss and duplicate-rows defects — do not fix those twice.
-
 - [ ] P2 — Consolidate audio writing, mixdown and resampling onto one path
   Why: The same six lines are hand-rolled in eight places in a form that cannot express sample rate
     or bit depth, which is what produced the remix-export bug, and three different resamplers
