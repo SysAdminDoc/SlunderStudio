@@ -83,13 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Complete UI localization with pseudolocale and RTL gates
-  Why: The catalog/helper exist, but most views remain hard-coded English and there is no runtime locale control.
-  Evidence: `core/i18n.py`, `assets/locales/en.json`, limited `tr()` call sites; ACE-Step/RVC multilingual UIs and Qt translation support.
-  Touches: all `ui/*`, i18n extraction/completeness tooling, Settings locale control, layouts, tests and translator docs.
-  Acceptance: All user-visible strings are keys; locale changes persist and apply on restart; missing keys fail tests; pseudolocale finds clipping; one RTL locale passes mirrored-layout and keyboard smoke tests.
-  Complexity: L
-
 - [ ] P2 — Add a maintained separator adapter with honest model capabilities
   Why: Archived Demucs is the only real backend while current tools expose maintained MDX/MDXC/Roformer/ensemble options and model-specific limitations.
   Evidence: `engines/demucs_engine.py`; UVR, python-audio-separator, Ableton stem separation.
