@@ -864,22 +864,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P3
 
-- [ ] P3 — Lyrics history offers a Favorites filter that nothing can ever populate
-  Category: ux
-  Where: `ui/lyrics_view.py:128-133, 163-173`
-  Problem: The history pane offers a "★ Favorites" filter and renders stars for
-    `entry.is_favorite`, but no UI anywhere sets a favorite — `LyricsDB.get_favorites` has no
-    writer-side counterpart in any view. The filter can only ever show an empty list.
-  Fix: Add a star toggle on history items (double-click or context menu) that persists
-    `is_favorite`.
-  Acceptance: A favorite can be set from the UI, survives a restart, and appears under the filter.
-  Confidence: Verified
-  Effort: S
-  Same defect class, fix together: `ui/batch_view.py:322` `_on_star_toggled` is `pass`. The signal
-    is genuinely wired at `:284`, so starring a batch variation looks like it works, but the state
-    lives only on the `BatchCard` and dies on `clear()` (`:361`). `BatchView.get_starred` (`:357`)
-    is itself dead. Both surfaces promise persistence they do not have.
-
 - [ ] P3 — Remix export hardcodes 44100 Hz instead of the stem mixer's stored rate
   Category: correctness
   Where: `ui/vocal_suite_view.py:2154-2164` (`_on_remix_export`); `ui/stem_mixer.py:263-269`

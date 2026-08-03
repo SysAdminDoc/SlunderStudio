@@ -37,6 +37,8 @@ All notable changes to SlunderStudio will be documented in this file.
 - Removed four unused theme animation helpers and their now-unneeded Qt animation imports.
 - Extended the piano-roll scene rect into its negative gutters so pitch labels and bar numbers
   remain visible, with a geometry regression test.
+- Made Lyrics History favorites actionable by persisting a double-click star toggle through the
+  existing Favorites filter and restart path.
 - Made the GPU/VRAM and active-model status bar visible and accessible instead of updating a hidden
   surface.
 - Centralized success-button styling on the themed palette, removed retired green and checked

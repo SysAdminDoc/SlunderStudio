@@ -148,6 +148,8 @@ class HistoryPanel(QWidget):
         self._list = QListWidget()
         self._list.setAlternatingRowColors(True)
         self._list.currentItemChanged.connect(self._on_selection)
+        self._list.itemDoubleClicked.connect(self._toggle_favorite)
+        self._list.setToolTip("Double-click an entry to toggle its favorite status.")
         layout.addWidget(self._list, 1)
 
         # Count
@@ -164,7 +166,11 @@ class HistoryPanel(QWidget):
                 (self._search, "Search lyrics history", "Filters saved lyrics entries."),
                 (self._all_btn, "Show all lyrics history", "Shows all saved lyrics entries."),
                 (self._fav_btn, "Show favorite lyrics", "Shows only favorite lyrics entries."),
-                (self._list, "Lyrics history list", "Selects a saved lyrics entry."),
+                (
+                    self._list,
+                    "Lyrics history list",
+                    "Selects a saved lyrics entry; double-click an entry to toggle its favorite status.",
+                ),
             ],
         )
 
@@ -174,7 +180,7 @@ class HistoryPanel(QWidget):
         self._fav_btn.setChecked(mode == "favorites")
         self._refresh()
 
-    def _refresh(self):
+    def _refresh(self, selected_id: Optional[int] = None):
         self._list.clear()
         query = self._search.text().strip()
 
@@ -191,7 +197,22 @@ class HistoryPanel(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, entry)
             self._list.addItem(item)
 
+        if selected_id is not None:
+            for row in range(self._list.count()):
+                entry = self._list.item(row).data(Qt.ItemDataRole.UserRole)
+                if entry.id == selected_id:
+                    self._list.setCurrentRow(row)
+                    break
+
         self._count_label.setText(tr("lyrics.history.entries_count", count=len(entries)))
+
+    def _toggle_favorite(self, item: QListWidgetItem):
+        """Toggle the selected history entry and persist the new state."""
+        entry = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(entry, LyricsEntry) or entry.id <= 0:
+            return
+        entry.is_favorite = self._db.toggle_favorite(entry.id)
+        self._refresh(selected_id=entry.id)
 
     def _on_selection(self, current, previous):
         if current:
