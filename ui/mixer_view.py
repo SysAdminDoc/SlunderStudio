@@ -4,6 +4,7 @@ Multi-track mixer timeline with per-track volume/pan/effects,
 smart mastering presets, waveform overview, and final export.
 """
 import os
+import tempfile
 from dataclasses import replace
 from typing import Callable, Optional
 from PySide6.QtWidgets import (
@@ -21,10 +22,17 @@ from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.workers import CancelledJobError, InferenceWorker
+from core.dawproject import (
+    DAWProjectSpec,
+    DAWTrack,
+    export_dawproject,
+    validate_dawproject,
+)
 from core.panning import pan_gains
 from core.audio_export import (
     ExportSettings,
     export_from_numpy,
+    write_audio_file,
 )
 from core.audio_buffers import (
     decode_audio_file,
@@ -56,6 +64,7 @@ from ui.file_dialogs import (
     open_audio_file,
     open_audio_files,
     save_audio_file,
+    save_file,
 )
 
 
@@ -295,6 +304,70 @@ def _reference_track_task(
     }
 
 
+def _export_mixer_dawproject_task(
+    track_snapshots,
+    output_path: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    """Materialize current mixer buffers, then export and validate DAWproject."""
+    with tempfile.TemporaryDirectory(prefix="slunder-dawproject-") as temp_dir:
+        tracks = []
+        total = max(len(track_snapshots), 1)
+        for index, snapshot in enumerate(track_snapshots, 1):
+            if cancel_event is not None and cancel_event.is_set():
+                raise CancelledJobError("DAWproject export cancelled")
+            media_path = os.path.join(temp_dir, f"track-{index}.wav")
+            write_audio_file(
+                media_path,
+                np.asarray(snapshot["audio"], dtype=np.float32),
+                int(snapshot["sample_rate"]),
+                file_format="wav",
+                bit_depth=24,
+                channels=2,
+                cancel_event=cancel_event,
+            )
+            tracks.append(
+                DAWTrack(
+                    name=str(snapshot["name"] or f"Track {index}"),
+                    media_file=media_path,
+                    volume=float(snapshot["volume"]),
+                    pan=float(snapshot["pan"]),
+                    muted=bool(snapshot["muted"]),
+                    soloed=bool(snapshot["soloed"]),
+                )
+            )
+            if progress_cb:
+                progress_cb(int(index * 60 / total))
+
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError("DAWproject export cancelled")
+        spec = DAWProjectSpec(title="Slunder Mix", tracks=tracks)
+        written = export_dawproject(spec, output_path)
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError(
+                "DAWproject export cancelled",
+                outputs=[written],
+            )
+        validation = validate_dawproject(written)
+        if not validation.valid:
+            try:
+                os.remove(written)
+            except OSError:
+                pass
+            raise ValueError(
+                "DAWproject validation failed: " + "; ".join(validation.errors)
+            )
+        if progress_cb:
+            progress_cb(100)
+        return {
+            "path": written,
+            "track_count": len(tracks),
+            "entries": len(validation.entries),
+        }
+
+
 # ── Mixer Track Strip ─────────────────────────────────────────────────────────
 
 class MixerTrackStrip(QFrame):
@@ -532,6 +605,7 @@ class MixerView(QWidget):
         self._dynamic_eq_applied = False
         self._master_worker: Optional[InferenceWorker] = None
         self._export_worker: Optional[InferenceWorker] = None
+        self._dawproject_worker: Optional[InferenceWorker] = None
         self._dynamic_eq_worker: Optional[InferenceWorker] = None
         self._dynamic_eq_operation_worker: Optional[InferenceWorker] = None
         self._import_worker: Optional[InferenceWorker] = None
@@ -759,6 +833,12 @@ class MixerView(QWidget):
         self._master_btn.clicked.connect(self._on_master_export)
         master_layout.addWidget(self._master_btn)
 
+        self._dawproject_btn = QPushButton("Export DAWproject")
+        self._dawproject_btn.setEnabled(False)
+        self._dawproject_btn.setStyleSheet(eq_btn_style)
+        self._dawproject_btn.clicked.connect(self._on_export_dawproject)
+        master_layout.addWidget(self._dawproject_btn)
+
         master_layout.addStretch()
 
         # LUFS meter display
@@ -806,6 +886,7 @@ class MixerView(QWidget):
                 (self._side_gain_spin, "Side gain trim", "Adjusts side-channel gain in dB."),
                 (self._ref_btn, "Load reference track", "Loads a loudness reference track for mastering comparison."),
                 (self._master_btn, "Master and export", "Masters the mix and opens export dialog."),
+                (self._dawproject_btn, "Export DAWproject", "Exports the current mixer tracks as a validated DAWproject archive."),
                 (self._operation_progress.cancel_button, "Cancel mixer operation", "Cancels the running import, EQ, reference, mastering, or export operation."),
             ],
             tab_order=[
@@ -814,7 +895,7 @@ class MixerView(QWidget):
                 self._dynamic_eq_revert_btn,
                 self._preset_combo, self._target_combo, self._lufs_spin,
                 self._mid_gain_spin, self._side_gain_spin,
-                self._ref_btn, self._master_btn,
+                self._ref_btn, self._master_btn, self._dawproject_btn,
             ],
         )
         self._settings.on_change(self._on_settings_change)
@@ -840,6 +921,7 @@ class MixerView(QWidget):
         operations = (
             (self._master_worker, "Mastering", self._master_btn),
             (self._export_worker, "Master export", self._master_btn),
+            (self._dawproject_worker, "DAWproject export", self._dawproject_btn),
             (self._dynamic_eq_operation_worker, "Dynamic EQ", self._dynamic_eq_apply_btn),
             (self._dynamic_eq_worker, "Dynamic EQ analysis", self._dynamic_eq_btn),
             (self._import_worker, "Audio import", self._add_btn),
@@ -1308,6 +1390,10 @@ class MixerView(QWidget):
         has_suggestions = bool(self._dynamic_eq_suggestions)
         master_busy = self._master_worker is not None and self._master_worker.isRunning()
         export_busy = self._export_worker is not None and self._export_worker.isRunning()
+        dawproject_busy = (
+            self._dawproject_worker is not None
+            and self._dawproject_worker.isRunning()
+        )
         analysis_busy = self._dynamic_eq_worker is not None and self._dynamic_eq_worker.isRunning()
         operation_busy = (
             self._dynamic_eq_operation_worker is not None
@@ -1322,13 +1408,25 @@ class MixerView(QWidget):
             self._master_btn.setText("Cancel Export")
         else:
             self._master_btn.setEnabled(
-                has_tracks and not operation_busy and not import_busy
+                has_tracks
+                and not dawproject_busy
+                and not operation_busy
+                and not import_busy
             )
             self._master_btn.setText("Master + Export")
         self._dynamic_eq_btn.setEnabled(
-            has_tracks and not analysis_busy and not operation_busy and not import_busy
+            has_tracks
+            and not dawproject_busy
+            and not analysis_busy
+            and not operation_busy
+            and not import_busy
         )
-        eq_controls_ready = not analysis_busy and not operation_busy and not import_busy
+        eq_controls_ready = (
+            not dawproject_busy
+            and not analysis_busy
+            and not operation_busy
+            and not import_busy
+        )
         self._dynamic_eq_preview_btn.setEnabled(
             has_tracks and has_suggestions and eq_controls_ready
         )
@@ -1339,7 +1437,19 @@ class MixerView(QWidget):
             and eq_controls_ready
         )
         self._dynamic_eq_revert_btn.setEnabled(bool(self._dynamic_eq_originals))
-        self._add_btn.setEnabled(not import_busy)
+        self._add_btn.setEnabled(not dawproject_busy and not import_busy)
+        self._dawproject_btn.setEnabled(
+            has_tracks
+            and not dawproject_busy
+            and not master_busy
+            and not export_busy
+            and not analysis_busy
+            and not operation_busy
+            and not import_busy
+        )
+        self._dawproject_btn.setText(
+            "Cancel DAWproject export" if dawproject_busy else "Export DAWproject"
+        )
 
     def _settle_worker(self, worker: Optional[InferenceWorker]):
         """Keep a worker alive until its QThread exits without blocking Qt."""
@@ -1377,6 +1487,87 @@ class MixerView(QWidget):
         self._set_target_combo_key("custom")
 
     DYNAMIC_EQ_STRENGTH = 0.75
+
+    def _on_export_dawproject(self):
+        """Export the current mixer buffers as a validated DAWproject archive."""
+        if self._dawproject_worker is not None and self._dawproject_worker.isRunning():
+            self._cancel_active_operation()
+            return
+        if not self._tracks:
+            self._status.setText("Import audio tracks before exporting a DAWproject")
+            return
+
+        path, selected_filter = save_file(
+            self,
+            "Export DAWproject",
+            "slunder-mix.dawproject",
+            "DAWproject (*.dawproject);;All Files (*)",
+            "mixer_dawproject_export",
+            dialog=QFileDialog,
+        )
+        if not path:
+            return
+        path = ensure_extension(path, selected_filter, default="dawproject")
+        snapshots = [
+            {
+                "audio": np.asarray(track["audio"], dtype=np.float32).copy(),
+                "sample_rate": int(track["sr"]),
+                "name": track["name"],
+                "volume": float(strip.volume),
+                "pan": float(strip.pan),
+                "muted": bool(strip.is_muted),
+                "soloed": bool(strip.is_soloed),
+            }
+            for track, strip in zip(self._tracks, self._strips)
+        ]
+        worker = InferenceWorker(
+            _export_mixer_dawproject_task,
+            snapshots,
+            path,
+            job_kind="mixer_dawproject_export",
+            job_label="Mixer DAWproject export",
+            job_inputs={"track_count": len(snapshots), "output_path": path},
+        )
+        worker.progress.connect(
+            lambda percent: self._on_operation_progress("Exporting DAWproject", percent)
+        )
+        worker.step_info.connect(self._on_operation_step)
+        worker.finished.connect(self._on_export_dawproject_finished)
+        worker.error.connect(self._on_export_dawproject_error)
+        worker.cancelled.connect(self._on_export_dawproject_cancelled)
+        self._dawproject_worker = worker
+        self._start_operation_progress("Exporting DAWproject")
+        self._status.setText("Exporting DAWproject...")
+        self._update_mix_state()
+        worker.start()
+
+    def _on_export_dawproject_finished(self, result: dict):
+        worker = self._dawproject_worker
+        self._settle_worker(worker)
+        self._dawproject_worker = None
+        self._finish_operation_progress()
+        self._status.setText(
+            f"DAWproject validated: {result.get('track_count', 0)} audio tracks"
+        )
+        if self.toast_mgr:
+            self.toast_mgr.success(f"DAWproject exported: {result.get('path', '')}")
+        self._update_mix_state()
+
+    def _on_export_dawproject_error(self, message: str):
+        worker = self._dawproject_worker
+        self._settle_worker(worker)
+        self._dawproject_worker = None
+        self._finish_operation_progress()
+        self._report_error(f"DAWproject export error: {message}")
+        self._update_mix_state()
+
+    def _on_export_dawproject_cancelled(self):
+        worker = self._dawproject_worker
+        self._settle_worker(worker)
+        self._dawproject_worker = None
+        self._finish_operation_progress()
+        self._status.setText("DAWproject export cancelled")
+        self._update_mix_state()
 
     def _on_suggest_dynamic_eq(self):
         """Analyze only. Never mutates a track."""

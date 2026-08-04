@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import wave
 import zipfile
+from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -12,8 +13,11 @@ from core.dawproject import (
     DAWProjectValidation,
     DAWTrack,
     export_dawproject,
+    spec_from_project,
     validate_dawproject,
 )
+from ui.mixer_view import _export_mixer_dawproject_task
+from ui.project_manager import _export_dawproject_task
 
 
 def _write_wav(path: str, duration: float = 1.0, sr: int = 44100):
@@ -144,6 +148,97 @@ class DAWProjectExportTests(unittest.TestCase):
             result = validate_dawproject(out)
             self.assertTrue(result.valid, result.errors)
             self.assertEqual(len(result.media_refs), 3)
+
+    def test_duplicate_media_basenames_get_collision_safe_archive_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first_dir = os.path.join(tmp, "first")
+            second_dir = os.path.join(tmp, "second")
+            os.makedirs(first_dir)
+            os.makedirs(second_dir)
+            first = os.path.join(first_dir, "vocals.wav")
+            second = os.path.join(second_dir, "vocals.wav")
+            _write_wav(first)
+            _write_wav(second, duration=0.5, sr=48000)
+
+            spec = DAWProjectSpec(
+                tracks=[
+                    DAWTrack(name="Lead", media_file=first),
+                    DAWTrack(name="Backing", media_file=second),
+                ]
+            )
+            out = export_dawproject(spec, os.path.join(tmp, "collision.dawproject"))
+
+            with zipfile.ZipFile(out) as archive:
+                media_names = sorted(
+                    name for name in archive.namelist() if name.startswith("media/")
+                )
+                project_xml = archive.read("project.xml").decode("utf-8")
+            self.assertEqual(["media/vocals-2.wav", "media/vocals.wav"], media_names)
+            self.assertEqual(2, project_xml.count("<Audio"))
+            validation = validate_dawproject(out)
+            self.assertTrue(validation.valid, validation.errors)
+
+    def test_spec_from_project_uses_existing_audio_assets_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = os.path.join(tmp, "mix.wav")
+            _write_wav(audio)
+            project = SimpleNamespace(
+                name="Project Export",
+                tempo=128,
+                time_signature=(7, 8),
+                assets=[
+                    SimpleNamespace(
+                        name="Mix",
+                        asset_type="audio",
+                        file_path=audio,
+                    ),
+                    SimpleNamespace(
+                        name="Missing",
+                        asset_type="audio",
+                        file_path=os.path.join(tmp, "missing.wav"),
+                    ),
+                    SimpleNamespace(
+                        name="Lyrics",
+                        asset_type="lyrics",
+                        file_path=audio,
+                    ),
+                ],
+            )
+            spec = spec_from_project(project)
+            self.assertEqual("Project Export", spec.title)
+            self.assertEqual(128.0, spec.tempo)
+            self.assertEqual("7/8", spec.time_signature)
+            self.assertEqual(["Mix"], [track.name for track in spec.tracks])
+
+    def test_project_manager_task_exports_and_validates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "asset.wav")
+            _write_wav(source)
+            output = os.path.join(tmp, "project.dawproject")
+            spec = DAWProjectSpec(tracks=[DAWTrack(name="Asset", media_file=source)])
+            result = _export_dawproject_task(spec, output)
+            self.assertEqual(output, result["path"])
+            self.assertTrue(validate_dawproject(output).valid)
+
+    def test_mixer_task_materializes_current_track_buffers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = os.path.join(tmp, "mixer.dawproject")
+            audio = np.zeros((480, 2), dtype=np.float32)
+            result = _export_mixer_dawproject_task(
+                [{
+                    "audio": audio,
+                    "sample_rate": 48000,
+                    "name": "Mix",
+                    "volume": 0.75,
+                    "pan": -0.2,
+                    "muted": False,
+                    "soloed": True,
+                }],
+                output,
+            )
+            self.assertEqual(1, result["track_count"])
+            validation = validate_dawproject(output)
+            self.assertTrue(validation.valid, validation.errors)
 
 
 if __name__ == "__main__":

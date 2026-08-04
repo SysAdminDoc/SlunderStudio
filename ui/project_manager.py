@@ -19,6 +19,12 @@ from ui.theme import ThemeEngine, rgba
 from ui.accessibility import install_accessibility
 from ui.widgets import EmptyStateWidget
 from core.project import ProjectManager, Project, ProjectAsset, get_project_manager
+from core.dawproject import (
+    DAWProjectSpec,
+    export_dawproject,
+    spec_from_project,
+    validate_dawproject,
+)
 from core.i18n import tr
 from core.disclosure import (
     format_human_contributions,
@@ -30,9 +36,9 @@ from core.provenance import (
     read_provenance_sidecar,
     rerender_from_provenance,
 )
-from core.workers import InferenceWorker
+from core.workers import CancelledJobError, InferenceWorker
 from core.routing import is_midi_path
-from ui.file_dialogs import choose_directory, open_project_files
+from ui.file_dialogs import choose_directory, ensure_extension, open_project_files, save_file
 
 
 def _rerender_provenance_task(
@@ -47,6 +53,41 @@ def _rerender_provenance_task(
         progress_cb=progress_cb,
         cancel_event=cancel_event,
     )
+
+
+def _export_dawproject_task(
+    spec: DAWProjectSpec,
+    output_path: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    """Export and validate a DAWproject archive away from the GUI thread."""
+    if cancel_event is not None and cancel_event.is_set():
+        raise CancelledJobError("DAWproject export cancelled", outputs=[output_path])
+    if progress_cb:
+        progress_cb(10)
+    written = export_dawproject(spec, output_path)
+    if progress_cb:
+        progress_cb(75)
+    if cancel_event is not None and cancel_event.is_set():
+        raise CancelledJobError("DAWproject export cancelled", outputs=[written])
+    validation = validate_dawproject(written)
+    if not validation.valid:
+        try:
+            os.remove(written)
+        except OSError:
+            pass
+        raise ValueError(
+            "DAWproject validation failed: " + "; ".join(validation.errors)
+        )
+    if progress_cb:
+        progress_cb(100)
+    return {
+        "path": written,
+        "track_count": len(spec.tracks),
+        "entries": len(validation.entries),
+    }
 
 
 # ── Project Card ───────────────────────────────────────────────────────────────
@@ -165,6 +206,8 @@ class ProjectDetailPanel(QWidget):
         self._asset_by_id: dict[str, ProjectAsset] = {}
         self._rerender_worker = None
         self._rerender_workers = set()
+        self._dawproject_worker = None
+        self._dawproject_workers = set()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -324,6 +367,11 @@ class ProjectDetailPanel(QWidget):
         self._disclosure_btn.setEnabled(False)
         self._disclosure_btn.clicked.connect(self._on_export_disclosure)
 
+        self._dawproject_btn = QPushButton("Export DAWproject")
+        self._dawproject_btn.setStyleSheet(btn_style)
+        self._dawproject_btn.setEnabled(False)
+        self._dawproject_btn.clicked.connect(self._on_export_dawproject)
+
         self._restore_btn = QPushButton("Restore Version")
         self._restore_btn.setStyleSheet(btn_style)
         self._restore_btn.setEnabled(False)
@@ -337,6 +385,7 @@ class ProjectDetailPanel(QWidget):
         btn_row.addWidget(self._provenance_btn)
         btn_row.addWidget(self._rerender_btn)
         btn_row.addWidget(self._disclosure_btn)
+        btn_row.addWidget(self._dawproject_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -366,6 +415,11 @@ class ProjectDetailPanel(QWidget):
                     "Export AI disclosure",
                     "Exports a JSON and copy-pasteable TSV AI disclosure and human-authorship record.",
                 ),
+                (
+                    self._dawproject_btn,
+                    "Export DAWproject",
+                    "Exports the open project's audio assets as a validated DAWproject archive.",
+                ),
             ],
         )
 
@@ -387,6 +441,7 @@ class ProjectDetailPanel(QWidget):
             format_human_contributions(project.human_contributions)
         )
         self._disclosure_btn.setEnabled(True)
+        self._dawproject_btn.setEnabled(True)
 
         # Assets
         self._asset_list.clear()
@@ -431,6 +486,7 @@ class ProjectDetailPanel(QWidget):
         self._delete_asset_btn.setEnabled(False)
         self._rerender_btn.setEnabled(False)
         self._disclosure_btn.setEnabled(False)
+        self._dawproject_btn.setEnabled(False)
         self._version_list.clear()
         self._update_detail_empty_states(False, False, project_open=False)
 
@@ -847,6 +903,99 @@ class ProjectDetailPanel(QWidget):
             self.toast_mgr.success(
                 f"AI disclosure exported: {json_path.name} and {tsv_path.name}"
             )
+
+    def _on_export_dawproject(self):
+        """Export the open project's existing audio assets for a DAW."""
+        manager = get_project_manager()
+        project = manager.current
+        if project is None:
+            if self.toast_mgr:
+                self.toast_mgr.error("Open a project before exporting a DAWproject archive.")
+            return
+        if self._dawproject_worker is not None and self._dawproject_worker.isRunning():
+            if self.toast_mgr:
+                self.toast_mgr.warning("A DAWproject export is already running.")
+            return
+
+        self.sync_pending_edits()
+        spec = spec_from_project(project)
+        if not spec.tracks:
+            if self.toast_mgr:
+                self.toast_mgr.warning(
+                    "Add at least one existing audio asset before exporting a DAWproject."
+                )
+            return
+        if not manager.save(project):
+            if self.toast_mgr:
+                self.toast_mgr.error(
+                    "Could not save the project before exporting its DAWproject archive."
+                )
+            return
+
+        fallback_dir = os.path.dirname(spec.tracks[0].media_file)
+        path, selected_filter = save_file(
+            self,
+            "Export DAWproject",
+            f"{project.name or 'Slunder Project'}.dawproject",
+            "DAWproject (*.dawproject);;All Files (*)",
+            "project_dawproject_export",
+            dialog=QFileDialog,
+            fallback_dir=fallback_dir,
+        )
+        if not path:
+            return
+        path = ensure_extension(path, selected_filter, default="dawproject")
+        worker = InferenceWorker(
+            _export_dawproject_task,
+            spec,
+            path,
+            job_kind="project_dawproject_export",
+            job_label=f"DAWproject export: {project.name or 'Untitled'}",
+            job_inputs={"track_count": len(spec.tracks), "output_path": path},
+        )
+        self._dawproject_worker = worker
+        self._dawproject_workers.add(worker)
+        worker.progress.connect(
+            lambda percent: self._meta_label.setText(
+                f"Exporting DAWproject: {percent}%"
+            )
+        )
+        worker.finished.connect(self._on_export_dawproject_finished)
+        worker.error.connect(self._on_export_dawproject_error)
+        worker.cancelled.connect(self._on_export_dawproject_cancelled)
+        worker.thread_stopped.connect(
+            lambda current_worker=worker: self._dawproject_workers.discard(current_worker)
+        )
+        self._dawproject_btn.setEnabled(False)
+        self._meta_label.setText("Exporting DAWproject...")
+        worker.start()
+
+    def _on_export_dawproject_finished(self, result: dict):
+        worker = self._dawproject_worker
+        self._dawproject_worker = None
+        self._dawproject_btn.setEnabled(True)
+        path = str(result.get("path", ""))
+        self._meta_label.setText(
+            f"DAWproject validated: {result.get('track_count', 0)} audio tracks"
+        )
+        if self.toast_mgr:
+            self.toast_mgr.success(f"DAWproject exported: {path}")
+        if worker is not None and worker.isRunning():
+            self._dawproject_workers.add(worker)
+
+    def _on_export_dawproject_error(self, message: str):
+        self._dawproject_worker = None
+        self._dawproject_btn.setEnabled(True)
+        self._meta_label.setText("DAWproject export failed")
+        if self.toast_mgr:
+            self.toast_mgr.error(f"DAWproject export failed: {message}")
+
+    def _on_export_dawproject_cancelled(self):
+        self._dawproject_worker = None
+        self._dawproject_btn.setEnabled(True)
+        self._meta_label.setText("DAWproject export cancelled")
+        if self.toast_mgr:
+            self.toast_mgr.warning("DAWproject export cancelled.")
 
 
 # ── Project Manager View ───────────────────────────────────────────────────────

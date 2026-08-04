@@ -57,10 +57,10 @@ through PyTorch 2.4.1, below the PyTorch 2.10.0 security floor.
 | Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, consented voice-profile onboarding, selectable Demucs/MDX/MDXC/Roformer stem separation, and vocal auto-tune pitch correction | DiffSinger, Audio Separator |
 | Stem Separation | Isolate vocals, drums, bass, and other instruments | Demucs (htdemucs) |
 | SFX Generator | Text-to-sound-effect generation | Stable Audio Open |
-| Mixer | Project-rate mixing with validated resampling, channel normalization, dynamic EQ, Mid/Side trims, reference matching, and mastering | Built-in DSP |
+| Mixer | Project-rate mixing with validated resampling, channel normalization, dynamic EQ, Mid/Side trims, reference matching, mastering, and validated DAWproject export | Built-in DSP |
 | AI Producer | Cancellable staged production with verified output, explicit demo/degraded states, and retry | Orchestrator |
 | Model Hub | Download, verify, activate, deactivate, switch, filter, and sort AI models | HuggingFace Hub |
-| Projects | Searchable name/notes, date/name sorting, collision-safe asset imports, recoverable library index, version history, and provenance tracking | — |
+| Projects | Searchable name/notes, date/name sorting, collision-safe asset imports, recoverable library index, version history, provenance tracking, and validated DAWproject export | — |
 
 ## How It Works
 
@@ -89,6 +89,8 @@ Settings can export a redacted health report ZIP with app/dependency versions, G
 The app chrome, Settings, Lyrics, and Vocal Suite controls use a catalog-backed locale layer. Settings > Appearance > Interface Language supports English, Arabic with right-to-left layout, and a pseudo-locale for layout QA; the selected locale is restored on restart. Settings > Appearance > Default Lyrics Language feeds Quick lyrics prompts, Guided lyrics metadata, and new GPT-SoVITS voice profile language defaults where supported. MIDI Studio supports explicit chord-progression priors such as `I-V-vi-IV` and `ii-V-I` for text-to-MIDI prompts and fallback generation. MIDI Studio also includes selectable drum groove templates with swing timing, snare ghost notes, and velocity humanization for generated GM drum tracks, `.chordpro` and `.crd` chord chart export with optional pasted lyrics, and piano roll editing tools for quantize, swing, velocity humanize, and MIDI CC automation lanes. Vocal Suite includes a Lyric Melody tab that converts hummed audio into provenance-tracked MIDI, aligns pasted lyrics to detected notes, and can render a routed DiffSinger vocal when a model is loaded. The Auto-Tune tab writes routed, provenance-tracked WAV files with adjustable pitch correction toward the nearest semitone.
 
 Mixer converts every imported track to the configured project sample rate with deterministic polyphase resampling and explicit stereo normalization before calculating duration or summing. All lossless engine, mixer, and trim artifacts use the shared settings-aware writer, which preserves the requested sample rate, channel layout, and 16/24/32-bit WAV capability. The mastering true-peak meter intentionally oversamples only for measurement; it does not introduce a second processing resampler. Mixer can analyze each stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also trim Mid and Side gain independently before limiting, load a reference track, match the final master to its integrated LUFS, report EBU Mode momentary (400 ms), short-term (3 s), and integrated readouts, and target streaming, podcast, EBU R128, broadcast, cinema, or loud CD delivery levels.
+
+Project Manager exports the open project's existing audio assets as a `.dawproject` archive, while Mixer exports the current track buffers with their volume, pan, mute, and solo state. Both paths run off the UI thread, use collision-safe media names, and reopen the archive through Slunder's structural validator before reporting success.
 
 ## Mastering Presets
 

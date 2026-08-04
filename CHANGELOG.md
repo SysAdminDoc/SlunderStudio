@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added Project Manager and Mixer `.dawproject` export actions. Project exports package existing
+  audio assets, Mixer exports current track buffers and mix-state metadata, duplicate media names
+  are made collision-safe, and both paths validate the completed archive before reporting success.
 - Removed unused workflow/preset/reference-library scaffolding, dead MIDI and dynamic-EQ helpers,
   unobserved model lifecycle/download signals, and orphaned batch/seed UI hooks. Live genre,
   waveform-selection, and model-status contracts remain intact.

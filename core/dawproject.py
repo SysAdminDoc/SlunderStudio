@@ -18,6 +18,7 @@ DAW_NS = "http://bitwig.com/dawproject"
 META_NS = "http://bitwig.com/dawproject"
 
 REQUIRED_ARCHIVE_ENTRIES = {"project.xml", "metadata.xml"}
+DAWPROJECT_AUDIO_ASSET_TYPES = frozenset({"audio", "stems", "sfx", "export"})
 
 
 @dataclass
@@ -54,7 +55,31 @@ class DAWProjectValidation:
     media_refs: list[str] = field(default_factory=list)
 
 
+def _media_archive_names(spec: DAWProjectSpec) -> list[str]:
+    """Return unique, portable archive names in track order."""
+    names: list[str] = []
+    used: set[str] = set()
+    for index, track in enumerate(spec.tracks, 1):
+        if not track.media_file:
+            names.append("")
+            continue
+        raw_name = Path(track.media_file).name.strip(" .")
+        if not raw_name or raw_name in {".", ".."}:
+            raw_name = f"track-{index}.wav"
+        stem = Path(raw_name).stem or f"track-{index}"
+        suffix = Path(raw_name).suffix
+        candidate = raw_name
+        serial = 2
+        while candidate.casefold() in used:
+            candidate = f"{stem}-{serial}{suffix}"
+            serial += 1
+        used.add(candidate.casefold())
+        names.append(candidate)
+    return names
+
+
 def _build_project_xml(spec: DAWProjectSpec) -> str:
+    media_names = _media_archive_names(spec)
     root = ET.Element("Project", xmlns=DAW_NS, version="1.0")
     root.set("creator", f"SlunderStudio/{APP_VERSION}")
 
@@ -83,7 +108,7 @@ def _build_project_xml(spec: DAWProjectSpec) -> str:
             mute_el.set("value", "true")
 
     arrangement = ET.SubElement(root, "Arrangement")
-    for i, track in enumerate(spec.tracks):
+    for i, (track, media_name) in enumerate(zip(spec.tracks, media_names)):
         if not track.media_file:
             continue
         lane = ET.SubElement(arrangement, "Lane")
@@ -91,7 +116,6 @@ def _build_project_xml(spec: DAWProjectSpec) -> str:
         clip = ET.SubElement(lane, "Clip")
         clip.set("time", "0.0")
         audio_ref = ET.SubElement(clip, "Audio")
-        media_name = Path(track.media_file).name
         audio_ref.set("file", f"media/{media_name}")
 
     ET.indent(root, space="  ")
@@ -136,13 +160,49 @@ def export_dawproject(
         zf.writestr("project.xml", _build_project_xml(spec))
         zf.writestr("metadata.xml", _build_metadata_xml(spec))
 
-        for track in spec.tracks:
+        media_names = _media_archive_names(spec)
+        for track, media_name in zip(spec.tracks, media_names):
             if not track.media_file or not os.path.isfile(track.media_file):
                 continue
-            media_name = Path(track.media_file).name
             zf.write(track.media_file, f"media/{media_name}")
 
     return output_path
+
+
+def spec_from_project(project) -> DAWProjectSpec:
+    """Build a DAWproject spec from the existing project asset contract.
+
+    Non-audio assets remain in the Slunder project and are intentionally not
+    represented as audio clips. Missing files are omitted so an export can
+    still be validated and the caller can report the omission to the user.
+    """
+    time_signature = getattr(project, "time_signature", (4, 4))
+    if not isinstance(time_signature, (tuple, list)) or len(time_signature) != 2:
+        time_signature = (4, 4)
+    tracks = []
+    for asset in getattr(project, "assets", ()) or ():
+        asset_type = str(getattr(asset, "asset_type", "") or "audio")
+        media_file = str(getattr(asset, "file_path", "") or "")
+        if (
+            asset_type not in DAWPROJECT_AUDIO_ASSET_TYPES
+            or not media_file
+            or not os.path.isfile(media_file)
+        ):
+            continue
+        tracks.append(
+            DAWTrack(
+                name=str(getattr(asset, "name", "") or Path(media_file).stem),
+                media_file=media_file,
+                role=asset_type,
+            )
+        )
+    return DAWProjectSpec(
+        title=str(getattr(project, "name", "Untitled") or "Untitled"),
+        artist="Slunder",
+        tempo=float(getattr(project, "tempo", 120.0) or 120.0),
+        time_signature=f"{time_signature[0]}/{time_signature[1]}",
+        tracks=tracks,
+    )
 
 
 def validate_dawproject(archive_path: str) -> DAWProjectValidation:
