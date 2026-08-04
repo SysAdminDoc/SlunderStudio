@@ -308,6 +308,57 @@ def tr(key: str, locale: str | None = None, **params) -> str:
     return text.format(**params) if params else text
 
 
+def user_facing_readiness(readiness, *, model_name: str = "") -> str:
+    """Translate engine readiness details into concise UI guidance.
+
+    Engine contracts intentionally use precise internal remedies.  Keep those
+    details in the contract and translate them at the presentation boundary so
+    views do not leak implementation vocabulary or raw state strings.
+    """
+    remedy = str(getattr(readiness, "remedy", "") or "").strip()
+    capability = getattr(readiness, "capability", None)
+    feature = str(getattr(capability, "label", "this feature") or "this feature")
+    model = str(
+        model_name
+        or getattr(readiness, "model_id", "")
+        or feature
+    ).strip()
+    missing = tuple(
+        str(package).strip()
+        for package in (getattr(readiness, "missing_packages", ()) or ())
+        if str(package).strip()
+    )
+    if missing:
+        return tr(
+            "runtime.readiness.install_packages",
+            packages=", ".join(missing),
+            model=model,
+        )
+
+    lower = remedy.casefold()
+    if "wait for" in lower:
+        return tr("runtime.readiness.wait", model=model)
+    if "re-download" in lower or "redownload" in lower:
+        return tr("runtime.readiness.redownload", model=model)
+    if "review and approve" in lower:
+        return tr("runtime.readiness.approve", model=model)
+    if "install" in lower and "activate" in lower:
+        return tr("runtime.readiness.install_activate", model=model)
+    if lower.startswith("download"):
+        return tr("runtime.readiness.download", model=model)
+    if lower.startswith("retry"):
+        return tr("runtime.readiness.retry", model=model)
+    if lower.startswith("activate"):
+        return tr("runtime.readiness.activate", model=model)
+    if lower.startswith("select "):
+        return tr("runtime.readiness.select", item=remedy[7:].rstrip("."))
+    if "demo option" in lower:
+        return tr("runtime.readiness.demo", feature=feature)
+    if "no model is registered" in lower:
+        return tr("runtime.readiness.no_model", feature=feature)
+    return tr("runtime.readiness.unavailable", feature=feature)
+
+
 def get_missing_key_log() -> list[str]:
     return list(_missing_key_log)
 

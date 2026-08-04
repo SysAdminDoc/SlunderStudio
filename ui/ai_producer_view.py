@@ -21,6 +21,7 @@ from engines.ai_producer import (
 )
 from core.mastering import PRESETS
 from core.workers import InferenceWorker
+from core.i18n import tr, user_facing_readiness
 from ui.file_dialogs import ensure_extension, save_audio_file
 from core.engine_contract import (
     ArtifactKind,
@@ -268,7 +269,7 @@ class AIProducerView(QWidget):
         title_layout.setContentsMargins(16, 12, 16, 12)
         title_label = QLabel("Production brief")
         title_label.setStyleSheet(f"color: {t['text']}; font-size: 12pt; font-weight: bold; border: none;")
-        subtitle = QLabel("Describe the song, then review each local pipeline stage.")
+        subtitle = QLabel(tr("runtime.production_subtitle"))
         subtitle.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         title_layout.addWidget(title_label)
         title_layout.addWidget(subtitle)
@@ -382,8 +383,7 @@ class AIProducerView(QWidget):
         self._demo_fallback_check = QCheckBox("Demo Fallback")
         self._demo_fallback_check.setChecked(False)
         self._demo_fallback_check.setToolTip(
-            "When enabled, a silent placeholder is used if song generation fails. "
-            "When disabled, the pipeline stops on failure."
+            tr("runtime.production_demo_fallback")
         )
         self._demo_fallback_check.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         self._demo_fallback_check.toggled.connect(self._refresh_capability_state)
@@ -462,8 +462,8 @@ class AIProducerView(QWidget):
         """)
         left.addWidget(self._progress)
 
-        # Pipeline stages
-        stages_label = QLabel("Pipeline")
+        # Production steps
+        stages_label = QLabel(tr("runtime.production_steps"))
         stages_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         left.addWidget(stages_label)
 
@@ -549,18 +549,18 @@ class AIProducerView(QWidget):
             self,
             "AI Producer",
             named_controls=[
-                (self._prompt, "Producer brief", "Describes the song for the AI producer pipeline."),
+                (self._prompt, "Producer brief", tr("runtime.production_brief_description")),
                 (self._genre, "Producer genre", "Selects the song genre."),
                 (self._mood, "Producer mood", "Selects the song mood."),
                 (self._duration, "Producer duration", "Sets the target song duration in seconds."),
                 (self._vocals, "Producer vocals", "Selects the vocal arrangement."),
                 (self._master_preset, "Producer mastering preset", "Selects the mastering preset for the final song."),
                 (self._sfx_check, "Add producer sound effects", "Includes sound effects in the generated production."),
-                (self._demo_fallback_check, "Enable producer demo fallback", "Allows a declared demo fallback when production cannot complete."),
-                (self._produce_btn, "Produce song", "Runs the complete AI producer pipeline."),
-                (self._cancel_btn, "Cancel production", "Cancels the running producer pipeline."),
-                (self._retry_btn, "Retry production", "Retries the producer pipeline."),
-                (self._lyrics_preview, "Generated lyrics preview", "Shows the lyrics produced by the pipeline."),
+                (self._demo_fallback_check, "Enable producer demo fallback", tr("runtime.production_demo_description")),
+                (self._produce_btn, "Produce song", tr("runtime.production_run_description")),
+                (self._cancel_btn, "Cancel production", tr("runtime.production_cancel_description")),
+                (self._retry_btn, "Retry production", tr("runtime.production_retry_description")),
+                (self._lyrics_preview, "Generated lyrics preview", tr("runtime.production_lyrics_description")),
                 (self._export_btn, "Export produced song", "Exports the verified producer result."),
             ],
         )
@@ -572,14 +572,14 @@ class AIProducerView(QWidget):
             return
         prompt = self._prompt.toPlainText().strip()
         if not prompt:
-            self._output_info.setText("Enter a prompt to begin")
+            self._output_info.setText(tr("runtime.enter_producer_brief"))
             return
         readiness = self._model_mgr.get_capability_readiness(
             CAP_PRODUCER_RUN,
             allow_demo=self._demo_fallback_check.isChecked(),
         )
         if not readiness.can_run:
-            self._output_info.setText(readiness.remedy)
+            self._output_info.setText(self._readiness_message(readiness))
             self._refresh_capability_state()
             return
 
@@ -610,7 +610,7 @@ class AIProducerView(QWidget):
             produce_song,
             brief,
             job_kind="ai_producer",
-            job_label="AI Producer pipeline",
+            job_label="AI Producer production",
             job_inputs={
                 "duration_seconds": brief.duration_seconds,
                 "genre": brief.genre or "auto",
@@ -683,16 +683,14 @@ class AIProducerView(QWidget):
         self._result = None
         self._contract_result = EngineRunResult.cancelled(
             CAP_PRODUCER_RUN,
-            "Cancellation completed; partial artifacts were removed.",
+            "Production cancelled before a complete result was available.",
             model_id="ace-step-v1.5",
         )
         for indicator in self._stage_indicators.values():
             if indicator._status == "running":
                 indicator.set_status("cancelled")
         self._output_title.setText("Production cancelled")
-        self._output_info.setText(
-            "Cancellation completed. Partial artifacts were removed; Retry starts a new job."
-        )
+        self._output_info.setText(tr("runtime.partial_files_removed"))
         self._export_btn.setEnabled(False)
         self._retry_btn.setEnabled(True)
         self._finish_worker_ui(keep_retry=True)
@@ -702,7 +700,7 @@ class AIProducerView(QWidget):
             return
         self._worker.cancel()
         self._cancel_btn.setEnabled(False)
-        self._output_info.setText("Cancellation requested; finishing the active stage safely...")
+        self._output_info.setText(tr("runtime.cancel_production"))
 
     def _on_progress(self, progress: int):
         """Update persisted overall progress from the worker."""
@@ -743,6 +741,13 @@ class AIProducerView(QWidget):
         if model_id == "ace-step-v1.5":
             self._refresh_capability_state()
 
+    def _readiness_message(self, readiness) -> str:
+        info = self._model_mgr.get_model_info(readiness.model_id)
+        return user_facing_readiness(
+            readiness,
+            model_name=info.name if info is not None else "",
+        )
+
     def _refresh_capability_state(self):
         if not hasattr(self, "_produce_btn"):
             return
@@ -755,16 +760,16 @@ class AIProducerView(QWidget):
         self._produce_btn.setEnabled(idle and readiness.can_run and has_prompt)
         self._produce_btn.setToolTip(
             (
-                f"Produces declared outputs: {readiness.output_summary}."
+                tr("runtime.ready")
                 if readiness.can_run and has_prompt
-                else "Enter a production brief."
+                else tr("runtime.enter_producer_brief")
                 if not has_prompt
-                else readiness.remedy
+                else self._readiness_message(readiness)
             )
         )
 
     def _display_result(self, result: ProducerResult):
-        """Display pipeline results."""
+        """Display production results."""
         # Update all stage indicators
         for step in result.steps:
             if step.stage in self._stage_indicators:
@@ -788,7 +793,7 @@ class AIProducerView(QWidget):
             else:
                 self._output_title.setText("Production complete")
             info_parts = [f"Total time: {result.total_time:.1f}s"]
-            info_parts.append(f"Stages: {len(result.completed_stages)}/{len(PIPELINE_ORDER)}")
+            info_parts.append(f"Steps: {len(result.completed_stages)}/{len(PIPELINE_ORDER)}")
             info_parts.append(f"Output: {result.output_kind}")
             if result.style_tags:
                 info_parts.append(f"Style: {', '.join(result.style_tags[:6])}")
@@ -813,7 +818,7 @@ class AIProducerView(QWidget):
                 for step in result.steps if step.error
             ]
             self._output_info.setText(
-                " | ".join([result.error or "The pipeline did not complete", *stage_errors])
+                " | ".join([result.error or "The production did not complete", *stage_errors])
             )
 
         # Load waveform

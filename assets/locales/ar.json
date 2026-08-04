@@ -36,6 +36,59 @@
     "model_hub": { "title": "مركز النماذج", "subtitle": "ثبّت وأدر النماذج المحلية التي تدعم كل سير عمل." },
     "settings": { "title": "الإعدادات", "subtitle": "تحكم في التخزين والحوسبة والمظهر والتشخيصات." }
   },
+  "runtime": {
+    "ready": "جاهز للمتابعة.",
+    "enter_producer_brief": "أدخل موجز الإنتاج.",
+    "enter_composition": "أدخل وصفاً للتأليف.",
+    "enter_sfx": "أدخل وصفاً للمؤثر الصوتي.",
+    "cancel_generation": "إلغاء الإنشاء الحالي.",
+    "cancel_production": "طُلب الإلغاء — جارٍ إنهاء الخطوة الحالية بأمان...",
+    "partial_files_removed": "اكتمل الإلغاء. أزيلت الملفات الجزئية؛ سيبدأ الإعادة إنتاجاً جديداً.",
+    "production_subtitle": "صف الأغنية ثم راجع كل خطوة من خطوات الإنتاج.",
+    "production_demo_fallback": "عند التفعيل، تُستخدم نتيجة تجريبية هادئة إذا فشل إنشاء الأغنية. وعند التعطيل يتوقف الإنتاج عند الفشل.",
+    "production_steps": "خطوات الإنتاج",
+    "production_brief_description": "يصف الأغنية للمنتج.",
+    "production_run_description": "ينفذ إنتاج الأغنية كاملاً.",
+    "production_cancel_description": "يلغي الإنتاج الحالي.",
+    "production_retry_description": "يعيد إنتاج الأغنية.",
+    "production_lyrics_description": "يعرض الكلمات التي أُنشئت أثناء الإنتاج.",
+    "production_demo_description": "يسمح بنتيجة تجريبية موضحة عند تعذر اكتمال الإنتاج.",
+    "load_failed": "تعذر تحميل الصوت في مساحة العمل المحددة.",
+    "reference_failed": "تعذر تحميل الصوت في مصنع الأغاني.",
+    "register_failed": "تعذر إضافة الصوت إلى المشروع: {error}",
+    "mixer_failed": "تعذر استيراد {name} إلى المِكسر.",
+    "reference_loaded": "تم تحميل المرجع في مصنع الأغاني: {details}{suffix}",
+    "audio_selected": "تم تحديد الصوت في جناح الأصوات: {details}{suffix}",
+    "track_added": "تمت إضافة المسار إلى المِكسر: {details}{suffix}",
+    "project_suffix": " — أضيف إلى المشروع",
+    "no_audio_input": "تم تحميل الصوت في المِكسر لأن هذه الصفحة لا تستقبل صوتاً.",
+    "busy_unload": "لا تزال مهمة في الخلفية قيد التشغيل؛ أُبقي النموذج النشط محمّلاً.",
+    "cancel_task": "إلغاء المهمة الحالية.",
+    "task_description": "ينفذ هذه المهمة في الخلفية ويحافظ على إمكانية استعادة التقدم.",
+    "send_to_mixer_unavailable": "لا يمكن إرسال هذا الصوت إلى المِكسر.",
+    "recoverable_tasks": "مهام الإنشاء القابلة للاستعادة:",
+    "vocal_demo_conversion": "يوفر محرك تحويل الصوت الحالي تحويلاً تجريبياً موضحاً.",
+    "vocal_demo_synthesis": "يوفر محرك تركيب الصوت الحالي نتيجة تجريبية موضحة.",
+    "rerender_selected_file": "يعيد إنشاء الملف المحدد فقط عندما تطابق مدخلاته المسجلة هذه النسخة.",
+    "rerender_bytes_differ": "اكتملت إعادة الإنشاء، لكن الملف يختلف عن الناتج الأصلي.\nلم تتم إضافة هذه النتيجة.",
+    "rerender_import_failed": "تعذر استيراد الملف المعاد إنشاؤه: {error}",
+    "rerender_project_failed": "تعذر إضافة الملف المعاد إنشاؤه إلى المشروع.",
+    "lyrics_cancel_description": "يلغي مهمة الكلمات الحالية.",
+    "readiness": {
+      "install_packages": "ثبّت {packages} ثم فعّل {model} من مركز النماذج.",
+      "wait": "انتظر حتى يصبح {model} جاهزاً.",
+      "install_activate": "ثبّت {model} وفعّله من مركز النماذج.",
+      "download": "نزّل {model} من مركز النماذج.",
+      "redownload": "نزّل {model} مجدداً لإصلاح ملفاته المحلية.",
+      "approve": "راجع إصدار {model} المثبت ووافق عليه من مركز النماذج.",
+      "retry": "حاول تفعيل {model} مجدداً من مركز النماذج.",
+      "activate": "فعّل {model} من مركز النماذج.",
+      "select": "حدد {item}.",
+      "demo": "فعّل الخيار التجريبي للمتابعة مع {feature}.",
+      "no_model": "لا يتوفر نموذج لـ {feature} بعد.",
+      "unavailable": "{feature} غير جاهز بعد."
+    }
+  },
   "status": {
     "gpu_detecting": "GPU: جارٍ الاكتشاف...",
     "gpu_accessible_name": "حالة GPU",
@@ -82,6 +135,26 @@
     "cache": {
       "max_size_help": "يمنع تنزيل نماذج جديدة عند تجاوز ذاكرة التخزين هذا الحد"
     },
+    "recovery": {
+      "group": "مركز الاستعادة",
+      "intro": "تخضع المهام والسجلات وتقارير الأعطال ونسخ الإعدادات وإصدارات المشاريع لحدود العمر والعدد والحجم. تُجرى المعاينة أولاً، ولا تُحذف السجلات النشطة والقابلة للاستعادة وما قبل الاستعادة.",
+      "preview": "معاينة التنظيف",
+      "clean": "تنظيف الآن",
+      "cleaning": "جارٍ تنظيف ملفات الاستعادة",
+      "category_unavailable": "{category}: غير متاح ({error})",
+      "category_summary": "{category}: {count} عنصر، {size} ميغابايت، {protected} محمي — التنظيف التلقائي {policy}",
+      "usage": "تستخدم ملفات الاستعادة {size} ميغابايت.",
+      "preview_summary": "معاينة فقط — لم يُحذف شيء. سيُحذف {count} عنصر لتحرير {size} ميغابايت.",
+      "preview_empty": "معاينة فقط — لا شيء يحتاج إلى الحذف.",
+      "cleanup_summary": "أزيل {count} عنصر. {details}",
+      "cleanup_empty": "لا شيء يحتاج إلى الحذف.",
+      "cleanup_toast": "أزال تنظيف الاستعادة {count} عنصر.",
+      "policy_age": "الأقدم من {days} يوماً",
+      "policy_count": "بعد أحدث {count} عناصر",
+      "policy_size": "أكثر من {size} ميغابايت إجمالاً",
+      "policy_join": "{details}",
+      "policy_none": "بلا حد تلقائي"
+    },
     "actions": {
       "reset_defaults": "إعادة ضبط كل الإعدادات",
       "include_private_inputs": "تضمين مدخلات المهام الخاصة",
@@ -95,6 +168,12 @@
       "reset": "تمت إعادة ضبط كل الإعدادات",
       "restored": "تمت استعادة الإعدادات",
       "locale_changed": "تم حفظ لغة الواجهة. أعد تشغيل استوديو سلندر لإعادة بناء كل الواجهات المترجمة."
+    },
+    "config": {
+      "updated": "تم تحديث الإعدادات.",
+      "repaired": "تم إصلاح الإعدادات.",
+      "attention": "تحتاج الإعدادات إلى الانتباه.",
+      "backup_saved": "تم حفظ نسخة استعادة."
     }
   }
 }

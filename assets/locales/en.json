@@ -66,8 +66,58 @@
       "subtitle": "Control storage, compute, appearance and diagnostics."
     }
   },
-  "placeholder": {
-    "coming_soon": "Coming in {phase}"
+  "runtime": {
+    "ready": "Ready to continue.",
+    "enter_producer_brief": "Enter a production brief.",
+    "enter_composition": "Enter a composition prompt.",
+    "enter_sfx": "Enter an SFX prompt.",
+    "cancel_generation": "Cancel the current generation.",
+    "cancel_production": "Cancellation requested — finishing the current step safely...",
+    "partial_files_removed": "Cancellation completed. Partial files were removed; Retry starts a new production.",
+    "production_subtitle": "Describe the song, then review each production step.",
+    "production_demo_fallback": "When enabled, a quiet demo result is used if song generation fails. When disabled, production stops on failure.",
+    "production_steps": "Production Steps",
+    "production_brief_description": "Describes the song for the producer.",
+    "production_run_description": "Runs the complete song production.",
+    "production_cancel_description": "Cancels the current production.",
+    "production_retry_description": "Retries the song production.",
+    "production_lyrics_description": "Shows the lyrics created during production.",
+    "production_demo_description": "Allows a clearly labeled demo fallback when production cannot complete.",
+    "load_failed": "That audio could not be loaded into the selected workspace.",
+    "reference_failed": "Song Forge could not load that audio.",
+    "register_failed": "Could not add this audio to the project: {error}",
+    "mixer_failed": "Mixer could not import {name}.",
+    "reference_loaded": "Reference loaded in Song Forge: {details}{suffix}",
+    "audio_selected": "Audio selected in Vocal Suite: {details}{suffix}",
+    "track_added": "Track added to Mixer: {details}{suffix}",
+    "project_suffix": " — added to the project",
+    "no_audio_input": "Audio loaded in Mixer because this view has no audio input.",
+    "busy_unload": "A background task is still running; the active model was kept loaded.",
+    "cancel_task": "Cancel the current task.",
+    "task_description": "Runs this task in the background and keeps progress recoverable.",
+    "send_to_mixer_unavailable": "This sound cannot be sent to Mixer.",
+    "recoverable_tasks": "Recoverable generation tasks:",
+    "vocal_demo_conversion": "The current voice conversion engine provides a clearly labeled demo conversion.",
+    "vocal_demo_synthesis": "The current voice synthesis engine provides a clearly labeled demo result.",
+    "rerender_selected_file": "Re-renders the selected file only when its recorded inputs still match this installation.",
+    "rerender_bytes_differ": "Re-render completed, but the file differs from the original output.\nThis result was not imported.",
+    "rerender_import_failed": "The re-rendered file could not be imported: {error}",
+    "rerender_project_failed": "The re-rendered file could not be added to the project.",
+    "lyrics_cancel_description": "Cancels the current lyrics task.",
+    "readiness": {
+      "install_packages": "Install {packages}, then activate {model} in Model Hub.",
+      "wait": "Wait for {model} to finish becoming ready.",
+      "install_activate": "Install and activate {model} in Model Hub.",
+      "download": "Download {model} in Model Hub.",
+      "redownload": "Download {model} again to repair its local files.",
+      "approve": "Review and approve {model} in Model Hub.",
+      "retry": "Try activating {model} again in Model Hub.",
+      "activate": "Activate {model} in Model Hub.",
+      "select": "Select {item}.",
+      "demo": "Enable the demo option to continue with {feature}.",
+      "no_model": "No model is available for {feature} yet.",
+      "unavailable": "{feature} is not ready yet."
+    }
   },
   "status": {
     "gpu_detecting": "GPU: Detecting...",
@@ -203,17 +253,23 @@
     },
     "recovery": {
       "group": "Recovery Center",
-      "intro": "Jobs, logs, crash reports, settings backups, and project versions are bounded by age, count, and size. Preview always runs first; active, recoverable, and pre-restore records are never removed.",
+      "intro": "Tasks, logs, crash reports, settings backups, and project versions are bounded by age, count, and size. Preview always runs first; active, recoverable, and pre-restore records are never removed.",
       "preview": "Preview Cleanup",
       "clean": "Clean Now",
+      "cleaning": "Cleaning recovery files",
       "category_unavailable": "{category}: unavailable ({error})",
-      "category_summary": "{category}: {count} item(s), {size} MB, {protected} protected — keeps {policy}",
-      "usage": "Recovery artifacts use {size} MB.",
+      "category_summary": "{category}: {count} item(s), {size} MB, {protected} protected — automatic cleanup {policy}",
+      "usage": "Recovery files use {size} MB.",
       "preview_summary": "Preview only — nothing removed. {count} item(s) would be removed, freeing {size} MB.",
       "preview_empty": "Preview only — nothing needs removing.",
       "cleanup_summary": "Removed {count} item(s). {details}",
       "cleanup_empty": "Nothing needed removing.",
-      "cleanup_toast": "Recovery cleanup removed {count} item(s)."
+      "cleanup_toast": "Recovery cleanup removed {count} item(s).",
+      "policy_age": "older than {days} days",
+      "policy_count": "beyond the newest {count} items",
+      "policy_size": "over {size} MB total",
+      "policy_join": "{details}",
+      "policy_none": "no automatic limit"
     },
     "units": {
       "seconds": "sec",
@@ -222,7 +278,7 @@
     },
     "actions": {
       "reset_defaults": "Reset All to Defaults",
-      "include_private_inputs": "Include private job inputs",
+      "include_private_inputs": "Include private task inputs",
       "export_health": "Export Health Report",
       "open_config": "Open Config Folder",
       "open_onboarding": "Open Onboarding",
@@ -248,9 +304,10 @@
       "unavailable": "No OS credential service is available, so secrets cannot be stored."
     },
     "config": {
-      "status": "Config {state}: {messages}",
-      "review": "Review the config file.",
-      "backup": "Backup: {path}"
+      "updated": "Configuration updated.",
+      "repaired": "Configuration repaired.",
+      "attention": "Configuration needs attention.",
+      "backup_saved": "A recovery copy was saved."
     }
   },
   "lyrics": {

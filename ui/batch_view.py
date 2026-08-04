@@ -18,6 +18,7 @@ from ui.accessibility import install_accessibility
 from ui.theme import Palette
 from ui.waveform_widget import MiniWaveform
 from core.job_state import JobStatus, JobStore
+from core.i18n import tr
 from core.settings import get_config_dir
 from core.audio_buffers import decode_audio_file
 from core.workers import CancelledJobError, InferenceWorker
@@ -671,7 +672,7 @@ class BatchView(QWidget):
         labels = [record.label for record in records[:3]]
         suffix = f" and {len(records) - 3} more" if len(records) > 3 else ""
         self._recovery_label.setText(
-            "Recoverable generation jobs: "
+            tr("runtime.recoverable_tasks") + " "
             + ", ".join(labels)
             + suffix
             + ". Partial render files were cleaned; start a new run when ready."

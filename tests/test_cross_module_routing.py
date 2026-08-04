@@ -227,7 +227,7 @@ class RouteEndToEndTests(unittest.TestCase):
         missing = str(self.root / "gone.wav")
         self.assertIsNone(self.window._on_sfx_to_mixer(missing))
         self.assertEqual(len(self.window._mixer_view._tracks), 0)
-        self.assertIn("Route cancelled", self.window.toast_mgr.latest_message())
+        self.assertIn("could not be loaded", self.window.toast_mgr.latest_message())
 
     def test_routing_without_an_open_project_still_transfers(self):
         self.projects.close()

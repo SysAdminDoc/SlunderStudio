@@ -19,6 +19,7 @@ from ui.theme import ThemeEngine, rgba
 from ui.accessibility import install_accessibility
 from ui.widgets import EmptyStateWidget
 from core.project import ProjectManager, Project, ProjectAsset, get_project_manager
+from core.i18n import tr
 from core.disclosure import (
     format_human_contributions,
     parse_human_contributions,
@@ -349,7 +350,7 @@ class ProjectDetailPanel(QWidget):
                 (self._import_btn, "Import project asset", "Imports an asset into the project."),
                 (self._delete_asset_btn, "Delete project asset", "Moves the selected asset to recoverable trash."),
                 (self._provenance_btn, "Open asset provenance", "Opens provenance for the selected asset."),
-                (self._rerender_btn, "Re-render from provenance", "Re-renders the selected artifact only when its recorded inputs still match this installation."),
+                (self._rerender_btn, "Re-render from provenance", tr("runtime.rerender_selected_file")),
                 (
                     self._disclosure_btn,
                     "Export AI disclosure",
@@ -754,8 +755,7 @@ class ProjectDetailPanel(QWidget):
             detail = "\n".join(diff.format() for diff in result.differences)
             if self.toast_mgr:
                 self.toast_mgr.error(
-                    "Re-render completed but the bytes differ from the source artifact.\n"
-                    + detail
+                    tr("runtime.rerender_bytes_differ") + "\n" + detail
                 )
             return
 
@@ -773,11 +773,11 @@ class ProjectDetailPanel(QWidget):
             )
         except Exception as exc:
             if self.toast_mgr:
-                self.toast_mgr.error(f"Re-rendered artifact could not be imported: {exc}")
+                self.toast_mgr.error(tr("runtime.rerender_import_failed", error=exc))
             return
         if not asset_id:
             if self.toast_mgr:
-                self.toast_mgr.error("Re-rendered artifact could not be added to the project.")
+                self.toast_mgr.error(tr("runtime.rerender_project_failed"))
             return
         self.load_project(manager.current)
         if self.toast_mgr:

@@ -74,7 +74,7 @@ class RoutedArtifact:
             parts.append(self.musical_key)
         if self.duration_sec:
             parts.append(f"{self.duration_sec:.1f}s")
-        return " - ".join(parts)
+        return " — ".join(parts)
 
     def as_dict(self) -> dict[str, Any]:
         return {

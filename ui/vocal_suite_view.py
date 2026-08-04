@@ -28,6 +28,7 @@ from core.i18n import (
     language_label,
     normalize_language_code,
     tr,
+    user_facing_readiness,
 )
 from core.settings import Settings
 from core.audio_engine import AudioEngine
@@ -282,7 +283,7 @@ class VocalSuiteView(QWidget):
                 (self._rvc_pitch, "RVC pitch shift", "Adjusts pitch shift in semitones."),
                 (self._rvc_f0, "RVC pitch detector", "Selects the F0 pitch extraction method."),
                 (self._rvc_index, "RVC index strength", "Adjusts retrieval index blend strength."),
-                (self._rvc_demo_check, "RVC demo conversion", "Explicitly enables the demo spectral-conversion pipeline."),
+                (self._rvc_demo_check, "RVC demo conversion", tr("runtime.vocal_demo_conversion")),
                 (self._rvc_convert_btn, "Convert voice", "Starts RVC voice conversion."),
                 (self._clone_voice, "Voice clone profile", "Selects a saved GPT-SoVITS voice profile."),
                 (self._clone_trust_btn, "Trust unsafe GPT-SoVITS checkpoint", self._clone_trust_btn.toolTip()),
@@ -298,7 +299,7 @@ class VocalSuiteView(QWidget):
                 (self._clone_lang, "Clone language", "Selects the GPT-SoVITS language."),
                 (self._clone_speed, "Clone speed", "Adjusts cloned speech speed."),
                 (self._clone_temp, "Clone temperature", "Adjusts generation variation."),
-                (self._clone_demo_check, "Voice clone demo", "Explicitly enables the demo GPT-SoVITS synthesis pipeline."),
+                (self._clone_demo_check, "Voice clone demo", tr("runtime.vocal_demo_synthesis")),
                 (self._clone_gen_btn, "Clone voice", "Starts GPT-SoVITS voice cloning."),
                 (self._autotune_browse_btn, "Browse auto-tune input", "Selects vocal audio for pitch correction."),
                 (self._autotune_strength, "Auto-tune strength", "Controls how strongly pitch is pulled toward the nearest semitone."),
@@ -306,8 +307,8 @@ class VocalSuiteView(QWidget):
                 (self._stem_browse_btn, "Browse stem input", "Selects audio for stem separation."),
                 (self._stem_model, "Stem separation checkpoint", "Selects a Demucs or maintained Audio Separator checkpoint."),
                 (self._stem_separate_btn, "Separate stems", "Starts stem separation."),
-                (self._to_forge_btn, "Send vocals to Song Forge", "Routes current vocal output to Song Forge."),
-                (self._to_mixer_btn, "Send vocals to Mixer", "Routes current vocal output to Mixer."),
+                (self._to_forge_btn, "Send vocals to Song Forge", "Sends current vocal output to Song Forge."),
+                (self._to_mixer_btn, "Send vocals to Mixer", "Sends current vocal output to Mixer."),
                 (self._export_btn, "Export vocal audio", "Shows the current vocal output path."),
             ],
             tab_order=[
@@ -832,7 +833,7 @@ class VocalSuiteView(QWidget):
             "Enable demo spectral conversion"
         )
         self._rvc_demo_check.setToolTip(
-            "The current RVC adapter exposes only a clearly labeled demo conversion."
+            tr("runtime.vocal_demo_conversion")
         )
         self._rvc_demo_check.toggled.connect(self._refresh_capability_states)
         ctrl_layout.addWidget(self._rvc_demo_check)
@@ -1111,7 +1112,7 @@ class VocalSuiteView(QWidget):
             "Enable demo voice (not model inference)"
         )
         self._clone_demo_check.setToolTip(
-            "The current GPT-SoVITS adapter exposes only a clearly labeled demo pipeline."
+            tr("runtime.vocal_demo_synthesis")
         )
         self._clone_demo_check.toggled.connect(self._refresh_capability_states)
         ctrl_layout.addWidget(self._clone_demo_check)
@@ -1390,7 +1391,7 @@ class VocalSuiteView(QWidget):
             self._report_error(f"DiffSinger profile blocked: {profile_error}")
             return
         if not readiness.can_run:
-            self._report_error(readiness.remedy)
+            self._report_error(user_facing_readiness(readiness))
             self._refresh_capability_states()
             return
 
@@ -1747,7 +1748,7 @@ class VocalSuiteView(QWidget):
             name=f"vocal_pronunciation_{int(time.time() * 1000)}",
         )
         if not output_path:
-            raise RuntimeError("Pronunciation correction could not write an audio artifact")
+            raise RuntimeError("Pronunciation correction could not write an audio file")
         return {
             "path": output_path,
             "audio": corrected,
@@ -1955,7 +1956,7 @@ class VocalSuiteView(QWidget):
             profile_ready=True,
         )
         if not readiness.can_run:
-            self._report_error(readiness.remedy)
+            self._report_error(user_facing_readiness(readiness))
             self._refresh_capability_states()
             return
 
@@ -2177,7 +2178,7 @@ class VocalSuiteView(QWidget):
             profile_ready=True,
         )
         if not readiness.can_run:
-            self._report_error(readiness.remedy)
+            self._report_error(user_facing_readiness(readiness))
             self._refresh_capability_states()
             return
 
@@ -2686,7 +2687,7 @@ class VocalSuiteView(QWidget):
             return
         readiness = self._model_mgr.get_capability_readiness(CAP_STEM_SEPARATE)
         if not readiness.can_run:
-            self._report_error(readiness.remedy)
+            self._report_error(user_facing_readiness(readiness))
             self._refresh_capability_states()
             return
 
@@ -3204,11 +3205,11 @@ class VocalSuiteView(QWidget):
         elif not readiness.can_run:
             button.setText(base_text)
             button.setEnabled(False)
-            tooltip = readiness.remedy
+            tooltip = user_facing_readiness(readiness)
         else:
             button.setText(base_text)
             button.setEnabled(True)
-            tooltip = f"Produces declared outputs: {readiness.output_summary}."
+            tooltip = tr("runtime.ready")
         button.setToolTip(tooltip)
 
     # ── External API ───────────────────────────────────────────────────────────

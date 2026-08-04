@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Rewrote engine and recovery status copy at the presentation boundary: readiness remedies,
+  transfer notifications, demo fallbacks, recovery policies, and configuration repair states now
+  use localized user language without exposing internal contract terms or full backup paths.
 - Consolidated import/export pickers around shared audio, MIDI, and project-asset format tables;
   remembered the last directory per operation, added multi-file imports, aligned drag/drop
   extensions, and routed dropped audio into an audio workspace without starting playback.

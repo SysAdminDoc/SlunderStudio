@@ -304,42 +304,6 @@ class TransportBar(QWidget):
         self._time_label.setText(f"0:00 / {format_time(self._duration)}")
 
 
-# ── Placeholder Pages ──────────────────────────────────────────────────────────
-
-class PlaceholderPage(QWidget):
-    """Placeholder for modules not yet built."""
-
-    def __init__(self, title: str, description: str, phase: str, parent=None):
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 60, 40, 40)
-        layout.setSpacing(16)
-
-        icon = QLabel("\U0001f6a7")
-        icon.setStyleSheet("font-size: 36pt;")
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(icon)
-
-        title_label = QLabel(title)
-        title_label.setObjectName("heading")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title_label)
-
-        desc_label = QLabel(description)
-        desc_label.setObjectName("subheading")
-        desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        desc_label.setWordWrap(True)
-        layout.addWidget(desc_label)
-
-        phase_label = QLabel(tr("placeholder.coming_soon", phase=phase))
-        phase_label.setObjectName("caption")
-        phase_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        phase_label.setStyleSheet(f"font-size: 10.5pt; color: {Palette.BLUE}; font-weight: 600;")
-        layout.addWidget(phase_label)
-
-        layout.addStretch()
-
-
 # ── Main Window ────────────────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
@@ -772,7 +736,7 @@ class MainWindow(QMainWindow):
         # Pages without an audio input still get a useful, non-destructive
         # destination.  The file is loaded into Mixer rather than being
         # unexpectedly sent to the audio device.
-        self.toast_mgr.info("Audio loaded in Mixer because this view has no audio input")
+        self.toast_mgr.info(tr("runtime.no_audio_input"))
         self._route_to_mixer(path, "drag_drop")
 
     # ── Cross-Module Routing ──────────────────────────────────────────────────
@@ -790,8 +754,8 @@ class MainWindow(QMainWindow):
             return build_routed_artifact(
                 path, source_module=source_module, **context
             )
-        except RouteError as exc:
-            self.toast_mgr.error(f"Route cancelled: {exc}")
+        except RouteError:
+            self.toast_mgr.error(tr("runtime.load_failed"))
             return None
 
     def _register_routed_artifact(self, artifact, module: str):
@@ -801,7 +765,7 @@ class MainWindow(QMainWindow):
         try:
             asset_id = register_with_project(artifact, module=module)
         except Exception as exc:
-            self.toast_mgr.warning(f"Could not register with project: {exc}")
+            self.toast_mgr.warning(tr("runtime.register_failed", error=exc))
             return None
         return asset_id
 
@@ -812,12 +776,16 @@ class MainWindow(QMainWindow):
             return None
         self._sidebar.select_page(page)
         if not self._song_forge_view.receive_reference(artifact):
-            self.toast_mgr.error("Song Forge could not load the routed reference.")
+            self.toast_mgr.error(tr("runtime.reference_failed"))
             return None
         asset_id = self._register_routed_artifact(artifact, "song_forge")
-        suffix = " and added to the project" if asset_id else ""
+        suffix = tr("runtime.project_suffix") if asset_id else ""
         self.toast_mgr.info(
-            f"Reference loaded in Song Forge: {artifact.context_summary()}{suffix}"
+            tr(
+                "runtime.reference_loaded",
+                details=artifact.context_summary(),
+                suffix=suffix,
+            )
         )
         return artifact
 
@@ -841,9 +809,13 @@ class MainWindow(QMainWindow):
         self._sidebar.select_page(3)  # Switch to Vocals page
         self._vocal_suite_view.set_audio(artifact.path)
         asset_id = self._register_routed_artifact(artifact, "vocal_suite")
-        suffix = " and added to the project" if asset_id else ""
+        suffix = tr("runtime.project_suffix") if asset_id else ""
         self.toast_mgr.info(
-            f"Audio selected in Vocal Suite: {artifact.context_summary()}{suffix}"
+            tr(
+                "runtime.audio_selected",
+                details=artifact.context_summary(),
+                suffix=suffix,
+            )
         )
         return artifact
 
@@ -867,13 +839,17 @@ class MainWindow(QMainWindow):
 
         def _on_import_complete(success: bool, index: int):
             if not success:
-                self.toast_mgr.error(f"Mixer could not import {artifact.name}.")
+                self.toast_mgr.error(tr("runtime.mixer_failed", name=artifact.name))
                 return
             self._mixer_view.select_track(index)
             asset_id = self._register_routed_artifact(artifact, "mixer")
-            suffix = " and added to the project" if asset_id else ""
+            suffix = tr("runtime.project_suffix") if asset_id else ""
             self.toast_mgr.info(
-                f"Track added to Mixer: {artifact.context_summary()}{suffix}"
+                tr(
+                    "runtime.track_added",
+                    details=artifact.context_summary(),
+                    suffix=suffix,
+                )
             )
 
         self._mixer_view.add_track_from_file(
@@ -953,7 +929,7 @@ class MainWindow(QMainWindow):
                 return
         if not shutdown_workers():
             self.toast_mgr.error(
-                "A background job is still running; it was not safe to unload the active model."
+                tr("runtime.busy_unload")
             )
             event.ignore()
             return

@@ -83,31 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Rewrite user-facing copy that leaks internal vocabulary
-  Why: Engine-contract and compliance internals are rendered verbatim in primary status lines across
-    several views, not just the one tooltip already tracked.
-  Evidence: "Produces declared outputs: {…}" appears in three views —
-    `ui/ai_producer_view.py:722`, `ui/midi_studio_view.py:613`, `ui/sfx_view.py:634`.
-    `readiness.remedy` is rendered raw as user-facing status or tooltip at
-    `ui/ai_producer_view.py:549`, `ui/midi_studio_view.py:481`, `ui/model_hub.py:440` and `:506`.
-    `ui/main_window.py:670` shows "Route cancelled: {exc}" and `:696,722,752` embed
-    `artifact.context_summary()` — "route" and "artifact" are internal concepts for what the user
-    experienced as pressing "Send to Mixer". `ui/ai_producer_view.py:658,669` surface "artifacts",
-    "job" and "stage"; `:352` says "a silent placeholder is used". `ui/settings_view.py:699` prints
-    `f"Config {state}"` with raw `migrated`/`repaired`/`error` tokens plus a full backup path, and
-    `:498,516` render `policy.describe()` internals. `ui/model_hub.py:1058` tells users to
-    "uninstall via pip". `ui/main_window.py:294-318` still carries a `PlaceholderPage` whose i18n
-    key is literally `placeholder.coming_soon` and which exposes an internal "phase" number —
-    the class is dead (all ten pages are real) so it and its key should simply go.
-    Typography is inconsistent too: hyphen-as-dash in `ui/settings_view.py` vs em-dash elsewhere.
-  Touches: all views, `core/i18n.py`, `assets/locales/en.json`.
-  Acceptance: No user-facing string contains "declared outputs", "artifact", "route", "job",
-    "stage", "placeholder", "pipeline", "adapter" or a raw state token; `readiness.remedy` is
-    mapped to user-facing phrasing rather than rendered raw; dash usage is consistent.
-    Coordinate with the localization item so strings are rewritten once, as keys.
-  Complexity: M
-  Supersedes nothing — the existing P3 item on Vocal Suite "demo" strings is a subset; fix together.
-
 - [ ] P2 — Make the build reproducible and stop shipping UPX-packed binaries
   Why: The build cannot be reproduced or attributed, and it uses a packer that actively costs an
     unsigned application its only defence.

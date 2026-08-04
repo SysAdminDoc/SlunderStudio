@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from ui.theme import Palette, ThemeEngine
 from ui.accessibility import install_accessibility
 from ui.widgets import EmptyStateWidget, OperationProgressWidget
+from core.i18n import tr, user_facing_readiness
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.engine_contract import (
     ArtifactKind,
@@ -451,7 +452,7 @@ class SFXView(QWidget):
             allow_demo=self._demo_checkbox.isChecked(),
         )
         if not readiness.can_run:
-            self._status.setText(readiness.remedy)
+            self._status.setText(self._readiness_message(readiness))
             self._refresh_capability_state()
             return
 
@@ -670,22 +671,29 @@ class SFXView(QWidget):
         if self._generation_worker is not None:
             self._gen_btn.setText("Cancel Generation")
             self._gen_btn.setEnabled(True)
-            self._gen_btn.setToolTip("Cancel the running SFX generation job.")
+            self._gen_btn.setToolTip(tr("runtime.cancel_generation"))
             return
         has_prompt = bool(self._prompt.toPlainText().strip())
         self._gen_btn.setText("Generate SFX")
         self._gen_btn.setEnabled(readiness.can_run and has_prompt)
         self._gen_btn.setToolTip(
             (
-                f"Produces declared outputs: {readiness.output_summary}."
+                tr("runtime.ready")
                 if readiness.can_run and has_prompt
-                else "Enter an SFX prompt."
+                else tr("runtime.enter_sfx")
                 if not has_prompt
-                else readiness.remedy
+                else self._readiness_message(readiness)
             )
         )
         if not readiness.can_run and not self._status.text():
-            self._status.setText(readiness.remedy)
+            self._status.setText(self._readiness_message(readiness))
+
+    def _readiness_message(self, readiness) -> str:
+        info = self._model_mgr.get_model_info(readiness.model_id)
+        return user_facing_readiness(
+            readiness,
+            model_name=info.name if info is not None else "",
+        )
 
     def _add_result_card(self, result: SFXResult, index: Optional[int] = None):
         card = SFXCard(result)
@@ -885,7 +893,7 @@ class SFXView(QWidget):
         if result.file_path and result.can_route:
             self.send_to_mixer.emit(result.file_path)
         else:
-            self._status.setText("SFX cannot be routed to the mixer")
+            self._status.setText(tr("runtime.send_to_mixer_unavailable"))
 
     def _on_delete_card(self, card: SFXCard):
         snapshots = self._snapshot_sfx_cards([card])

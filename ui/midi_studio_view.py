@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, Signal
 from ui.theme import Palette, ThemeEngine
 from ui.accessibility import install_accessibility
 from ui.widgets import EmptyStateWidget, OperationProgressWidget
+from core.i18n import tr, user_facing_readiness
 from ui.piano_roll import PianoRollWidget
 from ui.midi_mixer import MidiMixer
 from ui.waveform_widget import WaveformWidget
@@ -525,7 +526,7 @@ class MidiStudioView(QWidget):
             allow_demo=self._demo_checkbox.isChecked(),
         )
         if not readiness.can_run:
-            self._status.setText(readiness.remedy)
+            self._status.setText(self._readiness_message(readiness))
             self._refresh_capability_state()
             return
 
@@ -659,6 +660,13 @@ class MidiStudioView(QWidget):
         self._status.setText("MIDI generation cancelled")
         self._refresh_capability_state()
 
+    def _readiness_message(self, readiness) -> str:
+        info = self._model_mgr.get_model_info(readiness.model_id)
+        return user_facing_readiness(
+            readiness,
+            model_name=info.name if info is not None else "",
+        )
+
     def _on_model_status_changed(self, model_id: str, _status: str):
         if model_id == "midi-llm-1b":
             self._refresh_capability_state()
@@ -673,22 +681,22 @@ class MidiStudioView(QWidget):
         if self._generation_worker is not None:
             self._gen_btn.setText("Cancel Generation")
             self._gen_btn.setEnabled(True)
-            self._gen_btn.setToolTip("Cancel the running MIDI generation job.")
+            self._gen_btn.setToolTip(tr("runtime.cancel_generation"))
             return
         has_prompt = bool(self._prompt.toPlainText().strip())
         self._gen_btn.setText("Generate MIDI")
         self._gen_btn.setEnabled(readiness.can_run and has_prompt)
         self._gen_btn.setToolTip(
             (
-                f"Produces declared outputs: {readiness.output_summary}."
+                tr("runtime.ready")
                 if readiness.can_run and has_prompt
-                else "Enter a composition prompt."
+                else tr("runtime.enter_composition")
                 if not has_prompt
-                else readiness.remedy
+                else self._readiness_message(readiness)
             )
         )
         if not readiness.can_run and not self._status.text():
-            self._status.setText(readiness.remedy)
+            self._status.setText(self._readiness_message(readiness))
 
     def _load_midi_data(self, midi_data: MidiData):
         """Load MidiData into all views."""

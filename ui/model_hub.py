@@ -15,6 +15,7 @@ from PySide6.QtCore import QUrl
 from ui.theme import Palette
 from ui.accessibility import install_accessibility, set_accessible
 from ui.widgets import EmptyStateWidget
+from core.i18n import user_facing_readiness
 from core.model_manager import (
     EXECUTABLE_MODEL_WARNING,
     ModelCategory,
@@ -467,7 +468,9 @@ class ModelCard(QFrame):
             btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
-            btn.setToolTip(readiness.remedy)
+            btn.setToolTip(
+                user_facing_readiness(readiness, model_name=self.info.name)
+            )
 
         elif status == ModelStatus.PARTIAL:
             self._set_badge("Incomplete", Palette.PEACH)
@@ -501,7 +504,7 @@ class ModelCard(QFrame):
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
             btn.setToolTip(
-                readiness.remedy
+                user_facing_readiness(readiness, model_name=self.info.name)
                 if readiness.missing_packages
                 else f"Verify and activate {self.info.name} from local storage."
             )
@@ -533,7 +536,9 @@ class ModelCard(QFrame):
             btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
-            btn.setToolTip(readiness.remedy)
+            btn.setToolTip(
+                user_facing_readiness(readiness, model_name=self.info.name)
+            )
             self._delete_btn.setVisible(
                 readiness.installed and not self.info.pip_managed
             )
@@ -1287,7 +1292,7 @@ class ModelHubView(QWidget):
         if info and getattr(info, "pip_managed", False):
             if self.toast_mgr:
                 self.toast_mgr.info(
-                    f"{info.name} is managed by pip — uninstall via pip if needed."
+                    f"{info.name} is managed by the Python environment and cannot be removed here."
                 )
             return
 

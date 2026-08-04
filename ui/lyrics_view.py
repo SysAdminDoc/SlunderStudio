@@ -338,7 +338,7 @@ class LyricsView(QWidget):
                 (self._pro_repeat, "Lyrics repeat penalty", "Adjusts repetition control for pro lyrics."),
                 (self._pro_max_tokens, "Lyrics maximum tokens", "Sets the maximum pro lyrics length."),
                 (self._pro_generate, "Generate pro lyrics", "Generates lyrics from the pro settings."),
-                (self._cancel_btn, "Cancel lyrics generation", "Cancels the running lyrics generation job."),
+                (self._cancel_btn, "Cancel lyrics generation", tr("runtime.lyrics_cancel_description")),
                 (self._regen_btn, "Regenerate lyrics", "Runs the current lyrics workflow again."),
             ],
         )

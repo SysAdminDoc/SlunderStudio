@@ -61,6 +61,26 @@ def _recovery_cleanup_task(
     return removed
 
 
+def _recovery_policy_text(policy) -> str:
+    """Render retention limits as user guidance instead of internal prose."""
+    details = []
+    if policy.max_age_days:
+        details.append(
+            tr("settings.recovery.policy_age", days=f"{policy.max_age_days:g}")
+        )
+    if policy.max_count:
+        details.append(
+            tr("settings.recovery.policy_count", count=policy.max_count)
+        )
+    if policy.max_total_mb:
+        details.append(
+            tr("settings.recovery.policy_size", size=f"{policy.max_total_mb:g}")
+        )
+    if not details:
+        return tr("settings.recovery.policy_none")
+    return tr("settings.recovery.policy_join", details=" · ".join(details))
+
+
 class SettingRow(QHBoxLayout):
     """A labeled setting control with optional description."""
 
@@ -631,7 +651,7 @@ class SettingsView(QWidget):
                     count=len(items),
                     size=f"{size / 1e6:.1f}",
                     protected=protected,
-                    policy=policy.describe(),
+                    policy=_recovery_policy_text(policy),
                 )
             )
         self._recovery_status.setText(
@@ -667,13 +687,13 @@ class SettingsView(QWidget):
         self._recovery_refresh_btn.setEnabled(False)
         self._recovery_preview_btn.setEnabled(False)
         self._operation_progress.start(
-            "Cleaning recovery artifacts", determinate=True
+            tr("settings.recovery.cleaning"), determinate=True
         )
         worker = InferenceWorker(
             _recovery_cleanup_task,
             center,
             job_kind="recovery_cleanup",
-            job_label="Recovery artifact cleanup",
+            job_label="Recovery file cleanup",
             job_metadata={"module": "settings"},
         )
         worker.progress.connect(self._on_recovery_cleanup_progress)
@@ -686,7 +706,7 @@ class SettingsView(QWidget):
 
     def _on_recovery_cleanup_progress(self, percent: int):
         self._operation_progress.set_progress(
-            percent, "Cleaning recovery artifacts"
+            percent, tr("settings.recovery.cleaning")
         )
 
     def _on_recovery_cleanup_step(self, message: str):
@@ -1042,15 +1062,16 @@ class SettingsView(QWidget):
             self._repair_label.setText("")
             return
 
-        messages = status.get("messages") or []
         backups = status.get("backup_paths") or []
         text = tr(
-            "settings.config.status",
-            state=state,
-            messages=" ".join(messages) if messages else tr("settings.config.review"),
+            {
+                "migrated": "settings.config.updated",
+                "repaired": "settings.config.repaired",
+                "error": "settings.config.attention",
+            }.get(state, "settings.config.attention")
         )
         if backups:
-            text += f" {tr('settings.config.backup', path=backups[-1])}"
+            text += f" {tr('settings.config.backup_saved')}"
         self._repair_label.setText(text)
         self._repair_label.setVisible(True)
 
@@ -1090,7 +1111,7 @@ class SettingsView(QWidget):
                 (self._autosave_enabled, "Autosave enabled", "Enables interval autosave for the open project."),
                 (self._max_versions, "Kept project versions", "Limits how many project versions are retained."),
                 (self._reset_btn, "Reset settings", "Resets all settings to defaults."),
-                (self._health_private_inputs, "Include private job inputs", "Includes job prompt and input fields in the health report."),
+                (self._health_private_inputs, "Include private task inputs", "Includes task prompts and input fields in the health report."),
                 (self._export_health_btn, "Export health report", "Saves a redacted diagnostics bundle."),
                 (self._open_dir_btn, "Open config folder", "Opens the settings folder in the file manager."),
                 (self._onboarding_btn, "Open onboarding", "Reopens the first-run setup wizard."),

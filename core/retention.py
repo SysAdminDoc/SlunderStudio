@@ -32,8 +32,8 @@ CATEGORIES = (
 )
 
 CATEGORY_LABELS = {
-    CATEGORY_JOBS: "Finished job records",
-    CATEGORY_JOB_LOGS: "Per-job logs",
+    CATEGORY_JOBS: "Completed tasks",
+    CATEGORY_JOB_LOGS: "Task logs",
     CATEGORY_CRASH_LOGS: "Crash logs",
     CATEGORY_SETTINGS_BACKUPS: "Settings backups",
     CATEGORY_PROJECT_VERSIONS: "Project versions",
