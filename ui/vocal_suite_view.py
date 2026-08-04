@@ -5,7 +5,9 @@ voice conversion (RVC), voice cloning (GPT-SoVITS), and backend-selectable stem 
 and stem remix/export.
 """
 import os
+import time
 import numpy as np
+from dataclasses import asdict
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
@@ -47,6 +49,12 @@ from core.engine_contract import (
     adapt_engine_result,
 )
 from core.model_manager import ModelManager
+from core.pronunciation import (
+    PronunciationOverride,
+    apply_pronunciation_override,
+    parse_phoneme_text,
+)
+from core.project import get_project_manager
 
 
 def _vocal_remix_export_task(
@@ -115,6 +123,13 @@ class VocalSuiteView(QWidget):
         self._clone_quality_report = None
         self._melody_worker: Optional[InferenceWorker] = None
         self._sing_worker: Optional[InferenceWorker] = None
+        self._pronunciation_worker: Optional[InferenceWorker] = None
+        self._sing_params = None
+        self._sing_profile: Optional[VoiceProfile] = None
+        self._sing_note_sequence: list[dict] = []
+        self._pronunciation_overrides: list[dict] = []
+        self._sing_original_audio_path = ""
+        self._sing_selected_region: tuple[float, float] | None = None
         self._rvc_worker: Optional[InferenceWorker] = None
         self._clone_worker: Optional[InferenceWorker] = None
         self._autotune_worker: Optional[InferenceWorker] = None
@@ -240,6 +255,9 @@ class VocalSuiteView(QWidget):
                 (self._sing_vibrato, "Singing vibrato", "Adjusts vibrato expression."),
                 (self._sing_gender, "Singing gender", "Adjusts vocal formant character."),
                 (self._sing_gen_btn, "Synthesize vocals", "Starts DiffSinger vocal synthesis."),
+                (self._sing_pronunciation_units, "Pronunciation lyric unit", "Selects the word or syllable region to correct."),
+                (self._sing_phonemes, "Pronunciation phonemes", "Space-separated phoneme tokens for the selected lyric unit."),
+                (self._sing_pronunciation_btn, "Re-render pronunciation", "Re-synthesizes only the selected pronunciation region and crossfades it into the vocal."),
                 (self._melody_browse_btn, "Browse humming input", "Selects a hummed melody recording."),
                 (self._melody_lyrics, "Melody lyrics", "Lyrics to align with the hummed MIDI melody."),
                 (self._melody_tempo, "Melody tempo", "Sets the generated MIDI tempo."),
@@ -290,6 +308,9 @@ class VocalSuiteView(QWidget):
                 self._sing_vibrato,
                 self._sing_gender,
                 self._sing_gen_btn,
+                self._sing_pronunciation_units,
+                self._sing_phonemes,
+                self._sing_pronunciation_btn,
                 self._melody_browse_btn,
                 self._melody_lyrics,
                 self._melody_tempo,
@@ -458,6 +479,48 @@ class VocalSuiteView(QWidget):
         self._sing_gen_btn.clicked.connect(self._on_sing_generate)
         ctrl_layout.addWidget(self._sing_gen_btn)
 
+        pronunciation_frame = QFrame()
+        pronunciation_frame.setStyleSheet(f"""
+            QFrame {{ background: {t['background']}; border: 1px solid {t['border']};
+                border-radius: 6px; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 10px; border: none; }}
+            QLineEdit, QComboBox {{ background: {t['surface']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 3px; padding: 3px 5px;
+                font-size: 10px; }}
+        """)
+        pronunciation_layout = QVBoxLayout(pronunciation_frame)
+        pronunciation_layout.setContentsMargins(8, 7, 8, 7)
+        pronunciation_layout.setSpacing(5)
+        pronunciation_title = QLabel("Pronunciation correction")
+        pronunciation_title.setStyleSheet(
+            f"color: {t['text']}; font-weight: bold; font-size: 11px; border: none;"
+        )
+        pronunciation_layout.addWidget(pronunciation_title)
+        pronunciation_help = QLabel(
+            "Select a word, adjust the waveform handles, enter model phonemes, "
+            "and re-render only that region."
+        )
+        pronunciation_help.setWordWrap(True)
+        pronunciation_layout.addWidget(pronunciation_help)
+        self._sing_pronunciation_units = QComboBox()
+        self._sing_pronunciation_units.addItem("Generate vocals first", None)
+        self._sing_pronunciation_units.currentIndexChanged.connect(
+            self._on_pronunciation_unit_changed
+        )
+        pronunciation_layout.addWidget(self._sing_pronunciation_units)
+        self._sing_phonemes = QLineEdit()
+        self._sing_phonemes.setPlaceholderText("Phonemes, space-separated (example: k ae t)")
+        self._sing_phonemes.textChanged.connect(self._update_pronunciation_button)
+        pronunciation_layout.addWidget(self._sing_phonemes)
+        self._sing_region_label = QLabel("No pronunciation region selected")
+        pronunciation_layout.addWidget(self._sing_region_label)
+        self._sing_pronunciation_btn = QPushButton("Re-render selected pronunciation")
+        self._sing_pronunciation_btn.setFixedHeight(28)
+        self._sing_pronunciation_btn.setEnabled(False)
+        self._sing_pronunciation_btn.clicked.connect(self._on_pronunciation_correct)
+        pronunciation_layout.addWidget(self._sing_pronunciation_btn)
+        ctrl_layout.addWidget(pronunciation_frame)
+
         left.addWidget(ctrl_frame)
         left.addStretch()
 
@@ -468,6 +531,8 @@ class VocalSuiteView(QWidget):
 
         # Right: Waveform output
         self._sing_waveform = WaveformWidget()
+        self._sing_waveform.set_selection_enabled(True)
+        self._sing_waveform.region_selected.connect(self._on_sing_region_selected)
         layout.addWidget(self._sing_waveform, 1)
 
         return widget
@@ -1215,6 +1280,9 @@ class VocalSuiteView(QWidget):
             self.toast_mgr.error(message)
 
     def _on_sing_generate(self):
+        if self._pronunciation_worker is not None:
+            self._report_error("Wait for pronunciation correction to finish before generating again")
+            return
         if self._sing_worker is not None:
             self._sing_worker.cancel()
             self._sing_gen_btn.setEnabled(False)
@@ -1251,6 +1319,15 @@ class VocalSuiteView(QWidget):
             gender=(self._sing_gender.value() - 50) / 50,
             vibrato_depth=self._sing_vibrato.value() / 100,
         )
+        self._sing_params = params
+        self._sing_profile = profile
+        self._sing_note_sequence = []
+        self._pronunciation_overrides = []
+        self._sing_original_audio_path = ""
+        self._sing_selected_region = None
+        self._sing_pronunciation_units.clear()
+        self._sing_pronunciation_units.addItem("Preparing lyric units...", None)
+        self._sing_pronunciation_btn.setEnabled(False)
         self._reset_engine_routing()
         self._sing_gen_btn.setEnabled(False)
         self._status.setText("Loading DiffSinger voice profile...")
@@ -1337,6 +1414,24 @@ class VocalSuiteView(QWidget):
         if result.audio is not None:
             self._sing_waveform.load_audio(result.audio, result.sample_rate)
         self._current_audio_path = artifact.path if artifact else ""
+        self._sing_original_audio_path = self._current_audio_path
+        extra = (result.provenance or {}).get("extra", {})
+        self._sing_note_sequence = list(extra.get("note_sequence") or [])
+        if not self._sing_note_sequence and self._sing_params is not None:
+            from engines.diffsinger_engine import DiffSingerEngine
+
+            self._sing_note_sequence = DiffSingerEngine()._build_note_sequence(
+                self._sing_params
+            )
+        self._populate_pronunciation_units(self._sing_note_sequence)
+        self._sing_waveform.set_selection_enabled(True)
+        if self._sing_note_sequence:
+            first = self._sing_note_sequence[0]
+            self._sing_waveform.set_selection(
+                float(first.get("start", 0.0)),
+                float(first.get("end", 0.0)),
+                emit=True,
+            )
         self._status.setText(
             f"DiffSinger vocal generated: {os.path.basename(self._current_audio_path)} "
             f"({result.duration:.1f}s)"
@@ -1364,6 +1459,247 @@ class VocalSuiteView(QWidget):
         )
         self._status.setText("DiffSinger synthesis cancelled")
         self._refresh_capability_states()
+
+    def _populate_pronunciation_units(self, notes: list[dict]):
+        """Expose the rendered note/lyric timing as selectable correction units."""
+        self._sing_pronunciation_units.blockSignals(True)
+        self._sing_pronunciation_units.clear()
+        if not notes:
+            self._sing_pronunciation_units.addItem("No lyric timing available", None)
+            self._sing_pronunciation_units.blockSignals(False)
+            self._update_pronunciation_button()
+            return
+        for index, note in enumerate(notes):
+            start = float(note.get("start", 0.0))
+            end = float(note.get("end", start))
+            unit = str(note.get("text", "")).strip() or f"syllable {index + 1}"
+            self._sing_pronunciation_units.addItem(
+                f"{unit} ({start:.2f}–{end:.2f}s)",
+                {"unit": unit, "start": start, "end": end},
+            )
+        self._sing_pronunciation_units.blockSignals(False)
+        self._sing_pronunciation_units.setCurrentIndex(0)
+        self._on_pronunciation_unit_changed(0)
+
+    def _on_pronunciation_unit_changed(self, _index: int):
+        data = self._sing_pronunciation_units.currentData()
+        if not isinstance(data, dict):
+            self._update_pronunciation_button()
+            return
+        self._sing_selected_region = (float(data["start"]), float(data["end"]))
+        self._sing_waveform.set_selection(*self._sing_selected_region, emit=True)
+        existing = next(
+            (
+                item for item in self._pronunciation_overrides
+                if item.get("unit") == data.get("unit")
+                and abs(float(item.get("start", -1)) - self._sing_selected_region[0]) < 1e-6
+            ),
+            None,
+        )
+        self._sing_phonemes.setText(", ".join(existing.get("phonemes", ())) if existing else "")
+        self._update_pronunciation_button()
+
+    def _on_sing_region_selected(self, start: float, end: float):
+        self._sing_selected_region = (float(start), float(end))
+        self._sing_region_label.setText(
+            f"Selected region: {start:.2f}s–{end:.2f}s ({end - start:.2f}s)"
+        )
+        self._update_pronunciation_button()
+
+    def _update_pronunciation_button(self, *_args):
+        if not hasattr(self, "_sing_pronunciation_btn"):
+            return
+        ready = bool(
+            self._current_audio_path
+            and self._sing_params is not None
+            and self._sing_profile is not None
+            and self._sing_selected_region
+            and self._sing_phonemes.text().strip()
+        )
+        self._sing_pronunciation_btn.setEnabled(
+            ready and self._pronunciation_worker is None
+        )
+
+    def _on_pronunciation_correct(self):
+        if self._pronunciation_worker is not None:
+            self._pronunciation_worker.cancel()
+            self._sing_pronunciation_btn.setEnabled(False)
+            self._status.setText("Cancelling pronunciation correction...")
+            return
+        if not self._sing_selected_region or not self._current_audio_path:
+            self._report_error("Select a rendered vocal region before correcting pronunciation")
+            return
+        try:
+            phonemes = parse_phoneme_text(self._sing_phonemes.text())
+            data = self._sing_pronunciation_units.currentData()
+            unit = data.get("unit", "selected region") if isinstance(data, dict) else "selected region"
+            override = PronunciationOverride.from_values(
+                unit,
+                self._sing_selected_region[0],
+                self._sing_selected_region[1],
+                phonemes,
+            )
+        except (TypeError, ValueError) as exc:
+            self._report_error(f"Pronunciation correction blocked: {exc}")
+            return
+
+        self._sing_pronunciation_btn.setText("Stop pronunciation correction")
+        self._sing_pronunciation_btn.setEnabled(True)
+        self._status.setText("Re-synthesizing selected pronunciation region...")
+        self._pronunciation_worker = InferenceWorker(
+            self._run_pronunciation_correction,
+            self._current_audio_path,
+            self._sing_params,
+            self._sing_profile,
+            override,
+            list(self._pronunciation_overrides),
+            self._sing_original_audio_path or self._current_audio_path,
+            job_kind="vocal_pronunciation_correction",
+            job_label=f"Pronunciation correction: {override.unit}",
+            job_inputs={
+                "source_path": self._current_audio_path,
+                "unit": override.unit,
+                "start": override.start,
+                "end": override.end,
+                "phonemes": list(override.phonemes),
+            },
+            job_metadata={"module": "vocal_suite"},
+        )
+        self._pronunciation_worker.progress.connect(
+            lambda pct: self._status.setText(f"Correcting pronunciation... {pct}%")
+        )
+        self._pronunciation_worker.step_info.connect(self._status.setText)
+        self._pronunciation_worker.finished.connect(self._on_pronunciation_corrected)
+        self._pronunciation_worker.error.connect(self._on_pronunciation_error)
+        self._pronunciation_worker.cancelled.connect(self._on_pronunciation_cancelled)
+        self._pronunciation_worker.start()
+
+    def _run_pronunciation_correction(
+        self,
+        base_path: str,
+        params,
+        profile,
+        override: PronunciationOverride,
+        previous_overrides: list[dict],
+        original_path: str,
+        progress_cb=None,
+        step_cb=None,
+        log_cb=None,
+        cancel_event=None,
+    ):
+        import soundfile as sf
+        from engines.diffsinger_engine import SingResult, get_diffsinger
+
+        if cancel_event and cancel_event.is_set():
+            raise CancelledJobError("Pronunciation correction cancelled")
+        base_audio, base_rate = sf.read(base_path, always_2d=False, dtype="float32")
+        engine = get_diffsinger()
+        if not engine.is_loaded or engine._model_path != profile.model_path:
+            if step_cb:
+                step_cb(f"Loading DiffSinger profile {profile.name}...")
+            engine.load_model(
+                profile.model_path,
+                progress_callback=self._progress_bridge(progress_cb, step_cb),
+            )
+        if cancel_event and cancel_event.is_set():
+            raise CancelledJobError("Pronunciation correction cancelled")
+        region_result = engine.synthesize_region(
+            params,
+            override.start,
+            override.end,
+            list(override.phonemes),
+            progress_callback=self._progress_bridge(progress_cb, step_cb),
+        )
+        if region_result.error or region_result.audio is None:
+            raise RuntimeError(region_result.error or "Pronunciation region produced no audio")
+        corrected = apply_pronunciation_override(
+            base_audio,
+            region_result.audio,
+            int(base_rate),
+            override.start,
+            override.end,
+        )
+        provenance = dict(region_result.provenance or {})
+        extra = dict(provenance.get("extra") or {})
+        overrides = [dict(item) for item in previous_overrides]
+        overrides.append(override.to_dict())
+        source_paths = []
+        for path in (base_path, original_path):
+            if path and path not in source_paths:
+                source_paths.append(path)
+        extra.update({
+            "model_path": profile.model_path,
+            "base_artifact_path": base_path,
+            "base_generation_path": original_path,
+            "pronunciation_overrides": overrides,
+        })
+        provenance.update({
+            "module": "vocal_suite",
+            "operation": "diffsinger_pronunciation_correction",
+            "model_id": "diffsinger",
+            "model_revision": "local-file",
+            "lyrics": params.lyrics,
+            "parameters": asdict(params),
+            "source_paths": source_paths,
+            "output_kind": "model",
+            "extra": extra,
+        })
+        result = SingResult(
+            audio=corrected,
+            sample_rate=int(base_rate),
+            duration=len(corrected) / int(base_rate),
+            generation_time=region_result.generation_time,
+            provenance=provenance,
+        )
+        output_path = engine.save_output(
+            result,
+            name=f"vocal_pronunciation_{int(time.time() * 1000)}",
+        )
+        if not output_path:
+            raise RuntimeError("Pronunciation correction could not write an audio artifact")
+        return {
+            "path": output_path,
+            "audio": corrected,
+            "sample_rate": int(base_rate),
+            "overrides": overrides,
+            "original_path": original_path,
+            "override": override.to_dict(),
+        }
+
+    def _on_pronunciation_corrected(self, payload: dict):
+        self._pronunciation_worker = None
+        self._sing_pronunciation_btn.setText("Re-render selected pronunciation")
+        self._pronunciation_overrides = list(payload.get("overrides") or [])
+        self._sing_original_audio_path = str(payload.get("original_path") or self._current_audio_path)
+        self._current_audio_path = str(payload.get("path") or "")
+        self._sing_waveform.load_audio(payload["audio"], int(payload["sample_rate"]))
+        if self._sing_selected_region:
+            self._sing_waveform.set_selection(*self._sing_selected_region, emit=False)
+        try:
+            get_project_manager().record_pronunciation_override(
+                payload.get("override") or {},
+                artifact_path=self._current_audio_path,
+            )
+        except (OSError, TypeError, ValueError):
+            pass
+        self._status.setText(
+            f"Pronunciation corrected: {os.path.basename(self._current_audio_path)} "
+            "(only the selected region changed)"
+        )
+        self._enable_routing()
+        self._update_pronunciation_button()
+
+    def _on_pronunciation_error(self, error: str):
+        self._pronunciation_worker = None
+        self._sing_pronunciation_btn.setText("Re-render selected pronunciation")
+        self._report_error(f"Pronunciation correction failed: {error}")
+        self._update_pronunciation_button()
+
+    def _on_pronunciation_cancelled(self):
+        self._pronunciation_worker = None
+        self._sing_pronunciation_btn.setText("Re-render selected pronunciation")
+        self._status.setText("Pronunciation correction cancelled")
+        self._update_pronunciation_button()
 
     def _on_melody_browse(self):
         path, _ = QFileDialog.getOpenFileName(

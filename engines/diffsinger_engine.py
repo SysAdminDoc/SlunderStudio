@@ -37,6 +37,9 @@ class SingParams:
     # Retained for compatibility with callers that serialize SingParams. The
     # loaded model's declared rate is authoritative for generated audio.
     sample_rate: int = 44100
+    # When present, use these exact model-dictionary tokens instead of
+    # phonemizing ``lyrics``.  This is the persisted pronunciation-edit hook.
+    phoneme_override: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -317,7 +320,11 @@ class DiffSingerEngine:
                 progress_callback(0.1, "Preparing phonemes...")
 
             # Convert lyrics to phoneme sequence
-            phonemes = self._lyrics_to_phonemes(params.lyrics)
+            phonemes = (
+                list(params.phoneme_override)
+                if params.phoneme_override
+                else self._lyrics_to_phonemes(params.lyrics)
+            )
 
             # Build note sequence from params
             note_seq = self._build_note_sequence(params)
@@ -357,6 +364,7 @@ class DiffSingerEngine:
 
             parameters = asdict(params)
             parameters["sample_rate"] = output_sample_rate
+            model_hash = _safe_file_hash(self._model_path)
             return SingResult(
                 audio=audio,
                 sample_rate=output_sample_rate,
@@ -366,16 +374,73 @@ class DiffSingerEngine:
                     "module": "vocal_suite",
                     "operation": "diffsinger_synthesize",
                     "model_id": "diffsinger",
-                    "model_hash": _safe_file_hash(self._model_path),
+                    "model_revision": "local-file" if model_hash else "",
+                    "model_hash": model_hash,
                     "lyrics": params.lyrics,
                     "parameters": parameters,
                     "output_kind": "model",
-                    "extra": {"model_path": self._model_path or ""},
+                    "extra": {
+                        "model_path": self._model_path or "",
+                        "note_sequence": note_seq,
+                        "phonemes": phonemes,
+                    },
                 },
             )
 
         except Exception as e:
             return SingResult(error=str(e), generation_time=time.time() - t0)
+
+    def synthesize_region(
+        self,
+        params: SingParams,
+        start: float,
+        end: float,
+        phoneme_override: list[str],
+        progress_callback: Optional[Callable] = None,
+    ) -> SingResult:
+        """Synthesize only the notes overlapping one pronunciation region."""
+        start_value = float(start)
+        end_value = float(end)
+        if end_value <= start_value:
+            return SingResult(error="Pronunciation region must have a positive duration.")
+        if not phoneme_override:
+            return SingResult(error="Pronunciation correction needs phoneme tokens.")
+
+        full_notes = self._build_note_sequence(params)
+        local_notes = []
+        for note in full_notes:
+            note_start = float(note.get("start", 0.0))
+            note_end = float(note.get("end", note_start))
+            if note_end <= start_value or note_start >= end_value:
+                continue
+            local_notes.append({
+                **note,
+                "start": max(note_start, start_value) - start_value,
+                "end": min(note_end, end_value) - start_value,
+            })
+        if not local_notes:
+            return SingResult(
+                error="The selected pronunciation region does not overlap a singing note."
+            )
+
+        local_payload = asdict(params)
+        local_payload.update({
+            "lyrics": " ".join(str(note.get("text", "")) for note in local_notes).strip(),
+            "notes": local_notes,
+            "phoneme_override": list(phoneme_override),
+        })
+        result = self.synthesize(
+            SingParams(**local_payload),
+            progress_callback=progress_callback,
+        )
+        if result.provenance:
+            extra = result.provenance.setdefault("extra", {})
+            extra["region_start"] = start_value
+            extra["region_end"] = end_value
+            extra["phoneme_override"] = list(phoneme_override)
+            extra["source_note_sequence"] = full_notes
+            result.provenance["operation"] = "diffsinger_pronunciation_region"
+        return result
 
     def _lyrics_to_phonemes(self, lyrics: str) -> list[str]:
         """Convert lyrics text to phoneme sequence."""
@@ -522,6 +587,7 @@ class DiffSingerEngine:
             module=prov.get("module", "vocal_suite"),
             operation=prov.get("operation", "diffsinger_synthesize"),
             model_id=prov.get("model_id", "diffsinger"),
+            model_revision=prov.get("model_revision", ""),
             model_hash=prov.get("model_hash", ""),
             lyrics=prov.get("lyrics", ""),
             parameters=prov.get("parameters", {}),

@@ -158,6 +158,9 @@ class WaveformWidget(QWidget):
         self._spectrogram_worker = None
         self._spectrogram_workers = set()
         self._closed = False
+        self._selection_enabled = False
+        self._selected_region: tuple[float, float] | None = None
+        self._selection_region = None
 
         # Operable by keyboard: Left/Right seek, PageUp/Down scrub, Home/End
         # jump, M switches waveform and spectrogram.
@@ -230,6 +233,17 @@ class WaveformWidget(QWidget):
         )
         self._waveform_plot.addItem(self._cursor_line)
         self._cursor_line.hide()
+
+        self._selection_region = pg.LinearRegionItem(
+            [0.0, 0.0],
+            movable=True,
+            brush=pg.mkBrush(137, 180, 250, 45),
+            pen=pg.mkPen(Palette.BLUE, width=1),
+        )
+        self._selection_region.setZValue(5)
+        self._selection_region.hide()
+        self._selection_region.sigRegionChanged.connect(self._on_selection_region_changed)
+        self._waveform_plot.addItem(self._selection_region)
 
         # Click handler
         self._waveform_plot.scene().sigMouseClicked.connect(self._on_waveform_click)
@@ -505,6 +519,12 @@ class WaveformWidget(QWidget):
         self._waveform_plot.setXRange(0, self._duration)
         self._waveform_plot.setYRange(-1, 1)
 
+        if self._selection_enabled:
+            if self._selected_region is None:
+                self.set_selection(0.0, self._duration, emit=False)
+            else:
+                self.set_selection(*self._selected_region, emit=False)
+
         if self._show_controls:
             dur_str = f"{self._duration:.1f}s"
             sr_str = f"{sample_rate/1000:.1f}kHz"
@@ -630,6 +650,50 @@ class WaveformWidget(QWidget):
             self._cursor_line.hide()
             self._spectro_cursor.hide()
 
+    def set_selection_enabled(self, enabled: bool = True) -> None:
+        """Show draggable start/end handles for an editable time region."""
+        self._selection_enabled = bool(enabled)
+        if not HAS_PYQTGRAPH or self._selection_region is None:
+            return
+        if not self._selection_enabled:
+            self._selection_region.hide()
+            self._selected_region = None
+            return
+        if self._duration > 0:
+            start, end = self._selected_region or (0.0, self._duration)
+            self.set_selection(start, end, emit=False)
+
+    def set_selection(self, start: float, end: float, *, emit: bool = True) -> None:
+        """Set and optionally announce the current region in seconds."""
+        if self._duration <= 0:
+            return
+        start_value = max(0.0, min(float(start), self._duration))
+        end_value = max(0.0, min(float(end), self._duration))
+        if end_value < start_value:
+            start_value, end_value = end_value, start_value
+        if end_value <= start_value:
+            end_value = min(self._duration, start_value + 1.0 / self._sample_rate)
+        self._selected_region = (start_value, end_value)
+        if HAS_PYQTGRAPH and self._selection_region is not None:
+            self._selection_region.blockSignals(True)
+            self._selection_region.setRegion(self._selected_region)
+            self._selection_region.show()
+            self._selection_region.blockSignals(False)
+        if emit:
+            self.region_selected.emit(start_value, end_value)
+
+    @property
+    def selected_region(self) -> tuple[float, float] | None:
+        """Return the selected start/end seconds, if region editing is enabled."""
+        return self._selected_region if self._selection_enabled else None
+
+    def _on_selection_region_changed(self):
+        if not self._selection_enabled or self._selection_region is None or self._duration <= 0:
+            return
+        start, end = self._selection_region.getRegion()
+        self.set_selection(start, end)
+        self._set_info(f"Selected {start:.2f}s–{end:.2f}s")
+
     # ── Keyboard operation and screen-reader state ─────────────────────────────
 
     SEEK_STEP_SECONDS = 1.0
@@ -644,10 +708,14 @@ class WaveformWidget(QWidget):
         if not self.has_audio or self._duration <= 0:
             return "Waveform, no audio loaded"
         percent = int(round(100 * self._playback_pos / self._duration))
-        return (
+        state = (
             f"{self._mode.capitalize()} view, position "
             f"{self._playback_pos:.1f} of {self._duration:.1f} seconds ({percent}%)"
         )
+        if self.selected_region:
+            start, end = self.selected_region
+            state += f", selected region {start:.1f} to {end:.1f} seconds"
+        return state
 
     def _announce_position(self):
         """Publish the current value so assistive tech sees the change."""
@@ -729,10 +797,13 @@ class WaveformWidget(QWidget):
             self._spectro_item.setTransform(QTransform())
             self._cursor_line.hide()
             self._spectro_cursor.hide()
+            if self._selection_region is not None:
+                self._selection_region.hide()
         self._audio_data = None
         self._has_audio = False
         self._spectrogram_ready = False
         self._duration = 0.0
+        self._selected_region = None
         self._last_error = ""
         self._set_info("")
 

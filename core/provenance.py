@@ -395,7 +395,7 @@ def read_provenance_sidecar(path: str | Path) -> dict[str, Any]:
         return {}
 
 
-def _current_model_snapshot(model_id: str) -> dict[str, Any]:
+def _current_model_snapshot(model_id: str, model_path: str = "") -> dict[str, Any]:
     """Read the installed registry/manifest identity without loading weights."""
     if not model_id:
         return {"id": "", "revision": "", "hash": "", "available": True}
@@ -411,12 +411,23 @@ def _current_model_snapshot(model_id: str) -> dict[str, Any]:
             or (info.revision if info else "")
         )
         file_hashes = manifest.get("file_hashes") or {}
-        return {
+        snapshot = {
             "id": model_id,
             "revision": revision,
             "hash": _hash_file_map(file_hashes),
             "available": bool(manifest) or bool(info and info.pip_managed),
         }
+        if (
+            not snapshot["revision"]
+            and info is not None
+            and info.pip_managed
+            and model_path
+            and Path(model_path).is_file()
+        ):
+            snapshot["revision"] = "local-file"
+            snapshot["hash"] = file_sha256(model_path)
+            snapshot["available"] = True
+        return snapshot
     except Exception as exc:  # fail closed in the caller
         return {
             "id": model_id,
@@ -501,7 +512,11 @@ def check_provenance_compatibility(
     output_kind = str(provenance.get("output_kind", "model"))
     requires_model = bool(model.get("id")) and output_kind == "model"
     if requires_model:
-        current = current_model or _current_model_snapshot(str(model.get("id", "")))
+        model_path = str((provenance.get("extra") or {}).get("model_path", ""))
+        current = current_model or _current_model_snapshot(
+            str(model.get("id", "")),
+            model_path,
+        )
         recorded_revision = model.get("resolved_revision") or model.get("revision", "")
         current_revision = current.get("revision", "")
         if not current.get("available"):
@@ -664,6 +679,80 @@ def _rerender_autotune(provenance, output_dir, progress_cb=None, cancel_event=No
     return result.output_path
 
 
+def _rerender_diffsinger_pronunciation(
+    provenance,
+    output_dir,
+    progress_cb=None,
+    cancel_event=None,
+):
+    """Rebuild the original vocal, then apply recorded region overrides."""
+    import soundfile as sf
+
+    from core.pronunciation import PronunciationOverride, apply_pronunciation_override
+    from engines.diffsinger_engine import DiffSingerEngine, SingParams, SingResult
+
+    extra = provenance.get("extra") or {}
+    base_path = str(extra.get("base_generation_path") or "")
+    model_path = str(extra.get("model_path") or "")
+    if not base_path or not Path(base_path).is_file():
+        raise ValueError("Pronunciation provenance does not name its original vocal artifact")
+    if not model_path or not Path(model_path).is_file():
+        raise ValueError("Pronunciation provenance does not name its DiffSinger model file")
+
+    base_audio, sample_rate = sf.read(base_path, always_2d=False, dtype="float32")
+    fields = {field.name for field in dataclasses.fields(SingParams)}
+    params = SingParams(**{
+        key: value for key, value in (provenance.get("parameters") or {}).items()
+        if key in fields
+    })
+    engine = DiffSingerEngine()
+    engine._output_dir = str(output_dir)
+    engine.load_model(
+        model_path,
+        progress_callback=lambda value, *message: _rerender_progress(
+            progress_cb, value, *message
+        ),
+    )
+    corrected = base_audio
+    overrides = extra.get("pronunciation_overrides") or []
+    for index, raw_override in enumerate(overrides):
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("Pronunciation rerender cancelled")
+        override = PronunciationOverride.from_dict(raw_override)
+        region = engine.synthesize_region(
+            params,
+            override.start,
+            override.end,
+            list(override.phonemes),
+            progress_callback=lambda value, *message: _rerender_progress(
+                progress_cb,
+                (index + value) / max(len(overrides), 1),
+                *message,
+            ),
+        )
+        if region.error or region.audio is None:
+            raise RuntimeError(region.error or "Pronunciation rerender produced no region")
+        corrected = apply_pronunciation_override(
+            corrected,
+            region.audio,
+            int(sample_rate),
+            override.start,
+            override.end,
+        )
+    result = SingResult(
+        audio=corrected,
+        sample_rate=int(sample_rate),
+        duration=len(corrected) / int(sample_rate),
+        provenance=dict(provenance),
+    )
+    result.provenance["extra"] = dict(extra)
+    result.provenance["extra"]["rerendered_from_provenance"] = True
+    output_path = engine.save_output(result, name="pronunciation_rerendered")
+    if not output_path:
+        raise RuntimeError("Pronunciation rerender produced no artifact")
+    return output_path
+
+
 def rerender_from_provenance(
     artifact_path: str | Path,
     *,
@@ -732,6 +821,10 @@ register_rerenderer("sfx:generate", _rerender_sfx)
 register_rerenderer("song_forge:generate", _rerender_ace_step)
 register_rerenderer("song_forge:generate_long_form", _rerender_ace_step)
 register_rerenderer("vocal_suite:vocal_autotune", _rerender_autotune)
+register_rerenderer(
+    "vocal_suite:diffsinger_pronunciation_correction",
+    _rerender_diffsinger_pronunciation,
+)
 
 
 def project_metadata_from_provenance(
@@ -767,5 +860,8 @@ def project_metadata_from_provenance(
             "export_format": provenance.get("export_format") or artifact.get("format", ""),
             "artifact_sha256": artifact.get("sha256", ""),
             "rerender_key": provenance.get("rerender_key", ""),
+            "pronunciation_overrides": (provenance.get("extra") or {}).get(
+                "pronunciation_overrides", []
+            ),
         }
     }

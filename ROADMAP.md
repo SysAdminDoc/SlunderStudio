@@ -83,22 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Fix per-word lyric pronunciation without re-rolling the take
-  Why: It is the loudest unaddressed complaint across the generative-vocal ecosystem, and this app
-    is unusually well placed to solve it because it already has a piano roll.
-  Evidence: ACE-Step issues #391 "Dont follow lyrics!" (29 comments), #450 "Need a way to fix
-    mispronounced lyrics when everything else is fine", #285 on lyric-audio alignment; GPT-SoVITS
-    #1338 on repeated and dropped characters (20 upvotes). No open or closed tool ships a
-    phoneme-level override plus regenerate-this-word-only workflow. Slunder already has
-    `ui/piano_roll.py` with an undo stack, `engines/melody_extractor.py` for note alignment, and
-    DiffSinger phoneme dictionaries (`engines/diffsinger_engine.py`).
-  Touches: `ui/piano_roll.py`, `engines/diffsinger_engine.py`, `engines/melody_extractor.py`,
-    Vocal Suite, provenance, tests.
-  Acceptance: A word or syllable in a rendered vocal can be selected, its phonemes overridden, and
-    only that region re-synthesized and crossfaded back, with the rest of the take bit-identical;
-    the override is stored in the project and in provenance so the result is reproducible.
-  Complexity: L
-
 - [ ] P2 — Design empty and first-use states for every view
   Why: One view out of ten has one; the rest open blank, so a new user cannot tell an empty app from
     a broken one.

@@ -109,6 +109,7 @@ class Project:
     mixer_state: dict = field(default_factory=dict)
     lyrics_text: str = ""
     notes: str = ""
+    pronunciation_overrides: list[dict] = field(default_factory=list)
     # Explicit, user-entered registration evidence.  The disclosure report
     # keeps these declarations separate from observed project data.
     human_contributions: list[dict] = field(default_factory=list)
@@ -547,6 +548,7 @@ class ProjectManager:
             "tags": project.tags,
             "lyrics_text": project.lyrics_text,
             "notes": project.notes,
+            "pronunciation_overrides": project.pronunciation_overrides,
             "human_contributions": project.human_contributions,
             "mixer_state": project.mixer_state,
             "assets": [asdict(a) for a in project.assets],
@@ -559,6 +561,9 @@ class ProjectManager:
         raw_contributions = data.get("human_contributions", [])
         if not isinstance(raw_contributions, list):
             raw_contributions = []
+        raw_pronunciation_overrides = data.get("pronunciation_overrides", [])
+        if not isinstance(raw_pronunciation_overrides, list):
+            raw_pronunciation_overrides = []
         project = Project(
             schema_version=data.get("schema_version", PROJECT_SCHEMA_VERSION),
             app_version=data.get("app_version", APP_VERSION),
@@ -572,6 +577,10 @@ class ProjectManager:
             tags=data.get("tags", []),
             lyrics_text=data.get("lyrics_text", ""),
             notes=data.get("notes", ""),
+            pronunciation_overrides=[
+                item for item in raw_pronunciation_overrides
+                if isinstance(item, dict)
+            ],
             human_contributions=[
                 item for item in raw_contributions
                 if isinstance(item, (dict, str))
@@ -658,10 +667,12 @@ class ProjectManager:
             updated.setdefault("mixer_state", {})
             updated.setdefault("lyrics_text", "")
             updated.setdefault("notes", "")
+            updated.setdefault("pronunciation_overrides", [])
             messages.append("Migrated project schema from v1 to v2.")
             migrated = True
         if schema_version < 3:
             updated.setdefault("human_contributions", [])
+            updated.setdefault("pronunciation_overrides", [])
             messages.append("Migrated project schema from v2 to v3.")
             migrated = True
         elif schema_version > PROJECT_SCHEMA_VERSION:
@@ -896,6 +907,24 @@ class ProjectManager:
         )
 
     # ── Asset Management ───────────────────────────────────────────────────────
+
+    def record_pronunciation_override(
+        self,
+        override: dict,
+        *,
+        artifact_path: str = "",
+    ) -> bool:
+        """Persist a pronunciation edit in the currently open project."""
+        if self._current is None or not isinstance(override, dict):
+            return False
+        record = dict(override)
+        if artifact_path:
+            record["artifact_path"] = str(artifact_path)
+        self._current.pronunciation_overrides.append(record)
+        if self.save():
+            return True
+        self._current.pronunciation_overrides.pop()
+        return False
 
     def import_asset(self, file_path: str, asset_type: str,
                      module: str, name: Optional[str] = None,
