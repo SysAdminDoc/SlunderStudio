@@ -4,7 +4,6 @@ Reference track analysis: BPM, key, energy envelope, spectral features,
 genre estimation, and song structure detection via librosa.
 """
 import hashlib
-import json
 import threading
 from collections import OrderedDict
 
@@ -13,7 +12,6 @@ from typing import Optional, Callable
 from pathlib import Path
 from dataclasses import dataclass, field
 
-from core.settings import get_config_dir
 from core.model_security import assert_safe_transformers_snapshot
 
 
@@ -630,52 +628,6 @@ def score_audio_buffer(
     if progress_cb:
         progress_cb(100)
     return score
-
-
-# ── Reference Library ──────────────────────────────────────────────────────────
-
-class ReferenceLibrary:
-    """Saves analyzed tracks as reusable style profiles."""
-
-    def __init__(self):
-        self._lib_path = get_config_dir() / "reference_library.json"
-        self._profiles: list[dict] = []
-        self._load()
-
-    def _load(self):
-        if self._lib_path.exists():
-            try:
-                self._profiles = json.loads(self._lib_path.read_text())
-            except Exception:
-                self._profiles = []
-
-    def _save(self):
-        self._lib_path.write_text(json.dumps(self._profiles, indent=2))
-
-    def add(self, analysis: AudioAnalysis, name: str = ""):
-        """Save an analysis as a reusable profile."""
-        profile = analysis.to_dict()
-        profile["name"] = name or Path(analysis.file_path).stem
-        profile["saved_at"] = __import__("time").time()
-        self._profiles.append(profile)
-        self._save()
-
-    def get_all(self) -> list[dict]:
-        return list(self._profiles)
-
-    def get(self, index: int) -> Optional[dict]:
-        if 0 <= index < len(self._profiles):
-            return self._profiles[index]
-        return None
-
-    def delete(self, index: int):
-        if 0 <= index < len(self._profiles):
-            self._profiles.pop(index)
-            self._save()
-
-    @property
-    def count(self) -> int:
-        return len(self._profiles)
 
 
 # ── Whisper Integration ───────────────────────────────────────────────────────

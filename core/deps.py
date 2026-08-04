@@ -139,11 +139,6 @@ def require(import_name: str, pip_name: Optional[str] = None):
         ) from exc
 
 
-def _install(pip_name: str, import_name: str) -> None:
-    """Compatibility shim for old callers; intentionally refuses mutation."""
-    raise MissingDependencyError([(import_name, pip_name)])
-
-
 def check_available(import_name: str) -> bool:
     """Quick check if a package is importable without installing."""
     try:

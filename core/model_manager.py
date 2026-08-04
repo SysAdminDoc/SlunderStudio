@@ -862,25 +862,9 @@ class ModelManager(QObject):
     Provides download, load, unload, and status tracking for all models.
 
     Signals:
-        model_loading(str)         - model_id starting to load
-        model_loaded(str)          - model_id successfully loaded
-        model_unloaded(str)        - model_id unloaded
-        model_error(str, str)      - (model_id, error_message)
-        download_started(str)      - model_id download started
-        download_progress(str, int) - (model_id, 0-100)
-        download_completed(str)    - model_id download finished
-        download_error(str, str)   - (model_id, error_message)
         gpu_status_changed(dict)   - GPU info dict updated
         status_changed(str, str)   - (model_id, new_status)
     """
-    model_loading = Signal(str)
-    model_loaded = Signal(str)
-    model_unloaded = Signal(str)
-    model_error = Signal(str, str)
-    download_started = Signal(str)
-    download_progress = Signal(str, int)
-    download_completed = Signal(str)
-    download_error = Signal(str, str)
     gpu_status_changed = Signal(dict)
     status_changed = Signal(str, str)
 
@@ -1311,7 +1295,6 @@ class ModelManager(QObject):
             self._unload_locked()
 
             self._set_status(model_id, ModelStatus.LOADING)
-            self.model_loading.emit(model_id)
 
             try:
                 if loader_fn is not None:
@@ -1322,7 +1305,6 @@ class ModelManager(QObject):
             except Exception as e:
                 self._set_status(model_id, ModelStatus.ERROR)
                 error_msg = f"{type(e).__name__}: {e}"
-                self.model_error.emit(model_id, error_msg)
                 cleanup_gpu()
                 raise
 
@@ -1341,7 +1323,6 @@ class ModelManager(QObject):
                 )
 
             self._set_status(model_id, ModelStatus.LOADED)
-            self.model_loaded.emit(model_id)
             self._emit_gpu_status()
             return model
 
@@ -1473,7 +1454,6 @@ class ModelManager(QObject):
                 self._set_status(model_id, ModelStatus.DOWNLOADED)
             else:
                 self._set_status(model_id, ModelStatus.NOT_DOWNLOADED)
-            self.model_unloaded.emit(model_id)
 
         self._emit_gpu_status()
 
@@ -1666,7 +1646,6 @@ class ModelManager(QObject):
         # Pip-managed models (Demucs, DiffSinger) handle their own downloads
         if info.pip_managed:
             self._set_status(model_id, ModelStatus.DOWNLOADED)
-            self.download_completed.emit(model_id)
             if progress_cb:
                 progress_cb(100)
             return True
@@ -1678,7 +1657,6 @@ class ModelManager(QObject):
         self._quarantine_incompatible_cache(model_id, cache_path)
 
         self._set_status(model_id, ModelStatus.DOWNLOADING)
-        self.download_started.emit(model_id)
 
         def _mark_cancelled_download():
             self._set_status(
@@ -1815,7 +1793,6 @@ class ModelManager(QObject):
             )
 
             self._set_status(model_id, ModelStatus.DOWNLOADED)
-            self.download_completed.emit(model_id)
             if progress_cb:
                 progress_cb(100)
             return True
@@ -1825,7 +1802,6 @@ class ModelManager(QObject):
                 _mark_cancelled_download()
             else:
                 self._set_status(model_id, ModelStatus.ERROR)
-                self.download_error.emit(model_id, str(e))
             raise
 
     def _quarantine_incompatible_cache(
@@ -2100,7 +2076,6 @@ class ModelManager(QObject):
                 },
             )
         except TrashError as e:
-            self.model_error.emit(model_id, str(e))
             return None
 
         self._set_status(model_id, ModelStatus.NOT_DOWNLOADED)
@@ -2118,8 +2093,6 @@ class ModelManager(QObject):
             err = ""
 
         if err:
-            if model_id:
-                self.model_error.emit(model_id, err)
             return False
         if not model_id or model_id not in self._registry:
             return False

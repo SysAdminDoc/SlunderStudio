@@ -179,20 +179,13 @@ def get_trash_dir() -> Path:
     return trash_dir
 
 
-def get_presets_dir() -> Path:
-    """Get or create the presets directory."""
-    presets_dir = get_config_dir() / "presets"
-    presets_dir.mkdir(parents=True, exist_ok=True)
-    return presets_dir
-
-
 # ── Settings Manager ───────────────────────────────────────────────────────────
 
 class Settings:
     """
     Reactive settings manager with JSON persistence.
     Supports nested key access (e.g., 'lyrics.temperature'),
-    presets, and change callbacks.
+    and change callbacks.
     """
 
     _instance: Optional["Settings"] = None
@@ -580,46 +573,6 @@ class Settings:
     def remove_callback(self, callback):
         """Remove a registered callback."""
         self._callbacks = [cb for cb in self._callbacks if cb is not callback]
-
-    # ── Presets ────────────────────────────────────────────────────────────────
-
-    def save_preset(self, name: str, section: str):
-        """Save current section settings as a named preset."""
-        presets_dir = get_presets_dir() / section
-        presets_dir.mkdir(parents=True, exist_ok=True)
-        preset_path = presets_dir / f"{name}.json"
-        tmp_path = preset_path.with_suffix(".json.tmp")
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(self.get_section(section), f, indent=2)
-        tmp_path.replace(preset_path)
-
-    def load_preset(self, name: str, section: str) -> bool:
-        """Load a named preset into a section. Returns True on success."""
-        preset_path = get_presets_dir() / section / f"{name}.json"
-        if not preset_path.exists():
-            return False
-        try:
-            with open(preset_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self.set_section(section, data)
-            return True
-        except (json.JSONDecodeError, IOError):
-            return False
-
-    def list_presets(self, section: str) -> list[str]:
-        """List available preset names for a section."""
-        presets_dir = get_presets_dir() / section
-        if not presets_dir.exists():
-            return []
-        return [p.stem for p in presets_dir.glob("*.json")]
-
-    def delete_preset(self, name: str, section: str) -> bool:
-        """Delete a named preset. Returns True on success."""
-        preset_path = get_presets_dir() / section / f"{name}.json"
-        if preset_path.exists():
-            preset_path.unlink()
-            return True
-        return False
 
     # ── Internal ───────────────────────────────────────────────────────────────
 

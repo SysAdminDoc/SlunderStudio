@@ -215,54 +215,6 @@ def save_midi(midi_data: MidiData, file_path: str, provenance: Optional[dict] = 
         )
 
 
-def export_tracks_separately(midi_data: MidiData, output_dir: str) -> list[str]:
-    """Export each track as a separate MIDI file."""
-    _ensure_pretty_midi()
-    import pretty_midi
-    paths = []
-    os.makedirs(output_dir, exist_ok=True)
-
-    for i, track in enumerate(midi_data.tracks):
-        pm = pretty_midi.PrettyMIDI(initial_tempo=midi_data.tempo)
-        inst = pretty_midi.Instrument(
-            program=track.program, is_drum=track.is_drum, name=track.name,
-        )
-        for note in track.notes:
-            inst.notes.append(pretty_midi.Note(
-                velocity=note.velocity, pitch=note.pitch,
-                start=note.start, end=note.end,
-            ))
-        for event in track.cc_events:
-            inst.control_changes.append(pretty_midi.ControlChange(
-                number=max(0, min(127, event.controller)),
-                value=max(0, min(127, event.value)),
-                time=max(0.0, event.time),
-            ))
-        pm.instruments.append(inst)
-        safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in track.name)
-        path = os.path.join(output_dir, f"{i:02d}_{safe_name}.mid")
-        pm.write(path)
-        write_provenance_sidecar(
-            path,
-            module="midi_studio",
-            operation="export_midi_track",
-            parameters={
-                "track_index": i,
-                "track_name": track.name,
-                "program": track.program,
-                "is_drum": track.is_drum,
-                "cc_events": len(track.cc_events),
-                "tempo": midi_data.tempo,
-                "time_signature": midi_data.time_signature,
-            },
-            export_format="mid",
-            output_kind="export",
-        )
-        paths.append(path)
-
-    return paths
-
-
 # ── Quantization ───────────────────────────────────────────────────────────────
 
 def quantize_notes(notes: list[NoteData], grid: float = 0.25, tempo: float = 120.0) -> list[NoteData]:
@@ -341,40 +293,9 @@ def humanize_note_velocities(
     return humanized
 
 
-def transpose_notes(notes: list[NoteData], semitones: int) -> list[NoteData]:
-    """Transpose all notes by given semitones."""
-    return [
-        NoteData(
-            pitch=max(0, min(127, n.pitch + semitones)),
-            start=n.start, end=n.end,
-            velocity=n.velocity, channel=n.channel,
-        )
-        for n in notes
-    ]
-
-
-def scale_velocity(notes: list[NoteData], factor: float) -> list[NoteData]:
-    """Scale all velocities by factor (clamped 0-127)."""
-    return [
-        NoteData(
-            pitch=n.pitch, start=n.start, end=n.end,
-            velocity=max(0, min(127, int(n.velocity * factor))),
-            channel=n.channel,
-        )
-        for n in notes
-    ]
-
-
 def get_pitch_range(notes: list[NoteData]) -> tuple[int, int]:
     """Get min/max pitch in note list."""
     if not notes:
         return (60, 72)
     pitches = [n.pitch for n in notes]
     return (min(pitches), max(pitches))
-
-
-def get_time_range(notes: list[NoteData]) -> tuple[float, float]:
-    """Get start/end time span."""
-    if not notes:
-        return (0.0, 4.0)
-    return (min(n.start for n in notes), max(n.end for n in notes))

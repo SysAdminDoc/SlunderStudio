@@ -335,7 +335,6 @@ class BatchView(QWidget):
     Shows mini waveform cards with playback, star, and delete.
     """
     play_requested = Signal(str)
-    regenerate_similar = Signal(int)  # seed to regenerate around
     use_result = Signal(str)  # audio_path of selected result
 
     def __init__(self, parent=None, toast_mgr=None):

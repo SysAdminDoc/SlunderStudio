@@ -514,12 +514,6 @@ def get_random_theme(genre_id: str = "pop") -> str:
     return random.choice(template.example_themes) if template.example_themes else "love"
 
 
-def get_style_tags(genre_id: str) -> list[str]:
-    """Get ACE-Step style tags for a genre (used in Song Forge integration)."""
-    template = GENRE_TEMPLATES.get(genre_id, GENRE_TEMPLATES["pop"])
-    return template.style_tags
-
-
 def blend_genre_style_tags(
     primary_genre_id: str,
     secondary_genre_id: str,

@@ -901,14 +901,6 @@ def apply_dynamic_eq(audio: np.ndarray, sr: int,
     return output[:, 0] if was_mono else output
 
 
-def suggest_and_apply_dynamic_eq(audio: np.ndarray, sr: int,
-                                 stem_name: str = "Stem",
-                                 strength: float = 0.75) -> tuple[np.ndarray, DynamicEQSuggestion]:
-    """Suggest and apply a stem-aware EQ curve in one pass."""
-    suggestion = suggest_dynamic_eq_curve(audio, sr, stem_name)
-    return apply_dynamic_eq(audio, sr, suggestion.bands, strength), suggestion
-
-
 # ── Master Chain ───────────────────────────────────────────────────────────────
 
 def master_audio(audio: np.ndarray, sr: int,

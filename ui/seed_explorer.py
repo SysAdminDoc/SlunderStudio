@@ -312,7 +312,6 @@ class SeedExplorer(QWidget):
     """
     generate_requested = Signal(list)  # list of param dicts for batch generation
     play_requested = Signal(str)  # audio path
-    zoom_requested = Signal(int, int)  # row, col to zoom into
 
     def __init__(self, parent=None, toast_mgr=None):
         super().__init__(parent)
@@ -731,19 +730,3 @@ class SeedExplorer(QWidget):
         self._release_export_worker_later(worker)
         self._export_worker = None
         self._set_info("Starred export cancelled")
-
-    def zoom_into(self, row: int, col: int):
-        """Zoom into a cell - re-center seed and narrow ranges."""
-        if 0 <= row < len(self._cells) and 0 <= col < len(self._cells[row]):
-            cell = self._cells[row][col]
-            if cell.seed:
-                self._seed_spin.setValue(cell.seed)
-                self._range_spin.setValue(max(5, self._range_spin.value() // 3))
-                shift = self._shift_min_spin.value() + (
-                    (self._shift_max_spin.value() - self._shift_min_spin.value())
-                    * row
-                    / max(1, self._grid_size - 1)
-                )
-                spread = 1.0
-                self._shift_min_spin.setValue(max(1.0, shift - spread))
-                self._shift_max_spin.setValue(min(3.0, shift + spread))

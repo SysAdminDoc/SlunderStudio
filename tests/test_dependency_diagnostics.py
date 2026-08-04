@@ -42,24 +42,20 @@ class DependencyDiagnosticsTests(unittest.TestCase):
         return imports - stdlib - local_modules
 
     def test_missing_dependency_raises_without_installing(self):
-        with mock.patch("core.deps._install") as install:
+        with mock.patch.object(deps.importlib, "import_module", side_effect=ImportError):
             with self.assertRaises(deps.MissingDependencyError) as ctx:
                 deps.ensure(
                     "definitely_missing_slunder_dependency",
                     pip_name="slunder-missing-package",
                 )
 
-        install.assert_not_called()
         message = str(ctx.exception)
         self.assertIn("requirements.txt", message)
         self.assertIn("slunder-missing-package", message)
         self.assertIn("-m pip install", message)
 
     def test_install_compatibility_shim_refuses_mutation(self):
-        with self.assertRaises(deps.MissingDependencyError) as ctx:
-            deps._install("slunder-missing-package", "missing_import")
-
-        self.assertIn("slunder-missing-package", str(ctx.exception))
+        self.assertFalse(hasattr(deps, "_install"))
 
     def test_build_preflight_does_not_install_pyinstaller(self):
         build_script_path = Path(__file__).resolve().parents[1] / "build" / "build.py"

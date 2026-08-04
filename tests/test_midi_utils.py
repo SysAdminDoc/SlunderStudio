@@ -8,11 +8,8 @@ from core.midi_utils import (
     apply_swing_to_notes,
     get_pitch_range,
     get_program_name,
-    get_time_range,
     humanize_note_velocities,
     quantize_notes,
-    scale_velocity,
-    transpose_notes,
 )
 
 
@@ -69,18 +66,11 @@ class MidiUtilsTests(unittest.TestCase):
         self.assertTrue(all(1 <= note.velocity <= 127 for note in first))
         self.assertEqual(humanize_note_velocities(notes, amount=0), notes)
 
-    def test_transpose_scale_and_ranges_clamp_without_mutating_source(self):
-        notes = [NoteData(pitch=1, start=0.5, end=1.0, velocity=2), NoteData(pitch=126, start=0.0, end=2.0, velocity=126)]
+    def test_pitch_range_reports_empty_default_without_mutating_source(self):
+        notes = [NoteData(pitch=1), NoteData(pitch=126)]
 
-        transposed = transpose_notes(notes, -5)
-        scaled = scale_velocity(notes, 2.0)
-
-        self.assertEqual([note.pitch for note in transposed], [0, 121])
-        self.assertEqual([note.velocity for note in scaled], [4, 127])
         self.assertEqual(get_pitch_range(notes), (1, 126))
         self.assertEqual(get_pitch_range([]), (60, 72))
-        self.assertEqual(get_time_range(notes), (0.0, 2.0))
-        self.assertEqual(get_time_range([]), (0.0, 4.0))
         self.assertEqual(notes[0].pitch, 1)
 
 
