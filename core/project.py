@@ -1021,9 +1021,14 @@ class ProjectManager:
         if asset is None:
             return None
 
+        asset_path = Path(asset.file_path) if asset.file_path else None
+        if asset_path is None or not asset_path.is_file():
+            logger.error("Project asset file is unavailable: %s", asset.file_path)
+            return None
+
         try:
             entry = self._trash.trash_path(
-                asset.file_path,
+                asset_path,
                 category="project_asset",
                 label=asset.name or asset.id,
                 metadata={
@@ -1035,8 +1040,18 @@ class ProjectManager:
             logger.exception("Failed to delete project asset")
             return None
 
+        asset_index = next(
+            index for index, current_asset in enumerate(self._current.assets)
+            if current_asset.id == asset_id
+        )
         self._current.remove_asset(asset_id)
-        self.save()
+        if not self.save():
+            self._current.assets.insert(asset_index, asset)
+            try:
+                self._trash.restore(entry.id)
+            except TrashError:
+                logger.exception("Failed to roll back project asset delete")
+            return None
         return entry
 
     def restore_deleted_asset(self, trash_entry_id: str) -> bool:

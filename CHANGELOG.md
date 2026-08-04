@@ -42,6 +42,9 @@ All notable changes to SlunderStudio will be documented in this file.
 - Routed generated SFX and Song Forge batch deletion through transactional trash with 8-second Undo
   actions, and made mixer track removal, Settings reset, and Seed Explorer replacement restoreable
   from in-memory snapshots. Secret settings remain in the OS credential store during undo.
+- Added Project Manager asset deletion with an 8-second Undo toast, restored the selected asset
+  through the existing project trash manifest, and surfaced import failures without letting them
+  escape through the application exception hook.
 
 ## [v0.1.31] - 2026-08-02
 

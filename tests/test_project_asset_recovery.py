@@ -120,6 +120,24 @@ class ProjectAssetRecoveryTests(unittest.TestCase):
             self.assertEqual([], list(assets_dir.iterdir()))
             self.assertEqual(b"transaction", source.read_bytes())
 
+    def test_failed_delete_metadata_save_restores_asset_file_and_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.wav"
+            source.write_bytes(b"delete rollback")
+            mgr = self._manager(root)
+            project = mgr.create("Delete Rollback")
+            asset_id = mgr.import_asset(str(source), "audio", "mixer")
+            asset = project.assets[0]
+            stored_path = Path(asset.file_path)
+
+            with mock.patch.object(mgr, "save", return_value=False):
+                self.assertIsNone(mgr.delete_asset(asset_id))
+
+            self.assertTrue(stored_path.exists())
+            self.assertEqual([asset_id], [item.id for item in project.assets])
+            self.assertEqual([], mgr._trash.list_entries())
+
     def test_exclusive_copy_never_removes_or_replaces_existing_destination(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

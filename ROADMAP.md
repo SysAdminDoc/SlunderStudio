@@ -83,20 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Expose asset deletion in Project Manager
-  Why: Users can import assets into a project and have no way to remove one.
-  Evidence: `core/project.py:999-1024` `delete_asset` is trash-routed and has a matching
-    `restore_deleted_asset` at `:1026`; **neither has any caller in `ui/`**. Project Manager's
-    button set (`ui/project_manager.py:88-229`) offers Open, Delete project, Save, Save Version,
-    Import Asset, Open Provenance and Restore Version — but no asset delete. Related: asset import
-    at `:399-403` discards the return value of `mgr.import_asset(...)`, so a failed import produces
-    no message and the list simply does not change; the call is also unguarded, so a raise reaches
-    `sys.excepthook` and kills the app.
-  Touches: `ui/project_manager.py`, tests.
-  Acceptance: An asset can be removed from a project, lands in trash with Undo, and can be restored;
-    a failed import reports why.
-  Complexity: S
-
 - [ ] P2 — Guarantee that any artifact can be re-rendered from its provenance
   Why: Non-determinism and silent post-update regressions are among the most repeated complaints
     about generative music tools, and cloud vendors structurally cannot fix it because they

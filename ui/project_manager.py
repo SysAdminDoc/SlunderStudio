@@ -249,6 +249,11 @@ class ProjectDetailPanel(QWidget):
         self._import_btn.setStyleSheet(btn_style)
         self._import_btn.clicked.connect(self._on_import_asset)
 
+        self._delete_asset_btn = QPushButton("Delete Asset")
+        self._delete_asset_btn.setProperty("class", "dangerBtn")
+        self._delete_asset_btn.setEnabled(False)
+        self._delete_asset_btn.clicked.connect(self._on_delete_asset)
+
         self._provenance_btn = QPushButton("Open Provenance")
         self._provenance_btn.setStyleSheet(btn_style)
         self._provenance_btn.setEnabled(False)
@@ -268,6 +273,7 @@ class ProjectDetailPanel(QWidget):
         btn_row.addWidget(self._snapshot_btn)
         btn_row.addWidget(self._restore_btn)
         btn_row.addWidget(self._import_btn)
+        btn_row.addWidget(self._delete_asset_btn)
         btn_row.addWidget(self._provenance_btn)
         btn_row.addWidget(self._disclosure_btn)
         btn_row.addStretch()
@@ -289,6 +295,7 @@ class ProjectDetailPanel(QWidget):
                 (self._snapshot_btn, "Save project version", "Creates a version snapshot."),
                 (self._restore_btn, "Restore project version", "Restores the selected version."),
                 (self._import_btn, "Import project asset", "Imports an asset into the project."),
+                (self._delete_asset_btn, "Delete project asset", "Moves the selected asset to recoverable trash."),
                 (self._provenance_btn, "Open asset provenance", "Opens provenance for the selected asset."),
                 (
                     self._disclosure_btn,
@@ -330,6 +337,7 @@ class ProjectDetailPanel(QWidget):
                 item.setToolTip(asset.provenance_path)
             self._asset_list.addItem(item)
         self._provenance_btn.setEnabled(False)
+        self._delete_asset_btn.setEnabled(False)
 
         # Versions
         self._version_list.clear()
@@ -354,6 +362,7 @@ class ProjectDetailPanel(QWidget):
         self._asset_list.clear()
         self._asset_by_id = {}
         self._provenance_btn.setEnabled(False)
+        self._delete_asset_btn.setEnabled(False)
         self._disclosure_btn.setEnabled(False)
         self._version_list.clear()
 
@@ -470,8 +479,51 @@ class ProjectDetailPanel(QWidget):
         if path:
             ext = path.lower().rsplit(".", 1)[-1]
             atype = "midi" if ext in ("mid", "midi") else "audio"
-            mgr.import_asset(path, atype, "project_manager")
+            try:
+                asset_id = mgr.import_asset(path, atype, "project_manager")
+            except Exception as exc:
+                if self.toast_mgr:
+                    self.toast_mgr.error(f"Asset import failed: {exc}")
+                return
+            if not asset_id:
+                if self.toast_mgr:
+                    self.toast_mgr.error("Asset import failed: no project is open.")
+                return
             self.load_project(mgr.current)
+            if self.toast_mgr:
+                self.toast_mgr.success("Asset imported into the project.")
+
+    def _on_delete_asset(self):
+        mgr = get_project_manager()
+        asset = self._selected_asset()
+        if mgr.current is None or asset is None:
+            return
+
+        entry = mgr.delete_asset(asset.id)
+        if entry is None:
+            if self.toast_mgr:
+                self.toast_mgr.error("Asset could not be moved to trash.")
+            return
+
+        self.load_project(mgr.current)
+        if self.toast_mgr:
+            self.toast_mgr.info(
+                "Asset moved to trash.",
+                duration_ms=8000,
+                action_label="Undo",
+                action_callback=lambda entry_id=entry.id: self._restore_asset(entry_id),
+            )
+
+    def _restore_asset(self, trash_entry_id: str):
+        mgr = get_project_manager()
+        if not mgr.restore_deleted_asset(trash_entry_id):
+            if self.toast_mgr:
+                self.toast_mgr.error("Asset restore failed.")
+            return
+        if mgr.current is not None:
+            self.load_project(mgr.current)
+        if self.toast_mgr:
+            self.toast_mgr.success("Asset restored.")
 
     def _selected_asset(self) -> Optional[ProjectAsset]:
         item = self._asset_list.currentItem()
@@ -483,6 +535,7 @@ class ProjectDetailPanel(QWidget):
         asset = self._selected_asset()
         has_provenance = bool(asset and asset.provenance_path and os.path.isfile(asset.provenance_path))
         self._provenance_btn.setEnabled(has_provenance)
+        self._delete_asset_btn.setEnabled(asset is not None)
 
     def _on_open_provenance(self):
         asset = self._selected_asset()
