@@ -83,30 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Close the keyboard-reachability gaps the accessibility gates miss
-  Why: The gate suite is strong but tests contrast, focus-ring and width rather than whether a
-    control can actually be reached, so a fully keyboard-capable widget is unreachable by Tab.
-  Evidence: `PianoRollView` implements Ctrl+Z, Delete/Backspace and Ctrl+A at
-    `ui/piano_roll.py:403-414` but **never calls `setFocusPolicy`** (`:352-384`), so it inherits
-    `QGraphicsView`'s default `WheelFocus` and requires a mouse click before any of it works.
-    `ui/stem_mixer.py` and `ui/midi_mixer.py` have no focus or key handling at all — no mute/solo
-    from the keyboard. `ui/seed_explorer.py:55` explicitly sets the embedded `MiniWaveform` to
-    `NoFocus`, so a seed cell's waveform cannot be seeked by keyboard even though the full
-    `WaveformWidget` is the best keyboard citizen in the repo (`ui/waveform_widget.py:430-454`).
-    Separately, the four `ui/theme.py` animation helpers were removed rather than gated, so there is
-    still no reduced-motion preference to gate future motion behind, and the toast animations are
-    unconditional.
-  Touches: `ui/piano_roll.py`, `ui/stem_mixer.py`, `ui/midi_mixer.py`, `ui/seed_explorer.py`,
-    `ui/toast.py`, `core/settings.py`, `tests/test_accessibility_gates.py`.
-  Acceptance: Every widget that handles keys is reachable by Tab from application start; a gate
-    asserts that any class defining `keyPressEvent` also sets a focus policy; a reduced-motion
-    setting exists and toast animation respects it.
-  Complexity: M
-  Note on scope: this is keyboard *operability* (WCAG 2.1.1 / 2.4.3), not accelerator shortcuts.
-    The project's stated preference is no keyboard shortcuts, and this item does not add any —
-    it makes existing controls reachable. If a menu bar or accelerators are ever wanted, that is a
-    separate decision that would need the no-shortcuts rule revisited explicitly.
-
 - [ ] P2 — Fix the file-dialog experience across every import and export
   Why: Twelve open dialogs and eight save dialogs each reinvent their own behaviour, and the
     differences are all regressions.

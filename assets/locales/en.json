@@ -153,7 +153,9 @@
       "ui_language": "Interface Language",
       "ui_language_help": "Changes the interface language and applies right-to-left layout when supported. Restart to rebuild translated views.",
       "default_lyrics_language": "Default Lyrics Language",
-      "default_lyrics_language_help": "Used by Quick lyrics generation and new voice-clone language metadata."
+      "default_lyrics_language_help": "Used by Quick lyrics generation and new voice-clone language metadata.",
+      "reduced_motion": "Reduce motion",
+      "reduced_motion_help": "Disables sliding and repositioning animations for notifications."
     },
     "lyrics": {
       "group": "Lyrics Engine",

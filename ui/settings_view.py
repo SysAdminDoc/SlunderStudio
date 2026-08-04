@@ -333,6 +333,16 @@ class SettingsView(QWidget):
             tr("settings.appearance.default_lyrics_language_help"),
         ))
 
+        self._reduced_motion = QCheckBox(tr("settings.appearance.reduced_motion"))
+        self._reduced_motion.toggled.connect(
+            lambda v: self._save("general.reduced_motion", v)
+        )
+        appearance_layout.addLayout(SettingRow(
+            tr("settings.appearance.reduced_motion"),
+            self._reduced_motion,
+            tr("settings.appearance.reduced_motion_help"),
+        ))
+
         layout.addWidget(appearance_group)
 
         layout.addStretch()
@@ -821,6 +831,7 @@ class SettingsView(QWidget):
             self._offline_mode, self._hf_token, self._experience_combo,
             self._ui_locale_combo,
             self._default_language,
+            self._reduced_motion,
             self._lyrics_model, self._temperature, self._top_p,
             self._max_tokens, self._timestep_shift, self._inference_steps,
             self._batch_count, self._default_duration, self._default_bpm,
@@ -898,6 +909,7 @@ class SettingsView(QWidget):
             self._autosave_interval.setValue(s.get("general.auto_save_interval", 60))
             self._autosave_enabled.setChecked(s.get("general.auto_save_enabled", True))
             self._max_versions.setValue(s.get("general.max_project_versions", 20))
+            self._reduced_motion.setChecked(s.get("general.reduced_motion", False))
 
         finally:
             for w in _widgets:
@@ -1054,6 +1066,7 @@ class SettingsView(QWidget):
                 (self._experience_combo, "Experience level", "Controls default UI complexity."),
                 (self._ui_locale_combo, "Interface language", "Selects the interface language and layout direction."),
                 (self._default_language, "Default lyrics language", "Sets the default language metadata for lyrics and new voice profiles."),
+                (self._reduced_motion, "Reduced motion", "Disables sliding and repositioning animations for notifications."),
                 (self._lyrics_model, "Lyrics model", "Selects the local lyrics model."),
                 (self._temperature, "Lyrics temperature", "Controls creative variation."),
                 (self._top_p, "Lyrics top-p", "Controls nucleus sampling."),
@@ -1090,6 +1103,7 @@ class SettingsView(QWidget):
                 self._experience_combo,
                 self._ui_locale_combo,
                 self._default_language,
+                self._reduced_motion,
                 self._lyrics_model,
                 self._temperature,
                 self._top_p,

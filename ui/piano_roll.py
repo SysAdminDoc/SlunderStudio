@@ -360,6 +360,7 @@ class PianoRollView(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setProperty("accessibility_canvas", True)
 
         t = ThemeEngine.get_colors()
@@ -715,7 +716,7 @@ class PianoRollWidget(QWidget):
             tab_order=[
                 self._snap_combo, self._velocity_spin, self._swing_spin, self._humanize_spin,
                 self._quantize_btn, self._swing_btn, self._humanize_btn,
-                self._select_all_btn, self._delete_btn, self._undo_btn,
+                self._select_all_btn, self._delete_btn, self._undo_btn, self._view,
             ],
         )
 

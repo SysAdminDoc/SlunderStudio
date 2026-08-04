@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Closed keyboard reachability gaps for piano-roll and mood-curve canvases, added a static gate for
+  all custom key handlers, and added a persisted localized reduced-motion preference that disables
+  toast geometry animations.
 - Hardened the Qt shell for display scaling: UI stylesheet sizes use scalable point units while
   preserving their baseline dimensions, fixed geometry calls now express minimums, Windows starts
   per-monitor-v2 aware, and layout gates run at simulated 125% and 150% scale factors.

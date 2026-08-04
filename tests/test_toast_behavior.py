@@ -1,10 +1,11 @@
 import os
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QEvent, QPointF
+from PySide6.QtCore import QEvent, QPointF, QRect
 from PySide6.QtGui import QEnterEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -63,6 +64,18 @@ class ToastBehaviorTests(unittest.TestCase):
         text = source.read_text(encoding="utf-8")
         self.assertIn("def resizeEvent(self, event):", text)
         self.assertIn("self.toast_mgr._reposition()", text)
+
+    def test_reduced_motion_skips_toast_geometry_animations(self):
+        toast = Toast("No motion", duration_ms=0, parent=self.host)
+        self.addCleanup(toast.deleteLater)
+        target = QRect(24, 32, 380, 64)
+
+        with patch("core.settings.Settings.get", return_value=True):
+            toast.slide_in(target)
+            self.assertEqual(toast.geometry(), target)
+            self.assertIsNone(toast._anim)
+            toast.dismiss()
+            self.assertIsNone(toast._anim)
 
 
 if __name__ == "__main__":

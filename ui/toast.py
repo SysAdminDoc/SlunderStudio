@@ -109,8 +109,23 @@ class Toast(QFrame):
         """Allow long paths and tokens to wrap without changing the tooltip value."""
         return cls._SOFT_BREAK_RE.sub(lambda match: f"{match.group(0)}\u200b", message)
 
+    @staticmethod
+    def _reduced_motion_enabled() -> bool:
+        """Read the live preference without making the toast manager own settings."""
+        try:
+            from core.settings import Settings
+
+            return bool(Settings().get("general.reduced_motion", False))
+        except Exception:
+            return False
+
     def slide_in(self, target_rect: QRect):
         """Animate sliding in from the right."""
+        if self._reduced_motion_enabled():
+            self.setGeometry(target_rect)
+            self.show()
+            return
+
         start = QRect(target_rect.x() + 400, target_rect.y(), target_rect.width(), target_rect.height())
         self.setGeometry(start)
         self.show()
@@ -149,6 +164,10 @@ class Toast(QFrame):
         timer = getattr(self, "_dismiss_timer", None)
         if timer is not None:
             timer.stop()
+        if self._reduced_motion_enabled():
+            self.closed.emit()
+            self.deleteLater()
+            return
         if self._anim and self._anim.state() == QPropertyAnimation.State.Running:
             return
 
@@ -344,6 +363,9 @@ class ToastManager:
         for i, toast in enumerate(self._toasts):
             if toast.isVisible():
                 target = self._get_toast_rect(i, toast)
+                if Toast._reduced_motion_enabled():
+                    toast.setGeometry(target)
+                    continue
                 anim = QPropertyAnimation(toast, b"geometry", toast)
                 anim.setDuration(200)
                 anim.setEndValue(target)

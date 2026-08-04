@@ -74,6 +74,10 @@ class MoodCurveView(QGraphicsView):
 
     keyboard_navigation = Signal(int, bool)
 
+    def __init__(self, scene: QGraphicsScene, parent=None):
+        super().__init__(scene, parent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
     def keyPressEvent(self, event: QKeyEvent):
         key = event.key()
         if key in (
@@ -166,7 +170,6 @@ class MoodCurveEditor(QWidget):
         self._scene.setSceneRect(0, 0, self.SCENE_W, self.SCENE_H)
 
         self._view = MoodCurveView(self._scene)
-        self._view.setFocusPolicy(Qt.StrongFocus)
         self._view.keyboard_navigation.connect(self._on_keyboard_navigation)
         self._view.setRenderHint(self._view.renderHints())
         self._view.setStyleSheet(

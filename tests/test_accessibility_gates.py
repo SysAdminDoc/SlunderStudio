@@ -165,6 +165,33 @@ class ContrastGateTests(unittest.TestCase):
         self.assertNotIn("self._status_bar.hide()", source)
         self.assertIn("self._status_bar.showMessage", source)
 
+    def test_key_handlers_declare_tab_reachable_focus(self):
+        offenders = []
+        for path in (ROOT / "ui").rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for class_node in ast.walk(tree):
+                if not isinstance(class_node, ast.ClassDef):
+                    continue
+                handles_keys = any(
+                    isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and node.name == "keyPressEvent"
+                    for node in class_node.body
+                )
+                if not handles_keys:
+                    continue
+                declares_focus = any(
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "setFocusPolicy"
+                    for node in ast.walk(class_node)
+                )
+                if not declares_focus:
+                    offenders.append(
+                        f"{path.relative_to(ROOT)}:{class_node.lineno} "
+                        f"{class_node.name}"
+                    )
+        self.assertEqual(offenders, [])
+
 
 class InlineButtonContrastTests(unittest.TestCase):
     _STATE_RULE = re.compile(
