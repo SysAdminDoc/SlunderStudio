@@ -10,6 +10,8 @@ All notable changes to SlunderStudio will be documented in this file.
 - Model teardown failures now remain visible as model errors, preserve the active reference until
   release succeeds, block unsafe cache moves, report through Model Hub, and pass only recorded
   per-revision execution consent to model loaders.
+- Added the EBU R128 delivery target at -23 LUFS / -1 dBTP, post-normalization true-peak
+  protection, and explicit EBU Mode momentary, short-term, and integrated mastering readouts.
 - Made locked PyInstaller releases reproducible: build timestamps and Python hash seeds are fixed,
   UPX is disabled, ZIP metadata is normalized, generated specs and unstable installer RECORD
   files are removed, and unsigned onedir/onefile artifacts ship with deterministic CycloneDX 1.7

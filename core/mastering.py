@@ -50,6 +50,7 @@ class LoudnessTarget:
     lufs: float
     category: str
     description: str
+    true_peak_dbtp: Optional[float] = None
 
 
 PRESETS = {
@@ -120,6 +121,14 @@ LUFS_TARGETS = {
         category="spoken-word",
         description="Common stereo podcast delivery target.",
     ),
+    "ebu_r128": LoudnessTarget(
+        key="ebu_r128",
+        label="EBU R128 (-23 LUFS / -1 dBTP)",
+        lufs=-23.0,
+        category="broadcast",
+        description="EBU R 128 programme loudness and permitted true-peak target.",
+        true_peak_dbtp=-1.0,
+    ),
     "broadcast": LoudnessTarget(
         key="broadcast",
         label="Broadcast (-24 LUFS)",
@@ -162,6 +171,8 @@ class MasteringResult:
     true_peak_dbtp: float = 0.0
     target_lufs: float = 0.0
     ceiling_dbtp: float = 0.0
+    short_term_max_lufs: float = -70.0
+    momentary_max_lufs: float = -70.0
 
     @property
     def meets_target(self) -> bool:
@@ -175,8 +186,10 @@ class MasteringResult:
         """Measured values for the export report."""
         return [
             f"Preset: {self.preset_name}",
-            f"Integrated loudness: {self.output_lufs:.2f} LUFS "
+            f"EBU Mode — Integrated loudness: {self.output_lufs:.2f} LUFS "
             f"(target {self.target_lufs:.1f} LUFS, was {self.input_lufs:.2f})",
+            f"EBU Mode short-term (3 s) maximum: {self.short_term_max_lufs:.2f} LUFS",
+            f"EBU Mode momentary (400 ms) maximum: {self.momentary_max_lufs:.2f} LUFS",
             f"Loudness range: {self.output_lra_lu:.2f} LU (was {self.input_lra_lu:.2f})",
             f"True peak: {self.true_peak_dbtp:.2f} dBTP "
             f"(ceiling {self.ceiling_dbtp:.1f} dBTP)",
@@ -250,17 +263,18 @@ SILENCE_LUFS = -70.0
 ABSOLUTE_GATE_LUFS = -70.0
 INTEGRATED_RELATIVE_GATE_LU = -10.0
 LRA_RELATIVE_GATE_LU = -20.0
-# BS.1770 channel weights. Left/right are unity; surround channels are +1.5 dB
+# BS.1770-5 channel weights. Left/right are unity; surround channels are +1.5 dB
 # but this app only ever masters mono or stereo.
 STEREO_CHANNEL_WEIGHTS = (1.0, 1.0)
-# BS.1770-4 Annex 2 requires >= 4x oversampling for true peak below 96 kHz.
+# ITU-R BS.1770-5 Annex 2 specifies 4x oversampling at 48 kHz; 2x is sufficient
+# at 96 kHz. The same proportional rule is used for other supported rates.
 TRUE_PEAK_OVERSAMPLE = 4
 
 
 def _k_weighting_coefficients(sr: int) -> tuple[tuple[float, ...], tuple[float, ...]]:
     """K-weighting biquads for any sample rate.
 
-    BS.1770 tabulates coefficients at 48 kHz. They are re-derived here from the
+    ITU-R BS.1770-5 tabulates coefficients at 48 kHz. They are re-derived here from the
     same filter definitions so 44.1 kHz and 96 kHz material is not measured with
     48 kHz coefficients, which is a real error at low rates.
     """
@@ -389,7 +403,7 @@ def measure_loudness_range(audio: np.ndarray, sr: int) -> float:
 
 
 def measure_true_peak_db(audio: np.ndarray, sr: int) -> float:
-    """True peak in dBTP: 4x oversampled inter-sample peak per BS.1770-4."""
+    """True peak in dBTP: oversampled inter-sample peak per BS.1770-5 Annex 2."""
     array = _as_2d(audio)
     if array.size == 0:
         return SILENCE_LUFS
@@ -612,6 +626,14 @@ def normalize_lufs(audio: np.ndarray, sr: int, target_lufs: float) -> np.ndarray
     return audio * gain
 
 
+def constrain_true_peak(audio: np.ndarray, sr: int, ceiling_dbtp: float) -> np.ndarray:
+    """Scale audio down when its measured true peak exceeds a dBTP ceiling."""
+    measured = measure_true_peak_db(audio, sr)
+    if measured <= ceiling_dbtp:
+        return audio
+    return audio * db_to_linear(float(ceiling_dbtp) - measured)
+
+
 def _window_lufs(block: np.ndarray) -> float:
     arr = np.asarray(block, dtype=np.float32)
     if arr.ndim == 2:
@@ -658,6 +680,25 @@ def measure_short_term_lufs(audio: np.ndarray, sr: int,
     )
 
 
+def _max_ebu_mode_lufs(audio: np.ndarray, sr: int, window_sec: float,
+                        overlap: float) -> float:
+    """Return the loudest K-weighted EBU Mode window in LUFS."""
+    blocks = _block_loudness(audio, sr, window_sec, overlap=overlap)
+    if blocks.size == 0:
+        return SILENCE_LUFS
+    return float(np.max(blocks))
+
+
+def measure_momentary_lufs(audio: np.ndarray, sr: int) -> float:
+    """Return the maximum EBU Mode momentary (400 ms) loudness in LUFS."""
+    return _max_ebu_mode_lufs(audio, sr, 0.400, overlap=0.75)
+
+
+def measure_short_term_max_lufs(audio: np.ndarray, sr: int) -> float:
+    """Return the maximum EBU Mode short-term (3 s) loudness in LUFS."""
+    return _max_ebu_mode_lufs(audio, sr, 3.000, overlap=2.0 / 3.0)
+
+
 def _profile_delta(output: tuple[ShortTermLoudnessPoint, ...],
                    reference: tuple[ShortTermLoudnessPoint, ...]) -> tuple[float, float]:
     pairs = [
@@ -684,10 +725,7 @@ def match_loudness_to_reference(audio: np.ndarray, sr: int,
     gain_db = 0.0 if source_lufs < -60.0 or reference_lufs < -60.0 else reference_lufs - source_lufs
     matched = source * db_to_linear(gain_db)
 
-    ceiling = db_to_linear(ceiling_db)
-    peak = float(np.max(np.abs(matched))) if matched.size else 0.0
-    if peak > ceiling:
-        matched = matched * (ceiling / max(peak, 1e-10))
+    matched = constrain_true_peak(matched, sr, ceiling_db)
 
     matched = np.clip(matched, -1.0, 1.0).astype(np.float32)
     source_profile = measure_short_term_lufs(source, sr)
@@ -966,6 +1004,11 @@ def master_audio(audio: np.ndarray, sr: int,
         # LUFS normalization
         processed = normalize_lufs(processed, sr, preset.target_lufs)
 
+        # Normalization can raise inter-sample peaks above the limiter ceiling.
+        # Apply the declared ceiling after the final gain change, then report the
+        # measured result rather than claiming both targets were met.
+        processed = constrain_true_peak(processed, sr, preset.limiter_ceiling)
+
         # Final clip
         processed = np.clip(processed, -1.0, 1.0)
 
@@ -987,6 +1030,8 @@ def master_audio(audio: np.ndarray, sr: int,
             true_peak_dbtp=measure_true_peak_db(processed, sr),
             target_lufs=preset.target_lufs,
             ceiling_dbtp=preset.limiter_ceiling,
+            short_term_max_lufs=measure_short_term_max_lufs(processed, sr),
+            momentary_max_lufs=measure_momentary_lufs(processed, sr),
         )
 
     except Exception as e:

@@ -5,15 +5,20 @@ import numpy as np
 
 from core.mastering import (
     ABSOLUTE_GATE_LUFS,
+    LUFS_TARGETS,
+    MasteringPreset,
     SILENCE_LUFS,
     _biquad_filter,
     apply_compression,
     apply_limiter,
     db_to_linear,
     measure_loudness_range,
+    measure_momentary_lufs,
     measure_lufs,
     measure_sample_peak_db,
+    measure_short_term_max_lufs,
     measure_true_peak_db,
+    master_audio,
 )
 
 SR = 48000
@@ -87,6 +92,39 @@ class LoudnessConformanceTests(unittest.TestCase):
 
     def test_loudness_range_of_a_constant_tone_is_near_zero(self):
         self.assertLess(measure_loudness_range(sine(1000, -23.0, seconds=30.0), SR), 1.0)
+
+    def test_ebu_r128_target_and_ebu_mode_readouts_are_conformant(self):
+        target = LUFS_TARGETS["ebu_r128"]
+        self.assertEqual(-23.0, target.lufs)
+        self.assertEqual(-1.0, target.true_peak_dbtp)
+
+        preset = MasteringPreset(
+            name="EBU R128",
+            target_lufs=target.lufs,
+            limiter_ceiling=target.true_peak_dbtp,
+            auto_eq=False,
+            auto_compress=False,
+        )
+        result = master_audio(sine(1000, -12.0, seconds=5.0), SR, preset)
+
+        self.assertIsNone(result.error)
+        self.assertAlmostEqual(-23.0, result.output_lufs, delta=0.2)
+        self.assertLessEqual(result.true_peak_dbtp, -1.0 + 0.05)
+        self.assertLess(result.short_term_max_lufs, 0.0)
+        self.assertLess(result.momentary_max_lufs, 0.0)
+        self.assertAlmostEqual(
+            result.short_term_max_lufs,
+            measure_short_term_max_lufs(result.audio, SR),
+            places=5,
+        )
+        self.assertAlmostEqual(
+            result.momentary_max_lufs,
+            measure_momentary_lufs(result.audio, SR),
+            places=5,
+        )
+        report = result.report_lines()
+        self.assertTrue(any("EBU Mode short-term (3 s)" in line for line in report))
+        self.assertTrue(any("EBU Mode momentary (400 ms)" in line for line in report))
 
 
 class TruePeakTests(unittest.TestCase):

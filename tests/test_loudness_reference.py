@@ -80,13 +80,16 @@ class LoudnessReferenceTests(unittest.TestCase):
 
             self.assertIsNotNone(view._last_loudness_match)
             self.assertIn("Ref:", view._lufs_label.text())
-            self.assertIn("ST avg delta", view._lufs_label.text())
+            self.assertIn("Short-term (3 s)", view._lufs_label.text())
+            self.assertIn("Momentary (400 ms)", view._lufs_label.text())
             self.assertIn("matched to Reference", view._status.text())
         finally:
             view.deleteLater()
 
     def test_expanded_lufs_targets_are_available_in_mixer_and_settings(self):
         self.assertEqual(-16.0, LUFS_TARGETS["podcast"].lufs)
+        self.assertEqual(-23.0, LUFS_TARGETS["ebu_r128"].lufs)
+        self.assertEqual(-1.0, LUFS_TARGETS["ebu_r128"].true_peak_dbtp)
         self.assertEqual(-24.0, LUFS_TARGETS["broadcast"].lufs)
         self.assertEqual(-27.0, LUFS_TARGETS["cinema"].lufs)
 
@@ -94,12 +97,15 @@ class LoudnessReferenceTests(unittest.TestCase):
         try:
             labels = [mixer._target_combo.itemText(i) for i in range(mixer._target_combo.count())]
             self.assertIn("Podcast stereo (-16 LUFS)", labels)
+            self.assertIn("EBU R128 (-23 LUFS / -1 dBTP)", labels)
             self.assertIn("Broadcast (-24 LUFS)", labels)
             self.assertIn("Cinema dialog (-27 LUFS)", labels)
 
             mixer._set_target_combo_key("cinema")
             self.assertAlmostEqual(-27.0, mixer._lufs_spin.value(), places=2)
             self.assertLessEqual(mixer._lufs_spin.minimum(), -27.0)
+            mixer._set_target_combo_key("ebu_r128")
+            self.assertAlmostEqual(-23.0, mixer._lufs_spin.value(), places=2)
         finally:
             mixer.deleteLater()
 
@@ -117,6 +123,7 @@ class LoudnessReferenceTests(unittest.TestCase):
                         for i in range(settings._mastering_target.count())
                     ]
                     self.assertIn("podcast", keys)
+                    self.assertIn("ebu_r128", keys)
                     self.assertIn("broadcast", keys)
                     self.assertIn("cinema", keys)
                 finally:

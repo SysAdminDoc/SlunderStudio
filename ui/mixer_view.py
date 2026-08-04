@@ -46,6 +46,8 @@ from core.mastering import (
     measure_loudness_range,
     measure_lufs,
     measure_true_peak_db,
+    measure_momentary_lufs,
+    measure_short_term_max_lufs,
     measure_short_term_lufs,
     suggest_dynamic_eq_curve,
 )
@@ -158,12 +160,15 @@ def _master_audio_task(
             sample_rate,
             reference_audio,
             reference_sample_rate,
+            ceiling_db=preset.limiter_ceiling,
         )
         result.audio = match.audio
         result.output_lufs = match.output_lufs
         result.peak_db = match.peak_db
         result.output_lra_lu = measure_loudness_range(match.audio, sample_rate)
         result.true_peak_dbtp = measure_true_peak_db(match.audio, sample_rate)
+        result.short_term_max_lufs = measure_short_term_max_lufs(match.audio, sample_rate)
+        result.momentary_max_lufs = measure_momentary_lufs(match.audio, sample_rate)
         result.target_lufs = match.reference_lufs
         return result, match
     return result, None
@@ -675,7 +680,7 @@ class MixerView(QWidget):
             QComboBox {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 4px 10px; font-size: 8.25pt; min-width: 160px;
+                padding: 4px 10px; font-size: 8.25pt; min-width: 220px;
             }}
         """)
         self._target_combo.currentIndexChanged.connect(self._on_lufs_target_changed)
@@ -1729,6 +1734,9 @@ class MixerView(QWidget):
 
         # Override target LUFS
         preset.target_lufs = self._lufs_spin.value()
+        target = LUFS_TARGETS.get(self._target_combo.currentData())
+        if target is not None and target.true_peak_dbtp is not None:
+            preset.limiter_ceiling = target.true_peak_dbtp
         preset.ms_mid_gain_db = self._mid_gain_spin.value()
         preset.ms_side_gain_db = self._side_gain_spin.value()
 
@@ -1803,15 +1811,17 @@ class MixerView(QWidget):
 
             if self._last_loudness_match:
                 self._lufs_label.setText(
-                    f"In: {result.input_lufs:.1f} LUFS | "
+                    f"EBU Mode — Integrated: {result.output_lufs:.1f} LUFS | "
                     f"Ref: {match.reference_lufs:.1f} | "
-                    f"Out: {result.output_lufs:.1f} | "
-                    f"ST avg delta {match.average_short_term_delta_db:.1f} dB"
+                    f"Short-term (3 s) avg delta {match.average_short_term_delta_db:.1f} dB | "
+                    f"Momentary (400 ms) max {result.momentary_max_lufs:.1f} LUFS | "
+                    f"True peak {result.true_peak_dbtp:.2f} dBTP"
                 )
             else:
                 self._lufs_label.setText(
-                    f"In: {result.input_lufs:.1f} LUFS | "
-                    f"Out: {result.output_lufs:.1f} LUFS | "
+                    f"EBU Mode — Integrated: {result.output_lufs:.1f} LUFS | "
+                    f"Short-term (3 s) max: {result.short_term_max_lufs:.1f} LUFS | "
+                    f"Momentary (400 ms) max: {result.momentary_max_lufs:.1f} LUFS | "
                     f"LRA: {result.output_lra_lu:.1f} LU | "
                     f"True peak: {result.true_peak_dbtp:.2f} dBTP"
                 )

@@ -88,7 +88,7 @@ Settings can export a redacted health report ZIP with app/dependency versions, G
 
 The app chrome, Settings, Lyrics, and Vocal Suite controls use a catalog-backed locale layer. Settings > Appearance > Interface Language supports English, Arabic with right-to-left layout, and a pseudo-locale for layout QA; the selected locale is restored on restart. Settings > Appearance > Default Lyrics Language feeds Quick lyrics prompts, Guided lyrics metadata, and new GPT-SoVITS voice profile language defaults where supported. MIDI Studio supports explicit chord-progression priors such as `I-V-vi-IV` and `ii-V-I` for text-to-MIDI prompts and fallback generation. MIDI Studio also includes selectable drum groove templates with swing timing, snare ghost notes, and velocity humanization for generated GM drum tracks, `.chordpro` and `.crd` chord chart export with optional pasted lyrics, and piano roll editing tools for quantize, swing, velocity humanize, and MIDI CC automation lanes. Vocal Suite includes a Lyric Melody tab that converts hummed audio into provenance-tracked MIDI, aligns pasted lyrics to detected notes, and can render a routed DiffSinger vocal when a model is loaded. The Auto-Tune tab writes routed, provenance-tracked WAV files with adjustable pitch correction toward the nearest semitone.
 
-Mixer converts every imported track to the configured project sample rate with deterministic polyphase resampling and explicit stereo normalization before calculating duration or summing. All lossless engine, mixer, and trim artifacts use the shared settings-aware writer, which preserves the requested sample rate, channel layout, and 16/24/32-bit WAV capability. The mastering true-peak meter intentionally oversamples only for measurement; it does not introduce a second processing resampler. Mixer can analyze each stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also trim Mid and Side gain independently before limiting, load a reference track, match the final master to its integrated LUFS, report short-term LUFS profile deltas for the match, and target streaming, podcast, broadcast, cinema, or loud CD delivery levels.
+Mixer converts every imported track to the configured project sample rate with deterministic polyphase resampling and explicit stereo normalization before calculating duration or summing. All lossless engine, mixer, and trim artifacts use the shared settings-aware writer, which preserves the requested sample rate, channel layout, and 16/24/32-bit WAV capability. The mastering true-peak meter intentionally oversamples only for measurement; it does not introduce a second processing resampler. Mixer can analyze each stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also trim Mid and Side gain independently before limiting, load a reference track, match the final master to its integrated LUFS, report EBU Mode momentary (400 ms), short-term (3 s), and integrated readouts, and target streaming, podcast, EBU R128, broadcast, cinema, or loud CD delivery levels.
 
 ## Mastering Presets
 
@@ -113,9 +113,13 @@ Mixer exposes Mid and Side trim controls from -6 dB to +6 dB. The mastering chai
 | YouTube | -13.0 | Online video music delivery |
 | Apple Music | -16.0 | Apple Sound Check-style music delivery |
 | Podcast stereo | -16.0 | Spoken-word stereo podcast delivery |
+| EBU R128 | -23.0 LUFS / -1 dBTP | Broadcast programme loudness and true-peak ceiling |
 | Broadcast | -24.0 | ATSC A/85-style broadcast delivery |
 | Cinema dialog | -27.0 | Dialogue-oriented cinema delivery |
 | CD / loud master | -9.0 | Loud physical or club master delivery |
+
+EBU R128 is the shared target from [EBU R 128 v5.0](https://tech.ebu.ch/publications/r128); its
+true-peak measurement follows [ITU-R BS.1770-5 Annex 2](https://www.itu.int/rec/R-REC-BS.1770-5-202311-I).
 
 ## AI Models
 
