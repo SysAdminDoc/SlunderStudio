@@ -23,6 +23,7 @@ from core.model_manager import (
     ModelManager,
     ModelSecurityError,
     ModelStatus,
+    ModelUpdate,
     OfflineModeError,
     model_hardware_fit,
     model_supports_task,
@@ -186,6 +187,8 @@ class ModelCard(QFrame):
     activation_requested = Signal(str)
     activation_cancel_requested = Signal(str)
     deactivation_requested = Signal(str)
+    update_requested = Signal(str)
+    rollback_requested = Signal(str)
 
     def __init__(self, info: ModelInfo, parent=None):
         super().__init__(parent)
@@ -300,6 +303,16 @@ class ModelCard(QFrame):
         self._trust_label = trust
         self._refresh_signature_label()
 
+        self._update_label = QLabel("")
+        self._update_label.setWordWrap(True)
+        self._update_label.setVisible(False)
+        self._update_label.setStyleSheet(
+            f"background: rgba(137, 180, 250, 24); color: {Palette.BLUE}; "
+            "border: 1px solid rgba(137, 180, 250, 70); border-radius: 5px; "
+            "padding: 5px 7px; font-size: 7.75pt;"
+        )
+        layout.addWidget(self._update_label)
+
         measurement_text = self.info.measurement_basis or "No published measurement basis recorded."
         measurement_date = self.info.measurement_date or "undated"
         measurement = QLabel(f"Basis ({measurement_date}): {measurement_text}")
@@ -398,11 +411,29 @@ class ModelCard(QFrame):
             lambda: self.delete_requested.emit(self.model_id)
         )
 
+        self._update_btn = QPushButton("Install update")
+        self._update_btn.setVisible(False)
+        self._update_btn.clicked.connect(
+            lambda: self.update_requested.emit(self.model_id)
+        )
+
+        self._rollback_btn = QPushButton("Rollback")
+        self._rollback_btn.setVisible(False)
+        self._rollback_btn.clicked.connect(
+            lambda: self.rollback_requested.emit(self.model_id)
+        )
+
         action_row = QHBoxLayout()
         action_row.setSpacing(6)
         action_row.addWidget(self._action_btn, 1)
         action_row.addWidget(self._delete_btn)
         layout.addLayout(action_row)
+
+        update_row = QHBoxLayout()
+        update_row.setSpacing(6)
+        update_row.addWidget(self._update_btn, 1)
+        update_row.addWidget(self._rollback_btn)
+        layout.addLayout(update_row)
 
         self._consent_btn = QPushButton("Review executable model")
         self._consent_btn.setVisible(False)
@@ -420,6 +451,8 @@ class ModelCard(QFrame):
                 (self._cancel_btn, f"Cancel {self.info.name} download", "Cancels the active model download."),
                 (self._action_btn, f"{self.info.name} action", "Downloads, activates, deactivates, or cancels activation."),
                 (self._delete_btn, f"Remove {self.info.name}", "Moves the installed model cache to recoverable trash."),
+                (self._update_btn, f"Install {self.info.name} update", "Installs the checked immutable revision after health validation."),
+                (self._rollback_btn, f"Rollback {self.info.name}", "Restores the last good model revision from recoverable storage."),
                 (
                     self._consent_btn,
                     f"Review {self.info.name} executable model",
@@ -429,10 +462,14 @@ class ModelCard(QFrame):
             tab_order=[
                 self._action_btn,
                 self._delete_btn,
+                self._update_btn,
+                self._rollback_btn,
                 self._consent_btn,
                 self._cancel_btn,
             ],
         )
+
+        self._model_update: ModelUpdate | None = None
 
     def _refresh_signature_label(self):
         """Keep the card's trust copy explicit about OMS signature state."""
@@ -570,6 +607,49 @@ class ModelCard(QFrame):
                 else "Review executable model"
             )
             self._consent_btn.setEnabled(not approved)
+        self._refresh_update_controls(status)
+
+    def set_model_update(self, update: ModelUpdate | None):
+        """Show the checked target and its explicit upstream release notes."""
+        self._model_update = update
+        if update is not None and update.available:
+            notes = " ".join(update.release_notes[:2])
+            self._update_label.setText(
+                f"Update available: {update.target_revision[:12]}\n{notes}"
+            )
+            self._update_label.setToolTip(
+                "\n".join(update.release_notes) + f"\n\n{update.source_url}"
+            )
+            set_accessible(
+                self._update_label,
+                f"{self.info.name} update available",
+                self._update_label.text(),
+            )
+        elif update is not None and update.error:
+            self._update_label.setText(f"Update check: {update.error}")
+            self._update_label.setToolTip(update.error)
+            set_accessible(
+                self._update_label,
+                f"{self.info.name} update check status",
+                update.error,
+            )
+        self._refresh_update_controls(ModelManager().get_status(self.model_id))
+
+    def _refresh_update_controls(self, status: ModelStatus):
+        """Keep update actions consistent with lifecycle state and rollback availability."""
+        update = self._model_update
+        available = bool(update is not None and update.available)
+        can_update = available and status == ModelStatus.DOWNLOADED
+        rollback = ModelManager().get_model_rollback(self.model_id)
+        can_rollback = bool(rollback) and status in {
+            ModelStatus.DOWNLOADED,
+            ModelStatus.LOADED,
+        }
+        self._update_label.setVisible(available or bool(update and update.error))
+        self._update_btn.setVisible(can_update)
+        self._update_btn.setEnabled(can_update)
+        self._rollback_btn.setVisible(can_rollback)
+        self._rollback_btn.setEnabled(can_rollback)
 
     def _set_badge(self, text: str, color: str):
         self._status_badge.setText(text)
@@ -646,6 +726,8 @@ class ModelHubView(QWidget):
         self._workers: dict[str, DownloadWorker] = {}
         self._stopping_downloads: set[str] = set()
         self._activation_workers: dict[str, InferenceWorker] = {}
+        self._update_worker: InferenceWorker | None = None
+        self._update_workers: dict[str, InferenceWorker] = {}
         self._mgr = ModelManager()
         self._hardware_profile = {
             "available": False,
@@ -769,6 +851,22 @@ class ModelHubView(QWidget):
         hardware_filter_bar.addStretch()
         layout.addLayout(hardware_filter_bar)
 
+        update_bar = QHBoxLayout()
+        update_bar.setSpacing(10)
+        self._update_status_label = QLabel(
+            "Model updates are checked only when you request them."
+        )
+        self._update_status_label.setWordWrap(True)
+        self._update_status_label.setStyleSheet(
+            f"font-size: 8.5pt; color: {Palette.SUBTEXT0};"
+        )
+        update_bar.addWidget(self._update_status_label, 1)
+        self._check_updates_btn = QPushButton("Check for updates")
+        self._check_updates_btn.setMinimumHeight(34)
+        self._check_updates_btn.clicked.connect(self._start_update_check)
+        update_bar.addWidget(self._check_updates_btn)
+        layout.addLayout(update_bar)
+
         # Scrollable grid
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -793,6 +891,8 @@ class ModelHubView(QWidget):
             card.activation_requested.connect(self._start_activation)
             card.activation_cancel_requested.connect(self._cancel_activation)
             card.deactivation_requested.connect(self._deactivate_model)
+            card.update_requested.connect(self._start_model_update)
+            card.rollback_requested.connect(self._start_model_rollback)
             self._cards[model_id] = card
             self._grid_layout.addWidget(card, row, col)
             col += 1
@@ -825,6 +925,8 @@ class ModelHubView(QWidget):
                 (self._gpu_label, "Model Hub GPU status", "Shows GPU availability and active model."),
                 (self._disk_label, "Model disk usage", "Shows downloaded model storage usage."),
                 (self._recommendation_label, "Model recommendations", "Shows task recommendations ranked for the detected hardware."),
+                (self._update_status_label, "Model update status", "Reports the last requested update check and its results."),
+                (self._check_updates_btn, "Check for model updates", "Checks upstream sources for immutable model revisions and release notes."),
             ],
             tab_order=[
                 self._search,
@@ -833,6 +935,7 @@ class ModelHubView(QWidget):
                 self._sort_combo,
                 self._hardware_filter,
                 self._downloaded_only,
+                self._check_updates_btn,
                 *[card._action_btn for card in self._cards.values()],
             ],
         )
@@ -840,6 +943,161 @@ class ModelHubView(QWidget):
     def _connect_signals(self):
         self._mgr.status_changed.connect(self._on_status_changed)
         self._mgr.gpu_status_changed.connect(self._on_gpu_changed)
+
+    def _start_update_check(self):
+        """Check upstream revisions off the UI thread; never poll on page load."""
+        if self._update_worker is not None:
+            return
+        self._check_updates_btn.setEnabled(False)
+        self._update_status_label.setText("Checking model sources for immutable revisions...")
+        worker = InferenceWorker(
+            self._mgr.check_for_updates,
+            job_kind="model_update_check",
+            job_label="Model update check",
+            job_store=self._job_store,
+            job_metadata={"module": "model_hub"},
+        )
+        worker.finished.connect(self._on_update_check_finished)
+        worker.error.connect(self._on_update_check_error)
+        worker.cancelled.connect(self._on_update_check_cancelled)
+        self._update_worker = worker
+        worker.start()
+
+    def _finish_update_check(self):
+        self._update_worker = None
+        self._check_updates_btn.setEnabled(True)
+
+    def _on_update_check_finished(self, results):
+        self._finish_update_check()
+        available = 0
+        for model_id, update in (results.items() if isinstance(results, dict) else ()):
+            if model_id in self._cards:
+                self._cards[model_id].set_model_update(update)
+            if getattr(update, "available", False):
+                available += 1
+        self._update_status_label.setText(
+            f"Update check complete: {available} immutable model update(s) available."
+        )
+        if self.toast_mgr:
+            if available:
+                self.toast_mgr.info(
+                    f"{available} model update(s) are available with release notes."
+                )
+            else:
+                self.toast_mgr.success("All checked model sources are up to date.")
+
+    def _on_update_check_error(self, error: str):
+        self._finish_update_check()
+        self._update_status_label.setText(f"Update check failed: {error}")
+        if self.toast_mgr:
+            self.toast_mgr.error(f"Model update check failed: {error}")
+
+    def _on_update_check_cancelled(self):
+        self._finish_update_check()
+        self._update_status_label.setText("Model update check cancelled.")
+
+    def _start_model_update(self, model_id: str):
+        """Install a checked revision through the persistent worker contract."""
+        if model_id in self._update_workers:
+            return
+        update = self._mgr.get_model_update(model_id)
+        if update is None or not update.available:
+            return
+        info = self._mgr.get_model_info(model_id)
+        if info is None:
+            return
+        worker = InferenceWorker(
+            self._mgr.install_model_update,
+            model_id,
+            job_kind="model_update",
+            job_label=f"Update {info.name}",
+            job_inputs={"model_id": model_id, "target_revision": update.target_revision},
+            job_metadata={"model_id": model_id, "target_revision": update.target_revision},
+            job_store=self._job_store,
+        )
+        worker.finished.connect(
+            lambda result, mid=model_id: self._on_model_update_finished(mid, result)
+        )
+        worker.error.connect(
+            lambda error, mid=model_id: self._on_model_update_error(mid, error)
+        )
+        worker.cancelled.connect(
+            lambda mid=model_id: self._on_model_update_cancelled(mid)
+        )
+        self._update_workers[model_id] = worker
+        self._cards[model_id].set_model_update(update)
+        self._update_status_label.setText(f"Installing {info.name} update...")
+        worker.start()
+
+    def _on_model_update_finished(self, model_id: str, result):
+        self._update_workers.pop(model_id, None)
+        if model_id in self._cards:
+            self._cards[model_id].set_model_update(self._mgr.get_model_update(model_id))
+            self._cards[model_id].update_status(self._mgr.get_status(model_id))
+        if self.toast_mgr:
+            self.toast_mgr.success(
+                f"{self._mgr.get_model_info(model_id).name} update installed and health-validated."
+            )
+        self._update_status_label.setText("Model update installed and health-validated.")
+
+    def _on_model_update_error(self, model_id: str, error: str):
+        self._update_workers.pop(model_id, None)
+        if model_id in self._cards:
+            self._cards[model_id].update_status(self._mgr.get_status(model_id))
+        self._update_status_label.setText(f"Model update failed: {error}")
+        if self.toast_mgr:
+            self.toast_mgr.error(f"Model update failed: {error}")
+
+    def _on_model_update_cancelled(self, model_id: str):
+        self._update_workers.pop(model_id, None)
+        if model_id in self._cards:
+            self._cards[model_id].update_status(self._mgr.get_status(model_id))
+        self._update_status_label.setText("Model update cancelled; the last good cache was preserved.")
+
+    def _start_model_rollback(self, model_id: str):
+        """Restore a retained last-good revision through a cancellable job."""
+        if model_id in self._update_workers:
+            return
+        info = self._mgr.get_model_info(model_id)
+        if info is None or self._mgr.get_model_rollback(model_id) is None:
+            return
+        worker = InferenceWorker(
+            self._mgr.rollback_model_update,
+            model_id,
+            job_kind="model_rollback",
+            job_label=f"Rollback {info.name}",
+            job_inputs={"model_id": model_id},
+            job_metadata={"model_id": model_id},
+            job_store=self._job_store,
+        )
+        worker.finished.connect(
+            lambda result, mid=model_id: self._on_model_rollback_finished(mid, result)
+        )
+        worker.error.connect(
+            lambda error, mid=model_id: self._on_model_rollback_error(mid, error)
+        )
+        worker.cancelled.connect(
+            lambda mid=model_id: self._on_model_rollback_error(mid, "Rollback cancelled")
+        )
+        self._update_workers[model_id] = worker
+        self._update_status_label.setText(f"Restoring {info.name}'s last good revision...")
+        worker.start()
+
+    def _on_model_rollback_finished(self, model_id: str, _result):
+        self._update_workers.pop(model_id, None)
+        if model_id in self._cards:
+            self._cards[model_id].update_status(self._mgr.get_status(model_id))
+        self._update_status_label.setText("Last good model revision restored and health-validated.")
+        if self.toast_mgr:
+            self.toast_mgr.success("Last good model revision restored.")
+
+    def _on_model_rollback_error(self, model_id: str, error: str):
+        self._update_workers.pop(model_id, None)
+        if model_id in self._cards:
+            self._cards[model_id].update_status(self._mgr.get_status(model_id))
+        self._update_status_label.setText(f"Rollback failed: {error}")
+        if self.toast_mgr:
+            self.toast_mgr.error(f"Model rollback failed: {error}")
 
     def prepare_onboarding_model(self, model_id: str, action: str = "open") -> bool:
         """Select the model handed off by onboarding and optionally start it."""

@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added Model Hub update checks that persist explicit upstream release notes, accept only immutable
+  commit-SHA targets, validate every downloaded file before activation, and retain the last verified
+  model cache for health-failure recovery and user-requested rollback.
 - Added `slunder_cli.py` for headless lyrics, MIDI, SFX, audio export, and durable-job inspection.
   Commands reuse the desktop engine, worker, export, provenance, cancellation, and error
   contracts, with structured JSON results available through `--json`.

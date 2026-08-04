@@ -89,6 +89,12 @@ DEFAULTS = {
         "show_experimental": False,
         "execution_consents": {},
         "license_consents": {},
+        # Update targets are persisted only after an immutable commit SHA and
+        # explicit upstream notes have been recorded.  They are never branch
+        # names or mutable download URLs.
+        "update_checks": {},
+        "update_backups": {},
+        "installed_revisions": {},
     },
     "lyrics": {
         "model_id": "llama-3.1-8b-q4",

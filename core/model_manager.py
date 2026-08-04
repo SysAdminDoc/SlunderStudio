@@ -13,7 +13,7 @@ import importlib.util
 from enum import Enum
 from typing import Any, Callable, Optional
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from PySide6.QtCore import QObject, Signal
 
@@ -73,6 +73,11 @@ class DownloadInFlightError(RuntimeError):
     pass
 
 
+class ModelUpdateError(RuntimeError):
+    """Raised when a model update cannot be installed or rolled back safely."""
+    pass
+
+
 EXECUTABLE_MODEL_WARNING = (
     "This model revision contains executable repository code or pickle-backed "
     "weights. Loading it can execute code with your user permissions. Review "
@@ -108,6 +113,101 @@ class ModelStatus(str, Enum):
     LOADING = "loading"
     LOADED = "loaded"
     ERROR = "error"
+
+
+@dataclass(frozen=True)
+class ModelUpdate:
+    """An immutable upstream model target discovered by an update check."""
+
+    model_id: str
+    source: str
+    current_revision: str
+    target_revision: str
+    status: str = "error"
+    release_notes: tuple[str, ...] = ()
+    target_title: str = ""
+    published_at: str = ""
+    checked_at: float = 0.0
+    source_url: str = ""
+    error: str = ""
+
+    @property
+    def available(self) -> bool:
+        return (
+            self.status == "available"
+            and is_commit_sha(self.target_revision)
+            and self.target_revision != self.current_revision
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "model_id": self.model_id,
+            "source": self.source,
+            "current_revision": self.current_revision,
+            "target_revision": self.target_revision,
+            "status": self.status,
+            "release_notes": list(self.release_notes),
+            "target_title": self.target_title,
+            "published_at": self.published_at,
+            "checked_at": self.checked_at,
+            "source_url": self.source_url,
+            "error": self.error,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Any) -> Optional["ModelUpdate"]:
+        if not isinstance(data, dict):
+            return None
+        notes = data.get("release_notes", ())
+        if isinstance(notes, str):
+            notes = (notes,)
+        elif isinstance(notes, (list, tuple)):
+            notes = tuple(str(note) for note in notes if str(note).strip())
+        else:
+            notes = ()
+        try:
+            checked_at = float(data.get("checked_at", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            checked_at = 0.0
+        return cls(
+            model_id=str(data.get("model_id", "")),
+            source=str(data.get("source", "")),
+            current_revision=str(data.get("current_revision", "")),
+            target_revision=str(data.get("target_revision", "")),
+            status=str(data.get("status", "error")),
+            release_notes=notes,
+            target_title=str(data.get("target_title", "")),
+            published_at=str(data.get("published_at", "")),
+            checked_at=checked_at,
+            source_url=str(data.get("source_url", "")),
+            error=str(data.get("error", "")),
+        )
+
+
+@dataclass(frozen=True)
+class ModelHealthReport:
+    """Integrity and optional runtime health result for one model revision."""
+
+    model_id: str
+    revision: str
+    healthy: bool
+    checks: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
+    checked_at: float = 0.0
+
+    @property
+    def is_success(self) -> bool:
+        return self.healthy
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "model_id": self.model_id,
+            "revision": self.revision,
+            "healthy": self.healthy,
+            "checks": list(self.checks),
+            "errors": list(self.errors),
+            "checked_at": self.checked_at,
+        }
 
 
 COMMERCIAL_USE_ALLOWED = "allowed"
@@ -985,6 +1085,7 @@ class ModelManager(QObject):
         self._disk_usage_cache_path: Optional[str] = None
         self._settings = Settings()
         self._trash = TrashManager()
+        self._restore_installed_revisions()
 
         # Guards every read/write of _status, _current_model_id, _current_model,
         # and the lifecycle request ticket. Held only for short critical
@@ -1018,6 +1119,82 @@ class ModelManager(QObject):
 
     def get_model_info(self, model_id: str) -> Optional[ModelInfo]:
         return self._registry.get(model_id)
+
+    def _restore_installed_revisions(self) -> None:
+        """Restore only source-matched immutable revisions from the settings ledger."""
+        records = self._settings.get("model_hub.installed_revisions", {}) or {}
+        if not isinstance(records, dict):
+            return
+        for model_id, raw in records.items():
+            info = self._registry.get(model_id)
+            if info is None:
+                continue
+            if isinstance(raw, dict):
+                revision = str(raw.get("revision", ""))
+                source = str(raw.get("source", ""))
+            else:
+                revision = str(raw or "")
+                source = info.source
+            if (
+                not revision
+                or not is_commit_sha(revision)
+                or source != info.source
+            ):
+                continue
+            if revision == info.revision:
+                continue
+            self._registry[model_id] = replace(
+                info,
+                revision=revision,
+                local_mirror=default_local_mirror(model_id, revision),
+            )
+
+    def _set_installed_revision(self, model_id: str, revision: str) -> None:
+        """Persist and expose one verified revision without changing built-in code."""
+        info = self._registry.get(model_id)
+        if info is None or not is_commit_sha(revision):
+            raise ModelUpdateError(f"Invalid immutable revision for {model_id}")
+        base = BUILTIN_MODELS.get(model_id)
+        records = self._settings.get("model_hub.installed_revisions", {}) or {}
+        if not isinstance(records, dict):
+            records = {}
+        if base is not None and revision == base.revision:
+            records.pop(model_id, None)
+        else:
+            records[model_id] = {
+                "revision": revision,
+                "source": info.source,
+                "updated_at": time.time(),
+            }
+        self._settings.set("model_hub.installed_revisions", records)
+        self._registry[model_id] = replace(
+            info,
+            revision=revision,
+            local_mirror=default_local_mirror(model_id, revision),
+        )
+        self._readiness_cache.clear()
+        self._readiness_cache_state = None
+
+    def get_model_update(self, model_id: str) -> Optional[ModelUpdate]:
+        """Return the last persisted update check for a model."""
+        raw = self._settings.get("model_hub.update_checks", {}) or {}
+        if not isinstance(raw, dict):
+            return None
+        update = ModelUpdate.from_dict(raw.get(model_id))
+        info = self._registry.get(model_id)
+        if update is None or info is None or update.source != info.source:
+            return None
+        return update
+
+    def get_model_rollback(self, model_id: str) -> Optional[dict[str, Any]]:
+        """Return the recoverable last-good revision metadata, if one exists."""
+        raw = self._settings.get("model_hub.update_backups", {}) or {}
+        if not isinstance(raw, dict) or not isinstance(raw.get(model_id), dict):
+            return None
+        backup = dict(raw[model_id])
+        if not backup.get("trash_entry_id") or not is_commit_sha(str(backup.get("revision", ""))):
+            return None
+        return backup
 
     def get_model_license_metadata(self, model_id: str) -> dict[str, Any]:
         info = self.get_model_info(model_id)
@@ -1815,6 +1992,487 @@ class ModelManager(QObject):
                 f"{info.name} must use an immutable 40-character commit revision"
             )
 
+    @staticmethod
+    def _remote_value(remote: Any, *names: str, default: Any = None) -> Any:
+        """Read HuggingFace model metadata across supported client versions."""
+        for name in names:
+            if isinstance(remote, dict) and name in remote:
+                return remote[name]
+            value = getattr(remote, name, None)
+            if value is not None:
+                return value
+        return default
+
+    @classmethod
+    def _release_notes_from_remote(
+        cls,
+        remote: Any,
+        commits: Any = (),
+    ) -> tuple[tuple[str, ...], str]:
+        """Extract bounded, explicit notes instead of silently treating a SHA as notes."""
+        notes: list[str] = []
+        card_data = cls._remote_value(remote, "card_data", "cardData", default={})
+        if isinstance(card_data, dict):
+            for key in ("release_notes", "release-notes", "changelog", "changes"):
+                value = card_data.get(key)
+                if isinstance(value, str):
+                    notes.extend(line.strip() for line in value.splitlines() if line.strip())
+                elif isinstance(value, (list, tuple)):
+                    notes.extend(str(item).strip() for item in value if str(item).strip())
+                if notes:
+                    break
+
+        commit_title = ""
+        try:
+            commit = next(iter(commits), None)
+        except TypeError:
+            commit = None
+        if commit is not None:
+            commit_title = str(
+                cls._remote_value(commit, "title", "commit_title", default="") or ""
+            ).strip()
+            message = str(
+                cls._remote_value(commit, "message", "commit_message", default="") or ""
+            ).strip()
+            if message and message != commit_title:
+                notes.extend(line.strip() for line in message.splitlines() if line.strip())
+            elif commit_title:
+                notes.append(commit_title)
+
+        clean_notes: list[str] = []
+        for note in notes:
+            note = " ".join(str(note).split())[:1000]
+            if note and note not in clean_notes:
+                clean_notes.append(note)
+            if len(clean_notes) >= 8:
+                break
+        if not clean_notes:
+            clean_notes.append(
+                "No upstream release notes were published; review the immutable commit before installing."
+            )
+        return tuple(clean_notes), commit_title
+
+    def _fetch_model_update(self, info: ModelInfo, api: Any) -> ModelUpdate:
+        """Fetch one candidate and reject mutable or unverifiable targets."""
+        current_revision = info.revision
+        remote = api.model_info(info.source)
+        target_revision = str(
+            self._remote_value(remote, "sha", "commit_id", "revision", default="") or ""
+        )
+        if not is_commit_sha(target_revision):
+            raise ModelUpdateError(
+                f"{info.name} update did not resolve to an immutable commit SHA"
+            )
+
+        commits: Any = ()
+        list_commits = getattr(api, "list_repo_commits", None)
+        if callable(list_commits):
+            try:
+                commits = list_commits(
+                    info.source,
+                    revision=target_revision,
+                    limit=1,
+                )
+            except TypeError:
+                commits = list_commits(info.source, revision=target_revision)
+            except Exception:
+                commits = ()
+        release_notes, commit_title = self._release_notes_from_remote(remote, commits)
+        published = self._remote_value(
+            remote,
+            "last_modified",
+            "lastModified",
+            "created_at",
+            default="",
+        )
+        published_at = str(published or "")
+        return ModelUpdate(
+            model_id=info.model_id,
+            source=info.source,
+            current_revision=current_revision,
+            target_revision=target_revision,
+            status="available" if target_revision != current_revision else "up_to_date",
+            release_notes=release_notes,
+            target_title=commit_title,
+            published_at=published_at,
+            checked_at=time.time(),
+            source_url=f"https://huggingface.co/{info.source}/commit/{target_revision}",
+        )
+
+    def check_for_updates(
+        self,
+        model_ids: Optional[list[str] | tuple[str, ...]] = None,
+        *,
+        api: Any = None,
+        progress_cb=None,
+        step_cb=None,
+        log_cb=None,
+        cancel_event=None,
+    ) -> dict[str, ModelUpdate]:
+        """Check registered HuggingFace models and persist immutable candidates."""
+        if api is None:
+            from huggingface_hub import HfApi
+
+            api = HfApi()
+        selected = list(model_ids) if model_ids is not None else list(self._registry)
+        stored = self._settings.get("model_hub.update_checks", {}) or {}
+        if not isinstance(stored, dict):
+            stored = {}
+        results: dict[str, ModelUpdate] = {}
+        total = max(len(selected), 1)
+        for index, model_id in enumerate(selected):
+            if cancel_event is not None and cancel_event.is_set():
+                from core.workers import CancelledJobError
+
+                raise CancelledJobError("Model update check cancelled")
+            info = self._registry.get(model_id)
+            if info is None:
+                continue
+            if step_cb:
+                step_cb(f"Checking {info.name} for updates...")
+            if info.pip_managed or not info.source:
+                result = ModelUpdate(
+                    model_id=model_id,
+                    source=info.source,
+                    current_revision=info.revision or "package-managed",
+                    target_revision=info.revision or "package-managed",
+                    status="not_applicable",
+                    release_notes=("Package-managed engine; update through its runtime package.",),
+                    checked_at=time.time(),
+                )
+            elif self.is_offline:
+                result = ModelUpdate(
+                    model_id=model_id,
+                    source=info.source,
+                    current_revision=info.revision,
+                    target_revision="",
+                    status="offline",
+                    release_notes=("Offline Mode is enabled; no remote update check was attempted.",),
+                    checked_at=time.time(),
+                    error="Model update checks are disabled in Offline Mode.",
+                )
+            else:
+                try:
+                    self._validate_registry_revision(info)
+                    result = self._fetch_model_update(info, api)
+                except Exception as exc:
+                    result = ModelUpdate(
+                        model_id=model_id,
+                        source=info.source,
+                        current_revision=info.revision,
+                        target_revision="",
+                        status="error",
+                        release_notes=("No update was installed because the check failed.",),
+                        checked_at=time.time(),
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+            results[model_id] = result
+            stored[model_id] = result.to_dict()
+            if progress_cb:
+                progress_cb(int((index + 1) * 100 / total))
+            if log_cb and result.available:
+                log_cb(f"Update available for {info.name}: {result.target_revision[:12]}")
+        self._settings.set("model_hub.update_checks", stored)
+        return results
+
+    def validate_model_health(
+        self,
+        model_id: str,
+        *,
+        revision: Optional[str] = None,
+        runtime_check: Optional[Callable[[str, str], Any]] = None,
+    ) -> ModelHealthReport:
+        """Validate the exact cached revision before it becomes the active target."""
+        info = self._registry.get(model_id)
+        if info is None:
+            return ModelHealthReport(
+                model_id=model_id,
+                revision=revision or "",
+                healthy=False,
+                errors=(f"Unknown model: {model_id}",),
+                checked_at=time.time(),
+            )
+        target = revision or info.revision
+        checks: list[str] = []
+        errors: list[str] = []
+        if not is_commit_sha(target) and not info.pip_managed:
+            errors.append("Health target is not an immutable commit SHA")
+        else:
+            ok, reason = self.verify_download(
+                model_id,
+                full_hash=True,
+                expected_revision=target,
+            )
+            if ok:
+                checks.append("completion marker and source identity")
+                checks.append("all cached file hashes")
+                checks.append("signature and executable-file policy")
+            else:
+                errors.append(reason)
+
+        if not errors and runtime_check is not None:
+            try:
+                runtime_result = runtime_check(model_id, target)
+                healthy = getattr(runtime_result, "healthy", runtime_result)
+                if callable(healthy):
+                    healthy = healthy()
+                if healthy is False:
+                    errors.append("Runtime health check reported failure")
+                else:
+                    checks.append("runtime health check")
+            except Exception as exc:
+                errors.append(f"Runtime health check failed: {type(exc).__name__}: {exc}")
+
+        return ModelHealthReport(
+            model_id=model_id,
+            revision=target,
+            healthy=not errors,
+            checks=tuple(checks),
+            errors=tuple(errors),
+            checked_at=time.time(),
+        )
+
+    def install_model_update(
+        self,
+        model_id: str,
+        *,
+        target_revision: Optional[str] = None,
+        progress_cb=None,
+        speed_cb=None,
+        downloaded_cb=None,
+        cancel_event=None,
+        runtime_check: Optional[Callable[[str, str], Any]] = None,
+        step_cb=None,
+        log_cb=None,
+    ) -> ModelHealthReport:
+        """Install only the checked target, retaining the prior cache for rollback."""
+        info = self._registry.get(model_id)
+        if info is None:
+            raise ModelUpdateError(f"Unknown model: {model_id}")
+        update = self.get_model_update(model_id)
+        target = target_revision or (update.target_revision if update else "")
+        if update is None or not update.available:
+            raise ModelUpdateError(f"No immutable update is available for {info.name}")
+        if target != update.target_revision or not is_commit_sha(target):
+            raise ModelUpdateError(
+                f"Update target for {info.name} must match the checked immutable revision"
+            )
+        if target == info.revision:
+            raise ModelUpdateError(f"{info.name} is already at revision {target}")
+
+        if step_cb:
+            step_cb(f"Preserving the last good {info.name} revision...")
+
+        if self.current_model_id == model_id and not self.unload_if_current(model_id):
+            raise ModelUpdateError(
+                f"Cannot update {info.name} while its active model resources cannot be released"
+            )
+
+        cache_path = self.get_cache_dir(model_id)
+        backup: Optional[TrashEntry] = None
+        if cache_path.exists():
+            current_ok, reason = self.verify_download(model_id, full_hash=True)
+            if not current_ok:
+                raise ModelUpdateError(
+                    f"Refusing to replace an unverified {info.name} cache: {reason}"
+                )
+            try:
+                backup = self._trash.trash_path(
+                    cache_path,
+                    category="model-update",
+                    label=f"{info.name}-last-good",
+                    metadata={
+                        "model_id": model_id,
+                        "source": info.source,
+                        "revision": info.revision,
+                        "target_revision": target,
+                    },
+                )
+            except TrashError as exc:
+                raise ModelUpdateError(
+                    f"Could not preserve the last good {info.name} cache: {exc}"
+                ) from exc
+
+        try:
+            self._download_at_revision(
+                model_id,
+                target,
+                progress_cb=progress_cb,
+                speed_cb=speed_cb,
+                downloaded_cb=downloaded_cb,
+                cancel_event=cancel_event,
+            )
+            if step_cb:
+                step_cb(f"Validating {info.name} update health...")
+            health = self.validate_model_health(
+                model_id,
+                revision=target,
+                runtime_check=runtime_check,
+            )
+            if not health.healthy:
+                raise ModelUpdateError(
+                    f"Health validation failed for {info.name}: "
+                    + "; ".join(health.errors)
+                )
+            self._set_installed_revision(model_id, target)
+            backups = self._settings.get("model_hub.update_backups", {}) or {}
+            if not isinstance(backups, dict):
+                backups = {}
+            if backup is not None:
+                backups[model_id] = {
+                    "trash_entry_id": backup.id,
+                    "revision": info.revision,
+                    "source": info.source,
+                    "target_revision": target,
+                    "health": health.to_dict(),
+                    "created_at": time.time(),
+                }
+            self._settings.set("model_hub.update_backups", backups)
+            updates = self._settings.get("model_hub.update_checks", {}) or {}
+            if isinstance(updates, dict):
+                updates[model_id] = replace(
+                    update,
+                    status="installed",
+                    current_revision=target,
+                ).to_dict()
+                self._settings.set("model_hub.update_checks", updates)
+            self._set_status(model_id, ModelStatus.DOWNLOADED)
+            if log_cb:
+                log_cb(f"Installed {info.name} revision {target[:12]}.")
+            return health
+        except Exception as exc:
+            rollback_error = self._restore_update_backup(
+                model_id,
+                backup,
+                expected_revision=info.revision,
+            )
+            if rollback_error:
+                self._set_status(model_id, ModelStatus.ERROR)
+                raise ModelUpdateError(
+                    f"Update failed and automatic rollback failed: {rollback_error}"
+                ) from exc
+            self._set_status(model_id, ModelStatus.DOWNLOADED)
+            from core.workers import CancelledJobError
+
+            if isinstance(exc, CancelledJobError):
+                raise
+            if isinstance(exc, ModelUpdateError):
+                raise
+            raise ModelUpdateError(
+                f"Update failed for {info.name}: {type(exc).__name__}: {exc}"
+            ) from exc
+
+    def _restore_update_backup(
+        self,
+        model_id: str,
+        backup: Optional[TrashEntry],
+        *,
+        expected_revision: str,
+    ) -> str:
+        """Move a failed candidate aside and restore the previous cache."""
+        cache_path = self.get_cache_dir(model_id)
+        if cache_path.exists():
+            try:
+                self._trash.trash_path(
+                    cache_path,
+                    category="model-update-failed",
+                    label=f"{model_id}-failed-update",
+                    metadata={"model_id": model_id},
+                )
+            except TrashError as exc:
+                return str(exc)
+        if backup is None:
+            return "no last-good cache was available"
+        try:
+            self._trash.restore(backup.id)
+            ok, reason = self.verify_download(
+                model_id,
+                full_hash=True,
+                expected_revision=expected_revision,
+            )
+            if not ok:
+                return f"restored cache failed verification: {reason}"
+            return ""
+        except Exception as exc:
+            return f"{type(exc).__name__}: {exc}"
+
+    def rollback_model_update(
+        self,
+        model_id: str,
+        *,
+        progress_cb=None,
+        step_cb=None,
+        log_cb=None,
+        cancel_event=None,
+    ) -> ModelHealthReport:
+        """Restore the last-good cache and discard the currently installed update."""
+        info = self._registry.get(model_id)
+        backup = self.get_model_rollback(model_id)
+        if info is None:
+            raise ModelUpdateError(f"Unknown model: {model_id}")
+        if backup is None:
+            raise ModelUpdateError(f"No last-good revision is available for {info.name}")
+        if cancel_event is not None and cancel_event.is_set():
+            from core.workers import CancelledJobError
+
+            raise CancelledJobError("Model rollback cancelled")
+        old_revision = str(backup.get("revision", ""))
+        if backup.get("source") != info.source or not is_commit_sha(old_revision):
+            raise ModelUpdateError(f"Rollback metadata for {info.name} is invalid")
+        if self.current_model_id == model_id and not self.unload_if_current(model_id):
+            raise ModelUpdateError(
+                f"Cannot roll back {info.name} while its active model resources cannot be released"
+            )
+
+        current_entry: Optional[TrashEntry] = None
+        cache_path = self.get_cache_dir(model_id)
+        if step_cb:
+            step_cb(f"Restoring the last good {info.name} revision...")
+        if cache_path.exists():
+            try:
+                current_entry = self._trash.trash_path(
+                    cache_path,
+                    category="model-update-rejected",
+                    label=f"{info.name}-rejected-update",
+                    metadata={"model_id": model_id, "revision": info.revision},
+                )
+            except TrashError as exc:
+                raise ModelUpdateError(f"Could not preserve the installed update: {exc}") from exc
+        try:
+            self._trash.restore(str(backup["trash_entry_id"]))
+            health = self.validate_model_health(
+                model_id,
+                revision=old_revision,
+            )
+            if not health.healthy:
+                raise ModelUpdateError(
+                    f"Rollback health validation failed for {info.name}: "
+                    + "; ".join(health.errors)
+                )
+            self._set_installed_revision(model_id, old_revision)
+            backups = self._settings.get("model_hub.update_backups", {}) or {}
+            if isinstance(backups, dict):
+                backups.pop(model_id, None)
+                self._settings.set("model_hub.update_backups", backups)
+            self._set_status(model_id, ModelStatus.DOWNLOADED)
+            if progress_cb:
+                progress_cb(100)
+            if log_cb:
+                log_cb(f"Rolled back {info.name} to revision {old_revision[:12]}.")
+            return health
+        except Exception as exc:
+            # Put the installed candidate back if restoring the old cache failed.
+            if current_entry is not None and not cache_path.exists():
+                try:
+                    self._trash.restore(current_entry.id)
+                except TrashError:
+                    pass
+            if isinstance(exc, ModelUpdateError):
+                raise
+            raise ModelUpdateError(
+                f"Rollback failed for {info.name}: {type(exc).__name__}: {exc}"
+            ) from exc
+
     # ── Download Management ────────────────────────────────────────────────────
 
     COMPLETE_MARKER = ".slunder_complete"
@@ -1840,6 +2498,47 @@ class ModelManager(QObject):
         Download a model from HuggingFace Hub with real progress tracking.
         Writes a completion marker on success so partial downloads are detected.
         """
+        return self._download_revision(
+            model_id,
+            progress_cb=progress_cb,
+            speed_cb=speed_cb,
+            downloaded_cb=downloaded_cb,
+            cancel_event=cancel_event,
+        )
+
+    def _download_at_revision(
+        self,
+        model_id: str,
+        revision: str,
+        *,
+        progress_cb=None,
+        speed_cb=None,
+        downloaded_cb=None,
+        cancel_event=None,
+    ):
+        """Download one previously checked immutable revision."""
+        if not is_commit_sha(revision):
+            raise ModelUpdateError("Update downloads require a 40-character commit SHA")
+        return self._download_revision(
+            model_id,
+            progress_cb=progress_cb,
+            speed_cb=speed_cb,
+            downloaded_cb=downloaded_cb,
+            cancel_event=cancel_event,
+            revision_override=revision,
+        )
+
+    def _download_revision(
+        self,
+        model_id: str,
+        *,
+        progress_cb=None,
+        speed_cb=None,
+        downloaded_cb=None,
+        cancel_event=None,
+        revision_override: Optional[str] = None,
+    ):
+        """Run one serialized download, optionally targeting a checked SHA."""
         if self.is_offline:
             raise OfflineModeError(
                 "Model downloads are disabled while Offline Mode is enabled. "
@@ -1876,13 +2575,15 @@ class ModelManager(QObject):
                 speed_cb=speed_cb,
                 downloaded_cb=downloaded_cb,
                 cancel_event=cancel_event,
+                revision_override=revision_override,
             )
         finally:
             with self._state_lock:
                 self._downloads_in_flight.discard(model_id)
 
     def _download_model_locked(self, info: ModelInfo, model_id: str, progress_cb=None,
-                               speed_cb=None, downloaded_cb=None, cancel_event=None):
+                               speed_cb=None, downloaded_cb=None, cancel_event=None,
+                               revision_override: Optional[str] = None):
         """Download body. Only one call per model_id runs at a time."""
         # Pip-managed models (Demucs, DiffSinger) handle their own downloads
         if info.pip_managed:
@@ -1893,6 +2594,12 @@ class ModelManager(QObject):
 
         if not info.source:
             raise ValueError(f"No download source for model: {model_id}")
+
+        download_revision = revision_override or info.revision
+        if not is_commit_sha(download_revision):
+            raise ModelSecurityError(
+                f"{info.name} must use an immutable 40-character commit revision"
+            )
 
         cache_path = self.get_cache_dir(model_id)
         self._quarantine_incompatible_cache(model_id, cache_path)
@@ -1936,7 +2643,7 @@ class ModelManager(QObject):
                 "repo_id": info.source,
                 "cache_dir": cache_dir,
                 "local_dir": str(cache_path),
-                "revision": info.revision,
+                "revision": download_revision,
                 # A single transfer worker makes cancellation deterministic:
                 # once the active file raises, no queued file can begin.
                 "max_workers": 1,
@@ -2025,17 +2732,23 @@ class ModelManager(QObject):
                 poll_thread.join(timeout=2)
 
             # -- Write completion marker --
-            resolved_revision = self._resolve_hf_revision(info, kwargs.get("token"))
+            resolved_revision = self._resolve_hf_revision(
+                info,
+                kwargs.get("token"),
+                requested_revision=download_revision,
+            )
             self._write_complete_marker(
                 model_id,
                 cache_path,
                 resolved_path=resolved_path,
                 resolved_revision=resolved_revision,
+                revision=download_revision,
             )
 
             verified, verification_reason = self.verify_download(
                 model_id,
                 full_hash=True,
+                expected_revision=download_revision,
             )
             if not verified:
                 self._set_status(model_id, ModelStatus.ERROR)
@@ -2101,20 +2814,27 @@ class ModelManager(QObject):
             },
         )
 
-    def _resolve_hf_revision(self, info: ModelInfo, token: Optional[str] = None) -> str:
+    def _resolve_hf_revision(
+        self,
+        info: ModelInfo,
+        token: Optional[str] = None,
+        *,
+        requested_revision: Optional[str] = None,
+    ) -> str:
         """Resolve a HuggingFace revision to a commit SHA when online."""
+        requested = requested_revision or info.revision
         if not info.source:
-            return info.revision
-        if is_commit_sha(info.revision):
-            return info.revision
+            return requested
+        if is_commit_sha(requested):
+            return requested
         if self.is_offline:
-            return info.revision
+            return requested
         try:
             from huggingface_hub import HfApi
-            model = HfApi().model_info(info.source, revision=info.revision, token=token)
-            return getattr(model, "sha", "") or info.revision
+            model = HfApi().model_info(info.source, revision=requested, token=token)
+            return getattr(model, "sha", "") or requested
         except Exception:
-            return info.revision
+            return requested
 
     def _write_complete_marker(
         self,
@@ -2122,6 +2842,7 @@ class ModelManager(QObject):
         cache_path: Path,
         resolved_path: str = "",
         resolved_revision: str = "",
+        revision: str = "",
     ):
         """Write a marker file indicating download is complete with metadata."""
         import time as _time
@@ -2149,16 +2870,22 @@ class ModelManager(QObject):
                 reason="No OMS signature was published with this model revision.",
             )
         )
+        declared_revision = revision or (info.revision if info else "")
+        local_mirror = (
+            default_local_mirror(model_id, declared_revision)
+            if declared_revision
+            else info.local_mirror if info else ""
+        )
         marker.write_text(json.dumps({
             "model_id": model_id,
             "generator_id": info.generator_id if info else "",
-            "local_mirror": info.local_mirror if info else "",
+            "local_mirror": local_mirror,
             "timestamp": _time.time(),
             "file_count": file_count,
             "total_bytes": total_size,
             "source": info.source if info else "",
-            "revision": info.revision if info else "",
-            "resolved_revision": resolved_revision or (info.revision if info else ""),
+            "revision": declared_revision,
+            "resolved_revision": resolved_revision or declared_revision,
             "license": info.license if info else "unknown",
             "license_url": license_meta.get("license_url", ""),
             "commercial_use": license_meta.get("commercial_use", COMMERCIAL_USE_UNKNOWN),
@@ -2193,7 +2920,13 @@ class ModelManager(QObject):
         except Exception:
             return {}
 
-    def verify_download(self, model_id: str, *, full_hash: bool = True) -> tuple[bool, str]:
+    def verify_download(
+        self,
+        model_id: str,
+        *,
+        full_hash: bool = True,
+        expected_revision: Optional[str] = None,
+    ) -> tuple[bool, str]:
         """
         Verify a download is complete. Returns (ok, reason).
         Checks for completion marker and basic file count sanity.
@@ -2207,6 +2940,10 @@ class ModelManager(QObject):
             self._validate_registry_revision(info)
         except ModelSecurityError as exc:
             return False, str(exc)
+
+        expected = expected_revision or info.revision
+        if info.source and not is_commit_sha(expected):
+            return False, "Expected revision is not an immutable 40-character commit SHA"
 
         cache_path = self.get_cache_dir(model_id)
         marker = cache_path / self.COMPLETE_MARKER
@@ -2223,21 +2960,21 @@ class ModelManager(QObject):
                 return False, "Manifest model ID mismatch"
             identity_fields = {
                 "generator_id": info.generator_id,
-                "local_mirror": info.local_mirror,
+                "local_mirror": default_local_mirror(model_id, expected),
             }
             identity_changed = False
-            for key, expected in identity_fields.items():
+            for key, expected_identity in identity_fields.items():
                 stored = meta.get(key)
-                if stored not in (None, "") and stored != expected:
+                if stored not in (None, "") and stored != expected_identity:
                     return False, f"Manifest {key} mismatch"
-                if stored != expected:
-                    meta[key] = expected
+                if stored != expected_identity:
+                    meta[key] = expected_identity
                     identity_changed = True
             if meta.get("source") != info.source:
                 return False, "Manifest source mismatch"
-            if meta.get("revision") != info.revision:
+            if meta.get("revision") != expected:
                 return False, "Manifest revision mismatch"
-            if meta.get("resolved_revision") != info.revision:
+            if meta.get("resolved_revision") != expected:
                 return False, "Manifest resolved revision mismatch"
             expected_files = meta.get("file_count", 0)
             actual_paths = {
