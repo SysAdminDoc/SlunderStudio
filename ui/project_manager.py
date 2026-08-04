@@ -71,7 +71,7 @@ class ProjectCard(QFrame):
                 background: {t['surface_hover']};
             }}
         """)
-        self.setFixedHeight(72)
+        self.setMinimumHeight(72)
         self.setCursor(Qt.PointingHandCursor)
 
         layout = QHBoxLayout(self)
@@ -83,7 +83,7 @@ class ProjectCard(QFrame):
         info.setSpacing(2)
 
         name = QLabel(project_info.get("name", "Untitled"))
-        name.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 13px;")
+        name.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9.75pt;")
         info.addWidget(name)
 
         updated = project_info.get("updated_at", 0)
@@ -92,7 +92,7 @@ class ProjectCard(QFrame):
         else:
             time_str = "Unknown"
         date_label = QLabel(f"Last modified: {time_str}")
-        date_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        date_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         info.addWidget(date_label)
 
         layout.addLayout(info, 1)
@@ -105,7 +105,7 @@ class ProjectCard(QFrame):
                 border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 5px 12px;
-                font-size: 10px;
+                font-size: 7.5pt;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
@@ -159,11 +159,11 @@ class ProjectDetailPanel(QWidget):
 
         # Project info header
         self._name_label = QLabel("No Project Open")
-        self._name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 16px;")
+        self._name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12pt;")
         layout.addWidget(self._name_label)
 
         self._meta_label = QLabel("")
-        self._meta_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        self._meta_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         layout.addWidget(self._meta_label)
 
         # Notes
@@ -174,14 +174,14 @@ class ProjectDetailPanel(QWidget):
             QTextEdit {{
                 background: {t['surface']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 6px; font-size: 11px;
+                padding: 6px; font-size: 8.25pt;
             }}
         """)
         layout.addWidget(self._notes)
 
         contributions_label = QLabel("Human contributions (registration evidence)")
         contributions_label.setStyleSheet(
-            f"color: {t['text']}; font-weight: bold; font-size: 12px;"
+            f"color: {t['text']}; font-weight: bold; font-size: 9pt;"
         )
         layout.addWidget(contributions_label)
 
@@ -197,14 +197,14 @@ class ProjectDetailPanel(QWidget):
             QTextEdit {{
                 background: {t['surface']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 6px; font-size: 11px;
+                padding: 6px; font-size: 8.25pt;
             }}
         """)
         layout.addWidget(self._contributions)
 
         # Assets list
         assets_label = QLabel("Assets")
-        assets_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        assets_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         layout.addWidget(assets_label)
 
         self._asset_list = QListWidget()
@@ -214,7 +214,7 @@ class ProjectDetailPanel(QWidget):
                 color: {t['text']};
                 border: 1px solid {t['border']};
                 border-radius: 4px;
-                font-size: 11px;
+                font-size: 8.25pt;
             }}
             QListWidget::item {{
                 padding: 4px 8px;
@@ -238,7 +238,7 @@ class ProjectDetailPanel(QWidget):
 
         # Version history
         ver_label = QLabel("Version History")
-        ver_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        ver_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         layout.addWidget(ver_label)
 
         self._version_list = QListWidget()
@@ -259,7 +259,7 @@ class ProjectDetailPanel(QWidget):
         self._version_preview = QLabel("Select a version to preview it.")
         self._version_preview.setWordWrap(True)
         self._version_preview.setStyleSheet(
-            f"color: {t['text_secondary']}; font-size: 11px; padding: 2px 0;"
+            f"color: {t['text_secondary']}; font-size: 8.25pt; padding: 2px 0;"
         )
         layout.addWidget(self._version_preview)
 
@@ -274,7 +274,7 @@ class ProjectDetailPanel(QWidget):
                 border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 5px 12px;
-                font-size: 11px;
+                font-size: 8.25pt;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
@@ -672,7 +672,7 @@ class ProjectDetailPanel(QWidget):
                 border-radius: 4px;
                 padding: 8px;
                 font-family: Consolas, monospace;
-                font-size: 11px;
+                font-size: 8.25pt;
             }}
         """)
         layout.addWidget(editor, 1)
@@ -843,14 +843,14 @@ class ProjectManagerView(QWidget):
 
         header = QHBoxLayout()
         title = QLabel("Project library")
-        title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 16px;")
+        title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12pt;")
 
         self._new_btn = QPushButton("+ New Project")
         self._new_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']}; color: {t['background']}; border: none;
                 border-radius: 5px; padding: 6px 14px;
-                font-weight: bold; font-size: 12px;
+                font-weight: bold; font-size: 9pt;
             }}
             QPushButton:hover {{ background: {t['accent_hover']}; }}
         """)
@@ -864,7 +864,7 @@ class ProjectManagerView(QWidget):
             QPushButton {{
                 background: {t['surface']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 5px;
-                padding: 6px 12px; font-weight: bold; font-size: 11px;
+                padding: 6px 12px; font-weight: bold; font-size: 8.25pt;
             }}
             QPushButton:hover {{ border-color: {t['accent']}; }}
         """)
@@ -883,7 +883,7 @@ class ProjectManagerView(QWidget):
             QLineEdit {{
                 background: {t['surface']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 6px;
-                padding: 8px 12px; font-size: 12px;
+                padding: 8px 12px; font-size: 9pt;
             }}
         """)
         self._search.textChanged.connect(self._on_search)
@@ -913,12 +913,12 @@ class ProjectManagerView(QWidget):
 
         # Count
         self._count_label = QLabel("")
-        self._count_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        self._count_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         left.addWidget(self._count_label)
 
         left_w = QWidget()
         left_w.setLayout(left)
-        left_w.setFixedWidth(400)
+        left_w.setMinimumWidth(400)
         layout.addWidget(left_w)
 
         # ── Right: Project Detail ──────────────────────────────────────────

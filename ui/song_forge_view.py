@@ -72,7 +72,7 @@ class StyleTagBrowser(QWidget):
         # Search
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search 1000+ style tags...")
-        self._search.setFixedHeight(28)
+        self._search.setMinimumHeight(28)
         self._search.textChanged.connect(self._refresh)
         layout.addWidget(self._search)
 
@@ -82,7 +82,7 @@ class StyleTagBrowser(QWidget):
         self._cat_combo = QComboBox()
         self._cat_combo.addItem("All Categories")
         self._cat_combo.addItems([c.title() for c in self._db.get_categories()])
-        self._cat_combo.setFixedHeight(26)
+        self._cat_combo.setMinimumHeight(26)
         self._cat_combo.currentIndexChanged.connect(self._refresh)
         cat_row.addWidget(self._cat_combo)
 
@@ -117,7 +117,7 @@ class StyleTagBrowser(QWidget):
         # Selected tags display
         self._selected_label = QLabel("No tags selected")
         self._selected_label.setWordWrap(True)
-        self._selected_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 11px; padding: 4px;")
+        self._selected_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 8.25pt; padding: 4px;")
         layout.addWidget(self._selected_label)
 
         self._refresh()
@@ -298,7 +298,7 @@ class SongForgeView(QWidget):
         ql.addWidget(QLabel("Style Tags"))
         self._quick_tags = QLineEdit()
         self._quick_tags.setPlaceholderText("e.g., pop, female vocals, dreamy, 120 bpm")
-        self._quick_tags.setFixedHeight(30)
+        self._quick_tags.setMinimumHeight(30)
         ql.addWidget(self._quick_tags)
 
         self._mode_tabs.addTab(quick_page, "Quick")
@@ -405,11 +405,11 @@ class SongForgeView(QWidget):
         fg.addWidget(self._fusion_slider, 1, 1, 1, 2)
 
         self._fusion_weight_label = QLabel("50/50")
-        self._fusion_weight_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 11px;")
+        self._fusion_weight_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 8.25pt;")
         fg.addWidget(self._fusion_weight_label, 1, 3)
 
         self._fusion_apply_btn = QPushButton("Apply Fusion")
-        self._fusion_apply_btn.setFixedHeight(28)
+        self._fusion_apply_btn.setMinimumHeight(28)
         self._fusion_apply_btn.setProperty("class", "secondary")
         self._fusion_apply_btn.clicked.connect(self._apply_genre_fusion)
         fg.addWidget(self._fusion_apply_btn, 2, 0, 1, 4)
@@ -428,11 +428,11 @@ class SongForgeView(QWidget):
 
         cg.addWidget(QLabel("Source:"), 1, 0)
         self._cover_source_label = QLabel("No file selected")
-        self._cover_source_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
+        self._cover_source_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 8.25pt;")
         cg.addWidget(self._cover_source_label, 1, 1, 1, 2)
 
         self._cover_browse_btn = QPushButton("Browse")
-        self._cover_browse_btn.setFixedHeight(26)
+        self._cover_browse_btn.setMinimumHeight(26)
         self._cover_browse_btn.clicked.connect(self._on_browse_cover_source)
         self._cover_browse_btn.setEnabled(False)
         cg.addWidget(self._cover_browse_btn, 1, 3)
@@ -485,12 +485,12 @@ class SongForgeView(QWidget):
 
         self._generate_btn = QPushButton("\u2726  Generate song")
         self._generate_btn.setObjectName("primaryAction")
-        self._generate_btn.setFixedHeight(46)
+        self._generate_btn.setMinimumHeight(46)
         self._generate_btn.clicked.connect(self._on_generate)
         gen_row.addWidget(self._generate_btn)
 
         self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setFixedHeight(46)
+        self._cancel_btn.setMinimumHeight(46)
         self._cancel_btn.setProperty("class", "danger")
         self._cancel_btn.clicked.connect(self._on_cancel)
         self._cancel_btn.hide()
@@ -500,13 +500,13 @@ class SongForgeView(QWidget):
 
         # Progress
         self._progress = QProgressBar()
-        self._progress.setFixedHeight(6)
+        self._progress.setMinimumHeight(6)
         self._progress.setTextVisible(False)
         self._progress.hide()
         left_layout.addWidget(self._progress)
 
         self._status = QLabel("")
-        self._status.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 8.25pt;")
         left_layout.addWidget(self._status)
 
         splitter.addWidget(left)
@@ -544,7 +544,7 @@ class SongForgeView(QWidget):
             "Generate song",
         )
         self._waveform.empty_action_requested.connect(self._generate_btn.click)
-        self._waveform.setFixedHeight(132)
+        self._waveform.setMinimumHeight(132)
         center_layout.addWidget(self._waveform)
 
         # Output toolbar
@@ -552,21 +552,21 @@ class SongForgeView(QWidget):
         out_row.setSpacing(6)
 
         self._play_btn = QPushButton("Play")
-        self._play_btn.setFixedHeight(28)
+        self._play_btn.setMinimumHeight(28)
         self._play_btn.setProperty("class", "secondary")
         self._play_btn.setEnabled(False)
         self._play_btn.clicked.connect(self._on_play)
         out_row.addWidget(self._play_btn)
 
         self._export_btn = QPushButton("Export")
-        self._export_btn.setFixedHeight(28)
+        self._export_btn.setMinimumHeight(28)
         self._export_btn.setProperty("class", "secondary")
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export)
         out_row.addWidget(self._export_btn)
 
         self._to_vocals_btn = QPushButton("Song \u2192 Vocals")
-        self._to_vocals_btn.setFixedHeight(28)
+        self._to_vocals_btn.setMinimumHeight(28)
         self._to_vocals_btn.setProperty("class", "secondary")
         self._to_vocals_btn.setEnabled(False)
         self._to_vocals_btn.clicked.connect(
@@ -575,7 +575,7 @@ class SongForgeView(QWidget):
         out_row.addWidget(self._to_vocals_btn)
 
         self._to_vocal_stem_btn = QPushButton("Stem \u2192 Vocals")
-        self._to_vocal_stem_btn.setFixedHeight(28)
+        self._to_vocal_stem_btn.setMinimumHeight(28)
         self._to_vocal_stem_btn.setProperty("class", "secondary")
         self._to_vocal_stem_btn.setEnabled(False)
         self._to_vocal_stem_btn.clicked.connect(self._on_send_vocal_stem)
@@ -584,7 +584,7 @@ class SongForgeView(QWidget):
         out_row.addStretch()
 
         self._output_info = QLabel("")
-        self._output_info.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px;")
+        self._output_info.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 8.25pt;")
         out_row.addWidget(self._output_info)
 
         center_layout.addLayout(out_row)
@@ -1062,7 +1062,7 @@ class SongForgeView(QWidget):
         self._reset_ui()
         self._batch_view.refresh_recoverable_jobs()
         self._status.setText(f"Error: {error_msg[:100]}")
-        self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 8.25pt;")
         self._set_session_state("Generation failed", Palette.RED)
         if self._toast:
             self._toast.show_toast(f"Generation failed: {error_msg[:80]}", "error")
@@ -1150,7 +1150,7 @@ class SongForgeView(QWidget):
         self._progress.hide()
         if clear_worker:
             self._worker = None
-        self._status.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 8.25pt;")
         if self._current_audio_path:
             self._set_session_state("Render ready", Palette.GREEN)
         else:
@@ -1196,7 +1196,7 @@ class SongForgeView(QWidget):
         self._session_state.setStyleSheet(
             f"color: {color}; background: {Palette.SURFACE0}; "
             f"border: 1px solid {Palette.SURFACE1}; border-radius: 10px; "
-            "padding: 4px 9px; font-size: 10px; font-weight: 700;"
+            "padding: 4px 9px; font-size: 7.5pt; font-weight: 700;"
         )
 
     def _format_vocal_recovery_status(self, result: dict) -> str:
@@ -1486,7 +1486,7 @@ class SongForgeView(QWidget):
             )
         self._seed_explore_params = []
         self._status.setText(f"Seed exploration error: {error_msg[:100]}")
-        self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 8.25pt;")
         self._set_session_state("Seed exploration failed", Palette.RED)
         if self._toast:
             self._toast.show_toast(f"Seed exploration failed: {error_msg[:80]}", "error")

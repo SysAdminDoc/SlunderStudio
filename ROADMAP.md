@@ -83,26 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Harden the UI against display scaling
-  Why: The app is developed on a 125% display and styles in device pixels, so text clipping is
-    structural rather than incidental — which is why it keeps being fixed one widget at a time.
-  Evidence: 261 fixed-size calls across 23 files. Stylesheet font sizes are declared in `px`
-    throughout (e.g. `ui/settings_view.py:34,39`), which Qt does not scale with DPI the way `pt`
-    does; no `devicePixelRatio` or high-DPI handling appears anywhere in `ui/`. Worst offenders:
-    `ui/main_window.py:75` `setFixedWidth(260)` on the entire sidebar with no collapse mode;
-    26 `setFixedWidth` calls in `ui/settings_view.py`, tightest at `:135` and `:171` (80 px);
-    five `setFixedWidth(320)` control columns in `ui/vocal_suite_view.py`;
-    `ui/song_forge_view.py:182` and `:423` together demand 830 px of minimums inside a 1024 px
-    minimum window. `ui/main_window.py:336` sets `setMinimumSize(1024, 640)` under a comment
-    claiming it must fit 1024x768 at 200% scaling — the value and the comment contradict each other.
-    `ui/widgets.py`'s `ElidedLabel` is the only DPI-defensive pattern in the repo and is used in one
-    file. Qt's own Windows scaling defects are documented (QTBUG high-DPI reports at 150%).
-  Touches: `ui/theme.py`, all views, `ui/widgets.py`, `tests/test_accessibility_gates.py`.
-  Acceptance: Font sizes are specified in scalable units; fixed widths are replaced by minimums plus
-    layout policies or `ElidedLabel`; the existing no-view-exceeds-1024x768 gate is extended to run
-    at a simulated 125% and 150%; the minimum-size comment and value agree.
-  Complexity: L
-
 - [ ] P2 — Close the keyboard-reachability gaps the accessibility gates miss
   Why: The gate suite is strong but tests contrast, focus-ring and width rather than whether a
     control can actually be reached, so a fully keyboard-capable widget is unreachable by Tab.

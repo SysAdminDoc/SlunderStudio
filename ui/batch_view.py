@@ -98,24 +98,24 @@ class BatchCard(QFrame):
         header.setSpacing(4)
 
         self._title = QLabel(f"Variation {self._index + 1}")
-        self._title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 12px;")
+        self._title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9pt;")
         header.addWidget(self._title)
 
         header.addStretch()
 
         self._star_btn = QPushButton("\u2606")
-        self._star_btn.setFixedSize(24, 24)
+        self._star_btn.setMinimumSize(24, 24)
         self._star_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; color: {Palette.OVERLAY0}; font-size: 16px; }}"
+            f"QPushButton {{ background: transparent; border: none; color: {Palette.OVERLAY0}; font-size: 12pt; }}"
             f"QPushButton:hover {{ color: {Palette.YELLOW}; }}"
         )
         self._star_btn.clicked.connect(self._toggle_star)
         header.addWidget(self._star_btn)
 
         self._delete_btn = QPushButton("\u2715")
-        self._delete_btn.setFixedSize(24, 24)
+        self._delete_btn.setMinimumSize(24, 24)
         self._delete_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; color: {Palette.OVERLAY0}; font-size: 14px; }}"
+            f"QPushButton {{ background: transparent; border: none; color: {Palette.OVERLAY0}; font-size: 10.5pt; }}"
             f"QPushButton:hover {{ color: {Palette.RED}; }}"
         )
         self._delete_btn.clicked.connect(lambda: self.delete_requested.emit(self._index))
@@ -131,17 +131,17 @@ class BatchCard(QFrame):
         # Info row
         info = QHBoxLayout()
         self._seed_label = QLabel("")
-        self._seed_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 10px;")
+        self._seed_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 7.5pt;")
         info.addWidget(self._seed_label)
 
         info.addStretch()
 
         self._score_label = QLabel("")
-        self._score_label.setStyleSheet(f"color: {Palette.GREEN}; font-size: 10px; font-weight: bold;")
+        self._score_label.setStyleSheet(f"color: {Palette.GREEN}; font-size: 7.5pt; font-weight: bold;")
         info.addWidget(self._score_label)
 
         self._time_label = QLabel("")
-        self._time_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 10px;")
+        self._time_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 7.5pt;")
         info.addWidget(self._time_label)
 
         layout.addLayout(info)
@@ -283,7 +283,7 @@ class BatchCard(QFrame):
         self._star_btn.setText("\u2605" if self._is_starred else "\u2606")
         self._star_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; "
-            f"color: {Palette.YELLOW if self._is_starred else Palette.OVERLAY0}; font-size: 16px; }}"
+            f"color: {Palette.YELLOW if self._is_starred else Palette.OVERLAY0}; font-size: 12pt; }}"
             f" QPushButton:hover {{ color: {Palette.YELLOW}; }}"
         )
         state = "Unstar" if self._is_starred else "Star"
@@ -317,11 +317,11 @@ class BatchCard(QFrame):
         self._quality_score = score
         self._score_label.setText(f"Q:{score:.0f}")
         if score >= 70:
-            self._score_label.setStyleSheet(f"color: {Palette.GREEN}; font-size: 10px; font-weight: bold;")
+            self._score_label.setStyleSheet(f"color: {Palette.GREEN}; font-size: 7.5pt; font-weight: bold;")
         elif score >= 40:
-            self._score_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 10px; font-weight: bold;")
+            self._score_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 7.5pt; font-weight: bold;")
         else:
-            self._score_label.setStyleSheet(f"color: {Palette.RED}; font-size: 10px; font-weight: bold;")
+            self._score_label.setStyleSheet(f"color: {Palette.RED}; font-size: 7.5pt; font-weight: bold;")
 
     @property
     def index(self) -> int:
@@ -359,23 +359,23 @@ class BatchView(QWidget):
         header.setSpacing(8)
 
         title = QLabel("Batch Results")
-        title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 13px;")
+        title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9.75pt;")
         header.addWidget(title)
 
         self._count_label = QLabel("0 variations")
-        self._count_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
+        self._count_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 8.25pt;")
         header.addWidget(self._count_label)
 
         header.addStretch()
 
         self._use_best_btn = QPushButton("Use Best")
-        self._use_best_btn.setFixedHeight(28)
+        self._use_best_btn.setMinimumHeight(28)
         self._use_best_btn.setEnabled(False)
         self._use_best_btn.clicked.connect(self._use_best)
         header.addWidget(self._use_best_btn)
 
         self._clear_btn = QPushButton("Clear All")
-        self._clear_btn.setFixedHeight(28)
+        self._clear_btn.setMinimumHeight(28)
         self._clear_btn.setProperty("class", "secondary")
         self._clear_btn.clicked.connect(self.clear)
         header.addWidget(self._clear_btn)
@@ -388,7 +388,7 @@ class BatchView(QWidget):
         self._recovery_label.setStyleSheet(
             f"background: rgba(249, 226, 175, 28); color: {Palette.YELLOW}; "
             "border: 1px solid rgba(249, 226, 175, 70); border-radius: 6px; "
-            "padding: 7px 9px; font-size: 11px;"
+            "padding: 7px 9px; font-size: 8.25pt;"
         )
         layout.addWidget(self._recovery_label)
 
@@ -407,7 +407,7 @@ class BatchView(QWidget):
         # Empty state
         self._empty_label = QLabel("Generate batch variations to see results here")
         self._empty_label.setAlignment(Qt.AlignCenter)
-        self._empty_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 12px; padding: 40px;")
+        self._empty_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 9pt; padding: 40px;")
         self._grid_layout.addWidget(self._empty_label, 0, 0, 1, 2)
 
         install_accessibility(

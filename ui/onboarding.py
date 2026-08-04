@@ -150,17 +150,17 @@ class WelcomePage(QWidget):
         logo = QLabel("SLUNDER STUDIO")
         logo.setAlignment(Qt.AlignCenter)
         logo.setFont(QFont("Segoe UI", 28, QFont.Bold))
-        logo.setStyleSheet(f"color: {t['accent']}; font-size: 28px; font-weight: bold;")
+        logo.setStyleSheet(f"color: {t['accent']}; font-size: 21pt; font-weight: bold;")
         layout.addWidget(logo)
 
         version = QLabel(f"v{APP_VERSION}")
         version.setAlignment(Qt.AlignCenter)
-        version.setStyleSheet(f"color: {t['text_secondary']}; font-size: 14px;")
+        version.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10.5pt;")
         layout.addWidget(version)
 
         tagline = QLabel("Offline AI Music Generation Suite")
         tagline.setAlignment(Qt.AlignCenter)
-        tagline.setStyleSheet(f"color: {t['text']}; font-size: 16px;")
+        tagline.setStyleSheet(f"color: {t['text']}; font-size: 12pt;")
         layout.addWidget(tagline)
 
         desc = QLabel(
@@ -170,7 +170,7 @@ class WelcomePage(QWidget):
         )
         desc.setAlignment(Qt.AlignCenter)
         desc.setWordWrap(True)
-        desc.setStyleSheet(f"color: {t['text_secondary']}; font-size: 12px; line-height: 1.6;")
+        desc.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9pt; line-height: 1.6;")
         layout.addWidget(desc)
         install_accessibility(self, "Onboarding welcome")
 
@@ -185,11 +185,11 @@ class SystemCheckPage(QWidget):
         layout.setSpacing(12)
 
         title = QLabel("System Check")
-        title.setStyleSheet(f"color: {t['text']}; font-size: 18px; font-weight: bold;")
+        title.setStyleSheet(f"color: {t['text']}; font-size: 13.5pt; font-weight: bold;")
         layout.addWidget(title)
 
         subtitle = QLabel("Checking your system compatibility...")
-        subtitle.setStyleSheet(f"color: {t['text_secondary']}; font-size: 12px;")
+        subtitle.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9pt;")
         layout.addWidget(subtitle)
 
         self._checks_frame = QFrame()
@@ -204,7 +204,7 @@ class SystemCheckPage(QWidget):
 
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
-        self._summary.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        self._summary.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         layout.addWidget(self._summary)
         layout.addStretch()
         self._check_worker = None
@@ -344,18 +344,18 @@ class SystemCheckPage(QWidget):
         for key, label, value, ok, note in items:
             row = QHBoxLayout()
             icon = QLabel("OK" if ok else "!!")
-            icon.setFixedWidth(24)
+            icon.setMinimumWidth(24)
             icon.setAlignment(Qt.AlignCenter)
             icon.setStyleSheet(
-                f"color: {Palette.GREEN}; font-weight: bold; font-size: 11px;"
-                if ok else f"color: {Palette.YELLOW}; font-weight: bold; font-size: 11px;"
+                f"color: {Palette.GREEN}; font-weight: bold; font-size: 8.25pt;"
+                if ok else f"color: {Palette.YELLOW}; font-weight: bold; font-size: 8.25pt;"
             )
             name = ElidedLabel(f"{label}:", minimum_width=110)
-            name.setStyleSheet(f"color: {t['text']}; font-size: 12px; border: none;")
+            name.setStyleSheet(f"color: {t['text']}; font-size: 9pt; border: none;")
             val = QLabel(str(value))
-            val.setStyleSheet(f"color: {t['text']}; font-size: 12px; font-weight: bold; border: none;")
+            val.setStyleSheet(f"color: {t['text']}; font-size: 9pt; font-weight: bold; border: none;")
             note_l = QLabel(note)
-            note_l.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
+            note_l.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
             row.addWidget(icon)
             row.addWidget(name)
             row.addWidget(val, 1)
@@ -363,7 +363,7 @@ class SystemCheckPage(QWidget):
             if not ok:
                 action = QPushButton(self._remediation_label(key))
                 action.setObjectName("remediationButton")
-                action.setFixedHeight(28)
+                action.setMinimumHeight(28)
                 action.clicked.connect(
                     lambda _checked=False, check_key=key: self._request_remediation(
                         check_key, checks
@@ -399,7 +399,7 @@ class ModelGuidePage(QWidget):
         registry = getattr(manager, "registry", {})
 
         title = QLabel("AI Models")
-        title.setStyleSheet(f"color: {t['text']}; font-size: 18px; font-weight: bold;")
+        title.setStyleSheet(f"color: {t['text']}; font-size: 13.5pt; font-weight: bold;")
         layout.addWidget(title)
 
         info = QLabel(
@@ -408,7 +408,7 @@ class ModelGuidePage(QWidget):
             "You can manage models anytime from the Model Hub."
         )
         info.setWordWrap(True)
-        info.setStyleSheet(f"color: {t['text_secondary']}; font-size: 12px;")
+        info.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9pt;")
         layout.addWidget(info)
 
         hardware_name = hardware.get("name", "detected hardware")
@@ -417,7 +417,7 @@ class ModelGuidePage(QWidget):
             "A CPU fallback is called out when the detected GPU is below a model's declared tier."
         )
         hardware_note.setWordWrap(True)
-        hardware_note.setStyleSheet(f"color: {Palette.BLUE}; font-size: 11px;")
+        hardware_note.setStyleSheet(f"color: {Palette.BLUE}; font-size: 8.25pt;")
         layout.addWidget(hardware_note)
 
         # Recommended models
@@ -463,23 +463,23 @@ class ModelGuidePage(QWidget):
         for name, desc, size, recommended in models:
             row = QHBoxLayout()
             tag = QLabel("REC" if recommended else "OPT")
-            tag.setFixedWidth(30)
+            tag.setMinimumWidth(30)
             tag.setAlignment(Qt.AlignCenter)
             tag.setStyleSheet(
                 f"color: white; background: {Palette.GREEN}; border-radius: 3px; "
-                f"font-size: 8px; font-weight: bold; padding: 2px;"
+                f"font-size: 6pt; font-weight: bold; padding: 2px;"
                 if recommended else
                 f"color: {t['text_secondary']}; background: {t['border']}; "
-                f"border-radius: 3px; font-size: 8px; padding: 2px;"
+                f"border-radius: 3px; font-size: 6pt; padding: 2px;"
             )
             n = ElidedLabel(name, minimum_width=140)
-            n.setStyleSheet(f"color: {t['text']}; font-size: 12px; font-weight: bold; border: none;")
+            n.setStyleSheet(f"color: {t['text']}; font-size: 9pt; font-weight: bold; border: none;")
             d = QLabel(desc)
-            d.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+            d.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
             s = QLabel(size)
-            s.setFixedWidth(80)
+            s.setMinimumWidth(80)
             s.setAlignment(Qt.AlignRight)
-            s.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
+            s.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
             row.addWidget(tag)
             row.addWidget(n)
             row.addWidget(d, 1)
@@ -496,7 +496,7 @@ class ModelGuidePage(QWidget):
         readiness_layout = QVBoxLayout(readiness_frame)
         readiness_layout.setContentsMargins(12, 8, 12, 8)
         readiness_title = QLabel("Runtime readiness")
-        readiness_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        readiness_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         readiness_layout.addWidget(readiness_title)
         self._manager = manager
         self._core_models = manager.get_core_models()
@@ -515,12 +515,12 @@ class ModelGuidePage(QWidget):
                 )
             row = QHBoxLayout()
             state = QLabel(model_readiness_label(readiness, manager.is_offline))
-            state.setFixedWidth(145)
-            state.setStyleSheet(f"color: {Palette.YELLOW if readiness.status == 'error' else t['text']}; font-size: 10px;")
+            state.setMinimumWidth(145)
+            state.setStyleSheet(f"color: {Palette.YELLOW if readiness.status == 'error' else t['text']}; font-size: 7.5pt;")
             name = QLabel(info_item.name)
-            name.setStyleSheet(f"color: {t['text']}; font-size: 11px; font-weight: bold;")
+            name.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt; font-weight: bold;")
             estimate = QLabel(f"{info_item.disk_gb:.1f} GB disk / {info_item.vram_gb:.1f} GB VRAM")
-            estimate.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+            estimate.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
             row.addWidget(state)
             row.addWidget(name, 1)
             row.addWidget(estimate)
@@ -536,7 +536,7 @@ class ModelGuidePage(QWidget):
         setup_layout.setContentsMargins(12, 10, 12, 10)
         setup_layout.setSpacing(8)
         setup_title = QLabel("Choose first model setup")
-        setup_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        setup_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         setup_layout.addWidget(setup_title)
 
         self._model_selector = QComboBox()
@@ -564,11 +564,11 @@ class ModelGuidePage(QWidget):
             "The selected model and action will be carried into Model Hub after Launch Studio."
         )
         action_note.setWordWrap(True)
-        action_note.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        action_note.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         setup_layout.addWidget(action_note)
 
         token_label = QLabel("HuggingFace token (optional; saved before gated downloads)")
-        token_label.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
+        token_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt;")
         setup_layout.addWidget(token_label)
         self._hf_token = QLineEdit()
         self._hf_token.setObjectName("onboardingHfToken")
@@ -581,7 +581,7 @@ class ModelGuidePage(QWidget):
         self._token_error = QLabel("")
         self._token_error.setVisible(False)
         self._token_error.setWordWrap(True)
-        self._token_error.setStyleSheet(f"color: {Palette.RED}; font-size: 10px;")
+        self._token_error.setStyleSheet(f"color: {Palette.RED}; font-size: 7.5pt;")
         setup_layout.addWidget(self._token_error)
         layout.addWidget(setup_frame)
 
@@ -591,7 +591,7 @@ class ModelGuidePage(QWidget):
             "Open Model Hub from the sidebar to download, activate, or repair a model."
         )
         note.setWordWrap(True)
-        note.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        note.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         layout.addWidget(note)
         layout.addStretch()
         install_accessibility(self, "Onboarding model guide")
@@ -626,7 +626,7 @@ class QuickStartPage(QWidget):
         layout.setSpacing(12)
 
         title = QLabel("Quick Start")
-        title.setStyleSheet(f"color: {t['text']}; font-size: 18px; font-weight: bold;")
+        title.setStyleSheet(f"color: {t['text']}; font-size: 13.5pt; font-weight: bold;")
         layout.addWidget(title)
 
         preferences = QFrame()
@@ -638,12 +638,12 @@ class QuickStartPage(QWidget):
         preferences_layout.setContentsMargins(12, 10, 12, 10)
         preferences_layout.setSpacing(8)
         preferences_title = QLabel("First-run preferences")
-        preferences_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        preferences_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         preferences_layout.addWidget(preferences_title)
 
         output_row = QHBoxLayout()
         output_label = QLabel("Default output folder")
-        output_label.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
+        output_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt;")
         output_row.addWidget(output_label)
         from core.settings import Settings, get_default_output_dir
         settings = Settings()
@@ -660,7 +660,7 @@ class QuickStartPage(QWidget):
 
         experience_row = QHBoxLayout()
         experience_label = QLabel("Experience level")
-        experience_label.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
+        experience_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt;")
         experience_row.addWidget(experience_label)
         self._experience = QComboBox()
         self._experience.setObjectName("onboardingExperience")
@@ -700,16 +700,16 @@ class QuickStartPage(QWidget):
             row_layout.setSpacing(10)
 
             num = QLabel(str(i))
-            num.setFixedSize(24, 24)
+            num.setMinimumSize(24, 24)
             num.setAlignment(Qt.AlignCenter)
             num.setStyleSheet(f"""
                 background: {t['accent']}; color: white; border-radius: 12px;
-                font-size: 11px; font-weight: bold;
+                font-size: 8.25pt; font-weight: bold;
             """)
             n = ElidedLabel(name, minimum_width=110)
-            n.setStyleSheet(f"color: {t['text']}; font-size: 12px; font-weight: bold; border: none;")
+            n.setStyleSheet(f"color: {t['text']}; font-size: 9pt; font-weight: bold; border: none;")
             d = QLabel(desc)
-            d.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+            d.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
 
             row_layout.addWidget(num)
             row_layout.addWidget(n)
@@ -783,12 +783,12 @@ class OnboardingWizard(QDialog):
         self._step_labels = []
         for i, name in enumerate(["Welcome", "System", "Models", "Quick Start"]):
             lbl = QLabel(name)
-            lbl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+            lbl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
             self._step_labels.append(lbl)
             nav_layout.addWidget(lbl)
             if i < 3:
                 sep = QLabel(" > ")
-                sep.setStyleSheet(f"color: {t['border']}; font-size: 11px;")
+                sep.setStyleSheet(f"color: {t['border']}; font-size: 8.25pt;")
                 nav_layout.addWidget(sep)
 
         nav_layout.addStretch()
@@ -798,7 +798,7 @@ class OnboardingWizard(QDialog):
             QPushButton {{
                 background: {t['surface']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 5px;
-                padding: 6px 16px; font-size: 12px;
+                padding: 6px 16px; font-size: 9pt;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """)
@@ -814,7 +814,7 @@ class OnboardingWizard(QDialog):
             QPushButton {{
                 background: {t['accent']}; color: white; border: none;
                 border-radius: 5px; padding: 6px 20px;
-                font-size: 12px; font-weight: bold;
+                font-size: 9pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['accent_hover']}; }}
         """)
@@ -874,11 +874,11 @@ class OnboardingWizard(QDialog):
 
         for i, lbl in enumerate(self._step_labels):
             if i == idx:
-                lbl.setStyleSheet(f"color: {t['accent']}; font-size: 11px; font-weight: bold;")
+                lbl.setStyleSheet(f"color: {t['accent']}; font-size: 8.25pt; font-weight: bold;")
             elif i < idx:
-                lbl.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
+                lbl.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt;")
             else:
-                lbl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+                lbl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         install_accessibility(
             self,
             "Onboarding wizard",

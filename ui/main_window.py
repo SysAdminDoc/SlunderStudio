@@ -68,7 +68,7 @@ class SidebarButton(QPushButton):
         self.setObjectName("sidebarBtn")
         self.setCheckable(True)
         self.setText(f"{icon_text}   {label}")
-        self.setFixedHeight(38)
+        self.setMinimumHeight(38)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFont(QFont("Segoe UI", 10))
         set_accessible(
@@ -86,7 +86,8 @@ class Sidebar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("sidebar")
-        self.setFixedWidth(260)
+        self.setMinimumWidth(260)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 12, 8, 10)
@@ -98,7 +99,7 @@ class Sidebar(QWidget):
         brand_mark = QLabel("S")
         brand_mark.setObjectName("brandMark")
         brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand_mark.setFixedSize(30, 30)
+        brand_mark.setMinimumSize(30, 30)
         brand_row.addWidget(brand_mark)
         brand = QLabel(tr("shell.sidebar.brand"))
         brand.setObjectName("brand")
@@ -186,7 +187,7 @@ class TransportBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("transportBar")
-        self.setFixedHeight(64)
+        self.setMinimumHeight(64)
         self._audio = AudioEngine()
 
         layout = QHBoxLayout(self)
@@ -207,13 +208,13 @@ class TransportBar(QWidget):
         # Transport buttons
         self._play_btn = QPushButton("\u25B6")
         self._play_btn.setObjectName("transportPrimary")
-        self._play_btn.setFixedSize(40, 36)
+        self._play_btn.setMinimumSize(40, 36)
         self._play_btn.clicked.connect(self._toggle_play)
         layout.addWidget(self._play_btn)
 
         self._stop_btn = QPushButton("\u25A0")
         self._stop_btn.setObjectName("transportBtn")
-        self._stop_btn.setFixedSize(36, 36)
+        self._stop_btn.setMinimumSize(36, 36)
         self._stop_btn.clicked.connect(self._audio.stop)
         layout.addWidget(self._stop_btn)
 
@@ -228,14 +229,14 @@ class TransportBar(QWidget):
         self._seek_slider.setRange(0, 1000)
         self._seek_slider.setValue(0)
         self._seek_slider.sliderMoved.connect(self._on_seek)
-        self._seek_slider.setFixedHeight(20)
+        self._seek_slider.setMinimumHeight(20)
         layout.addWidget(self._seek_slider, 1)
 
         # Loop toggle
         self._loop_btn = QPushButton("\u21bb")
         self._loop_btn.setObjectName("transportBtn")
         self._loop_btn.setCheckable(True)
-        self._loop_btn.setFixedSize(36, 36)
+        self._loop_btn.setMinimumSize(36, 36)
         self._loop_btn.toggled.connect(lambda v: self._audio.set_loop(v))
         layout.addWidget(self._loop_btn)
 
@@ -247,7 +248,7 @@ class TransportBar(QWidget):
         self._vol_slider = QSlider(Qt.Orientation.Horizontal)
         self._vol_slider.setRange(0, 100)
         self._vol_slider.setValue(100)
-        self._vol_slider.setFixedWidth(100)
+        self._vol_slider.setMinimumWidth(100)
         self._vol_slider.valueChanged.connect(lambda v: setattr(self._audio, 'volume', v / 100))
         layout.addWidget(self._vol_slider)
 
@@ -314,7 +315,7 @@ class PlaceholderPage(QWidget):
         layout.setSpacing(16)
 
         icon = QLabel("\U0001f6a7")
-        icon.setStyleSheet("font-size: 48px;")
+        icon.setStyleSheet("font-size: 36pt;")
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(icon)
 
@@ -332,7 +333,7 @@ class PlaceholderPage(QWidget):
         phase_label = QLabel(tr("placeholder.coming_soon", phase=phase))
         phase_label.setObjectName("caption")
         phase_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        phase_label.setStyleSheet(f"font-size: 14px; color: {Palette.BLUE}; font-weight: 600;")
+        phase_label.setStyleSheet(f"font-size: 10.5pt; color: {Palette.BLUE}; font-weight: 600;")
         layout.addWidget(phase_label)
 
         layout.addStretch()
@@ -346,7 +347,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(tr("app.window_title", version=APP_VERSION))
-        # Must fit a 1024x768 display, and 200% scaling of that.
+        # Keep the shell inside a 1024x768 logical work area; Qt scales physical pixels per monitor.
         self.setMinimumSize(1024, 640)
         self.resize(1440, 900)
         self.setAcceptDrops(True)
@@ -416,11 +417,11 @@ class MainWindow(QMainWindow):
         self._audio.output_device_status.connect(self._on_audio_output_status)
 
         self._gpu_status_label = QLabel(tr("status.gpu_detecting"))
-        self._gpu_status_label.setStyleSheet(f"font-size: 11px; color: {Palette.OVERLAY0};")
+        self._gpu_status_label.setStyleSheet(f"font-size: 8.25pt; color: {Palette.OVERLAY0};")
         self._status_bar.addPermanentWidget(self._gpu_status_label)
 
         self._vram_label = QLabel("")
-        self._vram_label.setStyleSheet(f"font-size: 11px; color: {Palette.BLUE};")
+        self._vram_label.setStyleSheet(f"font-size: 8.25pt; color: {Palette.BLUE};")
         self._status_bar.addPermanentWidget(self._vram_label)
         self._status_bar.show()
         self._on_page_selected(0)
@@ -444,7 +445,7 @@ class MainWindow(QMainWindow):
     def _build_command_bar(self) -> QFrame:
         bar = QFrame()
         bar.setObjectName("commandBar")
-        bar.setFixedHeight(52)
+        bar.setMinimumHeight(52)
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(20, 0, 18, 0)
         layout.setSpacing(12)
@@ -467,7 +468,7 @@ class MainWindow(QMainWindow):
         separator = QFrame()
         separator.setObjectName("commandSeparator")
         separator.setFrameShape(QFrame.Shape.VLine)
-        separator.setFixedHeight(24)
+        separator.setMinimumHeight(24)
         layout.addWidget(separator)
 
         interval = int(self._settings.get("general.auto_save_interval", 60) or 60)
@@ -488,7 +489,7 @@ class MainWindow(QMainWindow):
         self.toast_mgr.on_message(self._on_toast_message)
 
         self._notification_button = QPushButton(tr("shell.command.notifications"))
-        self._notification_button.setFixedHeight(30)
+        self._notification_button.setMinimumHeight(30)
         self._notification_button.clicked.connect(self._show_notification_log)
         layout.addWidget(self._notification_button)
 
@@ -555,7 +556,7 @@ class MainWindow(QMainWindow):
     def _build_workspace_header(self) -> QFrame:
         header = QFrame()
         header.setObjectName("workspaceHeader")
-        header.setFixedHeight(78)
+        header.setMinimumHeight(78)
         layout = QVBoxLayout(header)
         layout.setContentsMargins(24, 8, 24, 8)
         layout.setSpacing(1)
@@ -709,7 +710,7 @@ class MainWindow(QMainWindow):
             pct = (used / total * 100) if total > 0 else 0
             color = Palette.GREEN if pct < 60 else (Palette.YELLOW if pct < 85 else Palette.RED)
             self._vram_label.setText(f"VRAM: {used:.1f} / {total:.1f} GB ({pct:.0f}%)")
-            self._vram_label.setStyleSheet(f"font-size: 11px; color: {color};")
+            self._vram_label.setStyleSheet(f"font-size: 8.25pt; color: {color};")
             self._compute_status_label.setText(
                 f"\u25cf  {gpu['name']}  \u00b7  {used:.1f}/{total:.1f} GB"
             )

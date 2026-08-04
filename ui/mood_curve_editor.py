@@ -137,18 +137,18 @@ class MoodCurveEditor(QWidget):
         ctrl.setSpacing(6)
 
         lbl = QLabel("Energy Curve")
-        lbl.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 12px;")
+        lbl.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9pt;")
         ctrl.addWidget(lbl)
 
         self._preset_combo = QComboBox()
-        self._preset_combo.setFixedWidth(160)
+        self._preset_combo.setMinimumWidth(160)
         self._preset_combo.addItems(list(PRESETS.keys()))
         self._preset_combo.currentTextChanged.connect(self._set_preset)
         ctrl.addWidget(self._preset_combo)
 
         self._reset_btn = QPushButton("Reset")
-        self._reset_btn.setFixedWidth(60)
-        self._reset_btn.setFixedHeight(26)
+        self._reset_btn.setMinimumWidth(60)
+        self._reset_btn.setMinimumHeight(26)
         self._reset_btn.setProperty("class", "secondary")
         self._reset_btn.clicked.connect(lambda: self._set_preset("Flat Energy"))
         ctrl.addWidget(self._reset_btn)
@@ -156,7 +156,7 @@ class MoodCurveEditor(QWidget):
         ctrl.addStretch()
 
         self._energy_label = QLabel("")
-        self._energy_label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px;")
+        self._energy_label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 8.25pt;")
         ctrl.addWidget(self._energy_label)
 
         layout.addLayout(ctrl)
@@ -174,7 +174,7 @@ class MoodCurveEditor(QWidget):
         )
         self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._view.setFixedHeight(self.SCENE_H + 20)
+        self._view.setMinimumHeight(self.SCENE_H + 20)
         self._view.setProperty("accessibility_canvas", True)
 
         layout.addWidget(self._view)

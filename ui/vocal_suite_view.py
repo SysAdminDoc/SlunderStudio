@@ -164,7 +164,7 @@ class VocalSuiteView(QWidget):
                 border: 1px solid {t['border']};
                 border-bottom: none;
                 padding: 7px 18px;
-                font-size: 11px;
+                font-size: 8.25pt;
                 border-top-left-radius: 6px;
                 border-top-right-radius: 6px;
                 margin-right: 2px;
@@ -212,7 +212,7 @@ class VocalSuiteView(QWidget):
                 color: {t['text']};
                 border: 1px solid {t['border']};
                 border-radius: 5px; padding: 6px 14px;
-                font-size: 11px; font-weight: bold;
+                font-size: 8.25pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
             QPushButton:disabled {{ color: {t['muted']}; }}
@@ -236,7 +236,7 @@ class VocalSuiteView(QWidget):
         # Status
         self._status = QLabel(tr("vocal.status.select_tab"))
         self._status.setWordWrap(True)
-        self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
 
         action_bar.addWidget(self._status, 1)
         action_bar.addWidget(self._to_forge_btn)
@@ -384,7 +384,7 @@ class VocalSuiteView(QWidget):
         ctrl_layout.setSpacing(6)
 
         title = QLabel("DiffSinger")
-        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
+        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
         # Lyrics input
@@ -395,7 +395,7 @@ class VocalSuiteView(QWidget):
             QTextEdit {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 6px; font-size: 12px;
+                padding: 6px; font-size: 9pt;
             }}
         """)
         self._sing_lyrics.textChanged.connect(self._schedule_capability_refresh)
@@ -405,15 +405,15 @@ class VocalSuiteView(QWidget):
             QComboBox, QSpinBox, QDoubleSpinBox {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 3px 6px; font-size: 11px;
+                padding: 3px 6px; font-size: 8.25pt;
             }}
-            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 8.25pt; border: none; }}
         """
 
         # Voice selector
         voice_row = QHBoxLayout()
         vl = QLabel("Voice:")
-        vl.setFixedWidth(50)
+        vl.setMinimumWidth(50)
         vl.setStyleSheet(param_style)
         self._sing_voice = QComboBox()
         self._sing_voice.setStyleSheet(param_style)
@@ -428,7 +428,7 @@ class VocalSuiteView(QWidget):
         # Tempo + Key
         row1 = QHBoxLayout()
         tl = QLabel("BPM:")
-        tl.setFixedWidth(30)
+        tl.setMinimumWidth(30)
         tl.setStyleSheet(param_style)
         self._sing_tempo = QSpinBox()
         self._sing_tempo.setRange(40, 300)
@@ -436,7 +436,7 @@ class VocalSuiteView(QWidget):
         self._sing_tempo.setStyleSheet(param_style)
 
         kl = QLabel("Key:")
-        kl.setFixedWidth(24)
+        kl.setMinimumWidth(24)
         kl.setStyleSheet(param_style)
         self._sing_key = QComboBox()
         self._sing_key.addItems(["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"])
@@ -456,14 +456,14 @@ class VocalSuiteView(QWidget):
             row = QHBoxLayout()
             row.setSpacing(4)
             lbl = QLabel(f"{name}:")
-            lbl.setFixedWidth(70)
+            lbl.setMinimumWidth(70)
             lbl.setStyleSheet(param_style)
             slider = QSlider(Qt.Horizontal)
             slider.setRange(0, range_max)
             slider.setValue(default)
-            slider.setFixedHeight(16)
+            slider.setMinimumHeight(16)
             val = QLabel(str(default))
-            val.setFixedWidth(24)
+            val.setMinimumWidth(24)
             val.setStyleSheet(param_style)
             slider.valueChanged.connect(lambda v, l=val: l.setText(str(v)))
             row.addWidget(lbl)
@@ -474,12 +474,12 @@ class VocalSuiteView(QWidget):
 
         # Generate button
         self._sing_gen_btn = QPushButton("Synthesize Vocals")
-        self._sing_gen_btn.setFixedHeight(34)
+        self._sing_gen_btn.setMinimumHeight(34)
         self._sing_gen_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
                 color: {t['background']}; border: none; border-radius: 5px;
-                font-weight: bold; font-size: 12px;
+                font-weight: bold; font-size: 9pt;
             }}
             QPushButton:hover {{ background: {t['accent_hover']}; }}
             QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
@@ -491,17 +491,17 @@ class VocalSuiteView(QWidget):
         pronunciation_frame.setStyleSheet(f"""
             QFrame {{ background: {t['background']}; border: 1px solid {t['border']};
                 border-radius: 6px; }}
-            QLabel {{ color: {t['text_secondary']}; font-size: 10px; border: none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 7.5pt; border: none; }}
             QLineEdit, QComboBox {{ background: {t['surface']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px; padding: 3px 5px;
-                font-size: 10px; }}
+                font-size: 7.5pt; }}
         """)
         pronunciation_layout = QVBoxLayout(pronunciation_frame)
         pronunciation_layout.setContentsMargins(8, 7, 8, 7)
         pronunciation_layout.setSpacing(5)
         pronunciation_title = QLabel("Pronunciation correction")
         pronunciation_title.setStyleSheet(
-            f"color: {t['text']}; font-weight: bold; font-size: 11px; border: none;"
+            f"color: {t['text']}; font-weight: bold; font-size: 8.25pt; border: none;"
         )
         pronunciation_layout.addWidget(pronunciation_title)
         pronunciation_help = QLabel(
@@ -523,7 +523,7 @@ class VocalSuiteView(QWidget):
         self._sing_region_label = QLabel("No pronunciation region selected")
         pronunciation_layout.addWidget(self._sing_region_label)
         self._sing_pronunciation_btn = QPushButton("Re-render selected pronunciation")
-        self._sing_pronunciation_btn.setFixedHeight(28)
+        self._sing_pronunciation_btn.setMinimumHeight(28)
         self._sing_pronunciation_btn.setEnabled(False)
         self._sing_pronunciation_btn.clicked.connect(self._on_pronunciation_correct)
         pronunciation_layout.addWidget(self._sing_pronunciation_btn)
@@ -534,7 +534,7 @@ class VocalSuiteView(QWidget):
 
         left_w = QWidget()
         left_w.setLayout(left)
-        left_w.setFixedWidth(320)
+        left_w.setMinimumWidth(320)
         layout.addWidget(left_w)
 
         # Right: Waveform output
@@ -572,16 +572,16 @@ class VocalSuiteView(QWidget):
         ctrl_layout.setSpacing(8)
 
         title = QLabel(tr("vocal.tabs.lyric_melody"))
-        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
+        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
         param_style = f"""
             QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 3px 6px; font-size: 11px;
+                padding: 3px 6px; font-size: 8.25pt;
             }}
-            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 8.25pt; border: none; }}
         """
 
         input_row = QHBoxLayout()
@@ -589,14 +589,14 @@ class VocalSuiteView(QWidget):
         input_label.setStyleSheet(param_style)
         self._melody_input_label = QLabel(tr("vocal.melody.no_file"))
         self._melody_input_label.setStyleSheet(
-            f"color: {t['text_secondary']}; font-size: 10px; border: none;"
+            f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;"
         )
         self._melody_browse_btn = QPushButton(tr("vocal.melody.browse"))
         self._melody_browse_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 4px 10px; font-size: 10px;
+                padding: 4px 10px; font-size: 7.5pt;
             }}
         """)
         self._melody_browse_btn.clicked.connect(self._on_melody_browse)
@@ -612,14 +612,14 @@ class VocalSuiteView(QWidget):
             QTextEdit {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 6px; font-size: 12px;
+                padding: 6px; font-size: 9pt;
             }}
         """)
         ctrl_layout.addWidget(self._melody_lyrics)
 
         tempo_row = QHBoxLayout()
         tempo_label = QLabel(tr("vocal.melody.tempo"))
-        tempo_label.setFixedWidth(42)
+        tempo_label.setMinimumWidth(42)
         tempo_label.setStyleSheet(param_style)
         self._melody_tempo = QSpinBox()
         self._melody_tempo.setRange(40, 300)
@@ -635,13 +635,13 @@ class VocalSuiteView(QWidget):
         ctrl_layout.addWidget(self._melody_render_diffsinger)
 
         self._melody_generate_btn = QPushButton(tr("vocal.melody.generate"))
-        self._melody_generate_btn.setFixedHeight(34)
+        self._melody_generate_btn.setMinimumHeight(34)
         self._melody_generate_btn.setEnabled(False)
         self._melody_generate_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
                 color: {t['background']}; border: none; border-radius: 5px;
-                font-weight: bold; font-size: 12px;
+                font-weight: bold; font-size: 9pt;
             }}
             QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
@@ -653,13 +653,13 @@ class VocalSuiteView(QWidget):
 
         left_w = QWidget()
         left_w.setLayout(left)
-        left_w.setFixedWidth(320)
+        left_w.setMinimumWidth(320)
         layout.addWidget(left_w)
 
         right = QVBoxLayout()
         right.setSpacing(4)
         preview_label = QLabel(tr("vocal.melody.preview"))
-        preview_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        preview_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._melody_waveform = WaveformWidget()
         self._melody_waveform.set_empty_state(
             "No melody preview yet",
@@ -697,28 +697,28 @@ class VocalSuiteView(QWidget):
         ctrl_layout.setSpacing(6)
 
         title = QLabel("RVC Voice Conversion")
-        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
+        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
         param_style = f"""
             QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 3px 6px; font-size: 11px;
+                padding: 3px 6px; font-size: 8.25pt;
             }}
-            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 8.25pt; border: none; }}
         """
 
         # Input audio
         input_row = QHBoxLayout()
         self._rvc_input_label = QLabel("No file selected")
-        self._rvc_input_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
+        self._rvc_input_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
         self._rvc_browse_btn = QPushButton("Browse")
         self._rvc_browse_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 4px 10px; font-size: 10px;
+                padding: 4px 10px; font-size: 7.5pt;
             }}
         """)
         self._rvc_browse_btn.clicked.connect(self._on_rvc_browse)
@@ -733,7 +733,7 @@ class VocalSuiteView(QWidget):
         # Voice model selector
         voice_row = QHBoxLayout()
         vl = QLabel("Voice:")
-        vl.setFixedWidth(50)
+        vl.setMinimumWidth(50)
         vl.setStyleSheet(param_style)
         self._rvc_voice = QComboBox()
         self._rvc_voice.addItem("(No RVC models loaded)")
@@ -753,7 +753,7 @@ class VocalSuiteView(QWidget):
             QPushButton {{
                 background: {t['surface_hover']}; color: {t['warning']};
                 border: 1px solid {t['warning']}; border-radius: 4px;
-                padding: 5px 8px; font-size: 10px; font-weight: bold;
+                padding: 5px 8px; font-size: 7.5pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['warning']}; color: {t['background']}; }}
             QPushButton:disabled {{ color: {t['muted']}; border-color: {t['border']}; }}
@@ -766,7 +766,7 @@ class VocalSuiteView(QWidget):
         )
         self._rvc_trust_label.setWordWrap(True)
         self._rvc_trust_label.setStyleSheet(
-            f"color: {t['text_secondary']}; font-size: 10px; border: none;"
+            f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;"
         )
         ctrl_layout.addWidget(self._rvc_trust_label)
 
@@ -774,14 +774,14 @@ class VocalSuiteView(QWidget):
         self._rvc_consent_label.setWordWrap(True)
         self._rvc_consent_label.setStyleSheet(
             f"color: {t['text_secondary']}; background: {t['background']}; "
-            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 6px; font-size: 10px;"
+            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 6px; font-size: 7.5pt;"
         )
         ctrl_layout.addWidget(self._rvc_consent_label)
 
         # Pitch shift
         pitch_row = QHBoxLayout()
         pl = QLabel("Pitch:")
-        pl.setFixedWidth(50)
+        pl.setMinimumWidth(50)
         pl.setStyleSheet(param_style)
         self._rvc_pitch = QSpinBox()
         self._rvc_pitch.setRange(-24, 24)
@@ -795,7 +795,7 @@ class VocalSuiteView(QWidget):
         # F0 method
         f0_row = QHBoxLayout()
         fl = QLabel("F0:")
-        fl.setFixedWidth(50)
+        fl.setMinimumWidth(50)
         fl.setStyleSheet(param_style)
         self._rvc_f0 = QComboBox()
         self._rvc_f0.addItems(["rmvpe", "pm", "harvest", "crepe"])
@@ -807,14 +807,14 @@ class VocalSuiteView(QWidget):
         # Index rate
         idx_row = QHBoxLayout()
         il = QLabel("Index:")
-        il.setFixedWidth(50)
+        il.setMinimumWidth(50)
         il.setStyleSheet(param_style)
         self._rvc_index = QSlider(Qt.Horizontal)
         self._rvc_index.setRange(0, 100)
         self._rvc_index.setValue(75)
-        self._rvc_index.setFixedHeight(16)
+        self._rvc_index.setMinimumHeight(16)
         self._rvc_idx_val = QLabel("0.75")
-        self._rvc_idx_val.setFixedWidth(30)
+        self._rvc_idx_val.setMinimumWidth(30)
         self._rvc_idx_val.setStyleSheet(param_style)
         self._rvc_index.valueChanged.connect(
             lambda v: self._rvc_idx_val.setText(f"{v / 100:.2f}"))
@@ -834,12 +834,12 @@ class VocalSuiteView(QWidget):
 
         # Convert button
         self._rvc_convert_btn = QPushButton("Convert Voice")
-        self._rvc_convert_btn.setFixedHeight(34)
+        self._rvc_convert_btn.setMinimumHeight(34)
         self._rvc_convert_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
                 color: {t['background']}; border: none; border-radius: 5px;
-                font-weight: bold; font-size: 12px;
+                font-weight: bold; font-size: 9pt;
             }}
             QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
@@ -851,14 +851,14 @@ class VocalSuiteView(QWidget):
 
         left_w = QWidget()
         left_w.setLayout(left)
-        left_w.setFixedWidth(320)
+        left_w.setMinimumWidth(320)
         layout.addWidget(left_w)
 
         # Right: Before/After waveforms
         right = QVBoxLayout()
         right.setSpacing(4)
         ol = QLabel("Original")
-        ol.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        ol.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._rvc_original_wf = WaveformWidget()
         self._rvc_original_wf.set_empty_state(
             "No source vocal yet",
@@ -867,7 +867,7 @@ class VocalSuiteView(QWidget):
         )
         self._rvc_original_wf.empty_action_requested.connect(self._rvc_browse_btn.click)
         cl = QLabel("Converted")
-        cl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        cl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._rvc_converted_wf = WaveformWidget()
         self._rvc_converted_wf.set_empty_state(
             "No converted vocal yet",
@@ -905,22 +905,22 @@ class VocalSuiteView(QWidget):
         ctrl_layout.setSpacing(6)
 
         title = QLabel("GPT-SoVITS Voice Cloning")
-        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
+        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
         param_style = f"""
             QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit, QTextEdit {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 3px 6px; font-size: 11px;
+                padding: 3px 6px; font-size: 8.25pt;
             }}
-            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 8.25pt; border: none; }}
         """
 
         # Onboarded voice profile
         profile_row = QHBoxLayout()
         profile_label = QLabel("Profile:")
-        profile_label.setFixedWidth(50)
+        profile_label.setMinimumWidth(50)
         profile_label.setStyleSheet(param_style)
         self._clone_voice = QComboBox()
         self._clone_voice.setStyleSheet(param_style)
@@ -939,7 +939,7 @@ class VocalSuiteView(QWidget):
             QPushButton {{
                 background: {t['surface_hover']}; color: {t['warning']};
                 border: 1px solid {t['warning']}; border-radius: 4px;
-                padding: 5px 8px; font-size: 10px; font-weight: bold;
+                padding: 5px 8px; font-size: 7.5pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['warning']}; color: {t['background']}; }}
             QPushButton:disabled {{ color: {t['muted']}; border-color: {t['border']}; }}
@@ -952,7 +952,7 @@ class VocalSuiteView(QWidget):
         )
         self._clone_trust_label.setWordWrap(True)
         self._clone_trust_label.setStyleSheet(
-            f"color: {t['text_secondary']}; font-size: 10px; border: none;"
+            f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;"
         )
         ctrl_layout.addWidget(self._clone_trust_label)
 
@@ -993,7 +993,7 @@ class VocalSuiteView(QWidget):
 
         self._clone_consent_confirm = QCheckBox("Consent confirmed")
         self._clone_consent_confirm.setStyleSheet(
-            f"QCheckBox {{ color: {t['text']}; font-size: 11px; border: none; }}"
+            f"QCheckBox {{ color: {t['text']}; font-size: 8.25pt; border: none; }}"
         )
         self._clone_consent_confirm.stateChanged.connect(self._update_clone_profile_ready)
         ctrl_layout.addWidget(self._clone_consent_confirm)
@@ -1001,16 +1001,16 @@ class VocalSuiteView(QWidget):
         # Reference audio
         ref_row = QHBoxLayout()
         self._clone_ref_label = QLabel("No reference audio")
-        self._clone_ref_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
+        self._clone_ref_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
         self._clone_ref_btn = QPushButton("Browse")
         self._clone_ref_btn.setStyleSheet(f"""
             QPushButton {{ background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 4px 10px; font-size: 10px; }}
+                padding: 4px 10px; font-size: 7.5pt; }}
         """)
         self._clone_ref_btn.clicked.connect(self._on_clone_browse_ref)
         ref_lbl = QLabel("Ref:")
-        ref_lbl.setFixedWidth(30)
+        ref_lbl.setMinimumWidth(30)
         ref_lbl.setStyleSheet(param_style)
         ref_row.addWidget(ref_lbl)
         ref_row.addWidget(self._clone_ref_label, 1)
@@ -1028,7 +1028,7 @@ class VocalSuiteView(QWidget):
         self._clone_quality_label.setWordWrap(True)
         self._clone_quality_label.setStyleSheet(
             f"color: {t['text_secondary']}; background: {t['background']}; "
-            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 6px; font-size: 10px;"
+            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 6px; font-size: 7.5pt;"
         )
         ctrl_layout.addWidget(self._clone_quality_label)
 
@@ -1036,18 +1036,18 @@ class VocalSuiteView(QWidget):
         self._clone_consent_label.setWordWrap(True)
         self._clone_consent_label.setStyleSheet(
             f"color: {t['text_secondary']}; background: {t['background']}; "
-            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 6px; font-size: 10px;"
+            f"border: 1px solid {t['border']}; border-radius: 4px; padding: 6px; font-size: 7.5pt;"
         )
         ctrl_layout.addWidget(self._clone_consent_label)
 
         self._clone_save_profile_btn = QPushButton("Save Voice Profile")
-        self._clone_save_profile_btn.setFixedHeight(28)
+        self._clone_save_profile_btn.setMinimumHeight(28)
         self._clone_save_profile_btn.setEnabled(False)
         self._clone_save_profile_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['surface_hover']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                font-weight: bold; font-size: 11px;
+                font-weight: bold; font-size: 8.25pt;
             }}
             QPushButton:hover {{ background: {t['accent']}; color: {t['background']}; }}
             QPushButton:disabled {{ color: {t['muted']}; }}
@@ -1066,7 +1066,7 @@ class VocalSuiteView(QWidget):
         # Language
         lang_row = QHBoxLayout()
         ll = QLabel(tr("vocal.clone.language_short"))
-        ll.setFixedWidth(36)
+        ll.setMinimumWidth(36)
         ll.setStyleSheet(param_style)
         self._clone_lang = QComboBox()
         self._clone_lang.addItems(language_combo_items(GPT_SOVITS_LANGUAGE_CODES))
@@ -1079,7 +1079,7 @@ class VocalSuiteView(QWidget):
         # Speed + Temperature
         st_row = QHBoxLayout()
         sl = QLabel("Speed:")
-        sl.setFixedWidth(42)
+        sl.setMinimumWidth(42)
         sl.setStyleSheet(param_style)
         self._clone_speed = QDoubleSpinBox()
         self._clone_speed.setRange(0.5, 2.0)
@@ -1088,7 +1088,7 @@ class VocalSuiteView(QWidget):
         self._clone_speed.setStyleSheet(param_style)
 
         tl = QLabel("Temp:")
-        tl.setFixedWidth(36)
+        tl.setMinimumWidth(36)
         tl.setStyleSheet(param_style)
         self._clone_temp = QDoubleSpinBox()
         self._clone_temp.setRange(0.1, 1.5)
@@ -1113,19 +1113,19 @@ class VocalSuiteView(QWidget):
 
         # Clone button
         self._clone_gen_btn = QPushButton("Clone Voice")
-        self._clone_gen_btn.setFixedHeight(34)
+        self._clone_gen_btn.setMinimumHeight(34)
         self._clone_gen_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
                 color: {t['background']}; border: none; border-radius: 5px;
-                font-weight: bold; font-size: 12px;
+                font-weight: bold; font-size: 9pt;
             }}
             QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
         self._clone_gen_btn.clicked.connect(self._on_clone_generate)
         ctrl_layout.addWidget(self._clone_gen_btn)
 
-        ctrl_frame.setFixedWidth(320)
+        ctrl_frame.setMinimumWidth(320)
         layout.addWidget(ctrl_frame)
 
         # Output waveform
@@ -1161,16 +1161,16 @@ class VocalSuiteView(QWidget):
         ctrl_layout.setSpacing(8)
 
         title = QLabel(tr("vocal.tabs.autotune"))
-        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
+        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
         param_style = f"""
             QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 3px 6px; font-size: 11px;
+                padding: 3px 6px; font-size: 8.25pt;
             }}
-            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 8.25pt; border: none; }}
         """
 
         input_row = QHBoxLayout()
@@ -1178,14 +1178,14 @@ class VocalSuiteView(QWidget):
         input_label.setStyleSheet(param_style)
         self._autotune_input_label = QLabel(tr("vocal.autotune.no_file"))
         self._autotune_input_label.setStyleSheet(
-            f"color: {t['text_secondary']}; font-size: 10px; border: none;"
+            f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;"
         )
         self._autotune_browse_btn = QPushButton(tr("vocal.autotune.browse"))
         self._autotune_browse_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 4px 10px; font-size: 10px;
+                padding: 4px 10px; font-size: 7.5pt;
             }}
         """)
         self._autotune_browse_btn.clicked.connect(self._on_autotune_browse)
@@ -1196,16 +1196,16 @@ class VocalSuiteView(QWidget):
 
         strength_row = QHBoxLayout()
         strength_label = QLabel(tr("vocal.autotune.strength"))
-        strength_label.setFixedWidth(58)
+        strength_label.setMinimumWidth(58)
         strength_label.setStyleSheet(param_style)
         self._autotune_strength = QSlider(Qt.Horizontal)
         self._autotune_strength.setRange(0, 100)
         self._autotune_strength.setValue(
             int(self._settings.get("vocal_suite.autotune_strength", 0.75) * 100)
         )
-        self._autotune_strength.setFixedHeight(18)
+        self._autotune_strength.setMinimumHeight(18)
         self._autotune_strength_val = QLabel(f"{self._autotune_strength.value()}%")
-        self._autotune_strength_val.setFixedWidth(38)
+        self._autotune_strength_val.setMinimumWidth(38)
         self._autotune_strength_val.setStyleSheet(param_style)
         self._autotune_strength.valueChanged.connect(self._on_autotune_strength_changed)
         strength_row.addWidget(strength_label)
@@ -1214,13 +1214,13 @@ class VocalSuiteView(QWidget):
         ctrl_layout.addLayout(strength_row)
 
         self._autotune_apply_btn = QPushButton(tr("vocal.autotune.apply"))
-        self._autotune_apply_btn.setFixedHeight(34)
+        self._autotune_apply_btn.setMinimumHeight(34)
         self._autotune_apply_btn.setEnabled(False)
         self._autotune_apply_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
                 color: {t['background']}; border: none; border-radius: 5px;
-                font-weight: bold; font-size: 12px;
+                font-weight: bold; font-size: 9pt;
             }}
             QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
         """)
@@ -1232,13 +1232,13 @@ class VocalSuiteView(QWidget):
 
         left_w = QWidget()
         left_w.setLayout(left)
-        left_w.setFixedWidth(320)
+        left_w.setMinimumWidth(320)
         layout.addWidget(left_w)
 
         right = QVBoxLayout()
         right.setSpacing(4)
         preview_label = QLabel(tr("vocal.autotune.corrected"))
-        preview_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        preview_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._autotune_waveform = WaveformWidget()
         self._autotune_waveform.set_empty_state(
             "No corrected vocal yet",
@@ -1267,7 +1267,7 @@ class VocalSuiteView(QWidget):
 
         self._stem_input_label = QLabel("Drop or browse an audio file to separate stems")
         self._stem_input_label.setStyleSheet(f"""
-            color: {t['text_secondary']}; font-size: 12px;
+            color: {t['text_secondary']}; font-size: 9pt;
             padding: 12px 20px;
             background: {t['surface']};
             border: 2px dashed {t['border']};
@@ -1279,7 +1279,7 @@ class VocalSuiteView(QWidget):
             QPushButton {{
                 background: {t['accent']}; color: {t['background']}; border: none;
                 border-radius: 5px; padding: 8px 16px;
-                font-weight: bold; font-size: 11px;
+                font-weight: bold; font-size: 8.25pt;
             }}
             QPushButton:hover {{ background: {t['accent_hover']}; }}
         """)
@@ -1292,7 +1292,7 @@ class VocalSuiteView(QWidget):
             QComboBox {{
                 background: {t['surface']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 6px 10px; font-size: 11px;
+                padding: 6px 10px; font-size: 8.25pt;
             }}
         """)
 

@@ -113,7 +113,7 @@ class MidiStudioView(QWidget):
         gen_layout.setSpacing(6)
 
         gen_title = QLabel("Text-to-MIDI")
-        gen_title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
+        gen_title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         gen_layout.addWidget(gen_title)
 
         # Prompt
@@ -127,7 +127,7 @@ class MidiStudioView(QWidget):
                 border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 6px;
-                font-size: 12px;
+                font-size: 9pt;
             }}
         """)
         self._prompt.textChanged.connect(self._refresh_capability_state)
@@ -136,8 +136,8 @@ class MidiStudioView(QWidget):
         # Style
         style_row = QHBoxLayout()
         style_label = QLabel("Style:")
-        style_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border:none;")
-        style_label.setFixedWidth(40)
+        style_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border:none;")
+        style_label.setMinimumWidth(40)
         self._style_input = QLineEdit()
         self._style_input.setPlaceholderText("jazz piano ballad, soft, legato")
         self._style_input.setStyleSheet(f"""
@@ -145,7 +145,7 @@ class MidiStudioView(QWidget):
                 background: {t['background']};
                 color: {t['text']};
                 border: 1px solid {t['border']};
-                border-radius: 4px; padding: 4px 8px; font-size: 11px;
+                border-radius: 4px; padding: 4px 8px; font-size: 8.25pt;
             }}
         """)
         style_row.addWidget(style_label)
@@ -158,16 +158,16 @@ class MidiStudioView(QWidget):
                 background: {t['background']};
                 color: {t['text']};
                 border: 1px solid {t['border']};
-                border-radius: 3px; padding: 3px 6px; font-size: 11px;
+                border-radius: 3px; padding: 3px 6px; font-size: 8.25pt;
             }}
-            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border:none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 8.25pt; border:none; }}
         """
 
         # Row 1: Key + Tempo
         row1 = QHBoxLayout()
         row1.setSpacing(6)
         key_l = QLabel("Key:")
-        key_l.setFixedWidth(34)
+        key_l.setMinimumWidth(34)
         key_l.setStyleSheet(param_style)
         self._key_combo = QComboBox()
         self._key_combo.addItems(KEYS)
@@ -175,7 +175,7 @@ class MidiStudioView(QWidget):
         self._key_combo.setStyleSheet(param_style)
 
         tempo_l = QLabel("BPM:")
-        tempo_l.setFixedWidth(30)
+        tempo_l.setMinimumWidth(30)
         tempo_l.setStyleSheet(param_style)
         self._tempo_spin = QSpinBox()
         self._tempo_spin.setRange(40, 300)
@@ -192,7 +192,7 @@ class MidiStudioView(QWidget):
         row2 = QHBoxLayout()
         row2.setSpacing(6)
         bars_l = QLabel("Bars:")
-        bars_l.setFixedWidth(34)
+        bars_l.setMinimumWidth(34)
         bars_l.setStyleSheet(param_style)
         self._bars_spin = QSpinBox()
         self._bars_spin.setRange(4, 128)
@@ -200,7 +200,7 @@ class MidiStudioView(QWidget):
         self._bars_spin.setStyleSheet(param_style)
 
         ts_l = QLabel("Time:")
-        ts_l.setFixedWidth(30)
+        ts_l.setMinimumWidth(30)
         ts_l.setStyleSheet(param_style)
         self._time_sig = QComboBox()
         self._time_sig.addItems(["4/4", "3/4", "6/8", "2/4", "5/4", "7/8"])
@@ -216,7 +216,7 @@ class MidiStudioView(QWidget):
         row3 = QHBoxLayout()
         row3.setSpacing(6)
         inst_l = QLabel("Preset:")
-        inst_l.setFixedWidth(40)
+        inst_l.setMinimumWidth(40)
         inst_l.setStyleSheet(param_style)
         self._inst_combo = QComboBox()
         self._inst_combo.addItems(INSTRUMENT_PRESETS.keys())
@@ -230,7 +230,7 @@ class MidiStudioView(QWidget):
         row4 = QHBoxLayout()
         row4.setSpacing(6)
         prog_l = QLabel("Chords:")
-        prog_l.setFixedWidth(48)
+        prog_l.setMinimumWidth(48)
         prog_l.setStyleSheet(param_style)
         self._progression_combo = QComboBox()
         self._progression_combo.addItems(CHORD_PROGRESSIONS)
@@ -243,7 +243,7 @@ class MidiStudioView(QWidget):
         row5 = QHBoxLayout()
         row5.setSpacing(6)
         groove_l = QLabel("Groove:")
-        groove_l.setFixedWidth(48)
+        groove_l.setMinimumWidth(48)
         groove_l.setStyleSheet(param_style)
         self._groove_combo = QComboBox()
         self._groove_combo.addItems(DRUM_GROOVE_NAMES)
@@ -262,7 +262,7 @@ class MidiStudioView(QWidget):
                 border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 5px;
-                font-size: 11px;
+                font-size: 8.25pt;
             }}
         """)
         gen_layout.addWidget(self._chart_lyrics)
@@ -278,12 +278,12 @@ class MidiStudioView(QWidget):
 
         # Generate button
         self._gen_btn = QPushButton("Generate MIDI")
-        self._gen_btn.setFixedHeight(36)
+        self._gen_btn.setMinimumHeight(36)
         self._gen_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
                 color: {t['background']}; border: none; border-radius: 5px;
-                font-weight: bold; font-size: 13px;
+                font-weight: bold; font-size: 9.75pt;
             }}
             QPushButton:hover {{ background: {t['accent_hover']}; }}
             QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
@@ -295,7 +295,7 @@ class MidiStudioView(QWidget):
         self._status = QLabel("")
         self._status.setWordWrap(True)
         self._status.setMinimumHeight(28)
-        self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border:none;")
+        self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border:none;")
         gen_layout.addWidget(self._status)
 
         self._operation_progress = OperationProgressWidget()
@@ -323,7 +323,7 @@ class MidiStudioView(QWidget):
                 color: {t['text']};
                 border: 1px solid {t['border']};
                 border-radius: 5px; padding: 6px 12px;
-                font-size: 11px; font-weight: bold;
+                font-size: 8.25pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
@@ -386,7 +386,7 @@ class MidiStudioView(QWidget):
                 border: 1px solid {t['border']};
                 border-bottom: none;
                 padding: 6px 16px;
-                font-size: 11px;
+                font-size: 8.25pt;
                 border-top-left-radius: 6px;
                 border-top-right-radius: 6px;
             }}
@@ -422,7 +422,7 @@ class MidiStudioView(QWidget):
         self._info = QLabel("No MIDI loaded. Generate or import a file.")
         self._info.setStyleSheet(f"""
             color: {t['text_secondary']};
-            font-size: 11px;
+            font-size: 8.25pt;
             padding: 4px 8px;
             background: {t['surface']};
             border: 1px solid {t['border']};
@@ -433,7 +433,7 @@ class MidiStudioView(QWidget):
         # Layout: left panel (fixed 320) | right panel (stretches)
         left_widget = QWidget()
         left_widget.setLayout(left)
-        left_widget.setFixedWidth(340)
+        left_widget.setMinimumWidth(340)
 
         right_widget = QWidget()
         right_widget.setLayout(right)

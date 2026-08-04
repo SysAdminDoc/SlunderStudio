@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Hardened the Qt shell for display scaling: UI stylesheet sizes use scalable point units while
+  preserving their baseline dimensions, fixed geometry calls now express minimums, Windows starts
+  per-monitor-v2 aware, and layout gates run at simulated 125% and 150% scale factors.
 - Added a shared determinate progress and cancellation surface for Vocal Suite, Mixer, MIDI,
   SFX, reference analysis, health-report export, and recovery cleanup. Worker steps now stay
   separate from numeric progress, and cancellation refreshes partial state without parsing labels.

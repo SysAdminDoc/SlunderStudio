@@ -317,7 +317,7 @@ class MixerTrackStrip(QFrame):
                 border-radius: 6px;
             }}
         """)
-        self.setFixedHeight(70)
+        self.setMinimumHeight(70)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
@@ -326,7 +326,7 @@ class MixerTrackStrip(QFrame):
         # Track name
         name_label = ElidedLabel(name, minimum_width=80)
         self._name_label = name_label
-        name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 11px;")
+        name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 8.25pt;")
         layout.addWidget(name_label)
 
         # Mini waveform
@@ -334,22 +334,22 @@ class MixerTrackStrip(QFrame):
         if audio is not None:
             mono = audio[:, 0] if audio.ndim == 2 else audio
             self._waveform.load_audio(mono, sr)
-        self._waveform.setFixedWidth(160)
+        self._waveform.setMinimumWidth(160)
         layout.addWidget(self._waveform)
 
         # Volume
         vol_col = QVBoxLayout()
         vol_col.setSpacing(1)
         vl = QLabel("Vol")
-        vl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
+        vl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         vl.setAlignment(Qt.AlignCenter)
         self._vol_slider = QSlider(Qt.Horizontal)
         self._vol_slider.setRange(0, 150)
         self._vol_slider.setValue(100)
-        self._vol_slider.setFixedWidth(80)
-        self._vol_slider.setFixedHeight(14)
+        self._vol_slider.setMinimumWidth(80)
+        self._vol_slider.setMinimumHeight(14)
         self._vol_val = QLabel("100%")
-        self._vol_val.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
+        self._vol_val.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         self._vol_val.setAlignment(Qt.AlignCenter)
         self._vol_slider.valueChanged.connect(self._on_vol)
         vol_col.addWidget(vl)
@@ -361,15 +361,15 @@ class MixerTrackStrip(QFrame):
         pan_col = QVBoxLayout()
         pan_col.setSpacing(1)
         pl = QLabel("Pan")
-        pl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
+        pl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         pl.setAlignment(Qt.AlignCenter)
         self._pan_slider = QSlider(Qt.Horizontal)
         self._pan_slider.setRange(-100, 100)
         self._pan_slider.setValue(0)
-        self._pan_slider.setFixedWidth(80)
-        self._pan_slider.setFixedHeight(14)
+        self._pan_slider.setMinimumWidth(80)
+        self._pan_slider.setMinimumHeight(14)
         self._pan_val = QLabel("C")
-        self._pan_val.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
+        self._pan_val.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         self._pan_val.setAlignment(Qt.AlignCenter)
         self._pan_slider.valueChanged.connect(self._on_pan)
         pan_col.addWidget(pl)
@@ -382,13 +382,13 @@ class MixerTrackStrip(QFrame):
             QPushButton {{
                 background: {t['background']}; color: {t['text_secondary']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                font-size: 9px; font-weight: bold;
+                font-size: 6.75pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
                 QPushButton:checked {{ color: {Palette.CRUST}; border: none; }}
         """
         self._mute_btn = QPushButton("M")
-        self._mute_btn.setFixedSize(24, 20)
+        self._mute_btn.setMinimumSize(24, 20)
         self._mute_btn.setCheckable(True)
         self._mute_btn.setStyleSheet(
             btn_style
@@ -397,7 +397,7 @@ class MixerTrackStrip(QFrame):
         self._mute_btn.clicked.connect(self._on_mute)
 
         self._solo_btn = QPushButton("S")
-        self._solo_btn.setFixedSize(24, 20)
+        self._solo_btn.setMinimumSize(24, 20)
         self._solo_btn.setCheckable(True)
         self._solo_btn.setStyleSheet(
             btn_style
@@ -406,7 +406,7 @@ class MixerTrackStrip(QFrame):
         self._solo_btn.clicked.connect(self._on_solo)
 
         self._remove_btn = QPushButton("X")
-        self._remove_btn.setFixedSize(24, 20)
+        self._remove_btn.setMinimumSize(24, 20)
         self._remove_btn.setStyleSheet(btn_style)
         self._remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.track_idx))
 
@@ -546,12 +546,12 @@ class MixerView(QWidget):
         # ── Top: Track list ────────────────────────────────────────────────
         tracks_header = QHBoxLayout()
         tl = QLabel("Tracks")
-        tl.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 13px;")
+        tl.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9.75pt;")
         self._project_rate_label = QLabel(
             f"Project: {self._project_sample_rate / 1000:g} kHz stereo"
         )
         self._project_rate_label.setStyleSheet(
-            f"color: {t['text_secondary']}; font-size: 10px;"
+            f"color: {t['text_secondary']}; font-size: 7.5pt;"
         )
 
         self._add_btn = QPushButton("+ Import Track")
@@ -559,7 +559,7 @@ class MixerView(QWidget):
             QPushButton {{
                 background: {t['accent']}; color: {t['background']}; border: none;
                 border-radius: 4px; padding: 5px 12px;
-                font-size: 11px; font-weight: bold;
+                font-size: 8.25pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['accent_hover']}; }}
         """)
@@ -569,7 +569,7 @@ class MixerView(QWidget):
             QPushButton {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 5px 12px; font-size: 11px; font-weight: bold;
+                padding: 5px 12px; font-size: 8.25pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
             QPushButton:disabled {{ color: {Palette.OVERLAY0}; border-color: {t['border']}; }}
@@ -642,7 +642,7 @@ class MixerView(QWidget):
         master_layout.setSpacing(12)
 
         ml = QLabel("Mastering:")
-        ml.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px; border: none;")
+        ml.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt; border: none;")
         master_layout.addWidget(ml)
 
         self._preset_combo = QComboBox()
@@ -652,14 +652,14 @@ class MixerView(QWidget):
             QComboBox {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 4px 10px; font-size: 11px; min-width: 140px;
+                padding: 4px 10px; font-size: 8.25pt; min-width: 140px;
             }}
         """)
         master_layout.addWidget(self._preset_combo)
 
         # Target LUFS
         tlufs = QLabel("Target:")
-        tlufs.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+        tlufs.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._target_combo = QComboBox()
         for target in LUFS_TARGETS.values():
             self._target_combo.addItem(target.label, target.key)
@@ -669,7 +669,7 @@ class MixerView(QWidget):
             QComboBox {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 4px 10px; font-size: 11px; min-width: 160px;
+                padding: 4px 10px; font-size: 8.25pt; min-width: 160px;
             }}
         """)
         self._target_combo.currentIndexChanged.connect(self._on_lufs_target_changed)
@@ -682,7 +682,7 @@ class MixerView(QWidget):
             self._target_combo.blockSignals(False)
 
         ll = QLabel("LUFS:")
-        ll.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+        ll.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._lufs_spin = QDoubleSpinBox()
         self._lufs_spin.setRange(-30.0, -6.0)
         self._lufs_spin.setValue(-14.0)
@@ -691,7 +691,7 @@ class MixerView(QWidget):
             QDoubleSpinBox {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 3px 6px; font-size: 11px;
+                padding: 3px 6px; font-size: 8.25pt;
             }}
         """)
         self._lufs_spin.valueChanged.connect(self._on_lufs_spin_changed)
@@ -704,25 +704,25 @@ class MixerView(QWidget):
             QDoubleSpinBox {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 3px 6px; font-size: 11px;
+                padding: 3px 6px; font-size: 8.25pt;
             }}
         """
         mid_label = QLabel("Mid:")
-        mid_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+        mid_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._mid_gain_spin = QDoubleSpinBox()
         self._mid_gain_spin.setRange(-6.0, 6.0)
         self._mid_gain_spin.setSingleStep(0.5)
         self._mid_gain_spin.setSuffix(" dB")
-        self._mid_gain_spin.setFixedWidth(78)
+        self._mid_gain_spin.setMinimumWidth(78)
         self._mid_gain_spin.setStyleSheet(ms_style)
 
         side_label = QLabel("Side:")
-        side_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+        side_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._side_gain_spin = QDoubleSpinBox()
         self._side_gain_spin.setRange(-6.0, 6.0)
         self._side_gain_spin.setSingleStep(0.5)
         self._side_gain_spin.setSuffix(" dB")
-        self._side_gain_spin.setFixedWidth(78)
+        self._side_gain_spin.setMinimumWidth(78)
         self._side_gain_spin.setStyleSheet(ms_style)
 
         master_layout.addWidget(mid_label)
@@ -735,7 +735,7 @@ class MixerView(QWidget):
             QPushButton {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 5px 10px; font-size: 11px; font-weight: bold;
+                padding: 5px 10px; font-size: 8.25pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """)
@@ -752,11 +752,11 @@ class MixerView(QWidget):
 
         # LUFS meter display
         self._reference_label = QLabel("Ref: none")
-        self._reference_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
+        self._reference_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
         master_layout.addWidget(self._reference_label)
 
         self._lufs_label = QLabel("")
-        self._lufs_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
+        self._lufs_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
         master_layout.addWidget(self._lufs_label)
 
         layout.addWidget(master_frame)
@@ -768,7 +768,7 @@ class MixerView(QWidget):
 
         # Status
         self._status = QLabel("Import audio tracks to begin mixing")
-        self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         layout.addWidget(self._status)
 
         self._operation_progress = OperationProgressWidget()

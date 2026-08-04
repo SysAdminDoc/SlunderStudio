@@ -21,6 +21,8 @@ from typing import Sequence
 
 from core.version import APP_VERSION
 
+os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+
 
 def _is_frozen() -> bool:
     """Return True when running from a PyInstaller executable."""
@@ -153,8 +155,8 @@ class _DependencyDiagnostics(QWidget):
             QWidget {
                 background: #1e1e2e; color: #cdd6f4; font-family: "Segoe UI";
             }
-            QLabel#Title { color: #f38ba8; font-size: 22px; font-weight: 800; }
-            QLabel#Subtitle { color: #a6adc8; font-size: 12px; }
+            QLabel#Title { color: #f38ba8; font-size: 16.5pt; font-weight: 800; }
+            QLabel#Subtitle { color: #a6adc8; font-size: 9pt; }
             QPlainTextEdit {
                 background: #11111b; color: #cdd6f4; border: 1px solid #313244;
                 border-radius: 6px; padding: 10px; font-family: Consolas, "Courier New";
@@ -500,6 +502,9 @@ def main():
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
 
+    from ui.theme import configure_windows_dpi_awareness
+
+    configure_windows_dpi_awareness()
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )

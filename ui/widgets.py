@@ -41,7 +41,7 @@ class EmptyStateWidget(QFrame):
         self._title = QLabel()
         self._title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._title.setStyleSheet(
-            f"color: {Palette.TEXT}; font-size: 13px; font-weight: 700;"
+            f"color: {Palette.TEXT}; font-size: 9.75pt; font-weight: 700;"
         )
         layout.addWidget(self._title)
 
@@ -49,13 +49,13 @@ class EmptyStateWidget(QFrame):
         self._message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._message.setWordWrap(True)
         self._message.setStyleSheet(
-            f"color: {Palette.SUBTEXT0}; font-size: 11px;"
+            f"color: {Palette.SUBTEXT0}; font-size: 8.25pt;"
         )
         layout.addWidget(self._message)
 
         self._action_button = QPushButton()
         self._action_button.setObjectName("emptyStateAction")
-        self._action_button.setFixedHeight(30)
+        self._action_button.setMinimumHeight(30)
         self._action_button.clicked.connect(self.action_requested.emit)
         layout.addWidget(self._action_button, 0, Qt.AlignmentFlag.AlignCenter)
 
@@ -128,7 +128,7 @@ class OperationProgressWidget(QFrame):
         self._message_label = QLabel("")
         self._message_label.setMinimumWidth(110)
         self._message_label.setStyleSheet(
-            f"color: {Palette.SUBTEXT0}; font-size: 11px;"
+            f"color: {Palette.SUBTEXT0}; font-size: 8.25pt;"
         )
         self._message_label.setAccessibleName("Operation status")
         layout.addWidget(self._message_label)
@@ -147,7 +147,7 @@ class OperationProgressWidget(QFrame):
 
         self._cancel_button = QPushButton("Cancel")
         self._cancel_button.setObjectName("operationCancelButton")
-        self._cancel_button.setFixedHeight(28)
+        self._cancel_button.setMinimumHeight(28)
         self._cancel_button.setAccessibleName("Cancel operation")
         self._cancel_button.setAccessibleDescription(
             "Requests cancellation of the running operation."

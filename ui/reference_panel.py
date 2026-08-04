@@ -28,11 +28,11 @@ class AnalysisCard(QFrame):
         layout.setSpacing(2)
 
         self._label = QLabel(label)
-        self._label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 10px; font-weight: bold;")
+        self._label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 7.5pt; font-weight: bold;")
         layout.addWidget(self._label)
 
         self._value = QLabel(value)
-        self._value.setStyleSheet(f"color: {Palette.TEXT}; font-size: 14px; font-weight: bold;")
+        self._value.setStyleSheet(f"color: {Palette.TEXT}; font-size: 10.5pt; font-weight: bold;")
         layout.addWidget(self._value)
 
     def set_value(self, value: str):
@@ -77,12 +77,12 @@ class ReferencePanel(QWidget):
         # Header
         header = QHBoxLayout()
         title = QLabel("Reference Track")
-        title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 13px;")
+        title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9.75pt;")
         header.addWidget(title)
         header.addStretch()
 
         self._browse_btn = QPushButton("Browse...")
-        self._browse_btn.setFixedHeight(26)
+        self._browse_btn.setMinimumHeight(26)
         self._browse_btn.setProperty("class", "secondary")
         self._browse_btn.clicked.connect(self._browse_file)
         header.addWidget(self._browse_btn)
@@ -92,16 +92,16 @@ class ReferencePanel(QWidget):
         # Drop zone / file info
         self._drop_zone = QLabel("Drop an audio file here\nor click Browse")
         self._drop_zone.setAlignment(Qt.AlignCenter)
-        self._drop_zone.setFixedHeight(60)
+        self._drop_zone.setMinimumHeight(60)
         self._drop_zone.setStyleSheet(
             f"QLabel {{ background: {Palette.MANTLE}; border: 2px dashed {Palette.SURFACE1}; border-radius: 8px; "
-            f"color: {Palette.OVERLAY0}; font-size: 12px; }}"
+            f"color: {Palette.OVERLAY0}; font-size: 9pt; }}"
         )
         layout.addWidget(self._drop_zone)
 
         # Mini waveform
         self._waveform = WaveformWidget(show_controls=False)
-        self._waveform.setFixedHeight(60)
+        self._waveform.setMinimumHeight(60)
         self._waveform.hide()
         layout.addWidget(self._waveform)
 
@@ -119,7 +119,7 @@ class ReferencePanel(QWidget):
         self._metrics_group = QGroupBox("Analysis")
         self._metrics_group.setStyleSheet(
             f"QGroupBox {{ color: {Palette.SUBTEXT0}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
-            f"margin-top: 8px; padding-top: 14px; font-size: 11px; }}"
+            f"margin-top: 8px; padding-top: 14px; font-size: 8.25pt; }}"
             f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; }}"
         )
         metrics_grid = QGridLayout(self._metrics_group)
@@ -145,20 +145,20 @@ class ReferencePanel(QWidget):
         # Suggested tags
         self._tags_label = QLabel("")
         self._tags_label.setWordWrap(True)
-        self._tags_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 11px; padding: 4px;")
+        self._tags_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 8.25pt; padding: 4px;")
         self._tags_label.hide()
         self._results_layout.addWidget(self._tags_label)
 
         self._clap_label = QLabel("")
         self._clap_label.setWordWrap(True)
-        self._clap_label.setStyleSheet(f"color: {Palette.BLUE}; font-size: 11px; padding: 4px;")
+        self._clap_label.setStyleSheet(f"color: {Palette.BLUE}; font-size: 8.25pt; padding: 4px;")
         self._clap_label.hide()
         self._results_layout.addWidget(self._clap_label)
 
         # Sections
         self._sections_label = QLabel("")
         self._sections_label.setWordWrap(True)
-        self._sections_label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px; padding: 4px;")
+        self._sections_label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 8.25pt; padding: 4px;")
         self._sections_label.hide()
         self._results_layout.addWidget(self._sections_label)
 
@@ -172,20 +172,20 @@ class ReferencePanel(QWidget):
         btn_row.setSpacing(6)
 
         self._match_btn = QPushButton("Match This")
-        self._match_btn.setFixedHeight(32)
+        self._match_btn.setMinimumHeight(32)
         self._match_btn.setEnabled(False)
         self._match_btn.clicked.connect(self._on_match)
         btn_row.addWidget(self._match_btn)
 
         self._use_tags_btn = QPushButton("Use Tags")
-        self._use_tags_btn.setFixedHeight(32)
+        self._use_tags_btn.setMinimumHeight(32)
         self._use_tags_btn.setProperty("class", "secondary")
         self._use_tags_btn.setEnabled(False)
         self._use_tags_btn.clicked.connect(self._on_use_tags)
         btn_row.addWidget(self._use_tags_btn)
 
         self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setFixedHeight(32)
+        self._cancel_btn.setMinimumHeight(32)
         self._cancel_btn.setProperty("class", "secondary")
         self._cancel_btn.setVisible(False)
         self._cancel_btn.clicked.connect(self.cancel_analysis)
@@ -195,7 +195,7 @@ class ReferencePanel(QWidget):
 
         self._progress_label = QLabel("")
         self._progress_label.setStyleSheet(
-            f"color: {Palette.SUBTEXT0}; font-size: 11px;"
+            f"color: {Palette.SUBTEXT0}; font-size: 8.25pt;"
         )
         layout.addWidget(self._progress_label)
 
@@ -250,7 +250,7 @@ class ReferencePanel(QWidget):
         self._drop_zone.setText(f"Analyzing: {Path(file_path).name}...")
         self._drop_zone.setStyleSheet(
             f"QLabel {{ background: {Palette.MANTLE}; border: 2px solid {Palette.BLUE}; border-radius: 8px; "
-            f"color: {Palette.BLUE}; font-size: 12px; }}"
+            f"color: {Palette.BLUE}; font-size: 9pt; }}"
         )
         self._cancel_btn.setVisible(True)
         self._progress_bar.setRange(0, 100)
@@ -374,7 +374,7 @@ class ReferencePanel(QWidget):
         self._drop_zone.setText(filename)
         self._drop_zone.setStyleSheet(
             f"QLabel {{ background: {Palette.MANTLE}; border: 2px solid {Palette.GREEN}; border-radius: 8px; "
-            f"color: {Palette.GREEN}; font-size: 12px; font-weight: bold; }}"
+            f"color: {Palette.GREEN}; font-size: 9pt; font-weight: bold; }}"
         )
 
         # Show waveform
@@ -440,7 +440,7 @@ class ReferencePanel(QWidget):
         self._drop_zone.setText("Drop an audio file here\nor click Browse")
         self._drop_zone.setStyleSheet(
             f"QLabel {{ background: {Palette.MANTLE}; border: 2px dashed {Palette.SURFACE1}; border-radius: 8px; "
-            f"color: {Palette.OVERLAY0}; font-size: 12px; }}"
+            f"color: {Palette.OVERLAY0}; font-size: 9pt; }}"
         )
         self._waveform.hide()
         self._metrics_group.hide()

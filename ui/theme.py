@@ -3,7 +3,37 @@ Slunder Studio — Theme Engine
 Ink-and-signal desktop theme with an accessible focus system, restrained surfaces,
 and complete native Qt control styling.
 """
+import ctypes
+import os
+
 from PySide6.QtGui import QColor
+
+
+def configure_windows_dpi_awareness() -> bool:
+    """Opt the process into per-monitor-v2 scaling before Qt creates a window."""
+    if os.name != "nt":
+        return False
+
+    try:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        set_context = getattr(user32, "SetProcessDpiAwarenessContext", None)
+        if set_context is not None:
+            set_context.argtypes = [ctypes.c_void_p]
+            set_context.restype = ctypes.c_bool
+            # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = (DPI awareness -4).
+            if set_context(ctypes.c_void_p(-4)):
+                return True
+
+        shcore = ctypes.WinDLL("shcore", use_last_error=True)
+        set_process_awareness = getattr(shcore, "SetProcessDpiAwareness", None)
+        if set_process_awareness is None:
+            return False
+        set_process_awareness.argtypes = [ctypes.c_int]
+        set_process_awareness.restype = ctypes.c_long
+        # PROCESS_PER_MONITOR_DPI_AWARE = 2.
+        return set_process_awareness(2) == 0
+    except (AttributeError, OSError):
+        return False
 
 # ── Ink-and-signal palette ─────────────────────────────────────────────────────
 
@@ -100,7 +130,7 @@ QWidget#sidebar {{
 }}
 QLabel#brand {{
     color: {p.TEXT};
-    font-size: 14px;
+    font-size: 10.5pt;
     font-weight: 800;
     letter-spacing: 0px;
 }}
@@ -108,12 +138,12 @@ QLabel#brandMark {{
     background-color: {accent};
     color: {p.CRUST};
     border-radius: 7px;
-    font-size: 15px;
+    font-size: 11.25pt;
     font-weight: 900;
 }}
 QLabel#navSection {{
     color: {p.OVERLAY0};
-    font-size: 10px;
+    font-size: 7.5pt;
     font-weight: 700;
     letter-spacing: 1px;
     padding: 12px 10px 5px 10px;
@@ -125,7 +155,7 @@ QPushButton#sidebarBtn {{
     border-radius: 6px;
     padding: 9px 11px;
     text-align: left;
-    font-size: 12px;
+    font-size: 9pt;
     font-weight: 600;
 }}
 QPushButton#sidebarBtn:hover {{
@@ -154,27 +184,27 @@ QFrame#workspaceHeader {{
 }}
 QLabel#pageEyebrow {{
     color: {accent};
-    font-size: 10px;
+    font-size: 7.5pt;
     font-weight: 800;
     letter-spacing: 1px;
 }}
 QLabel#pageTitle {{
     color: {p.TEXT};
-    font-size: 26px;
+    font-size: 19.5pt;
     font-weight: 750;
 }}
 QLabel#pageSubtitle {{
     color: {p.SUBTEXT0};
-    font-size: 12px;
+    font-size: 9pt;
 }}
 QLabel#projectName {{
     color: {p.TEXT};
-    font-size: 12px;
+    font-size: 9pt;
     font-weight: 650;
 }}
 QLabel#commandMeta {{
     color: {p.SUBTEXT0};
-    font-size: 11px;
+    font-size: 8.25pt;
 }}
 QLabel#localStatus {{
     background-color: {p.SURFACE0};
@@ -182,12 +212,12 @@ QLabel#localStatus {{
     border: 1px solid {p.SURFACE1};
     border-radius: 10px;
     padding: 4px 9px;
-    font-size: 10px;
+    font-size: 7.5pt;
     font-weight: 700;
 }}
 QLabel#computeStatus {{
     color: {p.GREEN};
-    font-size: 11px;
+    font-size: 8.25pt;
     font-weight: 650;
 }}
 QFrame#studioSurface {{
@@ -207,7 +237,7 @@ QPushButton {{
     padding: 8px 16px;
     border-radius: 5px;
     font-weight: 700;
-    font-size: 12px;
+    font-size: 9pt;
     min-height: 18px;
 }}
 QPushButton:hover {{
@@ -269,7 +299,7 @@ QPushButton[class="ghost"]:hover {{
     background-color: {p.SURFACE0};
 }}
 QPushButton#primaryAction {{
-    font-size: 14px;
+    font-size: 10.5pt;
     min-height: 30px;
     padding: 10px 18px;
 }}
@@ -281,7 +311,7 @@ QLineEdit, QTextEdit, QPlainTextEdit {{
     border: 1px solid {p.SURFACE1};
     border-radius: 5px;
     padding: 8px 10px;
-    font-size: 13px;
+    font-size: 9.75pt;
     selection-background-color: {accent};
     selection-color: {p.CRUST};
 }}
@@ -298,7 +328,7 @@ QTextEdit#primaryEditor {{
     border-radius: 5px;
     padding: 10px;
     font-family: "Cascadia Mono", "Consolas", monospace;
-    font-size: 12px;
+    font-size: 9pt;
 }}
 QScrollArea {{
     background: transparent;
@@ -313,7 +343,7 @@ QSpinBox, QDoubleSpinBox {{
     border: 1px solid {p.SURFACE1};
     border-radius: 5px;
     padding: 6px 9px;
-    font-size: 12px;
+    font-size: 9pt;
 }}
 QSpinBox:focus, QDoubleSpinBox:focus {{
     border: 2px solid {p.YELLOW};
@@ -332,7 +362,7 @@ QComboBox {{
     border: 1px solid {p.SURFACE1};
     border-radius: 5px;
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: 9pt;
     min-height: 20px;
 }}
 QComboBox:focus {{
@@ -410,7 +440,7 @@ QProgressBar {{
     border-radius: 6px;
     text-align: center;
     color: {p.TEXT};
-    font-size: 12px;
+    font-size: 9pt;
     font-weight: 600;
     min-height: 18px;
 }}
@@ -431,7 +461,7 @@ QTabBar::tab {{
     color: {p.SUBTEXT0};
     padding: 9px 14px;
     border-bottom: 2px solid transparent;
-    font-size: 12px;
+    font-size: 9pt;
     font-weight: 650;
 }}
 QTabBar::tab:hover {{
@@ -456,7 +486,7 @@ QGroupBox {{
     margin-top: 18px;
     padding: 18px 0 0 0;
     font-weight: 700;
-    font-size: 12px;
+    font-size: 9pt;
     color: {p.TEXT};
 }}
 QGroupBox::title {{
@@ -519,7 +549,7 @@ QTableWidget, QTreeWidget, QListWidget {{
     border: 1px solid {p.SURFACE1};
     border-radius: 5px;
     gridline-color: {p.SURFACE0};
-    font-size: 13px;
+    font-size: 9.75pt;
 }}
 QTableWidget::item:selected, QTreeWidget::item:selected, QListWidget::item:selected {{
     background-color: {accent};
@@ -533,7 +563,7 @@ QHeaderView::section {{
     border-right: 1px solid {p.SURFACE0};
     padding: 6px 10px;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 9pt;
 }}
 
 /* ── Tooltips ───────────────────────────────────────────────────────────── */
@@ -543,7 +573,7 @@ QToolTip {{
     border: 1px solid {p.SURFACE1};
     border-radius: 6px;
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: 9pt;
 }}
 
 /* ── Status Bar ─────────────────────────────────────────────────────────── */
@@ -551,7 +581,7 @@ QStatusBar {{
     background-color: {p.MANTLE};
     color: {p.OVERLAY0};
     border-top: 1px solid {p.SURFACE1};
-    font-size: 12px;
+    font-size: 9pt;
     padding: 2px 8px;
 }}
 QStatusBar::item {{
@@ -562,20 +592,20 @@ QStatusBar::item {{
 QLabel {{
     background: transparent;
     color: {p.TEXT};
-    font-size: 13px;
+    font-size: 9.75pt;
 }}
 QLabel#heading {{
-    font-size: 24px;
+    font-size: 18pt;
     font-weight: 750;
     color: {p.TEXT};
 }}
 QLabel#subheading {{
-    font-size: 15px;
+    font-size: 11.25pt;
     font-weight: 600;
     color: {p.SUBTEXT0};
 }}
 QLabel#caption {{
-    font-size: 11px;
+    font-size: 8.25pt;
     color: {p.SUBTEXT0};
 }}
 QLabel#accentLabel {{
@@ -610,7 +640,7 @@ QPushButton#transportBtn {{
     border: 1px solid transparent;
     border-radius: 5px;
     padding: 6px;
-    font-size: 14px;
+    font-size: 10.5pt;
     min-width: 32px;
     min-height: 32px;
 }}
@@ -626,23 +656,23 @@ QPushButton#transportPrimary {{
     color: {p.CRUST};
     border: none;
     border-radius: 5px;
-    font-size: 16px;
+    font-size: 12pt;
     min-width: 38px;
     min-height: 34px;
 }}
 QLabel#transportTitle {{
     color: {p.TEXT};
-    font-size: 11px;
+    font-size: 8.25pt;
     font-weight: 700;
 }}
 QLabel#transportMeta {{
     color: {p.OVERLAY0};
-    font-size: 10px;
+    font-size: 7.5pt;
 }}
 QLabel#transportTime {{
     color: {p.TEXT};
     font-family: "Cascadia Mono", "Consolas", monospace;
-    font-size: 13px;
+    font-size: 9.75pt;
     font-weight: 650;
 }}
 
@@ -699,7 +729,7 @@ QMenu {{
 QMenu::item {{
     padding: 8px 24px 8px 12px;
     border-radius: 4px;
-    font-size: 13px;
+    font-size: 9.75pt;
 }}
 QMenu::item:selected {{
     background-color: {p.SURFACE1};
@@ -714,7 +744,7 @@ QMenu::separator {{
 /* ── Checkbox / Radio ───────────────────────────────────────────────────── */
 QCheckBox {{
     spacing: 8px;
-    font-size: 13px;
+    font-size: 9.75pt;
     color: {p.TEXT};
 }}
 QCheckBox:focus {{
@@ -736,7 +766,7 @@ QCheckBox::indicator:hover {{
 }}
 QRadioButton {{
     spacing: 8px;
-    font-size: 13px;
+    font-size: 9.75pt;
 }}
 QRadioButton::indicator {{
     width: 18px;

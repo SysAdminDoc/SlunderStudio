@@ -2,6 +2,8 @@ import ast
 import json
 import os
 import re
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -372,6 +374,74 @@ class ResponsiveLayoutTests(unittest.TestCase):
                     offenders.append(f"{path.relative_to(ROOT)}:{lineno}={value}")
         self.assertEqual(offenders, [], "controls wider than 1024px: " + ", ".join(offenders))
 
+    def test_stylesheet_font_sizes_use_scalable_point_units(self):
+        offenders = []
+        pattern = re.compile(r"font-size\s*:\s*[^;\r\n]*px", re.IGNORECASE)
+        for path in (ROOT / "ui").rglob("*.py"):
+            for lineno, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                if pattern.search(line):
+                    offenders.append(f"{path.relative_to(ROOT)}:{lineno}")
+        self.assertEqual(offenders, [])
+
+    def test_fixed_width_apis_are_not_used_in_ui_sources(self):
+        offenders = []
+        pattern = re.compile(r"\bsetFixedWidth\s*\(")
+        for path in (ROOT / "ui").rglob("*.py"):
+            for lineno, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                if pattern.search(line):
+                    offenders.append(f"{path.relative_to(ROOT)}:{lineno}")
+        self.assertEqual(offenders, [])
+
+    def test_layout_minimums_survive_125_and_150_percent_scaling(self):
+        probe = """
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6.QtWidgets import QApplication
+from ui.main_window import MainWindow
+
+app = QApplication([])
+window = MainWindow()
+window.resize(1024, 768)
+window.show()
+app.processEvents()
+widgets = [window] + [window._pages.widget(i) for i in range(window._pages.count())]
+for widget in widgets:
+    minimum = widget.minimumSize()
+    if minimum.width() > 1024 or minimum.height() > 768:
+        raise SystemExit(
+            f"{widget.__class__.__name__} minimum={minimum.width()}x{minimum.height()}"
+        )
+print(f"scale={app.primaryScreen().devicePixelRatio():.2f} widgets={len(widgets)}")
+"""
+        for scale in ("1.25", "1.50"):
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "QT_QPA_PLATFORM": "offscreen",
+                    "QT_SCALE_FACTOR": scale,
+                    "QT_SCALE_FACTOR_ROUNDING_POLICY": "PassThrough",
+                }
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", probe],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            self.assertEqual(
+                result.returncode,
+                0,
+                f"scale {scale} probe failed:\n{result.stdout}\n{result.stderr}",
+            )
+            self.assertIn(f"scale={float(scale):.2f}", result.stdout)
+
     def test_sidebar_wordmark_fits_its_brand_row(self):
         from ui.main_window import Sidebar
 
@@ -382,6 +452,12 @@ class ResponsiveLayoutTests(unittest.TestCase):
             brand = sidebar.findChild(QLabel, "brand")
             self.assertIsNotNone(brand)
             brand.ensurePolished()
+            sidebar.resize(
+                max(sidebar.width(), sidebar.minimumWidth()),
+                max(sidebar.height(), sidebar.minimumSizeHint().height()),
+            )
+            sidebar.show()
+            self._app.processEvents()
             brand_row = sidebar.layout().itemAt(0).layout()
             brand_row_margins = brand_row.getContentsMargins()
             sidebar_margins = sidebar.layout().getContentsMargins()
@@ -398,6 +474,7 @@ class ResponsiveLayoutTests(unittest.TestCase):
 
             self.assertGreaterEqual(available, brand.sizeHint().width())
         finally:
+            sidebar.close()
             sidebar.deleteLater()
             self._app.setStyleSheet(previous_stylesheet)
 

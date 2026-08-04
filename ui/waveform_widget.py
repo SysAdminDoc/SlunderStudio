@@ -196,17 +196,17 @@ class WaveformWidget(QWidget):
             ctrl.setSpacing(4)
 
             self._waveform_btn = QPushButton("Waveform")
-            self._waveform_btn.setFixedHeight(24)
+            self._waveform_btn.setMinimumHeight(24)
             self._waveform_btn.setProperty("class", "secondary")
             self._waveform_btn.clicked.connect(lambda: self._set_mode("waveform"))
 
             self._spectro_btn = QPushButton("Spectrogram")
-            self._spectro_btn.setFixedHeight(24)
+            self._spectro_btn.setMinimumHeight(24)
             self._spectro_btn.setProperty("class", "secondary")
             self._spectro_btn.clicked.connect(lambda: self._set_mode("spectrogram"))
 
             self._info_label = QLabel("")
-            self._info_label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px;")
+            self._info_label.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 8.25pt;")
 
             ctrl.addWidget(self._waveform_btn)
             ctrl.addWidget(self._spectro_btn)
@@ -878,7 +878,7 @@ class MiniWaveform(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(60)
+        self.setMinimumHeight(60)
         self._waveform = WaveformWidget(self, show_controls=False)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

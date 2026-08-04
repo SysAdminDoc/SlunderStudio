@@ -105,18 +105,18 @@ class LyricsEditor(QWidget):
 
         self._copy_btn = QPushButton("Copy")
         self._copy_btn.setObjectName("ghostBtn")
-        self._copy_btn.setFixedHeight(28)
+        self._copy_btn.setMinimumHeight(28)
         self._copy_btn.clicked.connect(self._copy_to_clipboard)
         toolbar.addWidget(self._copy_btn)
 
         self._clear_btn = QPushButton("Clear")
         self._clear_btn.setObjectName("ghostBtn")
-        self._clear_btn.setFixedHeight(28)
+        self._clear_btn.setMinimumHeight(28)
         self._clear_btn.clicked.connect(self._clear)
         toolbar.addWidget(self._clear_btn)
 
         self._forge_btn = QPushButton("\U0001f3b6 Send to Song Forge")
-        self._forge_btn.setFixedHeight(30)
+        self._forge_btn.setMinimumHeight(30)
         self._forge_btn.clicked.connect(lambda: self.send_to_song_forge.emit(self.text))
         toolbar.addWidget(self._forge_btn)
 
@@ -132,7 +132,7 @@ class LyricsEditor(QWidget):
         self._editor.setStyleSheet(f"""
             QPlainTextEdit {{
                 font-family: "JetBrains Mono", "Cascadia Code", "Consolas", "Courier New", monospace;
-                font-size: 13px;
+                font-size: 9.75pt;
                 line-height: 1.6;
                 padding: 16px;
             }}
@@ -150,7 +150,7 @@ class LyricsEditor(QWidget):
         # Status bar
         self._status = QLabel("")
         self._status.setObjectName("caption")
-        self._status.setStyleSheet(f"color: {Palette.BLUE}; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.BLUE}; font-size: 8.25pt;")
         layout.addWidget(self._status)
 
         install_accessibility(
@@ -186,7 +186,7 @@ class LyricsEditor(QWidget):
         self._editor.clear()
         self._editor.setReadOnly(True)
         self._status.setText("Generating...")
-        self._status.setStyleSheet(f"color: {Palette.BLUE}; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {Palette.BLUE}; font-size: 8.25pt;")
 
     def append_token(self, token: str):
         """Append a single token during streaming generation."""
@@ -343,4 +343,4 @@ class LyricsEditor(QWidget):
     def set_status(self, text: str, color: str = Palette.BLUE):
         """Set status text below the editor."""
         self._status.setText(text)
-        self._status.setStyleSheet(f"color: {color}; font-size: 11px;")
+        self._status.setStyleSheet(f"color: {color}; font-size: 8.25pt;")

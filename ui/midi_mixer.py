@@ -52,7 +52,7 @@ class TrackStrip(QFrame):
             }}
         """
         self.setStyleSheet(self._base_style)
-        self.setFixedHeight(130)
+        self.setMinimumHeight(130)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -61,9 +61,9 @@ class TrackStrip(QFrame):
         # Track name + note count
         header = QHBoxLayout()
         name_label = QLabel(track.name)
-        name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 11px;")
+        name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 8.25pt;")
         count_label = QLabel(f"{track.note_count} notes")
-        count_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        count_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         header.addWidget(name_label)
         header.addStretch()
         header.addWidget(count_label)
@@ -71,7 +71,7 @@ class TrackStrip(QFrame):
 
         # Instrument selector
         self._program_combo = QComboBox()
-        self._program_combo.setFixedHeight(24)
+        self._program_combo.setMinimumHeight(24)
         self._program_combo.setStyleSheet(f"""
             QComboBox {{
                 background: {t['background']};
@@ -79,7 +79,7 @@ class TrackStrip(QFrame):
                 border: 1px solid {t['border']};
                 border-radius: 3px;
                 padding: 2px 6px;
-                font-size: 10px;
+                font-size: 7.5pt;
             }}
         """)
         # Populate with common GM programs
@@ -100,16 +100,16 @@ class TrackStrip(QFrame):
         vol_row = QHBoxLayout()
         vol_row.setSpacing(4)
         vol_label = QLabel("Vol")
-        vol_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
-        vol_label.setFixedWidth(22)
+        vol_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
+        vol_label.setMinimumWidth(22)
         self._volume_slider = QSlider(Qt.Horizontal)
         self._volume_slider.setRange(0, 127)
         self._volume_slider.setValue(100)
-        self._volume_slider.setFixedHeight(16)
+        self._volume_slider.setMinimumHeight(16)
         self._volume_slider.valueChanged.connect(
             lambda v: self.volume_changed.emit(self.track_idx, v))
         self._vol_value = ElidedLabel("100", minimum_width=24)
-        self._vol_value.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        self._vol_value.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._volume_slider.valueChanged.connect(lambda v: self._vol_value.setText(str(v)))
 
         vol_row.addWidget(vol_label)
@@ -121,16 +121,16 @@ class TrackStrip(QFrame):
         pan_row = QHBoxLayout()
         pan_row.setSpacing(4)
         pan_label = QLabel("Pan")
-        pan_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
-        pan_label.setFixedWidth(22)
+        pan_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
+        pan_label.setMinimumWidth(22)
         self._pan_slider = QSlider(Qt.Horizontal)
         self._pan_slider.setRange(-64, 63)
         self._pan_slider.setValue(0)
-        self._pan_slider.setFixedHeight(16)
+        self._pan_slider.setMinimumHeight(16)
         self._pan_slider.valueChanged.connect(
             lambda v: self.pan_changed.emit(self.track_idx, v))
         self._pan_value = ElidedLabel("C", minimum_width=24)
-        self._pan_value.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        self._pan_value.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._pan_slider.valueChanged.connect(self._update_pan_label)
 
         pan_row.addWidget(pan_label)
@@ -143,13 +143,13 @@ class TrackStrip(QFrame):
         btn_row.setSpacing(4)
 
         self._mute_btn = QPushButton("M")
-        self._mute_btn.setFixedSize(28, 22)
+        self._mute_btn.setMinimumSize(28, 22)
         self._mute_btn.setCheckable(True)
         self._mute_btn.setStyleSheet(self._mute_style(False))
         self._mute_btn.clicked.connect(self._on_mute)
 
         self._solo_btn = QPushButton("S")
-        self._solo_btn.setFixedSize(28, 22)
+        self._solo_btn.setMinimumSize(28, 22)
         self._solo_btn.setCheckable(True)
         self._solo_btn.setStyleSheet(self._solo_style(False))
         self._solo_btn.clicked.connect(self._on_solo)
@@ -203,13 +203,13 @@ class TrackStrip(QFrame):
         if active:
             return f"""
                 QPushButton {{ background: {Palette.RED}; color: {Palette.CRUST}; border: none;
-                    border-radius: 3px; font-weight: bold; font-size: 10px; }}
+                    border-radius: 3px; font-weight: bold; font-size: 7.5pt; }}
             """
         return f"""
             QPushButton {{ background: {t['surface']};
                 color: {t['text_secondary']};
                 border: 1px solid {t['border']};
-                border-radius: 3px; font-weight: bold; font-size: 10px; }}
+                border-radius: 3px; font-weight: bold; font-size: 7.5pt; }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
 
@@ -218,7 +218,7 @@ class TrackStrip(QFrame):
         if active:
             return f"""
                 QPushButton {{ background: {Palette.YELLOW}; color: {Palette.CRUST}; border: none;
-                    border-radius: 3px; font-weight: bold; font-size: 10px; }}
+                    border-radius: 3px; font-weight: bold; font-size: 7.5pt; }}
             """
         return self._mute_style(False)
 
@@ -253,13 +253,13 @@ class MidiMixer(QWidget):
         # Header
         header = QHBoxLayout()
         title = QLabel("Mixer")
-        title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         self._add_track_btn = QPushButton("+ Track")
         self._add_track_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
                 color: {t['background']}; border: none; border-radius: 4px;
-                padding: 4px 10px; font-size: 11px; font-weight: bold;
+                padding: 4px 10px; font-size: 8.25pt; font-weight: bold;
             }}
             QPushButton:hover {{ background: {t['accent_hover']}; }}
         """)

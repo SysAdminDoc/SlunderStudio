@@ -49,7 +49,7 @@ class GenrePicker(QWidget):
         # Search
         self._search = QLineEdit()
         self._search.setPlaceholderText(tr("lyrics.history.search_genres"))
-        self._search.setFixedHeight(34)
+        self._search.setMinimumHeight(34)
         self._search.textChanged.connect(self._filter)
         layout.addWidget(self._search)
 
@@ -140,13 +140,13 @@ class HistoryPanel(QWidget):
         layout.setSpacing(8)
 
         header = QLabel(tr("lyrics.history.title"))
-        header.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {Palette.TEXT};")
+        header.setStyleSheet(f"font-size: 10.5pt; font-weight: 700; color: {Palette.TEXT};")
         layout.addWidget(header)
 
         # Search
         self._search = QLineEdit()
         self._search.setPlaceholderText(tr("lyrics.history.search_placeholder"))
-        self._search.setFixedHeight(32)
+        self._search.setMinimumHeight(32)
         self._search.textChanged.connect(self._refresh)
         layout.addWidget(self._search)
 
@@ -158,14 +158,14 @@ class HistoryPanel(QWidget):
         self._all_btn.setObjectName("ghostBtn")
         self._all_btn.setCheckable(True)
         self._all_btn.setChecked(True)
-        self._all_btn.setFixedHeight(26)
+        self._all_btn.setMinimumHeight(26)
         self._all_btn.clicked.connect(lambda: self._set_filter("all"))
         filter_row.addWidget(self._all_btn)
 
         self._fav_btn = QPushButton(f"\u2605 {tr('lyrics.history.favorites')}")
         self._fav_btn.setObjectName("ghostBtn")
         self._fav_btn.setCheckable(True)
-        self._fav_btn.setFixedHeight(26)
+        self._fav_btn.setMinimumHeight(26)
         self._fav_btn.clicked.connect(lambda: self._set_filter("favorites"))
         filter_row.addWidget(self._fav_btn)
 
@@ -354,7 +354,7 @@ class LyricsView(QWidget):
 
         # ── Left Panel: Input Controls ──────────────────────────────────────────
         left = QWidget()
-        left.setFixedWidth(360)
+        left.setMinimumWidth(360)
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(16, 16, 16, 16)
         left_layout.setSpacing(12)
@@ -369,7 +369,7 @@ class LyricsView(QWidget):
         quick_layout.setSpacing(12)
 
         quick_label = QLabel(tr("lyrics.quick.label"))
-        quick_label.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {Palette.SUBTEXT0};")
+        quick_label.setStyleSheet(f"font-size: 9.75pt; font-weight: 600; color: {Palette.SUBTEXT0};")
         quick_layout.addWidget(quick_label)
 
         self._quick_input = QTextEdit()
@@ -378,7 +378,7 @@ class LyricsView(QWidget):
         quick_layout.addWidget(self._quick_input)
 
         self._quick_generate = QPushButton(f"\U0001f3a4  {tr('lyrics.actions.generate')}")
-        self._quick_generate.setFixedHeight(40)
+        self._quick_generate.setMinimumHeight(40)
         self._quick_generate.clicked.connect(self._generate_quick)
         quick_layout.addWidget(self._quick_generate)
 
@@ -403,7 +403,7 @@ class LyricsView(QWidget):
 
         self._theme_input = QLineEdit()
         self._theme_input.setPlaceholderText(tr("lyrics.guided.theme_placeholder"))
-        self._theme_input.setFixedHeight(34)
+        self._theme_input.setMinimumHeight(34)
         guided_layout.addWidget(self._theme_input)
 
         # Genre picker
@@ -426,7 +426,7 @@ class LyricsView(QWidget):
         self._mood_combo.addItem(tr("lyrics.guided.auto_detect"), "")
         for mood in MOODS:
             self._mood_combo.addItem(mood.capitalize(), mood)
-        self._mood_combo.setFixedHeight(34)
+        self._mood_combo.setMinimumHeight(34)
         guided_layout.addWidget(self._mood_combo)
 
         # Structure
@@ -439,7 +439,7 @@ class LyricsView(QWidget):
         for key, val in STANDARD_STRUCTURES.items():
             display = key.replace("_", " ").title()
             self._structure_combo.addItem(display, val)
-        self._structure_combo.setFixedHeight(34)
+        self._structure_combo.setMinimumHeight(34)
         guided_layout.addWidget(self._structure_combo)
 
         # Language
@@ -453,13 +453,13 @@ class LyricsView(QWidget):
         selected_idx = self._lang_combo.findText(selected_language)
         if selected_idx >= 0:
             self._lang_combo.setCurrentIndex(selected_idx)
-        self._lang_combo.setFixedHeight(34)
+        self._lang_combo.setMinimumHeight(34)
         self._lang_combo.currentTextChanged.connect(self._on_language_changed)
         guided_layout.addWidget(self._lang_combo)
 
         # Generate button
         self._guided_generate = QPushButton(f"\U0001f3a4  {tr('lyrics.actions.generate')}")
-        self._guided_generate.setFixedHeight(40)
+        self._guided_generate.setMinimumHeight(40)
         self._guided_generate.clicked.connect(self._generate_guided)
         guided_layout.addWidget(self._guided_generate)
 
@@ -490,7 +490,7 @@ class LyricsView(QWidget):
         self._system_prompt = QPlainTextEdit()
         self._system_prompt.setPlaceholderText(tr("lyrics.pro.system_placeholder"))
         self._system_prompt.setMaximumHeight(150)
-        self._system_prompt.setStyleSheet("font-family: monospace; font-size: 12px;")
+        self._system_prompt.setStyleSheet("font-family: monospace; font-size: 9pt;")
         pro_layout.addWidget(self._system_prompt)
 
         # User prompt
@@ -514,7 +514,7 @@ class LyricsView(QWidget):
         self._pro_temp.setRange(0.1, 2.0)
         self._pro_temp.setSingleStep(0.05)
         self._pro_temp.setValue(self._settings.get("lyrics.temperature", 0.8))
-        self._pro_temp.setFixedWidth(80)
+        self._pro_temp.setMinimumWidth(80)
         temp_row.addWidget(self._pro_temp)
         params_layout.addLayout(temp_row)
 
@@ -525,7 +525,7 @@ class LyricsView(QWidget):
         self._pro_top_p.setRange(0.1, 1.0)
         self._pro_top_p.setSingleStep(0.05)
         self._pro_top_p.setValue(self._settings.get("lyrics.top_p", 0.92))
-        self._pro_top_p.setFixedWidth(80)
+        self._pro_top_p.setMinimumWidth(80)
         topp_row.addWidget(self._pro_top_p)
         params_layout.addLayout(topp_row)
 
@@ -535,7 +535,7 @@ class LyricsView(QWidget):
         self._pro_top_k = QSpinBox()
         self._pro_top_k.setRange(1, 200)
         self._pro_top_k.setValue(self._settings.get("lyrics.top_k", 50))
-        self._pro_top_k.setFixedWidth(80)
+        self._pro_top_k.setMinimumWidth(80)
         topk_row.addWidget(self._pro_top_k)
         params_layout.addLayout(topk_row)
 
@@ -546,7 +546,7 @@ class LyricsView(QWidget):
         self._pro_repeat.setRange(1.0, 2.0)
         self._pro_repeat.setSingleStep(0.05)
         self._pro_repeat.setValue(self._settings.get("lyrics.repeat_penalty", 1.1))
-        self._pro_repeat.setFixedWidth(80)
+        self._pro_repeat.setMinimumWidth(80)
         rep_row.addWidget(self._pro_repeat)
         params_layout.addLayout(rep_row)
 
@@ -557,7 +557,7 @@ class LyricsView(QWidget):
         self._pro_max_tokens.setRange(256, 8192)
         self._pro_max_tokens.setSingleStep(256)
         self._pro_max_tokens.setValue(self._settings.get("lyrics.max_tokens", 2048))
-        self._pro_max_tokens.setFixedWidth(100)
+        self._pro_max_tokens.setMinimumWidth(100)
         tok_row.addWidget(self._pro_max_tokens)
         params_layout.addLayout(tok_row)
 
@@ -565,7 +565,7 @@ class LyricsView(QWidget):
 
         # Generate button
         self._pro_generate = QPushButton(f"\U0001f3a4  {tr('lyrics.actions.generate')}")
-        self._pro_generate.setFixedHeight(40)
+        self._pro_generate.setMinimumHeight(40)
         self._pro_generate.clicked.connect(self._generate_pro)
         pro_layout.addWidget(self._pro_generate)
 
@@ -581,7 +581,7 @@ class LyricsView(QWidget):
 
         # Progress bar
         self._progress = QProgressBar()
-        self._progress.setFixedHeight(6)
+        self._progress.setMinimumHeight(6)
         self._progress.setTextVisible(False)
         self._progress.setVisible(False)
         left_layout.addWidget(self._progress)
@@ -589,7 +589,7 @@ class LyricsView(QWidget):
         # Cancel button (shown during generation)
         self._cancel_btn = QPushButton(tr("lyrics.actions.cancel"))
         self._cancel_btn.setObjectName("dangerBtn")
-        self._cancel_btn.setFixedHeight(34)
+        self._cancel_btn.setMinimumHeight(34)
         self._cancel_btn.setVisible(False)
         self._cancel_btn.clicked.connect(self._cancel_generation)
         left_layout.addWidget(self._cancel_btn)
@@ -598,7 +598,7 @@ class LyricsView(QWidget):
         regen_row = QHBoxLayout()
         self._regen_btn = QPushButton(f"\U0001f504 {tr('lyrics.actions.regenerate')}")
         self._regen_btn.setObjectName("secondaryBtn")
-        self._regen_btn.setFixedHeight(34)
+        self._regen_btn.setMinimumHeight(34)
         self._regen_btn.setEnabled(False)
         self._regen_btn.clicked.connect(self._regenerate)
         regen_row.addWidget(self._regen_btn)
@@ -614,7 +614,7 @@ class LyricsView(QWidget):
 
         # ── Right Panel: History ────────────────────────────────────────────────
         right = QWidget()
-        right.setFixedWidth(280)
+        right.setMinimumWidth(280)
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(12, 16, 16, 16)
 

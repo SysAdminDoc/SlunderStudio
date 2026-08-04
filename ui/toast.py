@@ -68,12 +68,12 @@ class Toast(QFrame):
 
         # Icon
         icon_label = QLabel(config["icon"])
-        icon_label.setStyleSheet(f"color: {config['border']}; font-size: 16px; font-weight: bold; border: none;")
+        icon_label.setStyleSheet(f"color: {config['border']}; font-size: 12pt; font-weight: bold; border: none;")
         layout.addWidget(icon_label)
 
         # Message
         msg_label = QLabel(self._soft_break_message(message))
-        msg_label.setStyleSheet(f"color: {Palette.TEXT}; font-size: 13px; border: none;")
+        msg_label.setStyleSheet(f"color: {Palette.TEXT}; font-size: 9.75pt; border: none;")
         msg_label.setWordWrap(True)
         msg_label.setMaximumWidth(320)
         msg_label.setToolTip(message)
@@ -82,19 +82,19 @@ class Toast(QFrame):
 
         if action_label and action_callback:
             action_btn = QPushButton(action_label)
-            action_btn.setFixedHeight(28)
+            action_btn.setMinimumHeight(28)
             action_btn.setStyleSheet(f"""
                 QPushButton {{
                     background: {config["border"]}; color: {Palette.BASE};
                     border: none; border-radius: 4px; padding: 4px 10px;
-                    font-size: 11px; font-weight: 700;
+                    font-size: 8.25pt; font-weight: 700;
                 }}
                 QPushButton:hover {{ background: {Palette.TEXT}; }}
             """)
             action_btn.clicked.connect(self._on_action)
             layout.addWidget(action_btn)
 
-        self.setFixedWidth(380)
+        self.setMinimumWidth(380)
         self.adjustSize()
 
         # Dismiss timer

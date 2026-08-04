@@ -449,14 +449,14 @@ class CCAutomationLane(QWidget):
         self._beat_spin.setDecimals(2)
         self._beat_spin.setSingleStep(0.25)
         self._beat_spin.setValue(0.0)
-        self._beat_spin.setFixedWidth(72)
+        self._beat_spin.setMinimumWidth(72)
 
         value_label = QLabel("Value:")
         value_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._value_spin = QSpinBox()
         self._value_spin.setRange(0, 127)
         self._value_spin.setValue(64)
-        self._value_spin.setFixedWidth(58)
+        self._value_spin.setMinimumWidth(58)
 
         btn_style = f"""
             QPushButton {{
@@ -465,7 +465,7 @@ class CCAutomationLane(QWidget):
                 border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 4px 10px;
-                font-size: 11px;
+                font-size: 8.25pt;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
@@ -499,7 +499,7 @@ class CCAutomationLane(QWidget):
                 border: 1px solid {t['border']};
                 border-radius: 4px;
                 gridline-color: {t['border']};
-                font-size: 11px;
+                font-size: 8.25pt;
             }}
             QHeaderView::section {{
                 background: {t['surface']};
@@ -610,7 +610,7 @@ class PianoRollWidget(QWidget):
         self._snap_combo.addItems(SNAP_VALUES.keys())
         self._snap_combo.setCurrentText("1/16")
         self._snap_combo.currentTextChanged.connect(self._on_snap_changed)
-        self._snap_combo.setFixedWidth(70)
+        self._snap_combo.setMinimumWidth(70)
 
         # Velocity
         vel_label = QLabel("Velocity:")
@@ -618,7 +618,7 @@ class PianoRollWidget(QWidget):
         self._velocity_spin = QSpinBox()
         self._velocity_spin.setRange(1, 127)
         self._velocity_spin.setValue(100)
-        self._velocity_spin.setFixedWidth(60)
+        self._velocity_spin.setMinimumWidth(60)
         self._velocity_spin.valueChanged.connect(self._on_velocity_changed)
 
         swing_label = QLabel("Swing:")
@@ -627,14 +627,14 @@ class PianoRollWidget(QWidget):
         self._swing_spin.setRange(0, 75)
         self._swing_spin.setValue(33)
         self._swing_spin.setSuffix("%")
-        self._swing_spin.setFixedWidth(64)
+        self._swing_spin.setMinimumWidth(64)
 
         human_label = QLabel("Human:")
         human_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._humanize_spin = QSpinBox()
         self._humanize_spin.setRange(0, 32)
         self._humanize_spin.setValue(8)
-        self._humanize_spin.setFixedWidth(54)
+        self._humanize_spin.setMinimumWidth(54)
 
         # Quantize button
         btn_style = f"""
@@ -644,7 +644,7 @@ class PianoRollWidget(QWidget):
                 border: 1px solid {t['border']};
                 border-radius: 4px;
                 padding: 4px 10px;
-                font-size: 11px;
+                font-size: 8.25pt;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """

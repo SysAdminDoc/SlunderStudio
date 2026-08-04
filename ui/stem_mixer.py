@@ -66,7 +66,7 @@ class StemStrip(QFrame):
                 border-radius: 6px;
             }}
         """)
-        self.setFixedHeight(100)
+        self.setMinimumHeight(100)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 6, 10, 6)
@@ -78,7 +78,7 @@ class StemStrip(QFrame):
 
         # Stem name
         name_label = QLabel(stem_name.upper())
-        name_label.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 12px;")
+        name_label.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 9pt;")
         left.addWidget(name_label)
 
         # Mute/Solo buttons
@@ -86,17 +86,17 @@ class StemStrip(QFrame):
         btn_row.setSpacing(4)
 
         self._mute_btn = QPushButton("M")
-        self._mute_btn.setFixedSize(26, 20)
+        self._mute_btn.setMinimumSize(26, 20)
         self._mute_btn.setCheckable(True)
         self._mute_btn.clicked.connect(self._on_mute)
 
         self._solo_btn = QPushButton("S")
-        self._solo_btn.setFixedSize(26, 20)
+        self._solo_btn.setMinimumSize(26, 20)
         self._solo_btn.setCheckable(True)
         self._solo_btn.clicked.connect(self._on_solo)
 
         self._play_btn = QPushButton("Play")
-        self._play_btn.setFixedSize(38, 20)
+        self._play_btn.setMinimumSize(38, 20)
         self._play_btn.clicked.connect(lambda: self.play_requested.emit(self.stem_name))
 
         for btn in [self._mute_btn, self._solo_btn, self._play_btn]:
@@ -106,7 +106,7 @@ class StemStrip(QFrame):
                     color: {t['text_secondary']};
                     border: 1px solid {t['border']};
                     border-radius: 3px;
-                    font-size: 9px; font-weight: bold;
+                    font-size: 6.75pt; font-weight: bold;
                 }}
                 QPushButton:hover {{ background: {t['surface_hover']}; }}
                 QPushButton:checked {{ background: {color}; color: {Palette.CRUST}; border: none; }}
@@ -121,15 +121,15 @@ class StemStrip(QFrame):
         vol_row = QHBoxLayout()
         vol_row.setSpacing(3)
         vol_l = QLabel("Vol")
-        vol_l.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
-        vol_l.setFixedWidth(18)
+        vol_l.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
+        vol_l.setMinimumWidth(18)
         self._vol_slider = QSlider(Qt.Horizontal)
         self._vol_slider.setRange(0, 150)
         self._vol_slider.setValue(100)
-        self._vol_slider.setFixedHeight(14)
+        self._vol_slider.setMinimumHeight(14)
         self._vol_slider.valueChanged.connect(self._on_volume)
         self._vol_label = ElidedLabel("100%", minimum_width=32)
-        self._vol_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
+        self._vol_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         vol_row.addWidget(vol_l)
         vol_row.addWidget(self._vol_slider)
         vol_row.addWidget(self._vol_label)
@@ -139,15 +139,15 @@ class StemStrip(QFrame):
         pan_row = QHBoxLayout()
         pan_row.setSpacing(3)
         pan_l = QLabel("Pan")
-        pan_l.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
-        pan_l.setFixedWidth(18)
+        pan_l.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
+        pan_l.setMinimumWidth(18)
         self._pan_slider = QSlider(Qt.Horizontal)
         self._pan_slider.setRange(-100, 100)
         self._pan_slider.setValue(0)
-        self._pan_slider.setFixedHeight(14)
+        self._pan_slider.setMinimumHeight(14)
         self._pan_slider.valueChanged.connect(self._on_pan)
         self._pan_label = ElidedLabel("C", minimum_width=32)
-        self._pan_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
+        self._pan_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         pan_row.addWidget(pan_l)
         pan_row.addWidget(self._pan_slider)
         pan_row.addWidget(self._pan_label)
@@ -155,7 +155,7 @@ class StemStrip(QFrame):
 
         left_widget = QWidget()
         left_widget.setLayout(left)
-        left_widget.setFixedWidth(160)
+        left_widget.setMinimumWidth(160)
         layout.addWidget(left_widget)
 
         # Right: Mini waveform
@@ -239,7 +239,7 @@ class StemMixer(QWidget):
         # Header
         header = QHBoxLayout()
         title = QLabel("Stem Mixer")
-        title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 13px;")
+        title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9.75pt;")
 
         self._remix_btn = QPushButton("Export Remix")
         self._remix_btn.setProperty("class", "success")

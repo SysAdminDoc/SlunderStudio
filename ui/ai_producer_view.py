@@ -99,7 +99,7 @@ class StageIndicator(QFrame):
         self._status = "pending"
 
         t = ThemeEngine.get_colors()
-        self.setFixedHeight(34)
+        self.setMinimumHeight(34)
         self._base_style = f"""
             StageIndicator {{
                 background: {t['surface']};
@@ -116,25 +116,25 @@ class StageIndicator(QFrame):
         # Step number
         num = STAGE_ICONS.get(stage, "??")
         self._num_label = QLabel(num)
-        self._num_label.setFixedSize(22, 22)
+        self._num_label.setMinimumSize(22, 22)
         self._num_label.setAlignment(Qt.AlignCenter)
         self._num_label.setStyleSheet(f"""
             background: {t['border']};
             color: {t['text_secondary']};
             border-radius: 12px;
-            font-size: 10px; font-weight: bold;
+            font-size: 7.5pt; font-weight: bold;
         """)
         layout.addWidget(self._num_label)
 
         # Stage name
         self._name_label = QLabel(STAGE_LABELS.get(stage, stage.value))
-        self._name_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        self._name_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         layout.addWidget(self._name_label, 1)
 
         # Status indicator
         self._status_label = ElidedLabel("", minimum_width=60)
         self._status_label.setAlignment(Qt.AlignRight)
-        self._status_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
+        self._status_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         layout.addWidget(self._status_label)
 
     def set_status(self, status: str, duration: float = 0.0):
@@ -148,14 +148,14 @@ class StageIndicator(QFrame):
                 background: {t['border']};
                 color: {t['text_secondary']};
                 border-radius: 12px;
-                font-size: 10px; font-weight: bold;
+                font-size: 7.5pt; font-weight: bold;
             """)
             self._name_label.setStyleSheet(
-                f"color: {t['text_secondary']}; font-size: 11px;"
+                f"color: {t['text_secondary']}; font-size: 8.25pt;"
             )
             self._status_label.clear()
             self._status_label.setStyleSheet(
-                f"color: {t['text_secondary']}; font-size: 10px;"
+                f"color: {t['text_secondary']}; font-size: 7.5pt;"
             )
         elif status == "running":
             self.setStyleSheet(f"""
@@ -168,11 +168,11 @@ class StageIndicator(QFrame):
             self._num_label.setStyleSheet(f"""
                 background: {t['accent']};
                 color: {t['background']}; border-radius: 12px;
-                font-size: 10px; font-weight: bold;
+                font-size: 7.5pt; font-weight: bold;
             """)
-            self._name_label.setStyleSheet(f"color: {t['text']}; font-size: 11px; font-weight: bold;")
+            self._name_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt; font-weight: bold;")
             self._status_label.setText("Running...")
-            self._status_label.setStyleSheet(f"color: {t['accent']}; font-size: 10px;")
+            self._status_label.setStyleSheet(f"color: {t['accent']}; font-size: 7.5pt;")
 
         elif status == "complete":
             self.setStyleSheet(f"""
@@ -185,19 +185,19 @@ class StageIndicator(QFrame):
             self._num_label.setStyleSheet(f"""
                 background: {t['success']};
                 color: {t['background']}; border-radius: 12px;
-                font-size: 10px; font-weight: bold;
+                font-size: 7.5pt; font-weight: bold;
             """)
-            self._name_label.setStyleSheet(f"color: {t['text']}; font-size: 11px;")
+            self._name_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt;")
             dur_str = f"{duration:.1f}s" if duration > 0 else ""
             self._status_label.setText(dur_str)
             self._status_label.setStyleSheet(
-                f"color: {t['success']}; font-size: 10px;"
+                f"color: {t['success']}; font-size: 7.5pt;"
             )
 
         elif status == "skipped":
-            self._name_label.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
+            self._name_label.setStyleSheet(f"color: {t['muted']}; font-size: 8.25pt;")
             self._status_label.setText("Skipped")
-            self._status_label.setStyleSheet(f"color: {t['muted']}; font-size: 10px;")
+            self._status_label.setStyleSheet(f"color: {t['muted']}; font-size: 7.5pt;")
 
         elif status == "failed":
             self.setStyleSheet(f"""
@@ -210,10 +210,10 @@ class StageIndicator(QFrame):
             self._num_label.setStyleSheet(f"""
                 background: {t['error']};
                 color: {t['background']}; border-radius: 12px;
-                font-size: 10px; font-weight: bold;
+                font-size: 7.5pt; font-weight: bold;
             """)
             self._status_label.setText("Failed")
-            self._status_label.setStyleSheet(f"color: {t['error']}; font-size: 10px;")
+            self._status_label.setStyleSheet(f"color: {t['error']}; font-size: 7.5pt;")
         elif status == "cancelled":
             self.setStyleSheet(f"""
                 StageIndicator {{
@@ -225,11 +225,11 @@ class StageIndicator(QFrame):
             self._num_label.setStyleSheet(f"""
                 background: {t['warning']};
                 color: {t['background']}; border-radius: 12px;
-                font-size: 10px; font-weight: bold;
+                font-size: 7.5pt; font-weight: bold;
             """)
             self._status_label.setText("Cancelled")
             self._status_label.setStyleSheet(
-                f"color: {t['warning']}; font-size: 10px;"
+                f"color: {t['warning']}; font-size: 7.5pt;"
             )
 
 
@@ -272,9 +272,9 @@ class AIProducerView(QWidget):
         title_layout = QVBoxLayout(title_frame)
         title_layout.setContentsMargins(16, 12, 16, 12)
         title_label = QLabel("Production brief")
-        title_label.setStyleSheet(f"color: {t['text']}; font-size: 16px; font-weight: bold; border: none;")
+        title_label.setStyleSheet(f"color: {t['text']}; font-size: 12pt; font-weight: bold; border: none;")
         subtitle = QLabel("Describe the song, then review each local pipeline stage.")
-        subtitle.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+        subtitle.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         title_layout.addWidget(title_label)
         title_layout.addWidget(subtitle)
         left.addWidget(title_frame)
@@ -301,7 +301,7 @@ class AIProducerView(QWidget):
             QTextEdit {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 6px;
-                padding: 8px; font-size: 13px;
+                padding: 8px; font-size: 9.75pt;
             }}
         """)
         self._prompt.textChanged.connect(self._refresh_capability_state)
@@ -311,15 +311,15 @@ class AIProducerView(QWidget):
             QComboBox, QSpinBox, QDoubleSpinBox {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 3px 6px; font-size: 11px;
+                padding: 3px 6px; font-size: 8.25pt;
             }}
-            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 8.25pt; border: none; }}
         """
 
         # Genre + Mood
         row1 = QHBoxLayout()
         gl = QLabel("Genre:")
-        gl.setFixedWidth(42)
+        gl.setMinimumWidth(42)
         gl.setStyleSheet(param_style)
         self._genre = QComboBox()
         self._genre.addItem("Auto-detect")
@@ -327,7 +327,7 @@ class AIProducerView(QWidget):
         self._genre.setStyleSheet(param_style)
 
         ml = QLabel("Mood:")
-        ml.setFixedWidth(36)
+        ml.setMinimumWidth(36)
         ml.setStyleSheet(param_style)
         self._mood = QComboBox()
         self._mood.addItem("Auto-detect")
@@ -343,7 +343,7 @@ class AIProducerView(QWidget):
         # Duration + Vocals
         row2 = QHBoxLayout()
         dl = QLabel("Length:")
-        dl.setFixedWidth(42)
+        dl.setMinimumWidth(42)
         dl.setStyleSheet(param_style)
         self._duration = QSpinBox()
         self._duration.setRange(30, 600)
@@ -352,7 +352,7 @@ class AIProducerView(QWidget):
         self._duration.setStyleSheet(param_style)
 
         vl = QLabel("Vocals:")
-        vl.setFixedWidth(46)
+        vl.setMinimumWidth(46)
         vl.setStyleSheet(param_style)
         self._vocals = QComboBox()
         self._vocals.addItems(["None", "Male", "Female"])
@@ -367,7 +367,7 @@ class AIProducerView(QWidget):
         # Mastering preset + SFX toggle
         row3 = QHBoxLayout()
         mpl = QLabel("Master:")
-        mpl.setFixedWidth(42)
+        mpl.setMinimumWidth(42)
         mpl.setStyleSheet(param_style)
         self._master_preset = QComboBox()
         self._master_preset.addItems(PRESETS.keys())
@@ -376,7 +376,7 @@ class AIProducerView(QWidget):
 
         self._sfx_check = QCheckBox("Add SFX")
         self._sfx_check.setChecked(True)
-        self._sfx_check.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        self._sfx_check.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
 
         row3.addWidget(mpl)
         row3.addWidget(self._master_preset)
@@ -390,7 +390,7 @@ class AIProducerView(QWidget):
             "When enabled, a silent placeholder is used if song generation fails. "
             "When disabled, the pipeline stops on failure."
         )
-        self._demo_fallback_check.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
+        self._demo_fallback_check.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         self._demo_fallback_check.toggled.connect(self._refresh_capability_state)
         row4.addWidget(self._demo_fallback_check)
         row4.addStretch()
@@ -399,12 +399,12 @@ class AIProducerView(QWidget):
         # PRODUCE button
         self._produce_btn = QPushButton("PRODUCE")
         self._produce_btn.setObjectName("primaryAction")
-        self._produce_btn.setFixedHeight(44)
+        self._produce_btn.setMinimumHeight(44)
         self._produce_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
                 color: {t['background']}; border: none; border-radius: 5px;
-                font-weight: bold; font-size: 14px;
+                font-weight: bold; font-size: 10.5pt;
                 letter-spacing: 1px;
             }}
             QPushButton:hover {{ background: {t['accent_hover']}; }}
@@ -413,7 +413,7 @@ class AIProducerView(QWidget):
         self._produce_btn.clicked.connect(self._on_produce)
 
         self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setFixedHeight(44)
+        self._cancel_btn.setMinimumHeight(44)
         self._cancel_btn.setEnabled(False)
         self._cancel_btn.setStyleSheet(f"""
             QPushButton {{
@@ -427,7 +427,7 @@ class AIProducerView(QWidget):
         self._cancel_btn.clicked.connect(self._on_cancel)
 
         self._retry_btn = QPushButton("Retry")
-        self._retry_btn.setFixedHeight(44)
+        self._retry_btn.setMinimumHeight(44)
         self._retry_btn.setEnabled(False)
         self._retry_btn.setStyleSheet(f"""
             QPushButton {{
@@ -453,7 +453,7 @@ class AIProducerView(QWidget):
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
-        self._progress.setFixedHeight(6)
+        self._progress.setMinimumHeight(6)
         self._progress.setTextVisible(False)
         self._progress.setStyleSheet(f"""
             QProgressBar {{
@@ -469,7 +469,7 @@ class AIProducerView(QWidget):
 
         # Pipeline stages
         stages_label = QLabel("Pipeline")
-        stages_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        stages_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         left.addWidget(stages_label)
 
         for stage in PIPELINE_ORDER:
@@ -481,7 +481,7 @@ class AIProducerView(QWidget):
 
         left_w = QWidget()
         left_w.setLayout(left)
-        left_w.setFixedWidth(380)
+        left_w.setMinimumWidth(380)
         layout.addWidget(left_w)
 
         # ── Right: Output ──────────────────────────────────────────────────
@@ -499,11 +499,11 @@ class AIProducerView(QWidget):
         out_layout.setSpacing(4)
 
         self._output_title = QLabel("Output")
-        self._output_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 14px; border: none;")
+        self._output_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 10.5pt; border: none;")
         out_layout.addWidget(self._output_title)
 
         self._output_info = QLabel("Run the producer to generate a song")
-        self._output_info.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px; border: none;")
+        self._output_info.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._output_info.setWordWrap(True)
         out_layout.addWidget(self._output_info)
 
@@ -515,7 +515,7 @@ class AIProducerView(QWidget):
 
         # Lyrics preview
         lyrics_label = QLabel("Generated Lyrics")
-        lyrics_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        lyrics_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         right.addWidget(lyrics_label)
 
         self._lyrics_preview = QTextEdit()
@@ -525,7 +525,7 @@ class AIProducerView(QWidget):
             QTextEdit {{
                 background: {t['surface']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 6px;
-                padding: 8px; font-size: 11px;
+                padding: 8px; font-size: 8.25pt;
             }}
         """)
         right.addWidget(self._lyrics_preview)
@@ -537,7 +537,7 @@ class AIProducerView(QWidget):
             QPushButton {{
                 background: {t['success']}; color: {t['background']}; border: none;
                 border-radius: 6px; padding: 8px 16px;
-                font-weight: bold; font-size: 12px;
+                font-weight: bold; font-size: 9pt;
             }}
             QPushButton:hover {{ border: 1px solid {t['text']}; }}
             QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}

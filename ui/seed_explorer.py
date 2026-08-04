@@ -77,7 +77,7 @@ class SeedCell(QFrame):
         self._is_generated = False
         self._is_playing = False
 
-        self.setFixedSize(140, 110)
+        self.setMinimumSize(140, 110)
         self.setCursor(Qt.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._update_style("idle")
@@ -90,7 +90,7 @@ class SeedCell(QFrame):
         layout.setSpacing(2)
 
         self._waveform = MiniWaveform()
-        self._waveform.setFixedHeight(50)
+        self._waveform.setMinimumHeight(50)
         self._waveform.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._waveform.clicked.connect(self._on_click)
         layout.addWidget(self._waveform)
@@ -98,15 +98,15 @@ class SeedCell(QFrame):
         info = QHBoxLayout()
         info.setSpacing(2)
         self._seed_label = QLabel("")
-        self._seed_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 9px;")
+        self._seed_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 6.75pt;")
         info.addWidget(self._seed_label)
 
         info.addStretch()
 
         self._star_btn = QPushButton("")
-        self._star_btn.setFixedSize(20, 20)
+        self._star_btn.setMinimumSize(20, 20)
         self._star_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; color: {Palette.OVERLAY0}; font-size: 14px; }}"
+            f"QPushButton {{ background: transparent; border: none; color: {Palette.OVERLAY0}; font-size: 10.5pt; }}"
             f"QPushButton:hover {{ color: {Palette.YELLOW}; }}"
         )
         self._star_btn.setText("\u2606")  # empty star
@@ -118,7 +118,7 @@ class SeedCell(QFrame):
 
         self._status_label = QLabel("")
         self._status_label.setAlignment(Qt.AlignCenter)
-        self._status_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 10px;")
+        self._status_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 7.5pt;")
         layout.addWidget(self._status_label)
         self._set_star_accessibility()
 
@@ -180,7 +180,7 @@ class SeedCell(QFrame):
         self._is_playing = False
         self._seed_label.setText(f"seed: {seed}")
         self._status_label.setText("")
-        self._status_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 10px;")
+        self._status_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 7.5pt;")
         self._star_btn.show()
         self._update_style("done")
         self._set_star_accessibility()
@@ -196,7 +196,7 @@ class SeedCell(QFrame):
         self._is_playing = False
         self._is_generating = False
         self._status_label.setText("Failed")
-        self._status_label.setStyleSheet(f"color: {Palette.RED}; font-size: 10px;")
+        self._status_label.setStyleSheet(f"color: {Palette.RED}; font-size: 7.5pt;")
         self._update_style("idle")
         self._update_accessibility()
 
@@ -232,7 +232,7 @@ class SeedCell(QFrame):
         self._star_btn.setText("\u2605" if self._is_starred else "\u2606")
         self._star_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; "
-            f"color: {Palette.YELLOW if self._is_starred else Palette.OVERLAY0}; font-size: 14px; }}"
+            f"color: {Palette.YELLOW if self._is_starred else Palette.OVERLAY0}; font-size: 10.5pt; }}"
             f" QPushButton:hover {{ color: {Palette.YELLOW}; }}"
         )
         self._update_style("starred" if self._is_starred else "done")
@@ -285,7 +285,7 @@ class SeedCell(QFrame):
         self._status_label.setText(str(state.get("status", "")))
         self._status_label.setStyleSheet(
             state.get("status_style")
-            or f"color: {Palette.OVERLAY0}; font-size: 10px;"
+            or f"color: {Palette.OVERLAY0}; font-size: 7.5pt;"
         )
         if self._is_generated:
             self._star_btn.show()
@@ -338,14 +338,14 @@ class SeedExplorer(QWidget):
         ctrl.setSpacing(8)
 
         lbl = QLabel("Seed Explorer")
-        lbl.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 13px;")
+        lbl.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9.75pt;")
         ctrl.addWidget(lbl)
 
         ctrl.addWidget(QLabel("Grid:"))
         self._grid_combo = QComboBox()
         self._grid_combo.addItems(["2x2", "3x3", "4x4"])
         self._grid_combo.setCurrentIndex(1)
-        self._grid_combo.setFixedWidth(70)
+        self._grid_combo.setMinimumWidth(70)
         self._grid_combo.currentIndexChanged.connect(self._rebuild_grid)
         ctrl.addWidget(self._grid_combo)
 
@@ -353,14 +353,14 @@ class SeedExplorer(QWidget):
         self._seed_spin = QSpinBox()
         self._seed_spin.setRange(0, 2**31 - 1)
         self._seed_spin.setValue(42)
-        self._seed_spin.setFixedWidth(100)
+        self._seed_spin.setMinimumWidth(100)
         ctrl.addWidget(self._seed_spin)
 
         ctrl.addWidget(QLabel("Seed range:"))
         self._range_spin = QSpinBox()
         self._range_spin.setRange(1, 10000)
         self._range_spin.setValue(100)
-        self._range_spin.setFixedWidth(80)
+        self._range_spin.setMinimumWidth(80)
         self._range_spin.valueChanged.connect(self._on_range_spin_changed)
         ctrl.addWidget(self._range_spin)
 
@@ -368,7 +368,7 @@ class SeedExplorer(QWidget):
         self._distance_slider = QSlider(Qt.Horizontal)
         self._distance_slider.setRange(1, 10000)
         self._distance_slider.setValue(100)
-        self._distance_slider.setFixedWidth(110)
+        self._distance_slider.setMinimumWidth(110)
         self._distance_slider.setToolTip("How far generated variants can drift from the center seed")
         self._distance_slider.valueChanged.connect(self._on_distance_changed)
         ctrl.addWidget(self._distance_slider)
@@ -379,7 +379,7 @@ class SeedExplorer(QWidget):
         self._shift_min_spin.setValue(1.0)
         self._shift_min_spin.setSingleStep(1.0)
         self._shift_min_spin.setDecimals(1)
-        self._shift_min_spin.setFixedWidth(65)
+        self._shift_min_spin.setMinimumWidth(65)
         ctrl.addWidget(self._shift_min_spin)
 
         ctrl.addWidget(QLabel("-"))
@@ -388,18 +388,18 @@ class SeedExplorer(QWidget):
         self._shift_max_spin.setValue(3.0)
         self._shift_max_spin.setSingleStep(1.0)
         self._shift_max_spin.setDecimals(1)
-        self._shift_max_spin.setFixedWidth(65)
+        self._shift_max_spin.setMinimumWidth(65)
         ctrl.addWidget(self._shift_max_spin)
 
         ctrl.addStretch()
 
         self._explore_btn = QPushButton("Explore")
-        self._explore_btn.setFixedHeight(30)
+        self._explore_btn.setMinimumHeight(30)
         self._explore_btn.clicked.connect(self._start_exploration)
         ctrl.addWidget(self._explore_btn)
 
         self._export_btn = QPushButton("Export Starred")
-        self._export_btn.setFixedHeight(30)
+        self._export_btn.setMinimumHeight(30)
         self._export_btn.setProperty("class", "secondary")
         self._export_btn.clicked.connect(self._export_starred)
         ctrl.addWidget(self._export_btn)
@@ -410,7 +410,7 @@ class SeedExplorer(QWidget):
         axis_layout = QHBoxLayout()
         axis_layout.addSpacing(30)
         self._x_label = QLabel("Seed -->")
-        self._x_label.setStyleSheet(f"color: {Palette.BLUE}; font-size: 10px;")
+        self._x_label.setStyleSheet(f"color: {Palette.BLUE}; font-size: 7.5pt;")
         axis_layout.addWidget(self._x_label)
         axis_layout.addStretch()
         layout.addLayout(axis_layout)
@@ -426,7 +426,7 @@ class SeedExplorer(QWidget):
 
         # Y-axis label
         y_label = QLabel("SHIFT\n||\nV")
-        y_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 10px;")
+        y_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 7.5pt;")
         y_label.setAlignment(Qt.AlignCenter)
         self._grid_layout.addWidget(y_label, 0, 0, self._grid_size, 1)
 
@@ -445,7 +445,7 @@ class SeedExplorer(QWidget):
 
         # Info bar
         self._info = QLabel("Configure grid parameters and click Explore to generate variations")
-        self._info.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 11px;")
+        self._info.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 8.25pt;")
         layout.addWidget(self._info)
 
         self._rebuild_grid(1)  # Start with 3x3

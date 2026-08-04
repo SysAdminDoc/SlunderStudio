@@ -51,14 +51,14 @@ class HFTokenDialog(QDialog):
         layout.setSpacing(12)
 
         title = QLabel(f"<b>{model_name}</b> requires a HuggingFace access token")
-        title.setStyleSheet(f"font-size: 15px; color: {Palette.TEXT};")
+        title.setStyleSheet(f"font-size: 11.25pt; color: {Palette.TEXT};")
         title.setWordWrap(True)
         layout.addWidget(title)
 
         link_row = QHBoxLayout()
         link_row.setSpacing(8)
         open_btn = QPushButton("Get Token from HuggingFace")
-        open_btn.setFixedHeight(34)
+        open_btn.setMinimumHeight(34)
         open_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/settings/tokens"))
         )
@@ -69,7 +69,7 @@ class HFTokenDialog(QDialog):
         self._token_input = QLineEdit()
         self._token_input.setPlaceholderText("Paste token here  (starts with hf_)")
         self._token_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self._token_input.setFixedHeight(38)
+        self._token_input.setMinimumHeight(38)
         layout.addWidget(self._token_input)
 
         self._error_label = QLabel("")
@@ -83,12 +83,12 @@ class HFTokenDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         cancel_btn = QPushButton("Cancel")
-        cancel_btn.setFixedSize(100, 36)
+        cancel_btn.setMinimumSize(100, 36)
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(cancel_btn)
 
         self._save_btn = QPushButton("Save and Download")
-        self._save_btn.setFixedSize(160, 36)
+        self._save_btn.setMinimumSize(160, 36)
         self._save_btn.setObjectName("accentBtn")
         self._save_btn.clicked.connect(self._accept)
         btn_row.addWidget(self._save_btn)
@@ -119,7 +119,7 @@ class ExecutableModelConsentDialog(QDialog):
         layout.setSpacing(12)
 
         title = QLabel(f"Review {info.name} before loading")
-        title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {Palette.TEXT};")
+        title.setStyleSheet(f"font-size: 12pt; font-weight: 700; color: {Palette.TEXT};")
         layout.addWidget(title)
 
         warning = QLabel(EXECUTABLE_MODEL_WARNING)
@@ -207,14 +207,14 @@ class ModelCard(QFrame):
 
         self._name_label = QLabel(self.info.name)
         self._name_label.setStyleSheet(
-            f"font-size: 14px; font-weight: 700; color: "
+            f"font-size: 10.5pt; font-weight: 700; color: "
             f"{Palette.BLUE if self.info.is_core else Palette.TEXT};"
         )
         self._name_label.setWordWrap(True)
         header.addWidget(self._name_label, 1)
 
         self._status_badge = QLabel()
-        self._status_badge.setFixedHeight(22)
+        self._status_badge.setMinimumHeight(22)
         header.addWidget(self._status_badge)
         layout.addLayout(header)
 
@@ -224,7 +224,7 @@ class ModelCard(QFrame):
         desc.setToolTip(self.info.description)
         desc.setAccessibleName(f"{self.info.name} description")
         desc.setAccessibleDescription(self.info.description)
-        desc.setStyleSheet(f"font-size: 12px; color: {Palette.SUBTEXT0};")
+        desc.setStyleSheet(f"font-size: 9pt; color: {Palette.SUBTEXT0};")
         layout.addWidget(desc)
         self._description_label = desc
 
@@ -238,11 +238,11 @@ class ModelCard(QFrame):
             self.info.license,
         ]:
             lbl = QLabel(text)
-            lbl.setStyleSheet(f"font-size: 11px; color: {Palette.OVERLAY0};")
+            lbl.setStyleSheet(f"font-size: 8.25pt; color: {Palette.OVERLAY0};")
             stats.addWidget(lbl)
         if getattr(self.info, "gated", False):
             g = QLabel("Token Required")
-            g.setStyleSheet(f"font-size: 11px; color: {Palette.OVERLAY0};")
+            g.setStyleSheet(f"font-size: 8.25pt; color: {Palette.OVERLAY0};")
             stats.addWidget(g)
         stats.addStretch()
         layout.addLayout(stats)
@@ -251,7 +251,7 @@ class ModelCard(QFrame):
         task_label = QLabel(f"Tasks: {task_text}")
         task_label.setWordWrap(True)
         task_label.setToolTip(task_text)
-        task_label.setStyleSheet(f"font-size: 11px; color: {Palette.BLUE};")
+        task_label.setStyleSheet(f"font-size: 8.25pt; color: {Palette.BLUE};")
         layout.addWidget(task_label)
         self._task_label = task_label
 
@@ -260,7 +260,7 @@ class ModelCard(QFrame):
             f"Access: {self.info.access_label}"
         )
         rights.setWordWrap(True)
-        rights.setStyleSheet(f"font-size: 11px; color: {Palette.SUBTEXT0};")
+        rights.setStyleSheet(f"font-size: 8.25pt; color: {Palette.SUBTEXT0};")
         layout.addWidget(rights)
         self._rights_label = rights
 
@@ -268,7 +268,7 @@ class ModelCard(QFrame):
         if warning_text:
             warning = QLabel(warning_text)
             warning.setWordWrap(True)
-            warning.setStyleSheet(f"font-size: 10px; color: {Palette.PEACH};")
+            warning.setStyleSheet(f"font-size: 7.5pt; color: {Palette.PEACH};")
             layout.addWidget(warning)
             self._license_warning = warning
         else:
@@ -293,7 +293,7 @@ class ModelCard(QFrame):
             trust_text = f"No pinned revision or model cache hash - {trust_status}"
         trust = QLabel(trust_text)
         trust.setWordWrap(True)
-        trust.setStyleSheet(f"font-size: 10px; color: {Palette.SUBTEXT0};")
+        trust.setStyleSheet(f"font-size: 7.5pt; color: {Palette.SUBTEXT0};")
         layout.addWidget(trust)
         self._trust_label = trust
 
@@ -304,13 +304,13 @@ class ModelCard(QFrame):
         measurement.setToolTip(
             f"Source: {self.info.measurement_source or 'not recorded'}"
         )
-        measurement.setStyleSheet(f"font-size: 10px; color: {Palette.SUBTEXT0};")
+        measurement.setStyleSheet(f"font-size: 7.5pt; color: {Palette.SUBTEXT0};")
         layout.addWidget(measurement)
         self._measurement_label = measurement
 
         self._hardware_label = QLabel("Hardware fit: checking detected hardware...")
         self._hardware_label.setWordWrap(True)
-        self._hardware_label.setStyleSheet(f"font-size: 10px; color: {Palette.YELLOW};")
+        self._hardware_label.setStyleSheet(f"font-size: 7.5pt; color: {Palette.YELLOW};")
         layout.addWidget(self._hardware_label)
 
         # -- Download panel (hidden by default, expands inline) --
@@ -322,7 +322,7 @@ class ModelCard(QFrame):
 
         # Progress bar — gradient fill, rounded
         self._progress = QProgressBar()
-        self._progress.setFixedHeight(14)
+        self._progress.setMinimumHeight(14)
         self._progress.setTextVisible(False)
         self._progress.setStyleSheet(f"""
             QProgressBar {{
@@ -346,14 +346,14 @@ class ModelCard(QFrame):
 
         self._pct_label = QLabel("0%")
         self._pct_label.setStyleSheet(
-            f"font-size: 12px; font-weight: 700; color: {Palette.BLUE};"
+            f"font-size: 9pt; font-weight: 700; color: {Palette.BLUE};"
         )
-        self._pct_label.setFixedWidth(40)
+        self._pct_label.setMinimumWidth(40)
         info_row.addWidget(self._pct_label)
 
         self._size_label = QLabel("")
         self._size_label.setStyleSheet(
-            f"font-size: 11px; color: {Palette.SUBTEXT0};"
+            f"font-size: 8.25pt; color: {Palette.SUBTEXT0};"
         )
         info_row.addWidget(self._size_label)
 
@@ -361,15 +361,15 @@ class ModelCard(QFrame):
 
         self._speed_label = QLabel("")
         self._speed_label.setStyleSheet(
-            f"font-size: 11px; color: {Palette.OVERLAY0};"
+            f"font-size: 8.25pt; color: {Palette.OVERLAY0};"
         )
         info_row.addWidget(self._speed_label)
 
         self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setFixedSize(60, 24)
+        self._cancel_btn.setMinimumSize(60, 24)
         self._cancel_btn.setStyleSheet(f"""
             QPushButton {{
-                font-size: 11px; padding: 2px 8px;
+                font-size: 8.25pt; padding: 2px 8px;
                 background: {Palette.SURFACE1}; color: {Palette.RED};
                 border: 1px solid {Palette.SURFACE2}; border-radius: 4px;
             }}
@@ -385,11 +385,11 @@ class ModelCard(QFrame):
 
         # -- Action button --
         self._action_btn = QPushButton("Download")
-        self._action_btn.setFixedHeight(32)
+        self._action_btn.setMinimumHeight(32)
         self._action_btn.clicked.connect(self._on_action)
 
         self._delete_btn = QPushButton("Remove")
-        self._delete_btn.setFixedHeight(32)
+        self._delete_btn.setMinimumHeight(32)
         self._delete_btn.setVisible(False)
         self._delete_btn.clicked.connect(
             lambda: self.delete_requested.emit(self.model_id)
@@ -566,7 +566,7 @@ class ModelCard(QFrame):
         self._status_badge.setStyleSheet(
             f"background: rgba({self._hex_to_rgba(color)},40); "
             f"color: {color}; padding: 2px 10px; border-radius: 11px; "
-            f"font-size: 11px; font-weight: 600;"
+            f"font-size: 8.25pt; font-weight: 600;"
         )
 
     @staticmethod
@@ -613,7 +613,7 @@ class ModelCard(QFrame):
         self._hardware_label.setText(
             f"Hardware: {prefix} — {fit.reason} Tier: {fit.tier}."
         )
-        self._hardware_label.setStyleSheet(f"font-size: 10px; color: {color};")
+        self._hardware_label.setStyleSheet(f"font-size: 7.5pt; color: {color};")
         set_accessible(
             self._hardware_label,
             f"{self.info.name} hardware fit",
@@ -667,7 +667,7 @@ class ModelHubView(QWidget):
         self._recovery_label.setStyleSheet(
             f"background: rgba(249, 226, 175, 28); color: {Palette.YELLOW}; "
             f"border: 1px solid rgba(249, 226, 175, 70); border-radius: 6px; "
-            "padding: 8px 10px; font-size: 12px;"
+            "padding: 8px 10px; font-size: 9pt;"
         )
         layout.addWidget(self._recovery_label)
 
@@ -679,14 +679,14 @@ class ModelHubView(QWidget):
 
         self._gpu_label = QLabel("GPU: Detecting...")
         self._gpu_label.setStyleSheet(
-            f"font-size: 13px; font-weight: 600; color: {Palette.BLUE};"
+            f"font-size: 9.75pt; font-weight: 600; color: {Palette.BLUE};"
         )
         gpu_layout.addWidget(self._gpu_label)
         gpu_layout.addStretch()
 
         self._disk_label = QLabel("Disk usage: calculating...")
         self._disk_label.setStyleSheet(
-            f"font-size: 12px; color: {Palette.SUBTEXT0};"
+            f"font-size: 9pt; color: {Palette.SUBTEXT0};"
         )
         gpu_layout.addWidget(self._disk_label)
         layout.addWidget(self._gpu_bar)
@@ -696,7 +696,7 @@ class ModelHubView(QWidget):
         self._recommendation_label.setStyleSheet(
             f"background: rgba(137, 180, 250, 24); color: {Palette.BLUE}; "
             "border: 1px solid rgba(137, 180, 250, 70); border-radius: 6px; "
-            "padding: 8px 10px; font-size: 12px;"
+            "padding: 8px 10px; font-size: 9pt;"
         )
         layout.addWidget(self._recommendation_label)
 
@@ -706,7 +706,7 @@ class ModelHubView(QWidget):
 
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search models...")
-        self._search.setFixedHeight(36)
+        self._search.setMinimumHeight(36)
         self._search.textChanged.connect(self._filter_cards)
         filter_bar.addWidget(self._search, 1)
 
@@ -716,7 +716,7 @@ class ModelHubView(QWidget):
             self._category_filter.addItem(
                 cat.value.replace("_", " ").title(), cat.value
             )
-        self._category_filter.setFixedHeight(36)
+        self._category_filter.setMinimumHeight(36)
         self._category_filter.currentIndexChanged.connect(self._filter_cards)
         filter_bar.addWidget(self._category_filter)
 
@@ -724,7 +724,7 @@ class ModelHubView(QWidget):
         self._task_filter.addItem("All Tasks", "all")
         for task in model_tasks(self._mgr.registry):
             self._task_filter.addItem(task.title().replace("Vram", "VRAM"), task)
-        self._task_filter.setFixedHeight(36)
+        self._task_filter.setMinimumHeight(36)
         self._task_filter.currentIndexChanged.connect(self._filter_cards)
         filter_bar.addWidget(self._task_filter)
 
@@ -735,7 +735,7 @@ class ModelHubView(QWidget):
         self._hardware_filter = QComboBox()
         self._hardware_filter.addItem("Fits detected hardware", "fit")
         self._hardware_filter.addItem("All models", "all")
-        self._hardware_filter.setFixedHeight(36)
+        self._hardware_filter.setMinimumHeight(36)
         self._hardware_filter.currentIndexChanged.connect(self._filter_cards)
         hardware_filter_bar.addWidget(self._hardware_filter)
 
@@ -928,14 +928,14 @@ class ModelHubView(QWidget):
                     f"Active: {current or 'None'}"
                 )
             self._gpu_label.setStyleSheet(
-                f"font-size: 13px; font-weight: 600; color: {Palette.BLUE};"
+                f"font-size: 9.75pt; font-weight: 600; color: {Palette.BLUE};"
             )
         else:
             self._gpu_label.setText(
                 "No accelerator detected — models will run on CPU (much slower)"
             )
             self._gpu_label.setStyleSheet(
-                f"font-size: 13px; font-weight: 600; color: {Palette.YELLOW};"
+                f"font-size: 9.75pt; font-weight: 600; color: {Palette.YELLOW};"
             )
         self._update_hardware_filter_label()
         for card in self._cards.values():

@@ -71,12 +71,12 @@ class SettingRow(QHBoxLayout):
         label_container.setSpacing(2)
 
         lbl = QLabel(label)
-        lbl.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {Palette.TEXT};")
+        lbl.setStyleSheet(f"font-size: 9.75pt; font-weight: 600; color: {Palette.TEXT};")
         label_container.addWidget(lbl)
 
         if description:
             desc = QLabel(description)
-            desc.setStyleSheet(f"font-size: 11px; color: {Palette.OVERLAY0};")
+            desc.setStyleSheet(f"font-size: 8.25pt; color: {Palette.OVERLAY0};")
             desc.setWordWrap(True)
             label_container.addWidget(desc)
 
@@ -117,7 +117,7 @@ class SettingsView(QWidget):
         self._repair_label = QLabel("")
         self._repair_label.setWordWrap(True)
         self._repair_label.setStyleSheet(
-            f"color: {Palette.YELLOW}; font-size: 12px; padding: 4px 0;"
+            f"color: {Palette.YELLOW}; font-size: 9pt; padding: 4px 0;"
         )
         layout.addWidget(self._repair_label)
 
@@ -139,7 +139,7 @@ class SettingsView(QWidget):
 
         self._reset_btn = QPushButton(tr("settings.actions.reset_defaults"))
         self._reset_btn.setObjectName("dangerBtn")
-        self._reset_btn.setFixedHeight(36)
+        self._reset_btn.setMinimumHeight(36)
         self._reset_btn.clicked.connect(self._reset_all)
         bottom.addWidget(self._reset_btn)
 
@@ -150,19 +150,19 @@ class SettingsView(QWidget):
 
         self._export_health_btn = QPushButton(tr("settings.actions.export_health"))
         self._export_health_btn.setObjectName("secondaryBtn")
-        self._export_health_btn.setFixedHeight(36)
+        self._export_health_btn.setMinimumHeight(36)
         self._export_health_btn.clicked.connect(self._export_health_report)
         bottom.addWidget(self._export_health_btn)
 
         self._open_dir_btn = QPushButton(tr("settings.actions.open_config"))
         self._open_dir_btn.setObjectName("secondaryBtn")
-        self._open_dir_btn.setFixedHeight(36)
+        self._open_dir_btn.setMinimumHeight(36)
         self._open_dir_btn.clicked.connect(self._open_config_dir)
         bottom.addWidget(self._open_dir_btn)
 
         self._onboarding_btn = QPushButton(tr("settings.actions.open_onboarding"))
         self._onboarding_btn.setObjectName("secondaryBtn")
-        self._onboarding_btn.setFixedHeight(36)
+        self._onboarding_btn.setMinimumHeight(36)
         self._onboarding_btn.clicked.connect(self._open_onboarding)
         bottom.addWidget(self._onboarding_btn)
 
@@ -188,8 +188,8 @@ class SettingsView(QWidget):
         self._output_dir.setReadOnly(True)
         self._browse_output_btn = QPushButton(tr("settings.output.browse"))
         self._browse_output_btn.setObjectName("secondaryBtn")
-        self._browse_output_btn.setFixedWidth(80)
-        self._browse_output_btn.setFixedHeight(34)
+        self._browse_output_btn.setMinimumWidth(80)
+        self._browse_output_btn.setMinimumHeight(34)
         self._browse_output_btn.clicked.connect(self._browse_output_dir)
 
         dir_row = QHBoxLayout()
@@ -200,14 +200,14 @@ class SettingsView(QWidget):
 
         self._format_combo = QComboBox()
         self._format_combo.addItems(["WAV", "FLAC", "MP3"])
-        self._format_combo.setFixedWidth(120)
+        self._format_combo.setMinimumWidth(120)
         self._format_combo.currentTextChanged.connect(
             lambda v: self._save("general.audio_format", v.lower()))
         output_layout.addLayout(SettingRow(tr("settings.output.format"), self._format_combo))
 
         self._sample_rate_combo = QComboBox()
         self._sample_rate_combo.addItems(["44100", "48000"])
-        self._sample_rate_combo.setFixedWidth(120)
+        self._sample_rate_combo.setMinimumWidth(120)
         self._sample_rate_combo.currentTextChanged.connect(
             lambda v: self._save("general.sample_rate", int(v)) if v else None)
         output_layout.addLayout(SettingRow(
@@ -224,7 +224,7 @@ class SettingsView(QWidget):
 
         self._refresh_audio_devices_btn = QPushButton(tr("settings.actions.refresh"))
         self._refresh_audio_devices_btn.setObjectName("secondaryBtn")
-        self._refresh_audio_devices_btn.setFixedHeight(34)
+        self._refresh_audio_devices_btn.setMinimumHeight(34)
         self._refresh_audio_devices_btn.clicked.connect(self._refresh_audio_devices)
 
         device_controls = QWidget()
@@ -242,7 +242,7 @@ class SettingsView(QWidget):
         self._audio_device_status = QLabel("")
         self._audio_device_status.setWordWrap(True)
         self._audio_device_status.setStyleSheet(
-            f"color: {Palette.YELLOW}; font-size: 11px; padding: 2px 0;"
+            f"color: {Palette.YELLOW}; font-size: 8.25pt; padding: 2px 0;"
         )
         self._audio_device_status.setVisible(False)
         output_layout.addWidget(self._audio_device_status)
@@ -255,7 +255,7 @@ class SettingsView(QWidget):
 
         self._gpu_device = QSpinBox()
         self._gpu_device.setRange(0, 7)
-        self._gpu_device.setFixedWidth(80)
+        self._gpu_device.setMinimumWidth(80)
         self._gpu_device.valueChanged.connect(
             lambda v: self._save("general.gpu_device", v))
         gpu_layout.addLayout(SettingRow(
@@ -272,7 +272,7 @@ class SettingsView(QWidget):
         self._hf_token = QLineEdit()
         self._hf_token.setPlaceholderText("hf_xxxxxxxxxxxxxxxxxxxx")
         self._hf_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self._hf_token.setFixedWidth(280)
+        self._hf_token.setMinimumWidth(280)
         self._hf_token.editingFinished.connect(
             lambda: self._save("model_hub.hf_token", self._hf_token.text().strip()))
         gpu_layout.addLayout(SettingRow(
@@ -299,7 +299,7 @@ class SettingsView(QWidget):
             ("advanced", "settings.appearance.experience_advanced"),
         ):
             self._experience_combo.addItem(tr(key), code)
-        self._experience_combo.setFixedWidth(160)
+        self._experience_combo.setMinimumWidth(160)
         self._experience_combo.currentIndexChanged.connect(
             lambda: self._save(
                 "general.experience_level",
@@ -314,7 +314,7 @@ class SettingsView(QWidget):
         self._ui_locale_combo = QComboBox()
         for code, label in ui_locale_options():
             self._ui_locale_combo.addItem(label, code)
-        self._ui_locale_combo.setFixedWidth(220)
+        self._ui_locale_combo.setMinimumWidth(220)
         self._ui_locale_combo.currentIndexChanged.connect(self._on_ui_locale_changed)
         appearance_layout.addLayout(SettingRow(
             tr("settings.appearance.ui_language"),
@@ -324,7 +324,7 @@ class SettingsView(QWidget):
 
         self._default_language = QComboBox()
         self._default_language.addItems(language_combo_items())
-        self._default_language.setFixedWidth(200)
+        self._default_language.setMinimumWidth(200)
         self._default_language.currentTextChanged.connect(
             lambda v: self._save("lyrics.default_language", language_code_from_label(v)))
         appearance_layout.addLayout(SettingRow(
@@ -358,7 +358,7 @@ class SettingsView(QWidget):
         self._lyrics_model.addItem(tr("settings.lyrics.model_recommended"), "llama-3.1-8b-q4")
         self._lyrics_model.addItem(tr("settings.lyrics.model_fast"), "llama-3.2-3b-q4")
         self._lyrics_model.addItem(tr("settings.lyrics.model_premium"), "qwen-2.5-14b-q4")
-        self._lyrics_model.setFixedWidth(240)
+        self._lyrics_model.setMinimumWidth(240)
         self._lyrics_model.currentIndexChanged.connect(
             lambda: self._save("lyrics.model_id", self._lyrics_model.currentData()))
         lyrics_layout.addLayout(SettingRow(tr("settings.lyrics.model"), self._lyrics_model))
@@ -366,7 +366,7 @@ class SettingsView(QWidget):
         self._temperature = QDoubleSpinBox()
         self._temperature.setRange(0.1, 2.0)
         self._temperature.setSingleStep(0.05)
-        self._temperature.setFixedWidth(100)
+        self._temperature.setMinimumWidth(100)
         self._temperature.valueChanged.connect(
             lambda v: self._save("lyrics.temperature", v))
         lyrics_layout.addLayout(SettingRow(
@@ -378,7 +378,7 @@ class SettingsView(QWidget):
         self._top_p = QDoubleSpinBox()
         self._top_p.setRange(0.1, 1.0)
         self._top_p.setSingleStep(0.05)
-        self._top_p.setFixedWidth(100)
+        self._top_p.setMinimumWidth(100)
         self._top_p.valueChanged.connect(
             lambda v: self._save("lyrics.top_p", v))
         lyrics_layout.addLayout(SettingRow(tr("settings.lyrics.top_p"), self._top_p))
@@ -386,7 +386,7 @@ class SettingsView(QWidget):
         self._max_tokens = QSpinBox()
         self._max_tokens.setRange(256, 8192)
         self._max_tokens.setSingleStep(256)
-        self._max_tokens.setFixedWidth(120)
+        self._max_tokens.setMinimumWidth(120)
         self._max_tokens.valueChanged.connect(
             lambda v: self._save("lyrics.max_tokens", v))
         lyrics_layout.addLayout(SettingRow(tr("settings.lyrics.max_tokens"), self._max_tokens))
@@ -401,7 +401,7 @@ class SettingsView(QWidget):
         self._timestep_shift.setRange(1.0, 3.0)
         self._timestep_shift.setSingleStep(1.0)
         self._timestep_shift.setDecimals(1)
-        self._timestep_shift.setFixedWidth(100)
+        self._timestep_shift.setMinimumWidth(100)
         self._timestep_shift.valueChanged.connect(
             lambda v: self._save("song_forge.timestep_shift", v))
         forge_layout.addLayout(SettingRow(
@@ -413,7 +413,7 @@ class SettingsView(QWidget):
         self._inference_steps = QSpinBox()
         self._inference_steps.setRange(1, 100)
         self._inference_steps.setSingleStep(1)
-        self._inference_steps.setFixedWidth(100)
+        self._inference_steps.setMinimumWidth(100)
         self._inference_steps.valueChanged.connect(
             lambda v: self._save("song_forge.inference_steps", v))
         forge_layout.addLayout(SettingRow(
@@ -424,7 +424,7 @@ class SettingsView(QWidget):
 
         self._batch_count = QSpinBox()
         self._batch_count.setRange(1, 16)
-        self._batch_count.setFixedWidth(80)
+        self._batch_count.setMinimumWidth(80)
         self._batch_count.valueChanged.connect(
             lambda v: self._save("song_forge.batch_count", v))
         forge_layout.addLayout(SettingRow(
@@ -436,7 +436,7 @@ class SettingsView(QWidget):
         self._default_duration = QSpinBox()
         self._default_duration.setRange(10, 600)
         self._default_duration.setSuffix(f" {tr('settings.units.seconds')}")
-        self._default_duration.setFixedWidth(120)
+        self._default_duration.setMinimumWidth(120)
         self._default_duration.valueChanged.connect(
             lambda v: self._save("song_forge.default_duration", v))
         forge_layout.addLayout(SettingRow(tr("settings.song_forge.default_duration"), self._default_duration))
@@ -450,7 +450,7 @@ class SettingsView(QWidget):
         self._default_bpm = QSpinBox()
         self._default_bpm.setRange(40, 300)
         self._default_bpm.setSuffix(f" {tr('settings.units.bpm')}")
-        self._default_bpm.setFixedWidth(120)
+        self._default_bpm.setMinimumWidth(120)
         self._default_bpm.valueChanged.connect(
             lambda v: self._save("midi_studio.default_bpm", v))
         midi_layout.addLayout(SettingRow(tr("settings.midi.default_bpm"), self._default_bpm))
@@ -464,7 +464,7 @@ class SettingsView(QWidget):
         self._mastering_target = QComboBox()
         for target in LUFS_TARGETS.values():
             self._mastering_target.addItem(target.label, target.key)
-        self._mastering_target.setFixedWidth(220)
+        self._mastering_target.setMinimumWidth(220)
         self._mastering_target.currentIndexChanged.connect(
             lambda: self._save("production.mastering_target", self._mastering_target.currentData()))
         prod_layout.addLayout(SettingRow(tr("settings.production.mastering_target"), self._mastering_target))
@@ -489,7 +489,7 @@ class SettingsView(QWidget):
         self._max_cache.setRange(1.0, 500.0)
         self._max_cache.setSuffix(f" {tr('settings.units.gb')}")
         self._max_cache.setSingleStep(5.0)
-        self._max_cache.setFixedWidth(120)
+        self._max_cache.setMinimumWidth(120)
         self._max_cache.valueChanged.connect(
             lambda v: self._save("general.max_cache_gb", v))
         cache_layout.addLayout(SettingRow(
@@ -501,7 +501,7 @@ class SettingsView(QWidget):
         self._autosave_interval = QSpinBox()
         self._autosave_interval.setRange(10, 600)
         self._autosave_interval.setSuffix(f" {tr('settings.units.seconds')}")
-        self._autosave_interval.setFixedWidth(120)
+        self._autosave_interval.setMinimumWidth(120)
         self._autosave_interval.valueChanged.connect(
             lambda v: self._save("general.auto_save_interval", v))
         cache_layout.addLayout(SettingRow(tr("settings.cache.autosave_interval"), self._autosave_interval))
@@ -517,7 +517,7 @@ class SettingsView(QWidget):
 
         self._max_versions = QSpinBox()
         self._max_versions.setRange(1, 200)
-        self._max_versions.setFixedWidth(120)
+        self._max_versions.setMinimumWidth(120)
         self._max_versions.valueChanged.connect(
             lambda v: self._save("general.max_project_versions", v))
         cache_layout.addLayout(SettingRow(
@@ -542,7 +542,7 @@ class SettingsView(QWidget):
             tr("settings.recovery.intro")
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 11px;")
+        intro.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-size: 8.25pt;")
         layout.addWidget(intro)
 
         self._recovery_list = QListWidget()
@@ -552,7 +552,7 @@ class SettingsView(QWidget):
         self._recovery_status = QLabel("")
         self._recovery_status.setWordWrap(True)
         self._recovery_status.setStyleSheet(
-            f"color: {Palette.SUBTEXT0}; font-size: 11px;"
+            f"color: {Palette.SUBTEXT0}; font-size: 8.25pt;"
         )
         layout.addWidget(self._recovery_status)
 
@@ -578,7 +578,7 @@ class SettingsView(QWidget):
             self._recovery_refresh_btn, self._recovery_preview_btn,
             self._recovery_clean_btn, self._recovery_reveal_btn,
         ):
-            button.setFixedHeight(30)
+            button.setMinimumHeight(30)
             row.addWidget(button)
         row.addStretch()
         layout.addLayout(row)
@@ -1013,7 +1013,7 @@ class SettingsView(QWidget):
         self._credential_status.setText(text)
         color = Palette.SUBTEXT0 if status.get("available") else Palette.YELLOW
         self._credential_status.setStyleSheet(
-            f"color: {color}; font-size: 11px; padding: 2px 0;"
+            f"color: {color}; font-size: 8.25pt; padding: 2px 0;"
         )
 
     def _update_repair_status(self):

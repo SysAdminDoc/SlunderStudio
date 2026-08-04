@@ -60,7 +60,7 @@ class SFXCard(QFrame):
                 border-color: {t['accent']};
             }}
         """)
-        self.setFixedHeight(92)
+        self.setMinimumHeight(92)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -72,7 +72,7 @@ class SFXCard(QFrame):
             import numpy as np
             mono = result.audio[:, 0] if result.audio.ndim == 2 else result.audio
             self._waveform.load_audio(mono, result.sample_rate)
-        self._waveform.setFixedWidth(120)
+        self._waveform.setMinimumWidth(120)
         layout.addWidget(self._waveform)
 
         # Info
@@ -80,14 +80,14 @@ class SFXCard(QFrame):
         info.setSpacing(2)
         prefix = "DEMO " if result.is_demo else ""
         seed_label = QLabel(f"{prefix}Seed: {result.seed}")
-        seed_label.setStyleSheet(f"color: {t['text']}; font-size: 10px; font-weight: bold;")
+        seed_label.setStyleSheet(f"color: {t['text']}; font-size: 7.5pt; font-weight: bold;")
         dur_label = QLabel(f"{result.duration:.1f}s | {result.generation_time:.1f}s gen")
-        dur_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9px;")
+        dur_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         info.addWidget(seed_label)
         info.addWidget(dur_label)
         if result.is_demo:
             demo_label = QLabel("Demo synthesis")
-            demo_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 9px;")
+            demo_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 6.75pt;")
             info.addWidget(demo_label)
         info.addStretch()
         layout.addLayout(info, 1)
@@ -103,7 +103,7 @@ class SFXCard(QFrame):
                 border: 1px solid {t['border']};
                 border-radius: 3px;
                 padding: 3px 8px;
-                font-size: 9px;
+                font-size: 6.75pt;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
@@ -118,7 +118,7 @@ class SFXCard(QFrame):
         self._use_btn.clicked.connect(lambda: self.use_requested.emit(self.result))
 
         self._delete_btn = QPushButton("X")
-        self._delete_btn.setFixedSize(20, 20)
+        self._delete_btn.setMinimumSize(20, 20)
         self._delete_btn.setStyleSheet(btn_style)
         self._delete_btn.clicked.connect(lambda: self.delete_requested.emit(self))
 
@@ -175,7 +175,7 @@ class SFXView(QWidget):
         ctrl_layout.setSpacing(6)
 
         title = QLabel("Text-to-SFX")
-        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 13px; border: none;")
+        title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
         # Prompt
@@ -186,7 +186,7 @@ class SFXView(QWidget):
             QTextEdit {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 6px; font-size: 12px;
+                padding: 6px; font-size: 9pt;
             }}
         """)
         self._prompt.textChanged.connect(self._refresh_capability_state)
@@ -199,7 +199,7 @@ class SFXView(QWidget):
             QLineEdit {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 4px 8px; font-size: 11px;
+                padding: 4px 8px; font-size: 8.25pt;
             }}
         """)
         ctrl_layout.addWidget(self._neg_prompt)
@@ -208,15 +208,15 @@ class SFXView(QWidget):
             QComboBox, QSpinBox, QDoubleSpinBox {{
                 background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
-                padding: 3px 6px; font-size: 11px;
+                padding: 3px 6px; font-size: 8.25pt;
             }}
-            QLabel {{ color: {t['text_secondary']}; font-size: 11px; border: none; }}
+            QLabel {{ color: {t['text_secondary']}; font-size: 8.25pt; border: none; }}
         """
 
         # Category presets
         cat_row = QHBoxLayout()
         cl = QLabel("Category:")
-        cl.setFixedWidth(60)
+        cl.setMinimumWidth(60)
         cl.setStyleSheet(param_style)
         self._category = QComboBox()
         self._category.addItem("Custom")
@@ -237,7 +237,7 @@ class SFXView(QWidget):
         # Duration + Steps
         row1 = QHBoxLayout()
         dl = QLabel("Duration:")
-        dl.setFixedWidth(60)
+        dl.setMinimumWidth(60)
         dl.setStyleSheet(param_style)
         self._duration = QDoubleSpinBox()
         self._duration.setRange(0.5, 47.0)
@@ -246,7 +246,7 @@ class SFXView(QWidget):
         self._duration.setStyleSheet(param_style)
 
         sl = QLabel("Steps:")
-        sl.setFixedWidth(38)
+        sl.setMinimumWidth(38)
         sl.setStyleSheet(param_style)
         self._steps = QSpinBox()
         self._steps.setRange(20, 200)
@@ -262,7 +262,7 @@ class SFXView(QWidget):
         # CFG + Batch
         row2 = QHBoxLayout()
         cfl = QLabel("CFG:")
-        cfl.setFixedWidth(60)
+        cfl.setMinimumWidth(60)
         cfl.setStyleSheet(param_style)
         self._cfg = QDoubleSpinBox()
         self._cfg.setRange(1.0, 20.0)
@@ -271,7 +271,7 @@ class SFXView(QWidget):
         self._cfg.setStyleSheet(param_style)
 
         bl = QLabel("Batch:")
-        bl.setFixedWidth(38)
+        bl.setMinimumWidth(38)
         bl.setStyleSheet(param_style)
         self._batch = QSpinBox()
         self._batch.setRange(1, 8)
@@ -286,12 +286,12 @@ class SFXView(QWidget):
 
         # Generate button
         self._gen_btn = QPushButton("Generate SFX")
-        self._gen_btn.setFixedHeight(36)
+        self._gen_btn.setMinimumHeight(36)
         self._gen_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
                 color: {t['background']}; border: none; border-radius: 5px;
-                font-weight: bold; font-size: 13px;
+                font-weight: bold; font-size: 9.75pt;
             }}
             QPushButton:hover {{ background: {t['accent_hover']}; }}
             QPushButton:disabled {{ background: {t['border']}; color: {t['muted']}; }}
@@ -302,7 +302,7 @@ class SFXView(QWidget):
         self._demo_checkbox = QCheckBox("Enable demo synthesis (no AI model)")
         self._demo_checkbox.setStyleSheet(f"""
             QCheckBox {{
-                color: {t['text_secondary']}; border: none; font-size: 10px;
+                color: {t['text_secondary']}; border: none; font-size: 7.5pt;
             }}
             QCheckBox::indicator {{
                 width: 13px; height: 13px;
@@ -315,7 +315,7 @@ class SFXView(QWidget):
         self._status = QLabel("")
         self._status.setWordWrap(True)
         self._status.setMinimumHeight(28)
-        self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
+        self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
         ctrl_layout.addWidget(self._status)
 
         self._operation_progress = OperationProgressWidget()
@@ -332,7 +332,7 @@ class SFXView(QWidget):
 
         left_w = QWidget()
         left_w.setLayout(left)
-        left_w.setFixedWidth(340)
+        left_w.setMinimumWidth(340)
         layout.addWidget(left_w)
 
         # ── Right: Results Grid ────────────────────────────────────────────
@@ -341,14 +341,14 @@ class SFXView(QWidget):
 
         results_header = QHBoxLayout()
         rl = QLabel("Generated SFX")
-        rl.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
+        rl.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
 
         self._clear_btn = QPushButton("Clear All")
         self._clear_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['surface']}; color: {t['text_secondary']};
                 border: 1px solid {t['border']}; border-radius: 4px;
-                padding: 4px 10px; font-size: 10px;
+                padding: 4px 10px; font-size: 7.5pt;
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """)
