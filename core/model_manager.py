@@ -463,8 +463,10 @@ def model_hardware_fit(
     )
 
 
-def model_supports_task(info: ModelInfo, task: str) -> bool:
+def model_supports_task(info: Optional[ModelInfo], task: str) -> bool:
     """Return whether a registry model carries the requested task label."""
+    if info is None:
+        return False
     needle = normalize_task_label(task)
     return bool(needle) and any(
         normalize_task_label(label) == needle for label in info.task_labels

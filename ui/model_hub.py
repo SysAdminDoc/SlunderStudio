@@ -1343,6 +1343,12 @@ class ModelHubView(QWidget):
         for model_id, card in self._cards.items():
             info = self._mgr.get_model_info(model_id)
             status = self._mgr.get_status(model_id)
+            if info is None:
+                # A registry refresh can remove a card between layout and
+                # filtering. Treat that transient state as unavailable rather
+                # than dereferencing a stale model record in the Qt callback.
+                card.setVisible(False)
+                continue
             visible = True
             if search and search not in info.name.lower() \
                     and search not in info.description.lower():

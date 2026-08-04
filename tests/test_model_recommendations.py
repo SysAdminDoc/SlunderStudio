@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 from core.model_manager import (
     BUILTIN_MODELS,
     model_hardware_fit,
+    model_supports_task,
     model_tasks,
     recommend_model_for_task,
     vram_tier_for_gb,
@@ -35,6 +36,9 @@ class ModelRecommendationTests(unittest.TestCase):
         self.assertEqual("4–6 GB", vram_tier_for_gb(6))
         self.assertEqual("8–12 GB", vram_tier_for_gb(12))
         self.assertEqual("≥24 GB", vram_tier_for_gb(24.1))
+
+    def test_task_support_is_safe_when_a_card_has_no_registry_info(self):
+        self.assertFalse(model_supports_task(None, "best vocal isolation"))
 
     def test_recommendation_uses_actual_gpu_fit(self):
         hardware = {
