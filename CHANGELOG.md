@@ -4,6 +4,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+## [v0.1.32] - 2026-08-03
+
 - Added Enhanced LRC export from verified humming-to-lyric note alignment, including line- and
   word-level timestamps; incomplete or changed alignment is refused.
 - Added deterministic advisory lyric feedback for end-rhyme coverage and syllable cadence;

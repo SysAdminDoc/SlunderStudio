@@ -1,6 +1,6 @@
 # Slunder Studio
 
-![Version](https://img.shields.io/badge/version-0.1.31-blue)
+![Version](https://img.shields.io/badge/version-0.1.32-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.11--3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)

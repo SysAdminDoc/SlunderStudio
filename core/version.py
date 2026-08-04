@@ -11,7 +11,7 @@ from __future__ import annotations
 
 APP_NAME = "SlunderStudio"
 DISPLAY_NAME = "Slunder Studio"
-__version__ = "0.1.31"
+__version__ = "0.1.32"
 APP_VERSION = __version__
 
 
