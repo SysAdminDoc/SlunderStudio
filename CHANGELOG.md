@@ -10,6 +10,8 @@ All notable changes to SlunderStudio will be documented in this file.
 - Model teardown failures now remain visible as model errors, preserve the active reference until
   release succeeds, block unsafe cache moves, report through Model Hub, and pass only recorded
   per-revision execution consent to model loaders.
+- Added OMS detached-signature verification before model loading. Model Hub and provenance now
+  distinguish verified, invalid, unavailable, and unsigned model signatures.
 - Added the EBU R128 delivery target at -23 LUFS / -1 dBTP, post-normalization true-peak
   protection, and explicit EBU Mode momentary, short-term, and integrated mastering readouts.
 - Fixed project search to match user-facing names and notes without depending on widget order, and

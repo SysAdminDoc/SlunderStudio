@@ -55,6 +55,7 @@ class ModelLicenseMetadataTests(unittest.TestCase):
             self.assertIsNotNone(card._license_warning)
             self.assertIn("Commercial use is limited", card._license_warning.text())
             self.assertIn("Pinned", card._trust_label.text())
+            self.assertIn("OMS signature: unsigned", card._trust_label.text())
         finally:
             card.deleteLater()
 
@@ -119,6 +120,7 @@ class ModelLicenseMetadataTests(unittest.TestCase):
             self.assertEqual(data["model"]["commercial_use"], COMMERCIAL_USE_NON_COMMERCIAL)
             self.assertTrue(data["model"]["requires_export_warning"])
             self.assertIn("commercial use", data["model"]["license_warning"])
+            self.assertEqual("unsigned", data["model"]["signature_status"])
 
     def test_export_carries_source_model_license_warning(self):
         with tempfile.TemporaryDirectory() as tmp:

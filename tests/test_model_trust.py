@@ -6,6 +6,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from model_signing import signing
+
 from core.model_manager import (
     BUILTIN_MODELS,
     COMMERCIAL_USE_ALLOWED,
@@ -13,11 +17,13 @@ from core.model_manager import (
     ModelInfo,
     ModelManager,
     ModelCategory,
+    ModelStatus,
     ModelSecurityError,
     OfflineModeError,
     is_commit_sha,
 )
 from core.voice_bank import VoiceBank, VoiceProfile
+from core.provenance import collect_model_metadata
 from engines.demucs_engine import DemucsEngine, separate_stems
 from engines.midi_llm_engine import MidiLLMEngine
 from engines.rvc_engine import RVCEngine
@@ -115,6 +121,8 @@ class ModelTrustTests(unittest.TestCase):
                 self.assertEqual(manifest["resolved_revision"], "a" * 40)
                 self.assertIn("weights.safetensors", manifest["file_hashes"])
                 self.assertEqual(manifest["serialization"], "safetensors")
+                self.assertEqual("unsigned", manifest["signature_status"])
+                self.assertIn("No OMS signature", manifest["signature_reason"])
 
                 model_file.write_bytes(b"changed")
                 ok, reason = mgr.verify_download("test-model")
@@ -123,6 +131,99 @@ class ModelTrustTests(unittest.TestCase):
             finally:
                 mgr._settings = old_settings
                 mgr._registry = old_registry
+
+    def test_oms_signature_is_verified_before_model_load_and_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            model_dir = root / "signed-model"
+            model_dir.mkdir()
+            cache_root = root / "cache"
+            (model_dir / "weights.safetensors").write_bytes(b"signed weights")
+
+            private_key = ec.generate_private_key(ec.SECP256R1())
+            private_path = root / "signing-key.pem"
+            public_path = root / "signing-key.pub"
+            private_path.write_bytes(
+                private_key.private_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PrivateFormat.TraditionalOpenSSL,
+                    serialization.NoEncryption(),
+                )
+            )
+            public_path.write_bytes(
+                private_key.public_key().public_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PublicFormat.SubjectPublicKeyInfo,
+                )
+            )
+            signature_path = model_dir / "model.sig"
+            signing.Config().use_elliptic_key_signer(
+                private_key=private_path,
+            ).sign(model_dir, signature_path)
+
+            mgr = ModelManager()
+            old_settings = mgr._settings
+            old_registry = mgr._registry
+            old_status = mgr._status
+            try:
+                mgr._settings = type(
+                    "SettingsStub",
+                    (),
+                    {"get": lambda _self, key, default=None: str(cache_root) if key == "model_hub.cache_dir" else default},
+                )()
+                info = ModelInfo(
+                    model_id="signed-model",
+                    name="Signed Model",
+                    description="Test",
+                    category=ModelCategory.EXTRAS,
+                    vram_gb=1.0,
+                    disk_gb=0.001,
+                    license="MIT",
+                    source="example/signed-model",
+                    revision="e" * 40,
+                    loader_module="engines.sfx_engine",
+                    loader_fn="load_model",
+                    signature_path="model.sig",
+                    signature_public_key=str(public_path),
+                )
+                mgr._registry = {"signed-model": info}
+                mgr._status = {"signed-model": ModelStatus.DOWNLOADED}
+                cache_dir = mgr.get_cache_dir("signed-model")
+                cache_dir.mkdir(parents=True)
+                for source in model_dir.iterdir():
+                    (cache_dir / source.name).write_bytes(source.read_bytes())
+                mgr._write_complete_marker(
+                    "signed-model",
+                    cache_dir,
+                    resolved_revision=info.revision,
+                )
+
+                ok, reason = mgr.verify_download("signed-model")
+                self.assertTrue(ok, reason)
+                manifest = mgr.get_download_manifest("signed-model")
+                self.assertEqual("verified", manifest["signature_status"])
+                self.assertEqual("model.sig", Path(manifest["signature_path"]).name)
+                self.assertIn("OMS signature verified", manifest["signature_reason"])
+                provenance_model = collect_model_metadata("signed-model")
+                self.assertEqual("verified", provenance_model["signature_status"])
+
+                with patch.object(mgr, "_dynamic_load", return_value=object()) as loader:
+                    mgr.load_model("signed-model")
+                    loader.assert_called_once()
+                mgr.unload()
+
+                (cache_dir / "weights.safetensors").write_bytes(b"tampered")
+                ok, reason = mgr.verify_download("signed-model")
+                self.assertFalse(ok)
+                self.assertIn("Hash mismatch", reason)
+            finally:
+                try:
+                    mgr.unload()
+                except Exception:
+                    pass
+                mgr._settings = old_settings
+                mgr._registry = old_registry
+                mgr._status = old_status
 
     def test_verification_rejects_unhashed_and_undeclared_executable_files(self):
         with tempfile.TemporaryDirectory() as tmp:

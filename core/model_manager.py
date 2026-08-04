@@ -21,6 +21,14 @@ from core.settings import Settings, get_config_dir
 from core.device import configured_cuda_index
 from core.trash import TrashEntry, TrashError, TrashManager
 from core.model_security import ModelSecurityError
+from core.model_signatures import (
+    SIGNATURE_MISSING,
+    SIGNATURE_UNSIGNED,
+    SIGNATURE_VERIFIED,
+    SignatureVerification,
+    signature_metadata_label,
+    verify_oms_signature,
+)
 from core.engine_contract import (
     ActivationOutcome,
     CapabilityReadiness,
@@ -192,6 +200,11 @@ class ModelInfo:
     vram_tier: str = ""
     cpu_supported: bool = True
     mps_supported: bool = True
+    signature_path: str = ""
+    signature_identity: str = ""
+    signature_oidc_issuer: str = ""
+    signature_public_key: str = ""
+    signature_certificate_chain: list[str] = field(default_factory=list)
 
     @property
     def commercial_use_label(self) -> str:
@@ -962,6 +975,44 @@ class ModelManager(QObject):
             ):
                 if key in manifest and manifest[key] not in ("", None):
                     metadata[key] = manifest[key]
+        return metadata
+
+    def get_model_signature_metadata(self, model_id: str) -> dict[str, Any]:
+        """Return the persisted OMS state without treating an unsigned model as verified."""
+        info = self.get_model_info(model_id)
+        manifest = self.get_download_manifest(model_id)
+        if manifest:
+            metadata = {
+                "signature_status": manifest.get("signature_status", SIGNATURE_UNSIGNED),
+                "signature_reason": manifest.get("signature_reason", ""),
+                "signature_path": manifest.get("signature_path", ""),
+                "signature_identity": manifest.get("signature_identity", ""),
+                "signature_oidc_issuer": manifest.get("signature_oidc_issuer", ""),
+                "signature_verifier": manifest.get("signature_verifier", ""),
+            }
+        else:
+            expected = bool(info and info.signature_path)
+            metadata = {
+                "signature_status": SIGNATURE_MISSING if expected else SIGNATURE_UNSIGNED,
+                "signature_reason": (
+                    "An OMS signature is expected when this model is downloaded."
+                    if expected
+                    else "No OMS signature was published with this model revision."
+                ),
+                "signature_path": info.signature_path if info else "",
+                "signature_identity": info.signature_identity if info else "",
+                "signature_oidc_issuer": info.signature_oidc_issuer if info else "",
+                "signature_verifier": (
+                    "OMS public key"
+                    if info and info.signature_public_key
+                    else "OMS certificate chain"
+                    if info and info.signature_certificate_chain
+                    else "Sigstore identity"
+                    if info and info.signature_identity and info.signature_oidc_issuer
+                    else ""
+                ),
+            }
+        metadata["label"] = signature_metadata_label(metadata)
         return metadata
 
     def get_status(self, model_id: str) -> ModelStatus:
@@ -1848,6 +1899,17 @@ class ModelManager(QObject):
                 resolved_revision=resolved_revision,
             )
 
+            verified, verification_reason = self.verify_download(
+                model_id,
+                full_hash=True,
+            )
+            if not verified:
+                self._set_status(model_id, ModelStatus.ERROR)
+                raise ModelSecurityError(
+                    f"{info.name} was downloaded but cannot be activated: "
+                    f"{verification_reason}"
+                )
+
             self._set_status(model_id, ModelStatus.DOWNLOADED)
             if progress_cb:
                 progress_cb(100)
@@ -1945,6 +2007,14 @@ class ModelManager(QObject):
         marker = cache_path / self.COMPLETE_MARKER
         license_meta = info.license_metadata() if info else {}
         serialization = _serialization_summary(file_hashes)
+        signature = (
+            verify_oms_signature(cache_path, info)
+            if info is not None
+            else SignatureVerification(
+                status=SIGNATURE_UNSIGNED,
+                reason="No OMS signature was published with this model revision.",
+            )
+        )
         marker.write_text(json.dumps({
             "model_id": model_id,
             "timestamp": _time.time(),
@@ -1974,6 +2044,7 @@ class ModelManager(QObject):
             "ignore_patterns": info.ignore_patterns if info else [],
             "resolved_path": resolved_path,
             "file_hashes": file_hashes,
+            **signature.as_manifest_fields(),
         }, indent=2))
 
     def get_download_manifest(self, model_id: str) -> dict:
@@ -2057,7 +2128,17 @@ class ModelManager(QObject):
                     actual_hash = hash_file_sha256(path)
                     if actual_hash != expected_hash:
                         return False, f"Hash mismatch: {rel_path}"
-            return True, "OK"
+
+            signature = verify_oms_signature(cache_path, info)
+            signature_fields = signature.as_manifest_fields()
+            if any(meta.get(key) != value for key, value in signature_fields.items()):
+                meta.update(signature_fields)
+                marker.write_text(json.dumps(meta, indent=2))
+            if not signature.is_acceptable:
+                return False, f"OMS signature {signature.status}: {signature.reason}"
+            if signature.status == SIGNATURE_VERIFIED:
+                return True, "OK (OMS signature verified)"
+            return True, "OK (unsigned)"
         except Exception as e:
             return False, f"Marker corrupted: {e}"
 

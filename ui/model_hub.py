@@ -292,11 +292,13 @@ class ModelCard(QFrame):
             )
         else:
             trust_text = f"No pinned revision or model cache hash - {trust_status}"
+        self._base_trust_text = trust_text
         trust = QLabel(trust_text)
         trust.setWordWrap(True)
         trust.setStyleSheet(f"font-size: 7.5pt; color: {Palette.SUBTEXT0};")
         layout.addWidget(trust)
         self._trust_label = trust
+        self._refresh_signature_label()
 
         measurement_text = self.info.measurement_basis or "No published measurement basis recorded."
         measurement_date = self.info.measurement_date or "undated"
@@ -432,6 +434,13 @@ class ModelCard(QFrame):
             ],
         )
 
+    def _refresh_signature_label(self):
+        """Keep the card's trust copy explicit about OMS signature state."""
+        metadata = ModelManager().get_model_signature_metadata(self.model_id)
+        label = metadata.get("label", "OMS signature: unsigned")
+        self._trust_label.setText(f"{self._base_trust_text} - {label}")
+        self._trust_label.setToolTip(metadata.get("signature_reason", ""))
+
     def _on_action(self):
         mgr = ModelManager()
         status = mgr.get_status(self.model_id)
@@ -454,6 +463,7 @@ class ModelCard(QFrame):
         """Update the card visual state based on model status."""
         btn = self._action_btn
         readiness = ModelManager().get_model_readiness(self.model_id)
+        self._refresh_signature_label()
         self._delete_btn.setVisible(False)
         self._delete_btn.setEnabled(False)
 

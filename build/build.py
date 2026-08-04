@@ -202,7 +202,9 @@ def _locked_packages(path: Path) -> dict[str, str]:
     if not path.is_file():
         raise RuntimeError(f"Required lock file is missing: {path}")
     packages: dict[str, str] = {}
-    pattern = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9_.-]*)==([^\s\\]+)")
+    pattern = re.compile(
+        r"^\s*([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[^\]]+\])?==([^\s\\]+)"
+    )
     for line in path.read_text(encoding="utf-8").splitlines():
         match = pattern.match(line)
         if match:

@@ -53,7 +53,9 @@ class ModelDownloadCancellationTests(unittest.TestCase):
             with (
                 mock.patch.object(self.manager, "get_cache_dir", return_value=cache),
                 mock.patch.object(
-                    self.manager, "_resolve_hf_revision", return_value="resolved"
+                    self.manager,
+                    "_resolve_hf_revision",
+                    return_value=self.info.revision,
                 ),
                 mock.patch("huggingface_hub.snapshot_download", fake_snapshot_download),
             ):
@@ -87,7 +89,9 @@ class ModelDownloadCancellationTests(unittest.TestCase):
             with (
                 mock.patch.object(self.manager, "get_cache_dir", return_value=cache),
                 mock.patch.object(
-                    self.manager, "_resolve_hf_revision", return_value="resolved"
+                    self.manager,
+                    "_resolve_hf_revision",
+                    return_value=self.info.revision,
                 ),
                 mock.patch("huggingface_hub.snapshot_download", fake_snapshot_download),
             ):

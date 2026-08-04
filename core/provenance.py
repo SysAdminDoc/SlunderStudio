@@ -210,6 +210,12 @@ def collect_model_metadata(
         "serialization": "",
         "gated": None,
         "access": "",
+        "signature_status": "unsigned",
+        "signature_reason": "No OMS signature was published with this model revision.",
+        "signature_path": "",
+        "signature_identity": "",
+        "signature_oidc_issuer": "",
+        "signature_verifier": "",
     }
     if not model_id:
         return metadata
@@ -240,7 +246,19 @@ def collect_model_metadata(
                 ),
                 "gated": info.gated,
                 "access": license_meta.get("access", ""),
+                "signature_identity": info.signature_identity,
+                "signature_oidc_issuer": info.signature_oidc_issuer,
             })
+
+        signature_meta = mgr.get_model_signature_metadata(model_id)
+        metadata.update({
+            "signature_status": signature_meta.get("signature_status", "unsigned"),
+            "signature_reason": signature_meta.get("signature_reason", ""),
+            "signature_path": signature_meta.get("signature_path", ""),
+            "signature_identity": signature_meta.get("signature_identity", ""),
+            "signature_oidc_issuer": signature_meta.get("signature_oidc_issuer", ""),
+            "signature_verifier": signature_meta.get("signature_verifier", ""),
+        })
 
         manifest = mgr.get_download_manifest(model_id)
         if manifest:
@@ -264,6 +282,16 @@ def collect_model_metadata(
                 "total_bytes": manifest.get("total_bytes", 0),
                 "access": metadata["access"] or manifest.get("access", ""),
                 "serialization": manifest.get("serialization", ""),
+                "signature_status": manifest.get("signature_status", "unsigned"),
+                "signature_reason": manifest.get("signature_reason", ""),
+                "signature_path": manifest.get("signature_path", ""),
+                "signature_identity": manifest.get(
+                    "signature_identity", metadata["signature_identity"]
+                ),
+                "signature_oidc_issuer": manifest.get(
+                    "signature_oidc_issuer", metadata["signature_oidc_issuer"]
+                ),
+                "signature_verifier": manifest.get("signature_verifier", ""),
             })
         if info is None and not manifest:
             _mark_model_metadata_indeterminate(metadata, "model_not_registered")
@@ -850,6 +878,9 @@ def project_metadata_from_provenance(
             "model_license_warning": model.get("license_warning", ""),
             "model_revision": model.get("resolved_revision") or model.get("revision", ""),
             "model_hash": model.get("hash", ""),
+            "model_signature_status": model.get("signature_status", "unsigned"),
+            "model_signature_reason": model.get("signature_reason", ""),
+            "model_signature_identity": model.get("signature_identity", ""),
             "seed": provenance.get("seed"),
             "prompt": provenance.get("prompt", ""),
             "lyrics": provenance.get("lyrics", ""),

@@ -10,6 +10,7 @@ librosa>=0.10
 scipy>=1.18
 psutil>=5.9
 tqdm>=4.0
+model-signing==1.1.1  # OMS model signature verification
 
 # ── Optional: AI Models ─────────────────────────────────────────────
 # Do not install broad AI minimums into the application environment.

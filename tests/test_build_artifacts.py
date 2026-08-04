@@ -67,6 +67,20 @@ class BuildArtifactTests(unittest.TestCase):
         self.assertRegex(requirements, r"(?m)^pyinstaller==[0-9.]+$")
         self.assertRegex(lock, r"(?m)^pyinstaller==[0-9.]+ \\")
 
+    def test_locked_packages_normalizes_requirement_extras(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "requirements-lock.txt"
+            lock.write_text(
+                "pydantic[email]==2.13.4 \\\n+    --hash=sha256:example\n"
+                "model-signing==1.1.1 \\\n+    --hash=sha256:example\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                self.build_script._locked_packages(lock),
+                {"pydantic": "2.13.4", "model-signing": "1.1.1"},
+            )
+
     def test_reproducible_environment_sets_hash_and_source_controls(self):
         with mock.patch.object(self.build_script, "source_date_epoch", return_value="1700000000"):
             environment = self.build_script.reproducible_build_environment(
