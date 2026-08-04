@@ -28,6 +28,7 @@ from core.audio_export import (
 )
 from core.audio_buffers import (
     decode_audio_file,
+    mixdown_audio,
     normalize_channel_layout,
     prepare_audio_buffer,
     validate_audio_buffer,
@@ -80,35 +81,26 @@ def _mix_track_snapshots(
         if progress_cb:
             progress_cb(int(position * 45 / total))
 
-    max_len = max((len(audio) for audio in prepared_tracks), default=0)
-    if max_len == 0:
-        return None
-
-    soloed = [snapshot for snapshot in track_snapshots if snapshot[5]]
-    active = soloed if soloed else [snapshot for snapshot in track_snapshots if not snapshot[4]]
-    active_ids = {id(snapshot) for snapshot in active}
-    output = np.zeros((max_len, 2), dtype=np.float32)
-
-    for index, snapshot in enumerate(track_snapshots):
-        if _cancelled():
-            raise CancelledJobError("Mixer operation cancelled")
-        if id(snapshot) not in active_ids:
-            continue
-        audio = prepared_tracks[index]
-        length = min(len(audio), max_len)
-        _volume, _pan = snapshot[2], snapshot[3]
-        left_gain, right_gain = pan_gains(_pan, _volume)
-        output[:length, 0] += audio[:length, 0] * left_gain
-        output[:length, 1] += audio[:length, 1] * right_gain
-        if progress_cb:
-            progress_cb(45 + int((index + 1) * 45 / total))
-
-    peak = np.max(np.abs(output))
-    if peak > 1.0:
-        output /= peak
+    mixed = mixdown_audio(
+        [
+            (
+                audio,
+                snapshot[2],
+                snapshot[3],
+                snapshot[4],
+                snapshot[5],
+            )
+            for audio, snapshot in zip(prepared_tracks, track_snapshots)
+        ],
+        progress_cb=(
+            (lambda value: progress_cb(45 + int(value * 0.5)))
+            if progress_cb else None
+        ),
+        cancel_event=cancel_event,
+    )
     if progress_cb:
         progress_cb(95)
-    return output
+    return mixed
 
 
 def _master_audio_task(
@@ -1463,35 +1455,20 @@ class MixerView(QWidget):
                     target_channels=2,
                 )
             prepared_tracks.append(audio)
-        max_len = max((len(audio) for audio in prepared_tracks), default=0)
-        if max_len == 0:
-            return None
-
-        soloed = [s for s in self._strips if s.is_soloed]
-        active = soloed if soloed else [s for s in self._strips if not s.is_muted]
-
-        output = np.zeros((max_len, 2), dtype=np.float32)
-
-        for strip in active:
-            if strip.track_idx >= len(self._tracks):
-                continue
-            audio = prepared_tracks[strip.track_idx]
-
-            length = min(len(audio), max_len)
-            vol = strip.volume
-            pan = strip.pan
-
-            # Constant-power pan law, shared with the other mixer.
-            left_gain, right_gain = pan_gains(pan, vol)
-
-            output[:length, 0] += audio[:length, 0] * left_gain
-            output[:length, 1] += audio[:length, 1] * right_gain
-
-        peak = np.max(np.abs(output))
-        if peak > 1.0:
-            output /= peak
-
-        return output
+        return mixdown_audio(
+            [
+                (
+                    prepared_tracks[strip.track_idx]
+                    if 0 <= strip.track_idx < len(prepared_tracks)
+                    else None,
+                    strip.volume,
+                    strip.pan,
+                    strip.is_muted,
+                    strip.is_soloed,
+                )
+                for strip in self._strips
+            ]
+        )
 
     # ── Mastering + Export ─────────────────────────────────────────────────────
 

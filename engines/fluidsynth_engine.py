@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
+from core.audio_export import write_audio_file
 from core.provenance import sidecar_path_for, write_provenance_sidecar
 from core.settings import get_config_dir, get_configured_output_dir
 from core.midi_utils import MidiData, save_midi
@@ -289,13 +290,13 @@ class FluidSynthEngine:
         )
 
         s = self._settings
-        int_audio = (audio * 32767).clip(-32768, 32767).astype(np.int16)
-
-        with wave.open(output_path, "w") as wf:
-            wf.setnchannels(s.channels)
-            wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(s.sample_rate)
-            wf.writeframes(int_audio.tobytes())
+        write_audio_file(
+            output_path,
+            audio,
+            s.sample_rate,
+            file_format="wav",
+            channels=s.channels,
+        )
 
         write_provenance_sidecar(
             output_path,
@@ -579,12 +580,13 @@ def render_midi_to_audio(midi_data: MidiData,
 
     if output_path:
         _raise_if_cancelled(cancel_event)
-        int_audio = (audio * 32767).clip(-32768, 32767).astype(np.int16)
-        with wave.open(output_path, "w") as wf:
-            wf.setnchannels(2)
-            wf.setsampwidth(2)
-            wf.setframerate(44100)
-            wf.writeframes(int_audio.tobytes())
+        write_audio_file(
+            output_path,
+            audio,
+            44100,
+            file_format="wav",
+            channels=2,
+        )
         write_provenance_sidecar(
             output_path,
             module="midi_studio",

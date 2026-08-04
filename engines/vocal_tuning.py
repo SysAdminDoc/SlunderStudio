@@ -10,6 +10,7 @@ from typing import Callable
 
 import numpy as np
 
+from core.audio_export import write_audio_file
 from core.provenance import write_provenance_sidecar
 from core.settings import get_configured_output_dir
 
@@ -110,7 +111,14 @@ def autotune_file(
         return _cancelled_result(output_path, sr, duration, strength)
 
     tuned = _match_peak(tuned, audio)
-    sf.write(str(output_path), tuned, sr, subtype="PCM_16")
+    write_audio_file(
+        output_path,
+        tuned,
+        sr,
+        file_format="wav",
+        bit_depth=16,
+        channels=1,
+    )
     if progress_cb:
         progress_cb(95)
     write_provenance_sidecar(

@@ -16,6 +16,7 @@ from ui.theme import Palette, ThemeEngine, rgba
 from ui.accessibility import install_accessibility
 from ui.widgets import ElidedLabel
 from ui.waveform_widget import MiniWaveform
+from core.audio_buffers import mixdown_audio
 from core.panning import pan_gains
 
 
@@ -301,49 +302,18 @@ class StemMixer(QWidget):
         """Mix stems according to current volume/pan/mute/solo settings."""
         if not self._strips:
             return None
-
-        # Find max length
-        max_len = 0
-        for strip in self._strips.values():
-            if strip.audio is not None:
-                max_len = max(max_len, len(strip.audio))
-
-        if max_len == 0:
-            return None
-
-        # Check for solo
-        soloed = [s for s in self._strips.values() if s.is_soloed]
-        active_strips = soloed if soloed else [
-            s for s in self._strips.values() if not s.is_muted
-        ]
-
-        # Mix
-        output = np.zeros((max_len, 2), dtype=np.float32)
-
-        for strip in active_strips:
-            if strip.audio is None:
-                continue
-
-            audio = strip.audio
-            if audio.ndim == 1:
-                audio = np.column_stack([audio, audio])
-
-            length = min(len(audio), max_len)
-            vol = strip.volume
-            pan = strip.pan  # -1.0 to 1.0
-
-            # Constant-power pan law, shared with the other mixer.
-            left_gain, right_gain = pan_gains(pan, vol)
-
-            output[:length, 0] += audio[:length, 0] * left_gain
-            output[:length, 1] += audio[:length, 1] * right_gain
-
-        # Normalize
-        peak = np.max(np.abs(output))
-        if peak > 1.0:
-            output /= peak
-
-        return output
+        return mixdown_audio(
+            [
+                (
+                    strip.audio,
+                    strip.volume,
+                    strip.pan,
+                    strip.is_muted,
+                    strip.is_soloed,
+                )
+                for strip in self._strips.values()
+            ]
+        )
 
     def get_stem_names(self) -> list[str]:
         return list(self._strips.keys())

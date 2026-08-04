@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import numpy as np
+
+from core.panning import pan_gains
 
 
 MIN_SAMPLE_RATE = 8_000
@@ -14,6 +16,70 @@ MAX_SAMPLE_RATE = 384_000
 
 class AudioBufferError(ValueError):
     """Raised when an audio buffer cannot safely enter a processing graph."""
+
+
+def mixdown_audio(
+    layers: Sequence[tuple[np.ndarray | None, float, float, bool, bool]],
+    *,
+    normalize_peak: bool = True,
+    progress_cb=None,
+    cancel_event=None,
+) -> Optional[np.ndarray]:
+    """Mix prepared audio layers with one deterministic volume/pan contract.
+
+    Each layer is ``(audio, volume, pan, muted, soloed)``. Audio is normalized
+    to stereo before summing, solo selection is applied consistently, and an
+    over-range result is peak-normalized to 0 dBFS. The helper owns the
+    cancellation boundary so GUI and worker callers share the same behavior.
+    """
+    prepared: list[tuple[np.ndarray, float, float, bool, bool]] = []
+    for audio, volume, pan, muted, soloed in layers:
+        if audio is None or np.asarray(audio).size == 0:
+            continue
+        prepared.append(
+            (
+                normalize_channel_layout(audio, target_channels=2),
+                float(volume),
+                float(pan),
+                bool(muted),
+                bool(soloed),
+            )
+        )
+
+    if not prepared:
+        if progress_cb:
+            progress_cb(100)
+        return None
+
+    def _raise_if_cancelled():
+        if cancel_event is not None and cancel_event.is_set():
+            from core.workers import CancelledJobError
+
+            raise CancelledJobError("Audio mixdown cancelled")
+
+    max_len = max(len(audio) for audio, *_ in prepared)
+    soloed = any(layer[4] for layer in prepared)
+    output = np.zeros((max_len, 2), dtype=np.float32)
+    total = max(len(prepared), 1)
+    for index, (audio, volume, pan, muted, is_soloed) in enumerate(prepared, 1):
+        _raise_if_cancelled()
+        if (soloed and not is_soloed) or (not soloed and muted):
+            if progress_cb:
+                progress_cb(int(index * 100 / total))
+            continue
+        length = min(len(audio), max_len)
+        left_gain, right_gain = pan_gains(pan, volume)
+        output[:length, 0] += audio[:length, 0] * left_gain
+        output[:length, 1] += audio[:length, 1] * right_gain
+        if progress_cb:
+            progress_cb(int(index * 100 / total))
+
+    _raise_if_cancelled()
+    if normalize_peak:
+        peak = float(np.max(np.abs(output))) if output.size else 0.0
+        if peak > 1.0:
+            output /= peak
+    return np.ascontiguousarray(output, dtype=np.float32)
 
 
 def validate_sample_rate(sample_rate: int) -> int:

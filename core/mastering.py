@@ -397,6 +397,9 @@ def measure_true_peak_db(audio: np.ndarray, sr: int) -> float:
     if sr >= 96000:
         factor = 2
     try:
+        # Deliberate exception to the signal-chain resampler: this is an
+        # analysis-only reconstruction for inter-sample peak measurement and
+        # never changes the audio buffer's processing sample rate.
         from scipy.signal import resample_poly
 
         upsampled = resample_poly(array, factor, 1, axis=0)

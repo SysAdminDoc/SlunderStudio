@@ -11,6 +11,8 @@ from pathlib import Path
 
 import numpy as np
 
+from core.audio_buffers import resample_audio
+from core.audio_export import write_audio_file
 from core.provenance import sidecar_path_for, write_provenance_sidecar
 from core.settings import get_configured_output_dir
 from core.device import configured_torch_device
@@ -242,7 +244,9 @@ class DemucsEngine:
             # Resample to model sample rate if needed
             model_sr = self._model.samplerate
             if sr != model_sr:
-                wav = torchaudio.functional.resample(wav, sr, model_sr)
+                wav = torch.from_numpy(
+                    resample_audio(wav.numpy().T, sr, model_sr).T
+                )
                 sr = model_sr
 
             # Ensure stereo
@@ -340,12 +344,9 @@ class DemucsEngine:
             # Resample if needed
             model_sr = self._model.samplerate
             if sample_rate != model_sr:
-                try:
-                    import torchaudio
-                    wav = torchaudio.functional.resample(wav, sample_rate, model_sr)
-                except ImportError:
-                    # torchaudio not available — skip resampling, model will handle mismatch
-                    pass
+                wav = torch.from_numpy(
+                    resample_audio(wav.numpy().T, sample_rate, model_sr).T
+                )
 
             wav = wav.unsqueeze(0).to(self._device)
 
@@ -392,7 +393,6 @@ class DemucsEngine:
     def _save_stem(self, audio: np.ndarray, sr: int, stem_name: str,
                    input_path: str) -> str:
         """Save a stem to WAV file."""
-        import wave
         from core.separator_registry import (
             checkpoint_id_for_demucs_model,
             get_separator_checkpoint,
@@ -404,14 +404,13 @@ class DemucsEngine:
         os.makedirs(stem_dir, exist_ok=True)
         path = os.path.join(stem_dir, f"{stem_name}.wav")
 
-        # Convert to int16
-        int_audio = (audio * 32767).clip(-32768, 32767).astype(np.int16)
-
-        with wave.open(path, "w") as wf:
-            wf.setnchannels(audio.shape[1] if audio.ndim == 2 else 1)
-            wf.setsampwidth(2)
-            wf.setframerate(sr)
-            wf.writeframes(int_audio.tobytes())
+        write_audio_file(
+            path,
+            audio,
+            sr,
+            file_format="wav",
+            channels=audio.shape[1] if audio.ndim == 2 else 1,
+        )
 
         checkpoint = get_separator_checkpoint(
             checkpoint_id_for_demucs_model(self._model_name or "htdemucs")

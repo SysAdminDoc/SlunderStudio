@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from core.audio_export import write_audio_file
 from core.provenance import write_provenance_sidecar
 from core.settings import get_configured_output_dir
 from core.device import configured_torch_device
@@ -408,7 +409,6 @@ class SFXEngine:
 
     def _save_sfx(self, audio: np.ndarray, sr: int, prompt: str) -> str:
         """Save SFX to WAV."""
-        import wave
         safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in prompt[:40])
         ts = time.strftime("%Y%m%d_%H%M%S")
         path = os.path.join(self._output_dir, f"sfx_{safe_name}_{ts}.wav")
@@ -416,12 +416,7 @@ class SFXEngine:
         if audio.ndim == 1:
             audio = np.column_stack([audio, audio])
 
-        int_audio = (audio * 32767).clip(-32768, 32767).astype(np.int16)
-        with wave.open(path, "w") as wf:
-            wf.setnchannels(2)
-            wf.setsampwidth(2)
-            wf.setframerate(sr)
-            wf.writeframes(int_audio.tobytes())
+        write_audio_file(path, audio, sr, file_format="wav", channels=2)
 
         return path
 

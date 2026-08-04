@@ -15,7 +15,11 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 
-from core.audio_buffers import resample_audio
+from core.audio_buffers import (
+    normalize_channel_layout,
+    resample_audio,
+    validate_audio_buffer,
+)
 from core.provenance import read_provenance_sidecar, write_provenance_sidecar
 
 
@@ -315,6 +319,7 @@ def _write_audio_file(
     sample_rate: int,
     *,
     subtype: str,
+    file_format: Optional[str] = None,
     progress_cb=None,
     cancel_event=None,
 ) -> None:
@@ -331,13 +336,15 @@ def _write_audio_file(
 
     total_frames = len(frames)
     try:
-        with sf.SoundFile(
-            str(path),
-            mode="w",
-            samplerate=int(sample_rate),
-            channels=int(channels),
-            subtype=subtype,
-        ) as target:
+        sound_file_kwargs = {
+            "mode": "w",
+            "samplerate": int(sample_rate),
+            "channels": int(channels),
+            "subtype": subtype,
+        }
+        if file_format:
+            sound_file_kwargs["format"] = file_format.upper()
+        with sf.SoundFile(str(path), **sound_file_kwargs) as target:
             if progress_cb:
                 progress_cb(0)
             for start in range(0, total_frames, 1_048_576):
@@ -356,6 +363,66 @@ def _write_audio_file(
         if isinstance(exc, CancelledJobError) and os.path.exists(path):
             os.remove(path)
         raise
+
+
+def write_audio_file(
+    path: str | Path,
+    audio: np.ndarray,
+    sample_rate: int,
+    *,
+    file_format: Optional[str] = None,
+    bit_depth: Optional[int] = None,
+    channels: Optional[int] = None,
+    progress_cb=None,
+    cancel_event=None,
+) -> str:
+    """Write a lossless audio artifact through the shared settings-aware path.
+
+    Engine outputs pass their native sample rate explicitly while bit depth
+    defaults to Settings. The array layout determines channel count unless a
+    mono/stereo ``channels`` target is requested. Lossy delivery remains owned
+    by :func:`export_audio`, which adds its ffmpeg conversion and metadata.
+    """
+    output_path = Path(path)
+    output_format = (file_format or output_path.suffix.lstrip(".") or "wav").lower()
+    if output_format not in LOSSLESS_FORMATS:
+        raise ValueError(
+            f"Shared audio writer only accepts lossless formats: {output_format}"
+        )
+    if isinstance(sample_rate, bool):
+        raise ValueError("Sample rate must be an integer")
+    requested_rate = sample_rate
+    try:
+        sample_rate = int(requested_rate)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Sample rate must be an integer") from exc
+    if sample_rate != requested_rate or not 1 <= sample_rate <= 384_000:
+        raise ValueError("Sample rate must be between 1 and 384000 Hz")
+    if channels is not None:
+        frames = normalize_channel_layout(audio, target_channels=int(channels))
+    else:
+        frames = validate_audio_buffer(audio)
+    if bit_depth is None:
+        bit_depth = configured_export_settings().bit_depth
+    if bit_depth not in {16, 24, 32}:
+        raise ValueError("Bit depth must be 16, 24, or 32")
+    if output_format == "wav":
+        subtype = {16: "PCM_16", 24: "PCM_24", 32: "FLOAT"}[bit_depth]
+    else:
+        # libsndfile's FLAC writer supports integer PCM up to 24 bits. Keep
+        # the configured setting deterministic rather than silently using 16.
+        subtype = {16: "PCM_16", 24: "PCM_24", 32: "PCM_24"}[bit_depth]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_audio_file(
+        str(output_path),
+        frames,
+        sample_rate,
+        subtype=subtype,
+        file_format=output_format,
+        progress_cb=progress_cb,
+        cancel_event=cancel_event,
+    )
+    return str(output_path)
 
 
 def _find_ffmpeg() -> Optional[str]:
@@ -755,7 +822,13 @@ def trim_audio(
     if fade_in_ms > 0 or fade_out_ms > 0:
         trimmed = apply_fade(trimmed, sr, fade_in_ms, fade_out_ms)
 
-    sf.write(output_path, trimmed, sr, subtype="PCM_16")
+    write_audio_file(
+        output_path,
+        trimmed,
+        sr,
+        file_format=Path(output_path).suffix.lstrip(".") or "wav",
+        bit_depth=16,
+    )
     write_provenance_sidecar(
         output_path,
         module="export",

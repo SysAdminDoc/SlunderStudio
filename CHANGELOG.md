@@ -34,6 +34,11 @@ All notable changes to SlunderStudio will be documented in this file.
 - Made first-run setup actionable: onboarding now saves the output folder and experience level,
   collects a HuggingFace token before gated downloads, offers remediation actions for failed system
   checks, and carries a selected core model into Model Hub for review or download.
+- Consolidated lossless audio writing and mixdown across engines, Mixer, Stem Mixer, and trim/export
+  paths. Writers now preserve native sample rates and mono/stereo layouts while honoring the shared
+  16/24/32-bit WAV setting; all signal-chain rate conversion uses the canonical polyphase helper.
+  True-peak oversampling remains explicitly analysis-only, and structural tests prevent duplicate
+  WAV or SoundFile writers from returning.
 
 ## [v0.1.31] - 2026-08-02
 

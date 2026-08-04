@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from core.audio_export import write_audio_file
 from core.provenance import file_sha256, write_provenance_sidecar
 from core.settings import get_configured_output_dir
 from core.device import configured_torch_device
@@ -612,20 +613,18 @@ class RVCEngine:
         if result.audio is None or not result.can_route:
             return None
 
-        import wave
-
         if name is None:
             ts = time.strftime("%Y%m%d_%H%M%S")
             name = f"rvc_{ts}"
 
         path = os.path.join(self._output_dir, f"{name}.wav")
-        int_audio = (result.audio * 32767).clip(-32768, 32767).astype(np.int16)
-
-        with wave.open(path, "w") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(result.sample_rate)
-            wf.writeframes(int_audio.tobytes())
+        write_audio_file(
+            path,
+            result.audio,
+            result.sample_rate,
+            file_format="wav",
+            channels=1,
+        )
 
         prov = result.provenance or {}
         active_profile = profile or self._profile
@@ -909,17 +908,17 @@ class GPTSoVITSEngine:
     ) -> Optional[str]:
         if result.audio is None or not result.can_route:
             return None
-        import wave
         if name is None:
             ts = time.strftime("%Y%m%d_%H%M%S")
             name = f"clone_{ts}"
         path = os.path.join(self._output_dir, f"{name}.wav")
-        int_audio = (result.audio * 32767).clip(-32768, 32767).astype(np.int16)
-        with wave.open(path, "w") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(result.sample_rate)
-            wf.writeframes(int_audio.tobytes())
+        write_audio_file(
+            path,
+            result.audio,
+            result.sample_rate,
+            file_format="wav",
+            channels=1,
+        )
         prov = result.provenance or {}
         active_profile = profile or self._profile
         extra = dict(prov.get("extra", {}))

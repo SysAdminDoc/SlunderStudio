@@ -8,7 +8,6 @@ import os
 import time
 import threading
 import uuid
-import wave
 from pathlib import Path
 from typing import Any, Optional, Callable
 from dataclasses import asdict, dataclass, field
@@ -16,7 +15,8 @@ from enum import Enum
 
 import numpy as np
 
-from core.audio_buffers import normalize_channel_layout, resample_audio
+from core.audio_buffers import mixdown_audio, normalize_channel_layout, resample_audio
+from core.audio_export import write_audio_file
 from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir, get_configured_output_dir
 
@@ -749,12 +749,8 @@ class AIProducer:
             path = os.path.join(self._output_dir, f"song_demo_{result.run_id}.wav")
             sr = 44100
             n = int(brief.duration_seconds * sr)
-            silence = np.zeros((n, 2), dtype=np.int16)
-            with wave.open(path, "w") as wf:
-                wf.setnchannels(2)
-                wf.setsampwidth(2)
-                wf.setframerate(sr)
-                wf.writeframes(silence.tobytes())
+            silence = np.zeros((n, 2), dtype=np.float32)
+            write_audio_file(path, silence, sr, file_format="wav")
             provenance_path = write_provenance_sidecar(
                 path,
                 module="ai_producer",
@@ -847,21 +843,19 @@ class AIProducer:
         if not layers:
             raise RuntimeError("No audio layers to mix")
 
-        # Mix
-        max_len = max(len(a) for _, a, _ in layers)
-        mixed = np.zeros((max_len, 2), dtype=np.float32)
-        for name, audio, vol in layers:
-            length = min(len(audio), max_len)
-            mixed[:length] += audio[:length] * vol
-
-        # Clip
-        peak = np.max(np.abs(mixed))
-        if peak > 1.0:
-            mixed /= peak
+        mixed = mixdown_audio(
+            [
+                (audio, volume, 0.0, False, False)
+                for _name, audio, volume in layers
+            ]
+        )
+        if mixed is None:
+            raise RuntimeError("No audio layers to mix")
+        max_len = len(mixed)
 
         # Save
         mix_path = os.path.join(self._output_dir, f"mix_{result.run_id}.wav")
-        sf.write(mix_path, mixed, sr, subtype="PCM_24")
+        write_audio_file(mix_path, mixed, sr, file_format="wav")
         provenance_path = write_provenance_sidecar(
             mix_path,
             module="ai_producer",
@@ -915,7 +909,7 @@ class AIProducer:
             self._output_dir,
             f"mastered_{result.run_id}.wav",
         )
-        sf.write(master_path, master_result.audio, sr, subtype="PCM_24")
+        write_audio_file(master_path, master_result.audio, sr, file_format="wav")
         provenance_path = write_provenance_sidecar(
             master_path,
             module="ai_producer",

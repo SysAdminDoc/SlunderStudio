@@ -10,6 +10,8 @@ from typing import Optional, Callable
 from pathlib import Path
 from dataclasses import asdict, dataclass, field, replace
 
+from core.audio_buffers import resample_audio
+from core.audio_export import write_audio_file
 from core.provenance import write_provenance_sidecar
 from core.settings import get_configured_output_dir
 from core.device import configured_torch_device
@@ -157,7 +159,6 @@ def _load_source_audio_tensor(
     if not source.is_file():
         raise FileNotFoundError(f"Source audio not found: {source_path}")
 
-    import librosa
     import numpy as np
     import soundfile as sf
     import torch
@@ -180,15 +181,7 @@ def _load_source_audio_tensor(
         audio = np.repeat(mono, 2, axis=1)
 
     if source_rate != sample_rate:
-        channels = [
-            librosa.resample(
-                audio[:, channel],
-                orig_sr=source_rate,
-                target_sr=sample_rate,
-            )
-            for channel in range(2)
-        ]
-        audio = np.stack(channels, axis=1)
+        audio = resample_audio(audio, source_rate, sample_rate)
 
     if target_duration is not None:
         target_samples = max(1, int(round(float(target_duration) * sample_rate)))
@@ -547,15 +540,7 @@ def stitch_audio_files(
     for path in audio_paths:
         audio, sr = sf.read(path, dtype="float32", always_2d=True)
         if sr != target_sample_rate:
-            try:
-                import librosa
-                channels = [
-                    librosa.resample(audio[:, ch], orig_sr=sr, target_sr=target_sample_rate)
-                    for ch in range(audio.shape[1])
-                ]
-                audio = np.column_stack(channels)
-            except ImportError as exc:
-                raise RuntimeError("librosa is required to stitch mixed sample rates") from exc
+            audio = resample_audio(audio, sr, target_sample_rate)
 
         audio = _ensure_stereo(audio)
         if stitched is None:
@@ -573,7 +558,14 @@ def stitch_audio_files(
         stitched = np.concatenate([stitched[:-fade_len], crossfade, audio[fade_len:]], axis=0)
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    sf.write(output_path, stitched, target_sample_rate, subtype="PCM_16")
+    write_audio_file(
+        output_path,
+        stitched,
+        target_sample_rate,
+        file_format="wav",
+        bit_depth=16,
+        channels=2,
+    )
     write_provenance_sidecar(
         output_path,
         module="song_forge",
@@ -1027,7 +1019,6 @@ class ACEStepEngine:
                     return Path(val)
 
         import numpy as np
-        import soundfile as sf
         import torch
 
         audio_data = getattr(pipeline_result, "audios", None)
@@ -1069,7 +1060,14 @@ class ACEStepEngine:
                 Path(save_dir)
                 / f"ace_step_{timestamp}_{time.time_ns() % 1_000_000_000:09d}_{seed}.wav"
             )
-            sf.write(out_path, audio_data, sample_rate, subtype="PCM_24")
+            write_audio_file(
+                out_path,
+                audio_data,
+                sample_rate,
+                file_format="wav",
+                bit_depth=24,
+                channels=2,
+            )
             return out_path
 
         # Fallback: find most recent wav in save_dir created after generation started
