@@ -233,6 +233,7 @@
     "messages": {
       "setting_updated": "Setting updated",
       "reset": "All settings reset to defaults",
+      "restored": "Settings restored",
       "locale_changed": "Interface language saved. Restart Slunder Studio to rebuild all translated views.",
       "health_export_failed": "Health report export failed: {error}",
       "health_exported": "Health report exported: {filename}",

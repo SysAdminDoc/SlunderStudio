@@ -83,26 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Route the remaining destructive actions through trash and Undo
-  Why: The app already has the right pattern in three places; several equally destructive actions
-    bypass it, and one file is internally inconsistent about it.
-  Evidence: Trash plus an 8-second Undo toast is used correctly at `ui/project_manager.py:635-651`,
-    `ui/model_hub.py:1051-1074` and `ui/sfx_view.py:675-711`. Bypassing it entirely:
-    `ui/sfx_view.py:730-736` "Clear All" deletes every card without trash — in the same file whose
-    single-card delete does use it; `ui/batch_view.py:365-373` Clear All and `:325` per-card delete;
-    `ui/mixer_view.py:910-930` remove track, which also silently discards the track's
-    `_dynamic_eq_suggestions`/`_dynamic_eq_originals`; `ui/settings_view.py:662-667` Reset to
-    Defaults, which calls `reset_all()` with only a post-hoc warning toast; `ui/seed_explorer.py:309`
-    Explore, which overwrites the whole grid of generated variations.
-    Note the project's stated principle is immediate action with toast feedback and no confirmation
-    dialogs — so the fix is trash plus Undo, matching the existing pattern, not a confirm prompt.
-  Touches: `ui/sfx_view.py`, `ui/batch_view.py`, `ui/mixer_view.py`, `ui/settings_view.py`,
-    `ui/seed_explorer.py`, `core/trash.py`, tests.
-  Acceptance: Every action that destroys generated audio or user configuration is recoverable —
-    via trash with an Undo affordance, or a restorable snapshot for settings — and a test enumerates
-    destructive handlers and asserts each has a recovery path.
-  Complexity: M
-
 - [ ] P2 — Expose asset deletion in Project Manager
   Why: Users can import assets into a project and have no way to remove one.
   Evidence: `core/project.py:999-1024` `delete_asset` is trash-routed and has a matching

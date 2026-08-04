@@ -258,6 +258,49 @@ class SeedCell(QFrame):
     def is_starred(self) -> bool:
         return self._is_starred
 
+    def snapshot_state(self) -> dict:
+        """Capture the visible cell state for an in-memory undo."""
+        return {
+            "audio_path": self._audio_path,
+            "seed": self._seed,
+            "is_starred": self._is_starred,
+            "is_generating": self._is_generating,
+            "is_generated": self._is_generated,
+            "status": self._status_label.text(),
+            "status_style": self._status_label.styleSheet(),
+        }
+
+    def restore_state(self, state: dict):
+        """Restore a previously captured state without starting I/O."""
+        self._audio_path = str(state.get("audio_path", ""))
+        self._seed = int(state.get("seed", 0))
+        self._is_starred = bool(state.get("is_starred", False))
+        self._is_generating = bool(state.get("is_generating", False))
+        self._is_generated = bool(state.get("is_generated", False))
+        self._is_playing = False
+        self._seed_label.setText(
+            f"seed: {self._seed}" if self._is_generated else ""
+        )
+        self._status_label.setText(str(state.get("status", "")))
+        self._status_label.setStyleSheet(
+            state.get("status_style")
+            or f"color: {Palette.OVERLAY0}; font-size: 10px;"
+        )
+        if self._is_generated:
+            self._star_btn.show()
+            if self._audio_path:
+                try:
+                    self._waveform.load_audio(self._audio_path)
+                except Exception:
+                    pass
+            self._update_style("starred" if self._is_starred else "done")
+        else:
+            self._star_btn.hide()
+            self._update_style("generating" if self._is_generating else "idle")
+        self._star_btn.setText("\u2605" if self._is_starred else "\u2606")
+        self._set_star_accessibility()
+        self._update_accessibility()
+
 
 class SeedExplorer(QWidget):
     """
@@ -269,8 +312,9 @@ class SeedExplorer(QWidget):
     play_requested = Signal(str)  # audio path
     zoom_requested = Signal(int, int)  # row, col to zoom into
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, toast_mgr=None):
         super().__init__(parent)
+        self.toast_mgr = toast_mgr
         self._grid_size = 3  # 3x3 default
         self._cells: list[list[SeedCell]] = []
         self._export_worker = None
@@ -279,6 +323,8 @@ class SeedExplorer(QWidget):
         self._seed_range = 100
         self._shift_min = 1.0
         self._shift_max = 3.0
+        self._ignore_active_generation_results = False
+        self._last_replaced_grid_snapshot = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -432,8 +478,9 @@ class SeedExplorer(QWidget):
         for first, second in zip(controls + cells, controls[1:] + cells):
             QWidget.setTabOrder(first, second)
 
-    def _rebuild_grid(self, index: int = None):
+    def _rebuild_grid(self, index: int = None, *, _show_undo: bool = True):
         """Rebuild the grid with new size."""
+        previous = self.snapshot_grid() if self._cells else None
         sizes = [2, 3, 4]
         if index is not None:
             self._grid_size = sizes[min(index, 2)]
@@ -458,6 +505,54 @@ class SeedExplorer(QWidget):
             self._cells.append(row)
         if hasattr(self, "_explore_btn"):
             self._set_cell_tab_order()
+        if (
+            _show_undo
+            and previous
+            and previous["has_content"]
+            and self.toast_mgr
+        ):
+            self._last_replaced_grid_snapshot = previous
+            self.toast_mgr.info(
+                "Seed grid replaced.",
+                duration_ms=8000,
+                action_label="Undo",
+                action_callback=lambda item=previous: self.restore_grid(item),
+            )
+
+    def snapshot_grid(self) -> dict:
+        """Capture the current grid, including generated paths and stars."""
+        cells = {
+            (row, col): self._cells[row][col].snapshot_state()
+            for row in range(len(self._cells))
+            for col in range(len(self._cells[row]))
+        }
+        return {
+            "grid_size": self._grid_size,
+            "cells": cells,
+            "info": self._info.text() if hasattr(self, "_info") else "",
+            "has_content": any(
+                state["is_generated"] or state["audio_path"] or state["is_starred"]
+                for state in cells.values()
+            ),
+        }
+
+    def restore_grid(self, snapshot: dict):
+        """Restore a grid snapshot and ignore stale results from its replacement."""
+        if not isinstance(snapshot, dict):
+            return
+        self._ignore_active_generation_results = True
+        target_size = int(snapshot.get("grid_size", self._grid_size))
+        if target_size != self._grid_size:
+            index = {2: 0, 3: 1, 4: 2}.get(target_size, 1)
+            self._grid_combo.blockSignals(True)
+            self._grid_combo.setCurrentIndex(index)
+            self._grid_combo.blockSignals(False)
+            self._rebuild_grid(index, _show_undo=False)
+        for (row, col), state in snapshot.get("cells", {}).items():
+            if 0 <= row < len(self._cells) and 0 <= col < len(self._cells[row]):
+                self._cells[row][col].restore_state(state)
+        self._last_replaced_grid_snapshot = snapshot
+        self._set_info(snapshot.get("info", ""))
 
     def _set_info(self, text: str):
         """Update the persistent status line and announce its new value."""
@@ -476,6 +571,8 @@ class SeedExplorer(QWidget):
 
     def _start_exploration(self):
         """Generate parameters for each grid cell and emit generation request."""
+        previous = self.snapshot_grid()
+        self._ignore_active_generation_results = False
         center_seed = self._seed_spin.value()
         seed_range = self._range_spin.value()
         shift_min = self._shift_min_spin.value()
@@ -499,6 +596,14 @@ class SeedExplorer(QWidget):
 
         self._set_info(f"Generating {len(params_list)} variations...")
         self.generate_requested.emit(params_list)
+        if previous["has_content"] and self.toast_mgr:
+            self._last_replaced_grid_snapshot = previous
+            self.toast_mgr.info(
+                "Previous seed grid replaced.",
+                duration_ms=8000,
+                action_label="Undo",
+                action_callback=lambda item=previous: self.restore_grid(item),
+            )
 
     def _on_distance_changed(self, value: int):
         if self._range_spin.value() != value:
@@ -510,6 +615,8 @@ class SeedExplorer(QWidget):
 
     def set_cell_result(self, row: int, col: int, audio_path: str, seed: int):
         """Set result for a specific grid cell."""
+        if self._ignore_active_generation_results:
+            return
         if 0 <= row < len(self._cells) and 0 <= col < len(self._cells[row]):
             self._cells[row][col].set_result(audio_path, seed)
             # Count completed
@@ -518,6 +625,8 @@ class SeedExplorer(QWidget):
             self._set_info(f"Generated {done}/{total} variations")
 
     def set_cell_failed(self, row: int, col: int, error: str = ""):
+        if self._ignore_active_generation_results:
+            return
         if 0 <= row < len(self._cells) and 0 <= col < len(self._cells[row]):
             self._cells[row][col].set_failed(error)
 

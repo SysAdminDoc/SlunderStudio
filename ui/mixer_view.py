@@ -444,6 +444,42 @@ class MixerTrackStrip(QFrame):
         self._soloed = self._solo_btn.isChecked()
         self.solo_changed.emit(self.track_idx, self._soloed)
 
+    def set_mix_state(
+        self,
+        *,
+        volume: float = 1.0,
+        pan: float = 0.0,
+        muted: bool = False,
+        soloed: bool = False,
+    ):
+        """Restore strip controls without emitting user-change signals."""
+        self._volume = max(0.0, min(1.5, float(volume)))
+        self._pan = max(-1.0, min(1.0, float(pan)))
+        self._muted = bool(muted)
+        self._soloed = bool(soloed)
+        self._vol_slider.blockSignals(True)
+        self._pan_slider.blockSignals(True)
+        self._mute_btn.blockSignals(True)
+        self._solo_btn.blockSignals(True)
+        try:
+            self._vol_slider.setValue(round(self._volume * 100))
+            self._pan_slider.setValue(round(self._pan * 100))
+            self._mute_btn.setChecked(self._muted)
+            self._solo_btn.setChecked(self._soloed)
+        finally:
+            self._vol_slider.blockSignals(False)
+            self._pan_slider.blockSignals(False)
+            self._mute_btn.blockSignals(False)
+            self._solo_btn.blockSignals(False)
+        vol_value = round(self._volume * 100)
+        pan_value = round(self._pan * 100)
+        self._vol_val.setText(f"{vol_value}%")
+        self._pan_val.setText(
+            "C" if pan_value == 0
+            else f"L{abs(pan_value)}" if pan_value < 0
+            else f"R{pan_value}"
+        )
+
     @property
     def volume(self): return self._volume
     @property
@@ -802,13 +838,32 @@ class MixerView(QWidget):
         if self._dynamic_eq_worker is not None and self._dynamic_eq_worker.isRunning():
             self._dynamic_eq_worker.cancel()
         self._invalidate_dynamic_eq_operation()
+        return self._insert_prepared_track(
+            len(self._strips),
+            name,
+            audio,
+            source_sr=source_sr,
+            source_frames=source_frames,
+        )
+
+    def _insert_prepared_track(
+        self,
+        index: int,
+        name: str,
+        audio: np.ndarray,
+        *,
+        source_sr: int,
+        source_frames: int,
+        strip_state: Optional[dict] = None,
+    ) -> int:
+        """Insert a validated project-rate track at a specific position."""
         prepared = validate_audio_buffer(audio)
         if prepared.ndim != 2 or prepared.shape[1] != 2:
             prepared = normalize_channel_layout(prepared, target_channels=2)
         prepared = np.ascontiguousarray(prepared, dtype=np.float32)
         source_sr = validate_sample_rate(source_sr)
-        idx = len(self._strips)
-        self._tracks.append({
+        idx = max(0, min(int(index), len(self._strips)))
+        self._tracks.insert(idx, {
             "name": name,
             "audio": prepared,
             "sr": self._project_sample_rate,
@@ -822,14 +877,18 @@ class MixerView(QWidget):
             prepared,
             self._project_sample_rate,
         )
+        if strip_state:
+            strip.set_mix_state(**strip_state)
         strip.remove_requested.connect(self._on_remove_track)
         strip.volume_changed.connect(lambda *_: self._update_mix_state())
         strip.pan_changed.connect(lambda *_: self._update_mix_state())
         strip.mute_changed.connect(lambda *_: self._update_mix_state())
         strip.solo_changed.connect(lambda *_: self._update_mix_state())
 
-        self._strips.append(strip)
-        self._strips_layout.insertWidget(self._strips_layout.count() - 1, strip)
+        self._strips.insert(idx, strip)
+        self._strips_layout.insertWidget(idx, strip)
+        for track_idx, current_strip in enumerate(self._strips):
+            current_strip.track_idx = track_idx
         self._master_btn.setEnabled(True)
         self._update_mix_state()
         return idx
@@ -1065,6 +1124,26 @@ class MixerView(QWidget):
             removed_idx = idx
             old_suggestions = dict(self._dynamic_eq_suggestions)
             strip = self._strips[idx]
+            track = self._tracks[idx]
+            snapshot = {
+                "index": removed_idx,
+                "track": {
+                    **track,
+                    "audio": np.asarray(track["audio"], dtype=np.float32).copy(),
+                },
+                "strip_state": {
+                    "volume": strip.volume,
+                    "pan": strip.pan,
+                    "muted": strip.is_muted,
+                    "soloed": strip.is_soloed,
+                },
+                "suggestions": old_suggestions,
+                "originals": {
+                    key: np.asarray(value, dtype=np.float32).copy()
+                    for key, value in self._dynamic_eq_originals.items()
+                },
+                "restored": False,
+            }
             self._strips_layout.removeWidget(strip)
             strip.deleteLater()
             self._strips.pop(idx)
@@ -1087,6 +1166,40 @@ class MixerView(QWidget):
                     self._dynamic_eq_originals[new_idx] = old_originals[old_idx]
             self._master_btn.setEnabled(len(self._strips) > 0)
             self._update_mix_state()
+            if self.toast_mgr:
+                self.toast_mgr.info(
+                    "Mixer track removed.",
+                    duration_ms=8000,
+                    action_label="Undo",
+                    action_callback=lambda item=snapshot: self._restore_removed_track(item),
+                )
+
+    def _restore_removed_track(self, snapshot: dict):
+        """Restore a removed track and its mixer/EQ state from memory."""
+        if snapshot.get("restored"):
+            return
+        snapshot["restored"] = True
+        track = snapshot["track"]
+        self._dynamic_eq_analysis_token += 1
+        if self._dynamic_eq_worker is not None and self._dynamic_eq_worker.isRunning():
+            self._dynamic_eq_worker.cancel()
+        self._invalidate_dynamic_eq_operation()
+        self._insert_prepared_track(
+            snapshot["index"],
+            track["name"],
+            track["audio"],
+            source_sr=track["source_sr"],
+            source_frames=track["source_frames"],
+            strip_state=snapshot["strip_state"],
+        )
+        self._dynamic_eq_suggestions = dict(snapshot["suggestions"])
+        self._dynamic_eq_originals = {
+            key: np.asarray(value, dtype=np.float32).copy()
+            for key, value in snapshot["originals"].items()
+        }
+        self._update_mix_state()
+        if self.toast_mgr:
+            self.toast_mgr.success("Mixer track restored.")
 
     def _update_mix_state(self):
         """Update master button state."""

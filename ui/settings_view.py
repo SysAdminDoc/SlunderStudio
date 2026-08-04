@@ -846,11 +846,35 @@ class SettingsView(QWidget):
             self._save("general.output_dir", path)
 
     def _reset_all(self):
-        self._settings.reset_all()
+        try:
+            snapshot = self._settings.snapshot()
+            self._settings.reset_all()
+        except Exception as exc:
+            if self.toast_mgr:
+                self.toast_mgr.error(f"Settings reset failed: {exc}")
+            return
         self._load_values()
         self._update_repair_status()
         if self.toast_mgr:
-            self.toast_mgr.warning(tr("settings.messages.reset"))
+            self.toast_mgr.info(
+                tr("settings.messages.reset"),
+                duration_ms=8000,
+                action_label="Undo",
+                action_callback=lambda item=snapshot: self._restore_settings_snapshot(item),
+            )
+
+    def _restore_settings_snapshot(self, snapshot: dict):
+        """Restore the pre-reset settings, including OS-backed secrets."""
+        try:
+            self._settings.restore_snapshot(snapshot)
+            self._load_values()
+            self._update_repair_status()
+        except Exception as exc:
+            if self.toast_mgr:
+                self.toast_mgr.error(f"Settings restore failed: {exc}")
+            return
+        if self.toast_mgr:
+            self.toast_mgr.success(tr("settings.messages.restored"))
 
     def _open_onboarding(self):
         """Reopen onboarding without changing completion until it is accepted."""

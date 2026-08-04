@@ -549,12 +549,12 @@ class SongForgeView(QWidget):
         # Sub-view tabs: Batch / Seed Explorer / Mood Curve
         self._sub_tabs = QTabWidget()
 
-        self._batch_view = BatchView()
+        self._batch_view = BatchView(toast_mgr=self._toast)
         self._batch_view.play_requested.connect(self._play_audio)
         self._batch_view.use_result.connect(self._use_batch_result)
         self._sub_tabs.addTab(self._batch_view, "Batch Results")
 
-        self._seed_explorer = SeedExplorer()
+        self._seed_explorer = SeedExplorer(toast_mgr=self._toast)
         self._seed_explorer.play_requested.connect(self._play_audio)
         self._seed_explorer.generate_requested.connect(self._on_seed_explore)
         self._sub_tabs.addTab(self._seed_explorer, "Seed Explorer")

@@ -647,13 +647,114 @@ class SFXView(QWidget):
         if not readiness.can_run and not self._status.text():
             self._status.setText(readiness.remedy)
 
-    def _add_result_card(self, result: SFXResult):
+    def _add_result_card(self, result: SFXResult, index: Optional[int] = None):
         card = SFXCard(result)
         card.play_requested.connect(self._on_play_sfx)
         card.use_requested.connect(self._on_use_sfx)
         card.delete_requested.connect(self._on_delete_card)
-        self._cards.append(card)
-        self._results_layout.insertWidget(self._results_layout.count() - 1, card)
+        if index is None:
+            index = len(self._cards)
+        index = max(0, min(index, len(self._cards)))
+        self._cards.insert(index, card)
+        self._results_layout.insertWidget(index, card)
+
+    @staticmethod
+    def _remove_identity(items, target):
+        for index, item in enumerate(items):
+            if item is target:
+                del items[index]
+                return
+
+    def _snapshot_sfx_cards(self, cards: list[SFXCard]) -> list[dict]:
+        """Capture result order before removing cards from the visible list."""
+        snapshots = []
+        for card in cards:
+            if card not in self._cards:
+                continue
+            result = card.result
+            snapshots.append({
+                "index": self._cards.index(card),
+                "result": result,
+                "original_path": result.file_path or "",
+                "entry": None,
+            })
+        return snapshots
+
+    def _trash_sfx_snapshots(self, snapshots: list[dict]):
+        from core.trash import TrashManager
+
+        requests = []
+        request_snapshots = []
+        for snapshot in snapshots:
+            path = snapshot["original_path"]
+            if not path or not os.path.exists(path):
+                continue
+            result = snapshot["result"]
+            requests.append({
+                "path": path,
+                "category": "generated_asset",
+                "label": os.path.basename(path),
+                "metadata": {
+                    "module": "sfx",
+                    "seed": result.seed,
+                    "duration": result.duration,
+                    "sample_rate": result.sample_rate,
+                    "is_demo": result.is_demo,
+                },
+            })
+            request_snapshots.append(snapshot)
+
+        entries = TrashManager().trash_paths(requests)
+        for snapshot, entry in zip(request_snapshots, entries):
+            snapshot["entry"] = entry
+        return entries
+
+    def _remove_sfx_snapshots(self, snapshots: list[dict]):
+        for snapshot in sorted(snapshots, key=lambda item: item["index"], reverse=True):
+            result = snapshot["result"]
+            card = next(
+                (candidate for candidate in self._cards if candidate.result is result),
+                None,
+            )
+            if card is None:
+                continue
+            self._remove_identity(self._cards, card)
+            self._remove_identity(self._results, result)
+            self._results_layout.removeWidget(card)
+            card.deleteLater()
+
+    def _restore_sfx_snapshots(self, snapshots: list[dict]):
+        from core.trash import TrashManager
+
+        trash = TrashManager()
+        errors = []
+        for snapshot in sorted(snapshots, key=lambda item: item["index"]):
+            entry = snapshot.get("entry")
+            if entry is None:
+                continue
+            try:
+                if trash.get_entry(entry.id) is not None:
+                    restored = trash.restore(entry.id)
+                    snapshot["result"].file_path = restored.original_path
+                elif not os.path.exists(snapshot["original_path"]):
+                    raise RuntimeError("trash entry is no longer available")
+            except Exception as exc:
+                errors.append(str(exc))
+
+        for snapshot in sorted(snapshots, key=lambda item: item["index"]):
+            result = snapshot["result"]
+            if any(existing is result for existing in self._results):
+                continue
+            index = min(snapshot["index"], len(self._results))
+            self._results.insert(index, result)
+            self._add_result_card(result, index=index)
+
+        if errors:
+            self._status.setText(f"Restore failed: {errors[0]}")
+            if self.toast_mgr:
+                self.toast_mgr.error("Some SFX results could not be restored.")
+        elif self.toast_mgr:
+            self.toast_mgr.success("SFX results restored.")
 
     def _on_play_sfx(self, result: SFXResult):
         if result.audio is not None:
@@ -721,63 +822,52 @@ class SFXView(QWidget):
             self._status.setText("SFX cannot be routed to the mixer")
 
     def _on_delete_card(self, card: SFXCard):
-        result = card.result
-        entry = None
-        if result.file_path and os.path.exists(result.file_path):
-            try:
-                from core.trash import TrashManager
-                entry = TrashManager().trash_path(
-                    result.file_path,
-                    category="generated_asset",
-                    label=os.path.basename(result.file_path),
-                    metadata={
-                        "module": "sfx",
-                        "seed": result.seed,
-                        "duration": result.duration,
-                        "sample_rate": result.sample_rate,
-                        "is_demo": result.is_demo,
-                    },
-                )
-            except Exception as e:
-                self._status.setText(f"Delete failed: {e}")
-                if self.toast_mgr:
-                    self.toast_mgr.error("SFX file could not be moved to trash.")
-                return
+        snapshots = self._snapshot_sfx_cards([card])
+        if not snapshots:
+            return
+        try:
+            self._trash_sfx_snapshots(snapshots)
+        except Exception as exc:
+            self._status.setText(f"Delete failed: {exc}")
+            if self.toast_mgr:
+                self.toast_mgr.error("SFX file could not be moved to trash.")
+            return
 
-        if card in self._cards:
-            self._cards.remove(card)
-        if result in self._results:
-            self._results.remove(result)
-        self._results_layout.removeWidget(card)
-        card.deleteLater()
-        if entry and self.toast_mgr:
+        self._remove_sfx_snapshots(snapshots)
+        if self.toast_mgr:
             self.toast_mgr.info(
                 "SFX moved to trash.",
                 duration_ms=8000,
                 action_label="Undo",
-                action_callback=lambda entry_id=entry.id, res=result: self._restore_sfx_card(entry_id, res),
+                action_callback=lambda items=snapshots: self._restore_sfx_snapshots(items),
             )
 
     def _restore_sfx_card(self, trash_entry_id: str, result: SFXResult):
-        try:
-            from core.trash import TrashManager
-            entry = TrashManager().restore(trash_entry_id)
-            result.file_path = entry.original_path
-        except Exception as e:
-            self._status.setText(f"Restore failed: {e}")
-            if self.toast_mgr:
-                self.toast_mgr.error("SFX restore failed.")
-            return
-
-        if result not in self._results:
-            self._results.append(result)
-            self._add_result_card(result)
-        if self.toast_mgr:
-            self.toast_mgr.success("SFX restored.")
+        snapshot = {
+            "index": len(self._results),
+            "result": result,
+            "original_path": result.file_path or "",
+            "entry": type("Entry", (), {"id": trash_entry_id})(),
+        }
+        self._restore_sfx_snapshots([snapshot])
 
     def _clear_results(self):
-        for card in self._cards:
-            self._results_layout.removeWidget(card)
-            card.deleteLater()
-        self._cards.clear()
-        self._results.clear()
+        snapshots = self._snapshot_sfx_cards(list(self._cards))
+        if not snapshots:
+            return
+        try:
+            self._trash_sfx_snapshots(snapshots)
+        except Exception as exc:
+            self._status.setText(f"Clear failed: {exc}")
+            if self.toast_mgr:
+                self.toast_mgr.error("SFX results could not be moved to trash.")
+            return
+
+        self._remove_sfx_snapshots(snapshots)
+        if self.toast_mgr:
+            self.toast_mgr.info(
+                "SFX results moved to trash.",
+                duration_ms=8000,
+                action_label="Undo",
+                action_callback=lambda items=snapshots: self._restore_sfx_snapshots(items),
+            )

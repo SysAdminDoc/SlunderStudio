@@ -6,6 +6,7 @@ Mini waveform cards with one-click playback, star/rank, delete, and "Best of" re
 import json
 import os
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel,
@@ -336,8 +337,9 @@ class BatchView(QWidget):
     regenerate_similar = Signal(int)  # seed to regenerate around
     use_result = Signal(str)  # audio_path of selected result
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, toast_mgr=None):
         super().__init__(parent)
+        self.toast_mgr = toast_mgr
         self._cards: list[BatchCard] = []
         self._playing_index = -1
         self._job_store = JobStore()
@@ -418,26 +420,41 @@ class BatchView(QWidget):
             tab_order=[self._use_best_btn, self._clear_btn],
         )
 
-    def add_result(self, audio_path: str, seed: int, gen_time: float = 0.0):
+    def _reflow_cards(self):
+        for index, card in enumerate(self._cards):
+            card._index = index
+            card._title.setText(f"Variation {index + 1}")
+            self._grid_layout.addWidget(card, index // 2, index % 2)
+        self._count_label.setText(f"{len(self._cards)} variations")
+        self._use_best_btn.setEnabled(bool(self._cards))
+        self._empty_label.setVisible(not self._cards)
+
+    def add_result(
+        self,
+        audio_path: str,
+        seed: int,
+        gen_time: float = 0.0,
+        *,
+        index: Optional[int] = None,
+        starred: Optional[bool] = None,
+    ):
         """Add a new batch result card."""
         if self._empty_label.isVisible():
             self._empty_label.hide()
 
-        idx = len(self._cards)
+        idx = len(self._cards) if index is None else max(0, min(index, len(self._cards)))
         card = BatchCard(idx)
         card.set_result(audio_path, seed, gen_time)
-        card.set_starred(card.favorite_key in self._starred_keys)
+        card.set_starred(
+            card.favorite_key in self._starred_keys
+            if starred is None else starred
+        )
         card.play_requested.connect(self._on_play)
         card.star_toggled.connect(self._on_star_toggled)
         card.delete_requested.connect(self._on_delete)
 
-        row = idx // 2
-        col = idx % 2
-        self._grid_layout.addWidget(card, row, col)
-        self._cards.append(card)
-
-        self._count_label.setText(f"{len(self._cards)} variations")
-        self._use_best_btn.setEnabled(True)
+        self._cards.insert(idx, card)
+        self._reflow_cards()
 
     def set_results(self, results: list[dict]):
         """Set all results at once from batch generation."""
@@ -497,27 +514,126 @@ class BatchView(QWidget):
             # Starring should remain usable even when the config directory is read-only.
             pass
 
-    def _on_delete(self, index: int):
-        if 0 <= index < len(self._cards):
-            card = self._cards[index]
+    def _snapshot_cards(self, cards: list[BatchCard]) -> list[dict]:
+        snapshots = []
+        for card in cards:
+            if card not in self._cards:
+                continue
+            snapshots.append({
+                "index": self._cards.index(card),
+                "card": card,
+                "audio_path": card.audio_path,
+                "seed": card.seed,
+                "generation_time": card._gen_time,
+                "starred": card.is_starred,
+                "entry": None,
+            })
+        return snapshots
+
+    def _trash_snapshots(self, snapshots: list[dict]):
+        from core.trash import TrashManager
+
+        for snapshot in snapshots:
+            snapshot["card"].cancel_quality_score()
+        requests = []
+        request_snapshots = []
+        for snapshot in snapshots:
+            path = snapshot["audio_path"]
+            if not path or not os.path.exists(path):
+                continue
+            requests.append({
+                "path": path,
+                "category": "generated_asset",
+                "label": os.path.basename(path),
+                "metadata": {
+                    "module": "song_forge_batch",
+                    "seed": snapshot["seed"],
+                    "generation_time": snapshot["generation_time"],
+                    "starred": snapshot["starred"],
+                },
+            })
+            request_snapshots.append(snapshot)
+
+        entries = TrashManager().trash_paths(requests)
+        for snapshot, entry in zip(request_snapshots, entries):
+            snapshot["entry"] = entry
+        return entries
+
+    def _remove_snapshots(self, snapshots: list[dict]):
+        for snapshot in sorted(snapshots, key=lambda item: item["index"], reverse=True):
+            card = snapshot["card"]
+            if card not in self._cards:
+                continue
             card.cancel_quality_score()
             self._grid_layout.removeWidget(card)
+            self._cards.remove(card)
             card.deleteLater()
-            self._cards.pop(index)
+        self._reflow_cards()
 
-            # Re-index remaining cards
-            for i, c in enumerate(self._cards):
-                c._index = i
-                c._title.setText(f"Variation {i + 1}")
+    def _restore_snapshots(self, snapshots: list[dict]):
+        from core.trash import TrashManager
 
-            # Re-layout
-            for i, c in enumerate(self._cards):
-                self._grid_layout.addWidget(c, i // 2, i % 2)
+        trash = TrashManager()
+        errors = []
+        for snapshot in sorted(snapshots, key=lambda item: item["index"]):
+            entry = snapshot.get("entry")
+            if entry is None:
+                continue
+            try:
+                if trash.get_entry(entry.id) is not None:
+                    trash.restore(entry.id)
+                elif not os.path.exists(snapshot["audio_path"]):
+                    raise RuntimeError("trash entry is no longer available")
+            except Exception as exc:
+                errors.append(str(exc))
 
-            self._count_label.setText(f"{len(self._cards)} variations")
-            if not self._cards:
-                self._empty_label.show()
-                self._use_best_btn.setEnabled(False)
+        for snapshot in sorted(snapshots, key=lambda item: item["index"]):
+            if any(
+                card.audio_path == snapshot["audio_path"]
+                and card.seed == snapshot["seed"]
+                for card in self._cards
+            ):
+                continue
+            self.add_result(
+                snapshot["audio_path"],
+                snapshot["seed"],
+                snapshot["generation_time"],
+                index=snapshot["index"],
+                starred=snapshot["starred"],
+            )
+
+        if errors:
+            if self.toast_mgr:
+                self.toast_mgr.error("Some batch results could not be restored.")
+        elif self.toast_mgr:
+            self.toast_mgr.success("Batch results restored.")
+
+    def _remove_with_undo(self, snapshots: list[dict], message: str):
+        if not snapshots:
+            return False
+        try:
+            self._trash_snapshots(snapshots)
+        except Exception as exc:
+            if self.toast_mgr:
+                self.toast_mgr.error(f"Batch result delete failed: {exc}")
+            return False
+
+        self._remove_snapshots(snapshots)
+        if self.toast_mgr:
+            self.toast_mgr.info(
+                message,
+                duration_ms=8000,
+                action_label="Undo",
+                action_callback=lambda items=snapshots: self._restore_snapshots(items),
+            )
+        return True
+
+    def _on_delete(self, index: int):
+        if 0 <= index < len(self._cards):
+            self._remove_with_undo(
+                self._snapshot_cards([self._cards[index]]),
+                "Batch result moved to trash.",
+            )
 
     def _use_best(self):
         """Use the first starred result, or the highest quality-scored result."""
@@ -537,15 +653,11 @@ class BatchView(QWidget):
         ]
 
     def clear(self):
-        for card in self._cards:
-            card.cancel_quality_score()
-            self._grid_layout.removeWidget(card)
-            card.deleteLater()
-        self._cards.clear()
+        self._remove_with_undo(
+            self._snapshot_cards(list(self._cards)),
+            "Batch results moved to trash.",
+        )
         self._playing_index = -1
-        self._count_label.setText("0 variations")
-        self._use_best_btn.setEnabled(False)
-        self._empty_label.show()
 
     def refresh_recoverable_jobs(self):
         records = self._job_store.list_records(

@@ -7,9 +7,10 @@ import json
 import re
 import shutil
 import time
+import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 from core.settings import Settings, get_trash_dir
 
@@ -108,6 +109,39 @@ class TrashManager:
                 shutil.rmtree(entry_dir, ignore_errors=True)
             raise TrashError(f"Failed to move {source} to trash: {exc}") from exc
 
+    def trash_paths(
+        self,
+        requests: Iterable[dict[str, Any]],
+    ) -> list[TrashEntry]:
+        """Move several paths transactionally, rolling back on any failure.
+
+        Each request must contain ``path``, ``category`` and ``label``.  The
+        optional ``metadata`` value is copied into that entry's manifest.  UI
+        batch actions use this helper so a partial clear can never leave the
+        visible collection out of sync with the files on disk.
+        """
+        entries: list[TrashEntry] = []
+        try:
+            for request in requests:
+                entries.append(
+                    self.trash_path(
+                        request["path"],
+                        category=str(request["category"]),
+                        label=str(request["label"]),
+                        metadata=request.get("metadata"),
+                    )
+                )
+        except Exception:
+            for entry in reversed(entries):
+                try:
+                    self.restore(entry.id)
+                except TrashError:
+                    # Preserve the original failure.  The manifest remains
+                    # available for the recovery UI if rollback itself fails.
+                    pass
+            raise
+        return entries
+
     def restore(self, entry_id: str) -> TrashEntry:
         entry = self.get_entry(entry_id)
         if entry is None:
@@ -169,7 +203,7 @@ class TrashManager:
     def _new_entry_id(self, category: str, label: str) -> str:
         safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "-", label).strip("-")
         safe_label = safe_label[:48] or "item"
-        return f"{category}_{int(time.time() * 1000)}_{safe_label}"
+        return f"{category}_{int(time.time() * 1000)}_{uuid.uuid4().hex[:10]}_{safe_label}"
 
     @staticmethod
     def _summarize(path: Path) -> tuple[int, int]:

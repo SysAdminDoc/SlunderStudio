@@ -39,6 +39,9 @@ All notable changes to SlunderStudio will be documented in this file.
   16/24/32-bit WAV setting; all signal-chain rate conversion uses the canonical polyphase helper.
   True-peak oversampling remains explicitly analysis-only, and structural tests prevent duplicate
   WAV or SoundFile writers from returning.
+- Routed generated SFX and Song Forge batch deletion through transactional trash with 8-second Undo
+  actions, and made mixer track removal, Settings reset, and Seed Explorer replacement restoreable
+  from in-memory snapshots. Secret settings remain in the OS credential store during undo.
 
 ## [v0.1.31] - 2026-08-02
 

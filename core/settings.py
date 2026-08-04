@@ -527,6 +527,50 @@ class Settings:
         self.save()
         self._notify("*", self._data, None)
 
+    def snapshot(self) -> dict[str, Any]:
+        """Capture settings for an in-memory, user-requested undo.
+
+        Secret values are read from the credential service and kept only in
+        the returned Python object.  They are never serialized with the
+        settings data, written to a toast, or placed in the trash manifest.
+        """
+        return {
+            "data": copy.deepcopy(self._data),
+            "secrets": {
+                key: self.get_secret(key, "")
+                for key in SECRET_SETTING_KEYS
+            },
+        }
+
+    def restore_snapshot(self, snapshot: dict[str, Any]):
+        """Restore a snapshot produced by :meth:`snapshot`."""
+        data = snapshot.get("data")
+        secrets = snapshot.get("secrets", {})
+        if not isinstance(data, dict) or not isinstance(secrets, dict):
+            raise ValueError("Invalid settings snapshot")
+
+        restored_data = copy.deepcopy(data)
+        for key in SECRET_SETTING_KEYS:
+            target = restored_data
+            parts = key.split(".")
+            for part in parts[:-1]:
+                target = target.get(part, {}) if isinstance(target, dict) else {}
+            if isinstance(target, dict):
+                target.pop(parts[-1], None)
+
+        store = self.credential_store
+        for key, account in SECRET_SETTING_KEYS.items():
+            value = secrets.get(key, "")
+            if value:
+                store.set_secret(account, str(value))
+            else:
+                store.delete_secret(account)
+
+        self._data = restored_data
+        self._unmigrated_secrets.clear()
+        self.save()
+        self._notify("*", self._data, None)
+
     def on_change(self, callback):
         """Register a callback: callback(key, new_value, old_value)."""
         self._callbacks.append(callback)
