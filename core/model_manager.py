@@ -1102,6 +1102,31 @@ class ModelManager(QObject):
             snapshots[0] if snapshots else None,
         )
 
+        if capability.profile_requirement and not profile_ready:
+            return CapabilityReadiness(
+                capability=capability,
+                mode=RunMode.UNAVAILABLE,
+                can_run=False,
+                model_id=(active or candidate).model_id if (active or candidate) else "",
+                active_model_id=active.model_id if active else "",
+                profile_ready=False,
+                remedy=f"Select {capability.profile_requirement}.",
+            )
+
+        if not capability.model_output_available:
+            return CapabilityReadiness(
+                capability=capability,
+                mode=RunMode.UNAVAILABLE,
+                can_run=False,
+                model_id=(active or candidate).model_id if (active or candidate) else "",
+                active_model_id=active.model_id if active else "",
+                profile_ready=profile_ready,
+                remedy=(
+                    capability.unavailable_reason
+                    or f"{capability.label} is unavailable until a verified local engine is bundled."
+                ),
+            )
+
         if (
             capability.requires_activation
             and not capability.auto_activates
@@ -1131,40 +1156,6 @@ class ModelManager(QObject):
                 model_id=candidate.model_id if candidate else "",
                 profile_ready=profile_ready,
                 remedy=remedy,
-            )
-
-        if capability.profile_requirement and not profile_ready:
-            return CapabilityReadiness(
-                capability=capability,
-                mode=RunMode.UNAVAILABLE,
-                can_run=False,
-                model_id=(active or candidate).model_id if (active or candidate) else "",
-                active_model_id=active.model_id if active else "",
-                profile_ready=False,
-                remedy=f"Select {capability.profile_requirement}.",
-            )
-
-        if not capability.model_output_available:
-            if allow_demo and capability.supports_demo:
-                return CapabilityReadiness(
-                    capability=capability,
-                    mode=RunMode.DEMO,
-                    can_run=True,
-                    model_id=(active or candidate).model_id if (active or candidate) else "",
-                    active_model_id=active.model_id if active else "",
-                    profile_ready=profile_ready,
-                )
-            return CapabilityReadiness(
-                capability=capability,
-                mode=RunMode.UNAVAILABLE,
-                can_run=False,
-                model_id=(active or candidate).model_id if (active or candidate) else "",
-                active_model_id=active.model_id if active else "",
-                profile_ready=profile_ready,
-                remedy=(
-                    f"{capability.label} currently exposes an explicit demo "
-                    "pipeline only; enable its Demo option to continue."
-                ),
             )
 
         if active is not None:

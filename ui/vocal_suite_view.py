@@ -283,7 +283,7 @@ class VocalSuiteView(QWidget):
                 (self._rvc_pitch, "RVC pitch shift", "Adjusts pitch shift in semitones."),
                 (self._rvc_f0, "RVC pitch detector", "Selects the F0 pitch extraction method."),
                 (self._rvc_index, "RVC index strength", "Adjusts retrieval index blend strength."),
-                (self._rvc_demo_check, "RVC demo conversion", tr("runtime.vocal_demo_conversion")),
+                (self._rvc_demo_check, "RVC conversion unavailable", self._rvc_demo_check.toolTip()),
                 (self._rvc_convert_btn, "Convert voice", "Starts RVC voice conversion."),
                 (self._clone_voice, "Voice clone profile", "Selects a saved GPT-SoVITS voice profile."),
                 (self._clone_trust_btn, "Trust unsafe GPT-SoVITS checkpoint", self._clone_trust_btn.toolTip()),
@@ -299,7 +299,7 @@ class VocalSuiteView(QWidget):
                 (self._clone_lang, "Clone language", "Selects the GPT-SoVITS language."),
                 (self._clone_speed, "Clone speed", "Adjusts cloned speech speed."),
                 (self._clone_temp, "Clone temperature", "Adjusts generation variation."),
-                (self._clone_demo_check, "Voice clone demo", tr("runtime.vocal_demo_synthesis")),
+                (self._clone_demo_check, "Voice cloning unavailable", self._clone_demo_check.toolTip()),
                 (self._clone_gen_btn, "Clone voice", "Starts GPT-SoVITS voice cloning."),
                 (self._autotune_browse_btn, "Browse auto-tune input", "Selects vocal audio for pitch correction."),
                 (self._autotune_strength, "Auto-tune strength", "Controls how strongly pitch is pulled toward the nearest semitone."),
@@ -830,12 +830,12 @@ class VocalSuiteView(QWidget):
         ctrl_layout.addLayout(idx_row)
 
         self._rvc_demo_check = QCheckBox(
-            "Enable demo spectral conversion"
+            "RVC conversion unavailable (verified adapter required)"
         )
         self._rvc_demo_check.setToolTip(
-            tr("runtime.vocal_demo_conversion")
+            "No placeholder spectral conversion is available. A verified local RVC inference adapter is required."
         )
-        self._rvc_demo_check.toggled.connect(self._refresh_capability_states)
+        self._rvc_demo_check.setEnabled(False)
         ctrl_layout.addWidget(self._rvc_demo_check)
 
         # Convert button
@@ -1109,12 +1109,12 @@ class VocalSuiteView(QWidget):
         ctrl_layout.addLayout(st_row)
 
         self._clone_demo_check = QCheckBox(
-            "Enable demo voice (not model inference)"
+            "GPT-SoVITS unavailable (verified adapter required)"
         )
         self._clone_demo_check.setToolTip(
-            tr("runtime.vocal_demo_synthesis")
+            "No placeholder voice synthesis is available. A verified local GPT-SoVITS inference adapter is required."
         )
-        self._clone_demo_check.toggled.connect(self._refresh_capability_states)
+        self._clone_demo_check.setEnabled(False)
         ctrl_layout.addWidget(self._clone_demo_check)
 
         # Clone button
@@ -1952,7 +1952,6 @@ class VocalSuiteView(QWidget):
             return
         readiness = self._model_mgr.get_capability_readiness(
             CAP_VOCAL_CONVERT,
-            allow_demo=self._rvc_demo_check.isChecked(),
             profile_ready=True,
         )
         if not readiness.can_run:
@@ -1967,7 +1966,6 @@ class VocalSuiteView(QWidget):
             pitch_shift=self._rvc_pitch.value(),
             f0_method=self._rvc_f0.currentText(),
             index_rate=self._rvc_index.value() / 100,
-            allow_demo_output=self._rvc_demo_check.isChecked(),
         )
         self._reset_engine_routing()
         self._rvc_convert_btn.setEnabled(False)
@@ -1983,7 +1981,6 @@ class VocalSuiteView(QWidget):
                 "profile_id": profile.id,
                 "pitch_shift": params.pitch_shift,
                 "f0_method": params.f0_method,
-                "demo": params.allow_demo_output,
             },
             job_metadata={
                 "module": "vocal_suite",
@@ -2015,19 +2012,14 @@ class VocalSuiteView(QWidget):
         if cancel_event and cancel_event.is_set():
             raise CancelledJobError("RVC conversion cancelled")
         engine = get_rvc()
-        if params.allow_demo_output:
+        active_profile = getattr(engine, "_profile", None)
+        if not active_profile or active_profile.id != profile.id:
             if step_cb:
-                step_cb(f"Preparing consent metadata for {profile.name}...")
-            engine.prepare_demo_profile(profile)
-        else:
-            active_profile = getattr(engine, "_profile", None)
-            if not active_profile or active_profile.id != profile.id:
-                if step_cb:
-                    step_cb(f"Loading RVC profile {profile.name}...")
-                engine.load_model(
-                    profile,
-                    progress_callback=self._progress_bridge(progress_cb, step_cb),
-                )
+                step_cb(f"Loading RVC profile {profile.name}...")
+            engine.load_model(
+                profile,
+                progress_callback=self._progress_bridge(progress_cb, step_cb),
+            )
         if cancel_event and cancel_event.is_set():
             raise CancelledJobError("RVC conversion cancelled")
         result = engine.convert(
@@ -2068,9 +2060,8 @@ class VocalSuiteView(QWidget):
         if result.audio is not None:
             self._rvc_converted_wf.load_audio(result.audio, result.sample_rate)
         self._current_audio_path = artifact.path if artifact else ""
-        prefix = "Demo conversion" if run.is_demo else "RVC conversion"
         self._status.setText(
-            f"{prefix} created: {os.path.basename(self._current_audio_path)} "
+            f"RVC conversion created: {os.path.basename(self._current_audio_path)} "
             f"({result.duration:.1f}s)"
         )
         if run.can_route and self._current_audio_path:
@@ -2174,7 +2165,6 @@ class VocalSuiteView(QWidget):
 
         readiness = self._model_mgr.get_capability_readiness(
             CAP_VOCAL_CLONE,
-            allow_demo=self._clone_demo_check.isChecked(),
             profile_ready=True,
         )
         if not readiness.can_run:
@@ -2189,11 +2179,10 @@ class VocalSuiteView(QWidget):
             language=self._clone_language_code(),
             speed=self._clone_speed.value(),
             temperature=self._clone_temp.value(),
-            allow_demo_output=self._clone_demo_check.isChecked(),
         )
         self._reset_engine_routing()
         self._clone_gen_btn.setEnabled(False)
-        self._status.setText("Preparing consent-ready GPT-SoVITS demo...")
+        self._status.setText("Preparing consent-ready GPT-SoVITS clone...")
         self._clone_worker = InferenceWorker(
             self._run_clone_generation,
             params,
@@ -2204,7 +2193,6 @@ class VocalSuiteView(QWidget):
                 "profile_id": profile.id,
                 "text_chars": len(text),
                 "language": params.language,
-                "demo": params.allow_demo_output,
             },
             job_metadata={
                 "module": "vocal_suite",
@@ -2473,7 +2461,10 @@ class VocalSuiteView(QWidget):
         if cancel_event and cancel_event.is_set():
             raise CancelledJobError("GPT-SoVITS clone cancelled")
         engine = get_sovits()
-        engine.prepare_demo_profile(profile)
+        engine.load_model(
+            profile,
+            progress_callback=self._progress_bridge(progress_cb, step_cb),
+        )
         result = engine.clone(
             params,
             self._progress_bridge(progress_cb, step_cb),
@@ -2528,9 +2519,8 @@ class VocalSuiteView(QWidget):
         if result.audio is not None:
             self._clone_waveform.load_audio(result.audio, result.sample_rate)
         self._current_audio_path = path
-        prefix = "Demo clone" if run.is_demo else "Voice clone"
         self._status.setText(
-            f"{prefix} created: {os.path.basename(path)} ({result.duration:.1f}s)"
+            f"Voice clone created: {os.path.basename(path)} ({result.duration:.1f}s)"
         )
         if run.can_route:
             self._enable_routing()
@@ -3131,7 +3121,6 @@ class VocalSuiteView(QWidget):
             )
             rvc = self._model_mgr.get_capability_readiness(
                 CAP_VOCAL_CONVERT,
-                allow_demo=self._rvc_demo_check.isChecked(),
                 profile_ready=rvc_profile_ready,
             )
         self._set_action_readiness(
@@ -3153,7 +3142,6 @@ class VocalSuiteView(QWidget):
             )
             clone = self._model_mgr.get_capability_readiness(
                 CAP_VOCAL_CLONE,
-                allow_demo=self._clone_demo_check.isChecked(),
                 profile_ready=clone_profile_ready,
             )
         self._set_action_readiness(

@@ -14,6 +14,8 @@ All notable changes to SlunderStudio will be documented in this file.
   protection, and explicit EBU Mode momentary, short-term, and integrated mastering readouts.
 - Fixed project search to match user-facing names and notes without depending on widget order, and
   added explicit date/name sorting to project, lyrics-history, and Model Hub lists.
+- Removed the RVC and GPT-SoVITS spectral/sine placeholder paths. Model Hub and Vocal Suite now
+  fail closed with an actionable unsupported-capability result and never route synthetic audio.
 - Made locked PyInstaller releases reproducible: build timestamps and Python hash seeds are fixed,
   UPX is disabled, ZIP metadata is normalized, generated specs and unstable installer RECORD
   files are removed, and unsigned onedir/onefile artifacts ship with deterministic CycloneDX 1.7

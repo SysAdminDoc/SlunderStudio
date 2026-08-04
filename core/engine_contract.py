@@ -51,6 +51,7 @@ class EngineCapability:
     supports_demo: bool = False
     demo_requires_activation: bool = False
     model_output_available: bool = True
+    unavailable_reason: str = ""
 
     @property
     def output_summary(self) -> str:
@@ -341,9 +342,12 @@ ENGINE_CAPABILITIES: dict[str, EngineCapability] = {
         model_ids=("rvc-v2",),
         outputs=(ArtifactKind.AUDIO, ArtifactKind.PROVENANCE),
         profile_requirement="a consent-ready RVC voice profile",
-        supports_demo=True,
-        demo_requires_activation=True,
+        supports_demo=False,
         model_output_available=False,
+        unavailable_reason=(
+            "RVC conversion is unavailable until a verified local RVC inference "
+            "adapter is bundled; no placeholder audio will be generated."
+        ),
     ),
     CAP_VOCAL_CLONE: EngineCapability(
         id=CAP_VOCAL_CLONE,
@@ -351,9 +355,12 @@ ENGINE_CAPABILITIES: dict[str, EngineCapability] = {
         model_ids=("gpt-sovits-v2",),
         outputs=(ArtifactKind.AUDIO, ArtifactKind.PROVENANCE),
         profile_requirement="a consent-ready GPT-SoVITS voice profile",
-        supports_demo=True,
-        demo_requires_activation=True,
+        supports_demo=False,
         model_output_available=False,
+        unavailable_reason=(
+            "GPT-SoVITS cloning is unavailable until a verified local GPT-SoVITS "
+            "inference adapter is bundled; no placeholder audio will be generated."
+        ),
     ),
     CAP_STEM_SEPARATE: EngineCapability(
         id=CAP_STEM_SEPARATE,

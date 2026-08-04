@@ -131,12 +131,17 @@ class DemoOutputContractTests(unittest.TestCase):
         engine._model = object()
         audio = np.zeros(1600, dtype=np.float32)
 
-        result = engine.convert(VoiceConvertParams(input_audio=audio))
+        result = engine.convert(VoiceConvertParams(
+            input_audio=audio,
+            allow_demo_output=True,
+        ))
 
         self.assertIsNotNone(result.error)
         self.assertFalse(result.is_success)
         self.assertFalse(result.can_route)
         self.assertEqual(result.output_kind, "error")
+        self.assertIsNone(result.audio)
+        self.assertIn("no placeholder audio", result.error.lower())
 
     def test_gpt_sovits_placeholder_synthesis_is_not_reported_as_model_success(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -155,6 +160,8 @@ class DemoOutputContractTests(unittest.TestCase):
             self.assertFalse(result.is_success)
             self.assertFalse(result.can_route)
             self.assertEqual(result.output_kind, "error")
+            self.assertIsNone(result.audio)
+            self.assertIn("no placeholder audio", result.error.lower())
 
     def test_diffsinger_without_dictionary_fails_closed(self):
         engine = DiffSingerEngine()

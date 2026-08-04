@@ -161,8 +161,10 @@ class EngineContractTests(unittest.TestCase):
         self.assertEqual(RunMode.MODEL, producer.mode)
         self.assertIn("consent-ready RVC", rvc_missing_profile.remedy)
         self.assertFalse(rvc_demo_off.can_run)
-        self.assertIn("explicit demo", rvc_demo_off.remedy)
-        self.assertEqual(RunMode.DEMO, rvc_demo_on.mode)
+        self.assertIn("verified local RVC inference adapter", rvc_demo_off.remedy)
+        self.assertFalse(rvc_demo_on.can_run)
+        self.assertEqual(RunMode.UNAVAILABLE, rvc_demo_on.mode)
+        self.assertIn("no placeholder audio", rvc_demo_on.remedy)
 
     def test_activation_and_deactivation_release_engine_resources(self):
         manager = ModelManager()
@@ -246,10 +248,10 @@ class EngineContractTests(unittest.TestCase):
         self.assertEqual([info.model_id], cancelled)
         self.assertEqual([info.model_id], deactivated)
 
-    def test_rvc_demo_profile_uses_verified_base_without_checkpoint_execution(self):
+    def test_rvc_activation_fails_closed_without_verified_inference_adapter(self):
         with tempfile.TemporaryDirectory() as tmp:
             profile = VoiceProfile(
-                name="Consented demo voice",
+                name="Consented voice",
                 engine="rvc",
                 owner_name="Singer",
                 consent_status="confirmed",
@@ -259,13 +261,10 @@ class EngineContractTests(unittest.TestCase):
             )
             engine = RVCEngine()
 
-            engine.activate_base_model(tmp)
-            engine.prepare_demo_profile(profile)
+            with self.assertRaises(RuntimeError) as ctx:
+                engine.activate_base_model(tmp)
 
-            self.assertTrue(engine.is_loaded)
-            self.assertIs(profile, engine._profile)
-            self.assertIsNone(engine._model)
-            engine.unload_model()
+            self.assertIn("verified local RVC inference adapter", str(ctx.exception))
             self.assertFalse(engine.is_loaded)
 
 

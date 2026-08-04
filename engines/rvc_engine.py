@@ -7,14 +7,13 @@ import os
 import time
 import json
 from typing import Optional, Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 
 import numpy as np
 
 from core.audio_export import write_audio_file
-from core.provenance import file_sha256, write_provenance_sidecar
+from core.provenance import write_provenance_sidecar
 from core.settings import get_configured_output_dir
-from core.device import configured_torch_device
 from core.voice_bank import (
     SAFER_CHECKPOINT_EXTENSIONS,
     VOICE_OPERATION_CLONE,
@@ -22,6 +21,16 @@ from core.voice_bank import (
     VoiceProfile,
     ensure_voice_profile_allowed,
     voice_profile_provenance,
+)
+
+
+RVC_UNSUPPORTED_ERROR = (
+    "RVC conversion is unavailable: Slunder Studio does not bundle a verified "
+    "local RVC inference adapter yet. No placeholder audio will be generated."
+)
+GPT_SOVITS_UNSUPPORTED_ERROR = (
+    "GPT-SoVITS cloning is unavailable: Slunder Studio does not bundle a verified "
+    "local GPT-SoVITS inference adapter yet. No placeholder audio will be generated."
 )
 
 
@@ -37,6 +46,7 @@ class VoiceConvertParams:
     filter_radius: int = 3  # median filter for pitch
     rms_mix_rate: float = 0.25  # envelope mix
     protect: float = 0.33  # consonant protection
+    # Retained for job/schema compatibility; it can never enable placeholder audio.
     allow_demo_output: bool = False
 
 
@@ -51,6 +61,7 @@ class VoiceCloneParams:
     temperature: float = 0.7
     top_p: float = 0.9
     sample_rate: int = 32000
+    # Retained for job/schema compatibility; it can never enable placeholder audio.
     allow_demo_output: bool = False
 
 
@@ -259,41 +270,16 @@ def assess_clone_reference(
     return report
 
 
-def load_voice_checkpoint(profile: VoiceProfile, path: str, device: str):
-    """
-    Load a voice checkpoint while enforcing local trust for executable formats.
-    Only safetensors and ONNX are safe-by-extension; every other format must be
-    explicitly trusted before it can reach pickle-backed torch.load.
-    """
+def _ensure_checkpoint_trust(profile: VoiceProfile, engine_name: str):
+    """Apply the checkpoint trust gate without executing an unavailable adapter."""
+    path = profile.model_path or ""
     ext = os.path.splitext(path)[1].lower()
     if ext not in SAFER_CHECKPOINT_EXTENSIONS and not profile.trusted:
         raise RuntimeError(
             f"{os.path.basename(path)} is an unsafe local checkpoint format. "
-            "Open Vocal Suite > Voice Conversion and click 'Trust unsafe checkpoint' "
+            f"Open Vocal Suite > {engine_name} and click 'Trust unsafe checkpoint' "
             "for this profile before loading it, or use a safetensors/ONNX model."
         )
-
-    if ext == ".safetensors":
-        try:
-            from safetensors.torch import load_file
-        except ImportError as exc:
-            raise RuntimeError(
-                "safetensors is required to load safetensors voice checkpoints."
-            ) from exc
-        return load_file(path, device=device)
-
-    if ext in SAFER_CHECKPOINT_EXTENSIONS and ext != ".safetensors":
-        raise RuntimeError(f"Unsupported safer checkpoint format: {ext}")
-
-    import torch
-    return torch.load(path, map_location=device, weights_only=False)
-
-
-def _safe_file_hash(path: Optional[str]) -> str:
-    try:
-        return file_sha256(path) if path and os.path.isfile(path) else ""
-    except Exception:
-        return ""
 
 
 # ── RVC Engine ─────────────────────────────────────────────────────────────────
@@ -316,55 +302,25 @@ class RVCEngine:
 
     @property
     def is_loaded(self) -> bool:
-        return self._model is not None or self._base_model_path is not None
+        return self._model is not None
 
     def activate_base_model(self, model_path: str):
-        """Record the verified RVC runtime bundle selected by Model Hub."""
-        path = os.path.abspath(model_path or "")
-        if not path or not os.path.isdir(path):
-            raise RuntimeError("Verified RVC runtime cache is unavailable")
-        self._base_model_path = path
+        """Reject activation until a real verified RVC adapter is bundled."""
+        raise RuntimeError(RVC_UNSUPPORTED_ERROR)
 
     def prepare_demo_profile(self, profile: VoiceProfile):
-        """Select consent metadata for the explicit non-model demo pipeline."""
-        if not self._base_model_path:
-            raise RuntimeError("Activate the verified RVC runtime in Model Hub first")
+        """Reject the removed placeholder pipeline without producing audio."""
         ensure_voice_profile_allowed(profile, VOICE_OPERATION_CONVERSION)
-        self._profile = profile
+        raise RuntimeError(RVC_UNSUPPORTED_ERROR)
 
     def load_model(self, profile: VoiceProfile,
                    device: str = "cuda",
                    progress_callback: Optional[Callable] = None):
-        """Load an RVC voice model."""
+        """Fail closed until a verified local RVC inference adapter is available."""
         try:
-            if device in {"auto", "cuda"}:
-                import torch
-                device = configured_torch_device(torch)
-            if progress_callback:
-                progress_callback(0.1, "Loading RVC model...")
-
             ensure_voice_profile_allowed(profile, VOICE_OPERATION_CONVERSION)
-
-            # Load the model checkpoint
-            checkpoint = load_voice_checkpoint(profile, profile.model_path, device)
-
-            self._model = checkpoint
-            self._model_path = profile.model_path
-            self._profile = profile
-            self._device = device
-
-            # Load feature index if available
-            if profile.index_path and os.path.isfile(profile.index_path):
-                if progress_callback:
-                    progress_callback(0.6, "Loading feature index...")
-                try:
-                    import faiss
-                    self._index = faiss.read_index(profile.index_path)
-                except ImportError:
-                    self._index = None
-
-            if progress_callback:
-                progress_callback(1.0, "RVC model loaded")
+            _ensure_checkpoint_trust(profile, "Voice Conversion")
+            raise RuntimeError(RVC_UNSUPPORTED_ERROR)
 
         except Exception as e:
             self._model = None
@@ -386,7 +342,7 @@ class RVCEngine:
 
     def convert(self, params: VoiceConvertParams,
                 progress_callback: Optional[Callable] = None) -> VoiceResult:
-        """Convert voice using loaded RVC model."""
+        """Convert voice only through a verified adapter; never synthesize a fallback."""
         if not self.is_loaded:
             return VoiceResult(
                 error="RVC model not loaded",
@@ -395,213 +351,12 @@ class RVCEngine:
             )
 
         t0 = time.time()
-
-        try:
-            if progress_callback:
-                progress_callback(0.1, "Loading audio...")
-
-            # Get input audio
-            audio = params.input_audio
-            if audio is None and params.input_path:
-                audio = self._load_audio(params.input_path, params.sample_rate)
-
-            if audio is None:
-                return VoiceResult(
-                    error="No input audio provided",
-                    output_kind="error",
-                    can_route=False,
-                )
-
-            if not params.allow_demo_output:
-                return VoiceResult(
-                    error=(
-                        "RVC inference pipeline is not available yet. "
-                        "Demo spectral conversion must be explicitly enabled."
-                    ),
-                    output_kind="error",
-                    can_route=False,
-                    generation_time=time.time() - t0,
-                )
-
-            if progress_callback:
-                progress_callback(0.2, f"Extracting pitch ({params.f0_method})...")
-
-            # Extract F0 (pitch)
-            f0 = self._extract_f0(audio, params.sample_rate, params.f0_method)
-
-            # Apply pitch shift
-            if params.pitch_shift != 0:
-                f0 = f0 * (2.0 ** (params.pitch_shift / 12.0))
-
-            if progress_callback:
-                progress_callback(0.5, "Running voice conversion...")
-
-            # Run conversion pipeline
-            converted = self._run_conversion(audio, f0, params)
-
-            # Apply RMS envelope mixing
-            if params.rms_mix_rate > 0:
-                converted = self._mix_rms(audio, converted, params.rms_mix_rate)
-
-            # Normalize
-            peak = np.max(np.abs(converted))
-            if peak > 0:
-                converted = converted / peak * 0.95
-
-            gen_time = time.time() - t0
-            duration = len(converted) / params.sample_rate
-            param_meta = {
-                k: v for k, v in asdict(params).items()
-                if k != "input_audio"
-            }
-            if params.input_audio is not None:
-                param_meta["input_audio_shape"] = list(params.input_audio.shape)
-
-            if progress_callback:
-                progress_callback(1.0, "Done")
-
-            return VoiceResult(
-                audio=converted,
-                sample_rate=params.sample_rate,
-                duration=duration,
-                generation_time=gen_time,
-                is_demo=True,
-                output_kind="demo",
-                can_route=True,
-                provenance={
-                    "module": "vocal_suite",
-                    "operation": "rvc_convert",
-                    "model_id": "rvc-v2",
-                    "model_name": self._profile.name if self._profile else "",
-                    "model_source": self._profile.source if self._profile else "",
-                    "model_revision": self._profile.source_revision if self._profile else "",
-                    "model_hash": _safe_file_hash(self._model_path),
-                    "model_license": self._profile.license if self._profile else "",
-                    "parameters": param_meta,
-                    "source_asset_ids": [self._profile.id] if self._profile else [],
-                    "source_paths": [params.input_path] if params.input_path else [],
-                    "output_kind": "demo",
-                    "extra": {
-                        "model_path": self._model_path or "",
-                        "voice_profile": voice_profile_provenance(self._profile),
-                    },
-                },
-            )
-
-        except Exception as e:
-            return VoiceResult(
-                error=str(e),
-                generation_time=time.time() - t0,
-                output_kind="error",
-                can_route=False,
-            )
-
-    def _load_audio(self, path: str, target_sr: int) -> np.ndarray:
-        """Load audio file to numpy array."""
-        try:
-            import librosa
-            audio, _ = librosa.load(path, sr=target_sr, mono=True)
-            return audio
-        except ImportError:
-            import wave
-            with wave.open(path, "r") as wf:
-                frames = wf.readframes(wf.getnframes())
-                audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-                if wf.getnchannels() == 2:
-                    audio = audio.reshape(-1, 2).mean(axis=1)
-                return audio
-
-    def _extract_f0(self, audio: np.ndarray, sr: int, method: str) -> np.ndarray:
-        """Extract fundamental frequency contour."""
-        hop_size = 160
-        n_frames = len(audio) // hop_size
-
-        if method == "rmvpe":
-            # RMVPE is the preferred method but requires its own model
-            # Fallback to simple autocorrelation
-            pass
-
-        # Simple zero-crossing rate based F0 estimation (fallback)
-        f0 = np.zeros(n_frames, dtype=np.float32)
-        for i in range(n_frames):
-            start = i * hop_size
-            end = min(start + hop_size * 4, len(audio))
-            frame = audio[start:end]
-            if len(frame) < hop_size:
-                continue
-            # Autocorrelation
-            corr = np.correlate(frame, frame, mode="full")
-            corr = corr[len(corr) // 2:]
-            # Find first peak after initial decay
-            d = np.diff(corr)
-            start_idx = max(int(sr / 500), 1)  # min ~500Hz
-            end_idx = min(int(sr / 50), len(d) - 1)  # max ~50Hz
-            if start_idx < end_idx:
-                peaks = []
-                for j in range(start_idx, end_idx):
-                    if d[j - 1] > 0 and d[j] <= 0:
-                        peaks.append(j)
-                if peaks:
-                    f0[i] = sr / peaks[0]
-
-        return f0
-
-    def _run_conversion(self, audio: np.ndarray, f0: np.ndarray,
-                        params: VoiceConvertParams) -> np.ndarray:
-        """
-        Run the actual voice conversion inference.
-        This is a placeholder for the full RVC pipeline which requires:
-        - Feature extraction (HuBERT/ContentVec)
-        - Optional feature index retrieval (FAISS)
-        - Synthesis network forward pass
-        """
-        # In production, this would run the full RVC inference pipeline
-        # For now, apply basic spectral envelope transfer as placeholder
-        try:
-            import torch
-            import librosa
-
-            # Extract spectral features
-            stft = librosa.stft(audio, n_fft=2048, hop_length=512)
-            mag, phase = np.abs(stft), np.angle(stft)
-
-            # Simple spectral shaping based on pitch shift
-            if params.pitch_shift != 0:
-                shift_ratio = 2.0 ** (params.pitch_shift / 12.0)
-                n_bins = mag.shape[0]
-                new_mag = np.zeros_like(mag)
-                for i in range(n_bins):
-                    src_bin = int(i / shift_ratio)
-                    if 0 <= src_bin < n_bins:
-                        new_mag[i] = mag[src_bin]
-                mag = new_mag
-
-            # Reconstruct
-            stft_modified = mag * np.exp(1j * phase)
-            converted = librosa.istft(stft_modified, hop_length=512, length=len(audio))
-            return converted.astype(np.float32)
-
-        except ImportError:
-            # Without librosa, just return pitch-shifted audio
-            return audio
-
-    def _mix_rms(self, original: np.ndarray, converted: np.ndarray,
-                 rate: float) -> np.ndarray:
-        """Mix RMS envelope from original onto converted audio."""
-        hop = 512
-        n_frames = min(len(original), len(converted)) // hop
-
-        for i in range(n_frames):
-            s, e = i * hop, (i + 1) * hop
-            if e > len(original) or e > len(converted):
-                break
-            rms_orig = np.sqrt(np.mean(original[s:e] ** 2) + 1e-8)
-            rms_conv = np.sqrt(np.mean(converted[s:e] ** 2) + 1e-8)
-            target_rms = rms_orig * rate + rms_conv * (1 - rate)
-            if rms_conv > 0:
-                converted[s:e] *= target_rms / rms_conv
-
-        return converted
+        return VoiceResult(
+            error=RVC_UNSUPPORTED_ERROR,
+            generation_time=time.time() - t0,
+            output_kind="error",
+            can_route=False,
+        )
 
     def save_output(
         self,
@@ -672,52 +427,24 @@ class GPTSoVITSEngine:
 
     @property
     def is_loaded(self) -> bool:
-        return self._sovits_model is not None or self._base_model_path is not None
+        return self._sovits_model is not None
 
     def activate_base_model(self, model_path: str):
-        """Record the verified GPT-SoVITS bundle selected by Model Hub."""
-        path = os.path.abspath(model_path or "")
-        if not path or not os.path.isdir(path):
-            raise RuntimeError("Verified GPT-SoVITS runtime cache is unavailable")
-        self._base_model_path = path
+        """Reject activation until a real verified GPT-SoVITS adapter is bundled."""
+        raise RuntimeError(GPT_SOVITS_UNSUPPORTED_ERROR)
 
     def prepare_demo_profile(self, profile: VoiceProfile):
-        """Select consent metadata for the explicit non-model demo pipeline."""
-        if not self._base_model_path:
-            raise RuntimeError(
-                "Activate the verified GPT-SoVITS runtime in Model Hub first"
-            )
+        """Reject the removed placeholder pipeline without producing audio."""
         ensure_voice_profile_allowed(profile, VOICE_OPERATION_CLONE)
-        self._profile = profile
+        raise RuntimeError(GPT_SOVITS_UNSUPPORTED_ERROR)
 
     def load_model(self, profile: VoiceProfile, device: str = "cuda",
                    progress_callback: Optional[Callable] = None):
-        """Load GPT-SoVITS model pair."""
+        """Fail closed until a verified local GPT-SoVITS adapter is available."""
         try:
-            if device in {"auto", "cuda"}:
-                import torch
-                device = configured_torch_device(torch)
-            if progress_callback:
-                progress_callback(0.1, "Loading SoVITS model...")
-
             ensure_voice_profile_allowed(profile, VOICE_OPERATION_CLONE)
-
-            # Load SoVITS model
-            self._sovits_model = load_voice_checkpoint(profile, profile.model_path, device)
-
-            # Look for corresponding GPT model
-            gpt_path = profile.config_path
-            if gpt_path and os.path.isfile(gpt_path):
-                if progress_callback:
-                    progress_callback(0.5, "Loading GPT model...")
-                self._gpt_model = load_voice_checkpoint(profile, gpt_path, device)
-
-            self._model_path = profile.model_path
-            self._profile = profile
-            self._device = device
-
-            if progress_callback:
-                progress_callback(1.0, "GPT-SoVITS loaded")
+            _ensure_checkpoint_trust(profile, "Voice Cloning")
+            raise RuntimeError(GPT_SOVITS_UNSUPPORTED_ERROR)
 
         except Exception as e:
             self._sovits_model = None
@@ -739,7 +466,7 @@ class GPTSoVITSEngine:
 
     def clone(self, params: VoiceCloneParams,
               progress_callback: Optional[Callable] = None) -> VoiceResult:
-        """Generate speech/singing in the cloned voice."""
+        """Clone only through a verified adapter; never synthesize a fallback."""
         if not self.is_loaded:
             return VoiceResult(
                 error="GPT-SoVITS model not loaded",
@@ -762,87 +489,11 @@ class GPTSoVITSEngine:
                     can_route=False,
                 )
 
-            # Load reference audio
-            ref_audio = self._load_reference(params.ref_audio_path, params.sample_rate)
-            if ref_audio is None:
-                return VoiceResult(
-                    error="Failed to load reference audio",
-                    output_kind="error",
-                    can_route=False,
-                )
-
-            if not params.allow_demo_output:
-                return VoiceResult(
-                    error=(
-                        "GPT-SoVITS inference pipeline is not available yet. "
-                        "Demo voice synthesis must be explicitly enabled."
-                    ),
-                    generation_time=time.time() - t0,
-                    output_kind="error",
-                    can_route=False,
-                )
-
-            if progress_callback:
-                progress_callback(0.3, "Extracting voice features...")
-
-            # Extract features from reference
-            ref_features = self._extract_reference_features(ref_audio, params)
-
-            if progress_callback:
-                progress_callback(0.5, "Generating speech...")
-
-            # Run GPT for semantic tokens
-            semantic_tokens = self._run_gpt(params.text, ref_features, params)
-
-            if progress_callback:
-                progress_callback(0.7, "Synthesizing audio...")
-
-            # Run SoVITS for audio generation
-            audio = self._run_sovits(semantic_tokens, ref_features, params)
-
-            # Speed adjustment
-            if params.speed != 1.0 and audio is not None:
-                audio = self._change_speed(audio, params.speed, params.sample_rate)
-
-            # Normalize
-            if audio is not None:
-                peak = np.max(np.abs(audio))
-                if peak > 0:
-                    audio = audio / peak * 0.95
-
-            gen_time = time.time() - t0
-            duration = len(audio) / params.sample_rate if audio is not None else 0
-
-            if progress_callback:
-                progress_callback(1.0, "Done")
-
             return VoiceResult(
-                audio=audio,
-                sample_rate=params.sample_rate,
-                duration=duration,
-                generation_time=gen_time,
-                is_demo=True,
-                output_kind="demo",
-                can_route=True,
-                provenance={
-                    "module": "vocal_suite",
-                    "operation": "gpt_sovits_clone",
-                    "model_id": "gpt-sovits-v2",
-                    "model_name": self._profile.name if self._profile else "",
-                    "model_source": self._profile.source if self._profile else "",
-                    "model_revision": self._profile.source_revision if self._profile else "",
-                    "model_hash": _safe_file_hash(self._model_path),
-                    "model_license": self._profile.license if self._profile else "",
-                    "prompt": params.text,
-                    "parameters": asdict(params),
-                    "source_asset_ids": [self._profile.id] if self._profile else [],
-                    "source_paths": [params.ref_audio_path] if params.ref_audio_path else [],
-                    "output_kind": "demo",
-                    "extra": {
-                        "model_path": self._model_path or "",
-                        "loaded_voice_profile": voice_profile_provenance(self._profile),
-                    },
-                },
+                error=GPT_SOVITS_UNSUPPORTED_ERROR,
+                generation_time=time.time() - t0,
+                output_kind="error",
+                can_route=False,
             )
 
         except Exception as e:
@@ -852,53 +503,6 @@ class GPTSoVITSEngine:
                 output_kind="error",
                 can_route=False,
             )
-
-    def _load_reference(self, path: str, sr: int) -> Optional[np.ndarray]:
-        if not path or not os.path.isfile(path):
-            return None
-        try:
-            import librosa
-            audio, _ = librosa.load(path, sr=sr, mono=True)
-            return audio
-        except ImportError:
-            return None
-
-    def _extract_reference_features(self, audio: np.ndarray,
-                                    params: VoiceCloneParams) -> dict:
-        """Extract voice characteristics from reference audio."""
-        return {
-            "audio": audio,
-            "text": params.ref_text,
-            "language": params.language,
-        }
-
-    def _run_gpt(self, text: str, ref_features: dict,
-                 params: VoiceCloneParams) -> np.ndarray:
-        """Run GPT model to generate semantic tokens."""
-        # Placeholder: return random tokens
-        # Real implementation passes text + ref through GPT for token prediction
-        n_tokens = len(text.split()) * 20  # rough estimate
-        return np.random.randn(n_tokens).astype(np.float32)
-
-    def _run_sovits(self, semantic_tokens: np.ndarray, ref_features: dict,
-                    params: VoiceCloneParams) -> np.ndarray:
-        """Run SoVITS model to synthesize audio from semantic tokens."""
-        # Placeholder: generate simple sine wave based on token count
-        # Real implementation runs the SoVITS decoder
-        duration = len(semantic_tokens) * 0.02  # ~20ms per token
-        n_samples = int(duration * params.sample_rate)
-        t = np.arange(n_samples) / params.sample_rate
-        # Simple placeholder audio
-        audio = 0.3 * np.sin(2 * np.pi * 220 * t) * np.exp(-t / duration)
-        return audio.astype(np.float32)
-
-    def _change_speed(self, audio: np.ndarray, speed: float,
-                      sr: int) -> np.ndarray:
-        try:
-            import librosa
-            return librosa.effects.time_stretch(audio, rate=speed)
-        except ImportError:
-            return audio
 
     def save_output(
         self,
