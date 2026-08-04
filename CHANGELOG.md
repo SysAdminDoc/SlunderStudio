@@ -12,6 +12,9 @@ All notable changes to SlunderStudio will be documented in this file.
   per-revision execution consent to model loaders.
 - Added OMS detached-signature verification before model loading. Model Hub and provenance now
   distinguish verified, invalid, unavailable, and unsigned model signatures.
+- Added opt-in C2PA Content Credentials for WAV, FLAC, and MP3 exports. Signed manifests carry
+  creation/model disclosure assertions and a round-tripped digest binding back to the provenance
+  sidecar; signing remains off by default and never generates or stores private keys.
 - Added the EBU R128 delivery target at -23 LUFS / -1 dBTP, post-normalization true-peak
   protection, and explicit EBU Mode momentary, short-term, and integrated mastering readouts.
 - Fixed project search to match user-facing names and notes without depending on widget order, and

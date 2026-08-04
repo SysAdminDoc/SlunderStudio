@@ -94,6 +94,7 @@ def runtime_fingerprint() -> dict[str, Any]:
         "diffusers",
         "transformers",
         "onnxruntime",
+        "c2pa-python",
     )
     packages = {}
     for package in package_names:

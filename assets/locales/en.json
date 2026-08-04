@@ -182,7 +182,17 @@
       "unavailable": "Unavailable: {identity}",
       "enumeration_failed": "Could not enumerate audio output devices; playback will use the system default until the list is refreshed. ({error})",
       "saved_unavailable": "Saved output device '{identity}' is unavailable; playback will use the system default until it returns.",
-      "no_devices": "No PortAudio output devices were found; playback will use the system default."
+      "no_devices": "No PortAudio output devices were found; playback will use the system default.",
+      "c2pa_label": "Content Credentials",
+      "c2pa_enabled": "Embed signed C2PA provenance on supported exports",
+      "c2pa_help": "Off by default. Enable only with your own C2PA claim-signing certificate and private key. Supported here: WAV, FLAC, and MP3; OGG and Opus remain unsigned.",
+      "c2pa_certificate": "C2PA certificate chain",
+      "c2pa_certificate_placeholder": "Select a PEM certificate chain...",
+      "c2pa_private_key": "C2PA private key",
+      "c2pa_private_key_placeholder": "Select an unencrypted PEM private key...",
+      "c2pa_off": "Content Credentials are off. Exports remain unchanged.",
+      "c2pa_missing_credentials": "Enablement is saved, but both signer files must be selected before exporting.",
+      "c2pa_ready": "Signer paths are configured. The private key is read only during an opted-in export."
     },
     "gpu": {
       "group": "GPU and Models",
@@ -286,7 +296,9 @@
     },
     "dialogs": {
       "select_output_directory": "Select Output Directory",
-      "export_health": "Export Health Report"
+      "export_health": "Export Health Report",
+      "select_c2pa_certificate": "Select C2PA Certificate Chain",
+      "select_c2pa_private_key": "Select C2PA Private Key"
     },
     "messages": {
       "setting_updated": "Setting updated",

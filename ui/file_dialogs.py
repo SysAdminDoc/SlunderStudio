@@ -188,6 +188,27 @@ def open_audio_files(
     return paths, selected_filter
 
 
+def open_file(
+    parent,
+    title: str,
+    file_filter: str,
+    operation_kind: str = "file_import",
+    *,
+    dialog=QFileDialog,
+    fallback_dir: str | os.PathLike[str] | None = None,
+) -> tuple[str, str]:
+    """Open one arbitrary file with the shared remembered-directory policy."""
+    path, selected_filter = dialog.getOpenFileName(
+        parent,
+        title,
+        last_directory(operation_kind, fallback_dir=fallback_dir),
+        file_filter,
+    )
+    if path:
+        _remember_directory(operation_kind, path)
+    return path, selected_filter
+
+
 def open_midi_file(
     parent,
     title: str,

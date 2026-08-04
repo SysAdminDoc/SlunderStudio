@@ -43,6 +43,8 @@ class BuildArtifactTests(unittest.TestCase):
                 "engines.ace_step_engine",
                 "engines.lyrics_templates",
                 "core.audio_export",
+                "core.content_credentials",
+                "c2pa",
             }.issubset(hidden_imports)
         )
 

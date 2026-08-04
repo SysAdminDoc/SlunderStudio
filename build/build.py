@@ -418,6 +418,7 @@ def build_command(onefile: bool = False) -> list[str]:
         "core.chord_chart",
         "core.audio_engine",
         "core.audio_export",
+        "core.content_credentials",
         "core.lyrics_db",
         "core.mastering",
         "core.midi_utils",
@@ -431,6 +432,9 @@ def build_command(onefile: bool = False) -> list[str]:
         "numpy",
         "sounddevice",
         "soundfile",
+        # C2PA is imported lazily so the optional export path remains cheap at
+        # startup; include its native binding explicitly in frozen releases.
+        "c2pa",
     ]
 
     cmd = [

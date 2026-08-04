@@ -163,6 +163,14 @@ can save the output folder and experience level, securely collect a HuggingFace 
 gated download, and carry a selected core model into Model Hub for review or download. It can be
 reopened from Settings after the first run; choosing Skip leaves setup incomplete.
 
+Content Credentials are optional and off by default. Settings > Output can enable C2PA manifests
+for WAV, FLAC, and MP3 exports after you select your own PEM claim-signing certificate chain and
+unencrypted P-256 private key. Slunder Studio reads the key only for that export and never
+generates, copies, or stores the key contents. OGG and Opus exports remain unsigned because the
+current bundled C2PA binding does not embed those formats. Signed exports carry the creation
+action, a C2PA AI-disclosure assertion when a model was used, and a digest binding the manifest
+back to the adjacent provenance sidecar.
+
 ```
 SlunderStudio/
 ├── settings.json          # App preferences

@@ -164,6 +164,7 @@ class DependencyDiagnosticsTests(unittest.TestCase):
             "yaml",
         }
         import_to_package = {
+            "c2pa": "c2pa-python",
             "PySide6": "PySide6",
             "huggingface_hub": "huggingface-hub",
             "sounddevice": "sounddevice",

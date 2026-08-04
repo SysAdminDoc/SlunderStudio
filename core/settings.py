@@ -43,6 +43,12 @@ DEFAULTS = {
         # host-api/name identity exposed by core.audio_engine.
         "audio_output_device": "",
         "bit_depth": 24,
+        # C2PA signing is deliberately opt-in. Paths point to user-managed
+        # credentials; Slunder Studio never generates or stores private keys.
+        "c2pa_enabled": False,
+        "c2pa_certificate_path": "",
+        "c2pa_private_key_path": "",
+        "c2pa_timestamp_url": "",
         "gpu_device": 0,
         "theme_accent": "#a293ff",
         "ui_mode": "simple",

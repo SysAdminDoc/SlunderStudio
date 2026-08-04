@@ -34,7 +34,7 @@ from core.audio_engine import (
     format_output_device_identity,
 )
 from core.workers import CancelledJobError, InferenceWorker
-from ui.file_dialogs import choose_directory, save_file
+from ui.file_dialogs import choose_directory, open_file, save_file
 
 
 def _recovery_cleanup_task(
@@ -267,6 +267,80 @@ class SettingsView(QWidget):
         )
         self._audio_device_status.setVisible(False)
         output_layout.addWidget(self._audio_device_status)
+
+        # ── Optional Content Credentials ──
+        self._c2pa_enabled = QCheckBox(tr("settings.output.c2pa_enabled"))
+        self._c2pa_enabled.toggled.connect(self._on_c2pa_toggled)
+        output_layout.addLayout(SettingRow(
+            tr("settings.output.c2pa_label"),
+            self._c2pa_enabled,
+            tr("settings.output.c2pa_help"),
+        ))
+
+        self._c2pa_certificate_path = QLineEdit()
+        self._c2pa_certificate_path.setReadOnly(True)
+        self._c2pa_certificate_path.setPlaceholderText(
+            tr("settings.output.c2pa_certificate_placeholder")
+        )
+        self._c2pa_certificate_browse = QPushButton(tr("settings.output.browse"))
+        self._c2pa_certificate_browse.setObjectName("secondaryBtn")
+        self._c2pa_certificate_browse.setMinimumWidth(80)
+        self._c2pa_certificate_browse.setMinimumHeight(34)
+        self._c2pa_certificate_browse.clicked.connect(
+            lambda: self._browse_c2pa_file(
+                "general.c2pa_certificate_path",
+                "c2pa_certificate",
+                tr("settings.dialogs.select_c2pa_certificate"),
+                "PEM Certificates (*.pem *.crt *.cer);;All Files (*)",
+                self._c2pa_certificate_path,
+            )
+        )
+        certificate_controls = QWidget()
+        certificate_layout = QHBoxLayout(certificate_controls)
+        certificate_layout.setContentsMargins(0, 0, 0, 0)
+        certificate_layout.setSpacing(8)
+        certificate_layout.addWidget(self._c2pa_certificate_path, 1)
+        certificate_layout.addWidget(self._c2pa_certificate_browse)
+        output_layout.addLayout(SettingRow(
+            tr("settings.output.c2pa_certificate"),
+            certificate_controls,
+        ))
+
+        self._c2pa_private_key_path = QLineEdit()
+        self._c2pa_private_key_path.setReadOnly(True)
+        self._c2pa_private_key_path.setPlaceholderText(
+            tr("settings.output.c2pa_private_key_placeholder")
+        )
+        self._c2pa_private_key_browse = QPushButton(tr("settings.output.browse"))
+        self._c2pa_private_key_browse.setObjectName("secondaryBtn")
+        self._c2pa_private_key_browse.setMinimumWidth(80)
+        self._c2pa_private_key_browse.setMinimumHeight(34)
+        self._c2pa_private_key_browse.clicked.connect(
+            lambda: self._browse_c2pa_file(
+                "general.c2pa_private_key_path",
+                "c2pa_private_key",
+                tr("settings.dialogs.select_c2pa_private_key"),
+                "PEM Private Keys (*.pem *.key);;All Files (*)",
+                self._c2pa_private_key_path,
+            )
+        )
+        key_controls = QWidget()
+        key_layout = QHBoxLayout(key_controls)
+        key_layout.setContentsMargins(0, 0, 0, 0)
+        key_layout.setSpacing(8)
+        key_layout.addWidget(self._c2pa_private_key_path, 1)
+        key_layout.addWidget(self._c2pa_private_key_browse)
+        output_layout.addLayout(SettingRow(
+            tr("settings.output.c2pa_private_key"),
+            key_controls,
+        ))
+
+        self._c2pa_status = QLabel()
+        self._c2pa_status.setWordWrap(True)
+        self._c2pa_status.setStyleSheet(
+            f"color: {Palette.SUBTEXT0}; font-size: 8.25pt; padding: 2px 0;"
+        )
+        output_layout.addWidget(self._c2pa_status)
 
         layout.addWidget(output_group)
 
@@ -849,7 +923,7 @@ class SettingsView(QWidget):
         # cascading saves during programmatic value changes
         _widgets = [
             self._format_combo, self._sample_rate_combo, self._gpu_device,
-            self._offline_mode, self._hf_token, self._experience_combo,
+            self._c2pa_enabled, self._offline_mode, self._hf_token, self._experience_combo,
             self._ui_locale_combo,
             self._default_language,
             self._reduced_motion,
@@ -866,6 +940,15 @@ class SettingsView(QWidget):
         try:
             # Simple tab
             self._output_dir.setText(s.get("general.output_dir", ""))
+            self._c2pa_enabled.setChecked(
+                bool(s.get("general.c2pa_enabled", False))
+            )
+            self._c2pa_certificate_path.setText(
+                str(s.get("general.c2pa_certificate_path", "") or "")
+            )
+            self._c2pa_private_key_path.setText(
+                str(s.get("general.c2pa_private_key_path", "") or "")
+            )
             fmt = s.get("general.audio_format", "wav").upper()
             idx = self._format_combo.findText(fmt)
             if idx >= 0:
@@ -936,6 +1019,7 @@ class SettingsView(QWidget):
             for w in _widgets:
                 w.blockSignals(False)
         self._refresh_audio_devices()
+        self._refresh_c2pa_state()
         self._update_repair_status()
         self._refresh_credential_status()
         self._refresh_recovery_center()
@@ -989,6 +1073,46 @@ class SettingsView(QWidget):
         if path:
             self._output_dir.setText(path)
             self._save("general.output_dir", path)
+
+    def _on_c2pa_toggled(self, enabled: bool):
+        self._save("general.c2pa_enabled", bool(enabled))
+        self._refresh_c2pa_state()
+
+    def _refresh_c2pa_state(self):
+        """Explain the opt-in state without reading or exposing private keys."""
+        if not self._c2pa_enabled.isChecked():
+            text = tr("settings.output.c2pa_off")
+            color = Palette.SUBTEXT0
+        elif not self._c2pa_certificate_path.text().strip() or not self._c2pa_private_key_path.text().strip():
+            text = tr("settings.output.c2pa_missing_credentials")
+            color = Palette.YELLOW
+        else:
+            text = tr("settings.output.c2pa_ready")
+            color = Palette.SUBTEXT0
+        self._c2pa_status.setText(text)
+        self._c2pa_status.setStyleSheet(
+            f"color: {color}; font-size: 8.25pt; padding: 2px 0;"
+        )
+
+    def _browse_c2pa_file(
+        self,
+        setting_key: str,
+        operation_kind: str,
+        title: str,
+        file_filter: str,
+        field: QLineEdit,
+    ):
+        path, _selected_filter = open_file(
+            self,
+            title,
+            file_filter,
+            operation_kind=operation_kind,
+            dialog=QFileDialog,
+        )
+        if path:
+            field.setText(path)
+            self._save(setting_key, path)
+            self._refresh_c2pa_state()
 
     def _reset_all(self):
         try:
@@ -1087,6 +1211,11 @@ class SettingsView(QWidget):
                 (self._sample_rate_combo, "Sample rate", "Selects the default audio sample rate."),
                 (self._audio_device_combo, "Audio output device", "Selects the PortAudio output device and shows its host API."),
                 (self._refresh_audio_devices_btn, "Refresh audio output devices", "Refreshes the PortAudio output-device list without restarting."),
+                (self._c2pa_enabled, "C2PA Content Credentials", "Opt-in embedding of a signed C2PA manifest on supported audio exports."),
+                (self._c2pa_certificate_path, "C2PA certificate path", "Selects the user-managed PEM claim-signing certificate chain."),
+                (self._c2pa_certificate_browse, "Browse C2PA certificate", "Selects the C2PA claim-signing certificate chain."),
+                (self._c2pa_private_key_path, "C2PA private key path", "Selects the user-managed PEM private key; the key contents are never copied into settings."),
+                (self._c2pa_private_key_browse, "Browse C2PA private key", "Selects the C2PA claim-signing private key."),
                 (self._gpu_device, "GPU device index", "Selects the GPU device index."),
                 (self._offline_mode, "Offline mode", "Disables internet access for Model Hub."),
                 (self._hf_token, "HuggingFace token", "Stores a token for gated model downloads."),
@@ -1124,6 +1253,11 @@ class SettingsView(QWidget):
                 self._sample_rate_combo,
                 self._audio_device_combo,
                 self._refresh_audio_devices_btn,
+                self._c2pa_enabled,
+                self._c2pa_certificate_path,
+                self._c2pa_certificate_browse,
+                self._c2pa_private_key_path,
+                self._c2pa_private_key_browse,
                 self._gpu_device,
                 self._offline_mode,
                 self._hf_token,

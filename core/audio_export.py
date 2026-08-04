@@ -11,7 +11,7 @@ import subprocess
 import time
 from typing import Optional
 from pathlib import Path
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 import numpy as np
 
@@ -20,7 +20,16 @@ from core.audio_buffers import (
     resample_audio,
     validate_audio_buffer,
 )
-from core.provenance import read_provenance_sidecar, write_provenance_sidecar
+from core.content_credentials import (
+    C2PAConfig,
+    configured_c2pa_config,
+    embed_c2pa_manifest,
+)
+from core.provenance import (
+    read_provenance_sidecar,
+    sidecar_path_for,
+    write_provenance_sidecar,
+)
 
 
 # Every delivery format the app can produce, and what writes it.
@@ -77,6 +86,9 @@ class ExportSettings:
     track_number: str = ""
     isrc: str = ""
     comment: str = ""
+    # None means use the persisted Settings preference. False is an explicit
+    # per-export opt-out, while True requires configured signer credentials.
+    c2pa_enabled: Optional[bool] = None
 
     def metadata_tags(self) -> dict:
         """Canonical tag keys for this delivery, empty values dropped."""
@@ -119,10 +131,14 @@ def configured_export_settings() -> ExportSettings:
         bit_depth = 24
     if bit_depth not in {16, 24, 32}:
         bit_depth = 24
+    c2pa_enabled = settings.get("general.c2pa_enabled", False)
+    if not isinstance(c2pa_enabled, bool):
+        c2pa_enabled = str(c2pa_enabled).strip().lower() in {"1", "true", "yes"}
     return ExportSettings(
         format=export_format,
         sample_rate=sample_rate,
         bit_depth=bit_depth,
+        c2pa_enabled=c2pa_enabled,
     )
 
 
@@ -531,6 +547,7 @@ def export_audio(
     step_cb=None,
     log_cb=None,
     cancel_event=None,
+    c2pa_config: C2PAConfig | None = None,
 ) -> str:
     """
     Export audio file to target format with optional processing.
@@ -538,6 +555,18 @@ def export_audio(
     """
     if settings is None:
         settings = configured_export_settings()
+    elif settings.c2pa_enabled is None or c2pa_config is not None:
+        from core.settings import Settings
+
+        enabled = settings.c2pa_enabled
+        if enabled is None:
+            value = Settings().get("general.c2pa_enabled", False)
+            enabled = value if isinstance(value, bool) else str(value).lower() in {
+                "1", "true", "yes"
+            }
+        if c2pa_config is not None:
+            enabled = True
+        settings = replace(settings, c2pa_enabled=enabled)
 
     output_path = str(output_path)
     source_path = str(source_path)
@@ -694,17 +723,46 @@ def export_audio(
         "verification": verification,
     }
 
+    parameters = {"settings": asdict(settings)}
     write_provenance_sidecar(
         output_path,
         module=module,
         operation=operation,
-        parameters={"settings": asdict(settings)},
+        parameters=parameters,
         source_asset_ids=source_asset_ids or [],
         source_paths=source_paths if source_paths is not None else [source_path],
         export_format=settings.format,
         output_kind="export",
         extra=extra,
     )
+
+    if settings.c2pa_enabled:
+        try:
+            credentials = c2pa_config or configured_c2pa_config()
+            result = embed_c2pa_manifest(output_path, config=credentials)
+            verification = _verify_written_file(output_path)
+            extra["delivery"]["verification"] = verification
+            extra["c2pa"] = result.as_dict()
+            write_provenance_sidecar(
+                output_path,
+                module=module,
+                operation=operation,
+                parameters=parameters,
+                source_asset_ids=source_asset_ids or [],
+                source_paths=source_paths if source_paths is not None else [source_path],
+                export_format=settings.format,
+                output_kind="export",
+                extra=extra,
+            )
+        except Exception:
+            # An explicitly requested credential export must not leave an
+            # unsigned artifact that looks like a completed signed delivery.
+            for candidate in (Path(output_path), sidecar_path_for(output_path)):
+                try:
+                    candidate.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
     _progress(100)
     return output_path
 
@@ -755,6 +813,7 @@ def export_from_numpy(
     provenance_extra: Optional[dict] = None,
     progress_cb=None,
     cancel_event=None,
+    c2pa_config: C2PAConfig | None = None,
 ) -> str:
     """Export a numpy audio array directly to file."""
     if settings is None:
@@ -791,6 +850,7 @@ def export_from_numpy(
                 if progress_cb else None
             ),
             cancel_event=cancel_event,
+            c2pa_config=c2pa_config,
         )
     finally:
         if os.path.exists(temp_path):
