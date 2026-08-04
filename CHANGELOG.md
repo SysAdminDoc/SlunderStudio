@@ -12,6 +12,8 @@ All notable changes to SlunderStudio will be documented in this file.
   of raising from the Qt event loop.
 - Fixed Vocal Suite remix export to use the loaded stems' sample rate and record its source paths and
   rate in the provenance sidecar.
+- Kept Vocal Suite live conversion and cloning progress/cancellation labels truthful by reserving
+  “demo” wording for explicit fallback or consent-scope contexts.
 - Added central admission control for model work: downloads are globally bounded and
   duplicate-keyed, model-bearing workers queue behind a cancellable inference slot, and health
   reports expose active/queued capacity without duplicating resume or SHA-256 verification.

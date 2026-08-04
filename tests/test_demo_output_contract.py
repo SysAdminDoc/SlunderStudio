@@ -4,6 +4,7 @@ import tempfile
 import time
 import unittest
 import wave
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -51,6 +52,18 @@ class DemoOutputContractTests(unittest.TestCase):
             time.sleep(0.01)
         self._app.processEvents()
         return bool(predicate())
+
+    def test_vocal_suite_live_operation_labels_do_not_claim_demo_output(self):
+        source = (Path(__file__).resolve().parents[1] / "ui" / "vocal_suite_view.py").read_text(
+            encoding="utf-8"
+        )
+        for phrase in (
+            "Cancelling RVC demo",
+            "GPT-SoVITS demo...",
+            "Preparing consent-ready GPT-SoVITS demo",
+            "Produces declared outputs:",
+        ):
+            self.assertNotIn(phrase, source)
 
     def test_fluidsynth_failure_marks_sine_preview_as_demo(self):
         with tempfile.TemporaryDirectory() as tmp:

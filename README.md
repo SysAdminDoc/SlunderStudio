@@ -113,7 +113,8 @@ Project Manager exports the open project's existing audio assets as a `.dawproje
 Vocal Suite's Stem Mixer can export each separated stem as a native-rate WAV with a persisted
 target-DAW naming template (Generic, Ableton Live, Bitwig Studio, Cubase, Logic Pro, Pro Tools,
 Studio One, or FL Studio). Each delivery file gets its own provenance sidecar and stable track
-order; the selected convention is also available in Settings > Output.
+order; the selected convention is also available in Settings > Output. Live conversion and cloning
+progress labels describe the actual operation and do not call an activated-model run a demo.
 
 Optional OSC transport control is available in Settings > OSC Control. It is disabled and
 loopback-only by default, accepts direct messages in the versioned `/slunder/v1` namespace, and
