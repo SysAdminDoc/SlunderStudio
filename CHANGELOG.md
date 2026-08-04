@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added reusable, actionable empty states across generation outputs, model and project browsers,
+  lyric/style searches, MIDI and audio mixers, seed exploration, SFX results, and all Vocal Suite
+  tabs. Filterable collections now distinguish an empty catalog from a search with no matches.
 - Added persisted English/Arabic/pseudo-locale selection, startup locale restoration, RTL layout
   direction, and translated main-shell page metadata with catalog coverage and keyboard gates.
 - Added AST-backed extraction checks so every literal `tr()` key used by the application shell and

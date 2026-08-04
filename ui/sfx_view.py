@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 
 from ui.theme import Palette, ThemeEngine
 from ui.accessibility import install_accessibility
+from ui.widgets import EmptyStateWidget
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.engine_contract import (
     ArtifactKind,
@@ -362,6 +363,13 @@ class SFXView(QWidget):
         self._results_layout = QVBoxLayout(self._results_container)
         self._results_layout.setContentsMargins(0, 0, 0, 0)
         self._results_layout.setSpacing(4)
+        self._results_empty = EmptyStateWidget(
+            "No sound effects yet",
+            "Describe a sound on the left and generate a variation to build this result list.",
+            "Generate sound effect",
+        )
+        self._results_empty.action_requested.connect(self._gen_btn.click)
+        self._results_layout.addWidget(self._results_empty)
         self._results_layout.addStretch()
 
         self._scroll.setWidget(self._results_container)
@@ -372,6 +380,7 @@ class SFXView(QWidget):
         layout.addWidget(right_w, 1)
         self._model_mgr.status_changed.connect(self._on_model_status_changed)
         self._refresh_capability_state()
+        self._update_results_empty_state()
         install_accessibility(
             self,
             "SFX Generator",
@@ -657,6 +666,18 @@ class SFXView(QWidget):
         index = max(0, min(index, len(self._cards)))
         self._cards.insert(index, card)
         self._results_layout.insertWidget(index, card)
+        self._update_results_empty_state()
+
+    def _update_results_empty_state(self):
+        if self._cards:
+            self._results_empty.hide()
+            return
+        self._results_empty.set_state(
+            "No sound effects yet",
+            "Describe a sound on the left and generate a variation to build this result list.",
+            "Generate sound effect",
+        )
+        self._results_empty.show()
 
     @staticmethod
     def _remove_identity(items, target):
@@ -722,6 +743,7 @@ class SFXView(QWidget):
             self._remove_identity(self._results, result)
             self._results_layout.removeWidget(card)
             card.deleteLater()
+        self._update_results_empty_state()
 
     def _restore_sfx_snapshots(self, snapshots: list[dict]):
         from core.trash import TrashManager

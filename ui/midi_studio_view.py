@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt, Signal
 
 from ui.theme import Palette, ThemeEngine
 from ui.accessibility import install_accessibility
+from ui.widgets import EmptyStateWidget
 from ui.piano_roll import PianoRollWidget
 from ui.midi_mixer import MidiMixer
 from ui.waveform_widget import WaveformWidget
@@ -303,6 +304,7 @@ class MidiStudioView(QWidget):
         self._mixer = MidiMixer()
         self._mixer.track_selected.connect(self._on_track_selected)
         self._mixer.mix_changed.connect(self._on_mix_changed)
+        self._mixer.empty_action_requested.connect(self._gen_btn.click)
         left.addWidget(self._mixer, 1)
 
         # ── Action buttons ─────────────────────────────────────────────────
@@ -395,9 +397,20 @@ class MidiStudioView(QWidget):
 
         # Rendered audio tab
         self._waveform = WaveformWidget()
+        self._waveform.empty_action_requested.connect(self._import_btn.click)
         self._tabs.addTab(self._waveform, "Rendered Audio")
 
-        right.addWidget(self._tabs, 1)
+        self._workspace_empty = EmptyStateWidget(
+            "No MIDI composition yet",
+            "Generate or import a MIDI file to edit notes, mix tracks, and render audio.",
+            "Generate MIDI",
+        )
+        self._workspace_empty.action_requested.connect(self._gen_btn.click)
+        self._workspace_stack = QStackedWidget()
+        self._workspace_stack.addWidget(self._tabs)
+        self._workspace_stack.addWidget(self._workspace_empty)
+        self._workspace_stack.setCurrentWidget(self._workspace_empty)
+        right.addWidget(self._workspace_stack, 1)
 
         # Info bar
         self._info = QLabel("No MIDI loaded. Generate or import a file.")
@@ -649,6 +662,7 @@ class MidiStudioView(QWidget):
         if self._render_worker is not None:
             self._render_worker.cancel()
         self._midi_data = midi_data
+        self._workspace_stack.setCurrentWidget(self._tabs)
 
         # Load mixer
         self._mixer.load_midi(midi_data)

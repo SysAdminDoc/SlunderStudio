@@ -531,6 +531,12 @@ class VocalSuiteView(QWidget):
 
         # Right: Waveform output
         self._sing_waveform = WaveformWidget()
+        self._sing_waveform.set_empty_state(
+            "No vocal take yet",
+            "Enter lyrics and synthesize a DiffSinger vocal to edit pronunciation and timing.",
+            "Synthesize vocals",
+        )
+        self._sing_waveform.empty_action_requested.connect(self._sing_gen_btn.click)
         self._sing_waveform.set_selection_enabled(True)
         self._sing_waveform.region_selected.connect(self._on_sing_region_selected)
         layout.addWidget(self._sing_waveform, 1)
@@ -647,6 +653,12 @@ class VocalSuiteView(QWidget):
         preview_label = QLabel(tr("vocal.melody.preview"))
         preview_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         self._melody_waveform = WaveformWidget()
+        self._melody_waveform.set_empty_state(
+            "No melody preview yet",
+            "Choose a humming recording to preview it, then generate lyric-aligned MIDI.",
+            "Choose humming audio",
+        )
+        self._melody_waveform.empty_action_requested.connect(self._melody_browse_btn.click)
         right.addWidget(preview_label)
         right.addWidget(self._melody_waveform, 1)
         right_w = QWidget()
@@ -840,9 +852,21 @@ class VocalSuiteView(QWidget):
         ol = QLabel("Original")
         ol.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         self._rvc_original_wf = WaveformWidget()
+        self._rvc_original_wf.set_empty_state(
+            "No source vocal yet",
+            "Choose an input recording before converting its voice.",
+            "Choose input audio",
+        )
+        self._rvc_original_wf.empty_action_requested.connect(self._rvc_browse_btn.click)
         cl = QLabel("Converted")
         cl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         self._rvc_converted_wf = WaveformWidget()
+        self._rvc_converted_wf.set_empty_state(
+            "No converted vocal yet",
+            "Choose an input recording and run voice conversion to create this result.",
+            "Choose input audio",
+        )
+        self._rvc_converted_wf.empty_action_requested.connect(self._rvc_browse_btn.click)
         right.addWidget(ol)
         right.addWidget(self._rvc_original_wf, 1)
         right.addWidget(cl)
@@ -1098,6 +1122,12 @@ class VocalSuiteView(QWidget):
 
         # Output waveform
         self._clone_waveform = WaveformWidget()
+        self._clone_waveform.set_empty_state(
+            "No cloned voice yet",
+            "Create a consent-ready voice profile and choose reference audio before cloning.",
+            "Choose reference audio",
+        )
+        self._clone_waveform.empty_action_requested.connect(self._clone_ref_btn.click)
         layout.addWidget(self._clone_waveform, 1)
 
         return widget
@@ -1202,6 +1232,12 @@ class VocalSuiteView(QWidget):
         preview_label = QLabel(tr("vocal.autotune.corrected"))
         preview_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px;")
         self._autotune_waveform = WaveformWidget()
+        self._autotune_waveform.set_empty_state(
+            "No corrected vocal yet",
+            "Choose vocal audio, set the correction strength, and apply auto-tune.",
+            "Choose vocal audio",
+        )
+        self._autotune_waveform.empty_action_requested.connect(self._autotune_browse_btn.click)
         right.addWidget(preview_label)
         right.addWidget(self._autotune_waveform, 1)
         right_w = QWidget()
@@ -1265,6 +1301,7 @@ class VocalSuiteView(QWidget):
 
         # Stem mixer
         self._stem_mixer = StemMixer()
+        self._stem_mixer.empty_action_requested.connect(self._stem_browse_btn.click)
         self._stem_mixer.remix_requested.connect(self._on_remix_export)
         self._stem_mixer.stem_play.connect(self._on_play_stem)
         layout.addWidget(self._stem_mixer, 1)

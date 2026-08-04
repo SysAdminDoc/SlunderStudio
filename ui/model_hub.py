@@ -6,7 +6,7 @@ partial download detection, and one-click download/delete.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QScrollArea, QGridLayout, QPushButton, QProgressBar,
-    QLineEdit, QComboBox, QCheckBox, QDialog, QSizePolicy,
+    QLineEdit, QComboBox, QCheckBox, QDialog, QSizePolicy, QStackedWidget,
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QDesktopServices
@@ -14,6 +14,7 @@ from PySide6.QtCore import QUrl
 
 from ui.theme import Palette
 from ui.accessibility import install_accessibility, set_accessible
+from ui.widgets import EmptyStateWidget
 from core.model_manager import (
     EXECUTABLE_MODEL_WARNING,
     ModelCategory,
@@ -643,6 +644,7 @@ class ModelHubView(QWidget):
         # Only the initial page load may classify active records as interrupted.
         self._job_store.recover_stale_jobs()
         self._refresh_all_cards()
+        self._filter_cards()
         # Let the shell paint before the first GPU probe touches torch.
         QTimer.singleShot(0, self._update_gpu_display)
 
@@ -775,7 +777,16 @@ class ModelHubView(QWidget):
                 row += 1
 
         self._grid_layout.setRowStretch(row + 1, 1)
-        scroll.setWidget(self._grid_container)
+        self._grid_empty = EmptyStateWidget(
+            "No models match these filters",
+            "Try a broader search or show all categories and hardware tiers.",
+            "Clear filters",
+        )
+        self._grid_empty.action_requested.connect(self._clear_filters)
+        self._grid_stack = QStackedWidget()
+        self._grid_stack.addWidget(self._grid_container)
+        self._grid_stack.addWidget(self._grid_empty)
+        scroll.setWidget(self._grid_stack)
         layout.addWidget(scroll, 1)
         install_accessibility(
             self,
@@ -991,6 +1002,7 @@ class ModelHubView(QWidget):
         hardware_filter = self._hardware_filter.currentData()
         downloaded_only = self._downloaded_only.isChecked()
 
+        visible_count = 0
         for model_id, card in self._cards.items():
             info = self._mgr.get_model_info(model_id)
             status = self._mgr.get_status(model_id)
@@ -1011,7 +1023,42 @@ class ModelHubView(QWidget):
             ):
                 visible = False
             card.setVisible(visible)
+            visible_count += int(visible)
+        if visible_count:
+            self._grid_stack.setCurrentWidget(self._grid_container)
+        elif search or cat_filter != "all" or task_filter != "all" or hardware_filter != "fit" or downloaded_only:
+            filters = []
+            if search:
+                filters.append(f'“{search}”')
+            if cat_filter != "all":
+                filters.append(cat_filter.replace("_", " "))
+            if task_filter != "all":
+                filters.append(task_filter)
+            if hardware_filter == "fit":
+                filters.append("the detected hardware tier")
+            if downloaded_only:
+                filters.append("downloaded models")
+            self._grid_empty.set_no_matches(
+                "No models match " + ", ".join(filters) + ".",
+                "Clear filters",
+            )
+            self._grid_stack.setCurrentWidget(self._grid_empty)
+        else:
+            self._grid_empty.set_state(
+                "No models available",
+                "Model cards will appear here when the local model catalog is installed.",
+                "Refresh catalog",
+            )
+            self._grid_stack.setCurrentWidget(self._grid_empty)
         self._update_recommendation_label()
+
+    def _clear_filters(self):
+        self._search.clear()
+        self._category_filter.setCurrentIndex(0)
+        self._task_filter.setCurrentIndex(0)
+        self._hardware_filter.setCurrentIndex(1)
+        self._downloaded_only.setChecked(False)
+        self._filter_cards()
 
     # -- Download Management -----------------------------------------------
 

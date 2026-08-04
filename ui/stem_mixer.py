@@ -14,7 +14,7 @@ import numpy as np
 
 from ui.theme import Palette, ThemeEngine, rgba
 from ui.accessibility import install_accessibility
-from ui.widgets import ElidedLabel
+from ui.widgets import ElidedLabel, EmptyStateWidget
 from ui.waveform_widget import MiniWaveform
 from core.audio_buffers import mixdown_audio
 from core.panning import pan_gains
@@ -224,6 +224,7 @@ class StemMixer(QWidget):
 
     remix_requested = Signal()
     stem_play = Signal(str)  # stem name
+    empty_action_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -260,6 +261,13 @@ class StemMixer(QWidget):
         self._container_layout = QVBoxLayout(self._container)
         self._container_layout.setContentsMargins(0, 0, 0, 0)
         self._container_layout.setSpacing(4)
+        self._empty = EmptyStateWidget(
+            "No stems separated yet",
+            "Choose an audio file above and separate it to mix vocals, drums, bass, and other stems.",
+            "Choose audio",
+        )
+        self._empty.action_requested.connect(self.empty_action_requested.emit)
+        self._container_layout.addWidget(self._empty)
         self._container_layout.addStretch()
 
         self._scroll.setWidget(self._container)
@@ -290,6 +298,7 @@ class StemMixer(QWidget):
             )
 
         self._remix_btn.setEnabled(len(self._strips) > 0)
+        self._empty.setVisible(not self._strips)
 
     def clear(self):
         for strip in self._strips.values():
@@ -297,6 +306,7 @@ class StemMixer(QWidget):
             strip.deleteLater()
         self._strips.clear()
         self._remix_btn.setEnabled(False)
+        self._empty.show()
 
     def get_remix_audio(self) -> Optional[np.ndarray]:
         """Mix stems according to current volume/pan/mute/solo settings."""

@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, Signal
 from core.midi_utils import MidiData, TrackData, GM_PROGRAMS, get_program_name
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
-from ui.widgets import ElidedLabel
+from ui.widgets import ElidedLabel, EmptyStateWidget
 
 
 # ── Track Strip ────────────────────────────────────────────────────────────────
@@ -236,6 +236,7 @@ class MidiMixer(QWidget):
 
     track_selected = Signal(int)
     mix_changed = Signal()
+    empty_action_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -279,6 +280,13 @@ class MidiMixer(QWidget):
         self._strip_layout = QVBoxLayout(self._strip_container)
         self._strip_layout.setContentsMargins(0, 0, 0, 0)
         self._strip_layout.setSpacing(4)
+        self._empty = EmptyStateWidget(
+            "No MIDI tracks yet",
+            "Generate or import a MIDI composition to edit its instruments and mix.",
+            "Generate or import MIDI",
+        )
+        self._empty.action_requested.connect(self.empty_action_requested.emit)
+        self._strip_layout.addWidget(self._empty)
         self._strip_layout.addStretch()
 
         self._scroll.setWidget(self._strip_container)
@@ -309,6 +317,7 @@ class MidiMixer(QWidget):
         self._strips.clear()
         self._muted.clear()
         self._soloed.clear()
+        self._empty.show()
 
     def _add_strip(self, track: TrackData, idx: int):
         strip = TrackStrip(track, idx)
@@ -322,6 +331,7 @@ class MidiMixer(QWidget):
         # Insert before stretch
         self._strip_layout.insertWidget(self._strip_layout.count() - 1, strip)
         self._strips.append(strip)
+        self._empty.hide()
 
     def _on_mute(self, idx: int, muted: bool):
         if muted:

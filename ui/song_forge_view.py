@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QSplitter, QTabWidget, QTextEdit, QLineEdit, QComboBox,
     QSpinBox, QDoubleSpinBox, QFrame, QScrollArea, QProgressBar,
     QFileDialog, QCheckBox, QGroupBox, QGridLayout, QListWidget,
-    QListWidgetItem, QPlainTextEdit, QSlider,
+    QListWidgetItem, QPlainTextEdit, QSlider, QStackedWidget,
 )
 from PySide6.QtCore import Signal, Qt
 
@@ -24,6 +24,7 @@ from ui.seed_explorer import SeedExplorer
 from ui.mood_curve_editor import MoodCurveEditor
 from ui.reference_panel import ReferencePanel
 from ui.accessibility import install_accessibility
+from ui.widgets import EmptyStateWidget
 from ui.theme import Palette
 
 
@@ -102,7 +103,16 @@ class StyleTagBrowser(QWidget):
         )
         self._tag_list.setSelectionMode(QListWidget.MultiSelection)
         self._tag_list.itemSelectionChanged.connect(self._on_selection_changed)
-        layout.addWidget(self._tag_list, 1)
+        self._tag_empty = EmptyStateWidget(
+            "No style tags found",
+            "Browse the catalog or search for a sound, instrument, era, or mood.",
+            "Clear filters",
+        )
+        self._tag_empty.action_requested.connect(self._clear_tag_filters)
+        self._tag_stack = QStackedWidget()
+        self._tag_stack.addWidget(self._tag_list)
+        self._tag_stack.addWidget(self._tag_empty)
+        layout.addWidget(self._tag_stack, 1)
 
         # Selected tags display
         self._selected_label = QLabel("No tags selected")
@@ -144,6 +154,33 @@ class StyleTagBrowser(QWidget):
             if tag in self._selected_tags:
                 li.setSelected(True)
             self._tag_list.addItem(li)
+        if results:
+            self._tag_stack.setCurrentWidget(self._tag_list)
+        elif query or category or fav_only:
+            filters = []
+            if query:
+                filters.append(f'“{query}”')
+            if category:
+                filters.append(category)
+            if fav_only:
+                filters.append("favorites")
+            self._tag_empty.set_no_matches(
+                "No style tags match " + ", ".join(filters) + ".",
+                "Clear filters",
+            )
+            self._tag_stack.setCurrentWidget(self._tag_empty)
+        else:
+            self._tag_empty.set_state(
+                "No style tags available",
+                "The style tag catalog will appear here when it is available.",
+                "Retry search",
+            )
+            self._tag_stack.setCurrentWidget(self._tag_empty)
+
+    def _clear_tag_filters(self):
+        self._search.clear()
+        self._cat_combo.setCurrentIndex(0)
+        self._fav_check.setChecked(False)
 
     def _on_selection_changed(self):
         self._selected_tags = []
@@ -501,6 +538,12 @@ class SongForgeView(QWidget):
 
         # Waveform
         self._waveform = WaveformWidget()
+        self._waveform.set_empty_state(
+            "No song rendered yet",
+            "Choose lyrics or a style prompt, then generate a song to preview the result here.",
+            "Generate song",
+        )
+        self._waveform.empty_action_requested.connect(self._generate_btn.click)
         self._waveform.setFixedHeight(132)
         center_layout.addWidget(self._waveform)
 

@@ -12,12 +12,13 @@ from PySide6.QtWidgets import (
     QSplitter, QTabWidget, QLineEdit, QTextEdit, QComboBox,
     QPushButton, QProgressBar, QScrollArea, QListWidget,
     QListWidgetItem, QGroupBox, QDoubleSpinBox, QSpinBox,
-    QSlider, QPlainTextEdit, QSizePolicy,
+    QSlider, QPlainTextEdit, QSizePolicy, QStackedWidget,
 )
 from PySide6.QtCore import Qt, Signal, Slot
 
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
+from ui.widgets import EmptyStateWidget
 from ui.lyrics_editor import LyricsEditor
 from core.settings import Settings
 from core.i18n import (
@@ -56,7 +57,16 @@ class GenrePicker(QWidget):
         self._list = QListWidget()
         self._list.setAlternatingRowColors(True)
         self._list.currentItemChanged.connect(self._on_selection)
-        layout.addWidget(self._list, 1)
+        self._list_empty = EmptyStateWidget(
+            "No genres found",
+            "Choose a genre to guide the next lyrics draft.",
+            "Clear search",
+        )
+        self._list_empty.action_requested.connect(self._search.clear)
+        self._list_stack = QStackedWidget()
+        self._list_stack.addWidget(self._list)
+        self._list_stack.addWidget(self._list_empty)
+        layout.addWidget(self._list_stack, 1)
 
         self._populate()
         install_accessibility(
@@ -76,10 +86,27 @@ class GenrePicker(QWidget):
 
     def _filter(self, text: str):
         text = text.lower()
+        visible_count = 0
         for i in range(self._list.count()):
             item = self._list.item(i)
             visible = text in item.text().lower()
             item.setHidden(not visible)
+            visible_count += int(visible)
+        if visible_count:
+            self._list_stack.setCurrentWidget(self._list)
+        elif text:
+            self._list_empty.set_no_matches(
+                f'No genres match “{text}”. Try a broader search.',
+                "Clear search",
+            )
+            self._list_stack.setCurrentWidget(self._list_empty)
+        else:
+            self._list_empty.set_state(
+                "No genres available",
+                "Genre guidance will appear here when the genre catalog is available.",
+                "Retry search",
+            )
+            self._list_stack.setCurrentWidget(self._list_empty)
 
     def _on_selection(self, current, previous):
         if current:
@@ -103,6 +130,7 @@ class HistoryPanel(QWidget):
     """Sidebar panel showing lyrics generation history with search and favorites."""
 
     entry_selected = Signal(object)  # LyricsEntry
+    create_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -150,7 +178,16 @@ class HistoryPanel(QWidget):
         self._list.currentItemChanged.connect(self._on_selection)
         self._list.itemDoubleClicked.connect(self._toggle_favorite)
         self._list.setToolTip("Double-click an entry to toggle its favorite status.")
-        layout.addWidget(self._list, 1)
+        self._empty = EmptyStateWidget(
+            "No lyrics saved yet",
+            "Generated drafts will stay here so you can revisit, favorite, and edit them.",
+            "Generate lyrics",
+        )
+        self._empty.action_requested.connect(self._on_empty_action)
+        self._list_stack = QStackedWidget()
+        self._list_stack.addWidget(self._list)
+        self._list_stack.addWidget(self._empty)
+        layout.addWidget(self._list_stack, 1)
 
         # Count
         self._count_label = QLabel(tr("lyrics.history.entries_count", count=0))
@@ -205,6 +242,35 @@ class HistoryPanel(QWidget):
                     break
 
         self._count_label.setText(tr("lyrics.history.entries_count", count=len(entries)))
+        if entries:
+            self._list_stack.setCurrentWidget(self._list)
+        elif query:
+            self._empty.set_no_matches(
+                f'No saved lyrics match “{query}”. Clear the search to browse your history.',
+                "Clear search",
+            )
+            self._list_stack.setCurrentWidget(self._empty)
+        elif self._current_filter == "favorites":
+            self._empty.set_state(
+                "No favorite lyrics yet",
+                "Double-click a saved draft to favorite it for quick access.",
+                "Generate lyrics",
+            )
+            self._list_stack.setCurrentWidget(self._empty)
+        else:
+            self._empty.set_state(
+                "No lyrics saved yet",
+                "Generated drafts will stay here so you can revisit, favorite, and edit them.",
+                "Generate lyrics",
+            )
+            self._list_stack.setCurrentWidget(self._empty)
+
+    def _on_empty_action(self):
+        if self._empty.state == "no_matches":
+            self._search.clear()
+            self._set_filter("all")
+            return
+        self.create_requested.emit()
 
     def _toggle_favorite(self, item: QListWidgetItem):
         """Toggle the selected history entry and persist the new state."""
@@ -554,6 +620,7 @@ class LyricsView(QWidget):
 
         self._history = HistoryPanel()
         self._history.entry_selected.connect(self._load_from_history)
+        self._history.create_requested.connect(self._quick_generate.click)
         right_layout.addWidget(self._history)
 
         splitter.addWidget(right)

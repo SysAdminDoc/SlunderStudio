@@ -83,21 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Design empty and first-use states for every view
-  Why: One view out of ten has one; the rest open blank, so a new user cannot tell an empty app from
-    a broken one.
-  Evidence: `ui/batch_view.py:259-263` is the only designed empty state and is the pattern to copy.
-    Missing in Song Forge, Lyrics history (`ui/lyrics_view.py:176-194` renders an empty list plus
-    "0 entries"), MIDI Studio (which only reports "Nothing to export" at `:685`/`:702` *after* the
-    user acts), all six Vocal Suite tabs, Mixer (`ui/mixer_view.py:457-460` is a bare
-    `addStretch()`), SFX results, Project Manager's project list, and Seed Explorer.
-    `ui/model_hub.py:810-822` `_filter_cards` hides non-matching cards, so a search matching nothing
-    yields a blank scroll area with no "no results" message.
-  Touches: all views listed, `ui/widgets.py`.
-  Acceptance: Every list, grid and results area has a state that names what belongs there and offers
-    the action that fills it; every filterable list distinguishes "empty" from "no matches".
-  Complexity: M
-
 - [ ] P2 — Give long operations progress and a way to stop
   Why: Six of roughly ten long-running jobs report only a percentage in a status label, and the
     Mixer cannot be cancelled at all despite its workers supporting it.

@@ -15,6 +15,7 @@ import numpy as np
 from pathlib import Path
 
 from ui.theme import Palette
+from ui.widgets import EmptyStateWidget
 from core.workers import CancelledJobError, InferenceWorker
 
 
@@ -139,6 +140,7 @@ class WaveformWidget(QWidget):
     audio_load_progress = Signal(int)
     audio_load_finished = Signal(bool)
     spectrogram_progress = Signal(int)
+    empty_action_requested = Signal()
 
     def __init__(self, parent=None, show_controls: bool = True):
         super().__init__(parent)
@@ -269,6 +271,17 @@ class WaveformWidget(QWidget):
 
         self._stack.addWidget(self._spectro_plot)
 
+        # Keep the empty page at index 2 so the waveform/spectrogram indexes
+        # remain stable for existing callers.
+        self._empty_state = EmptyStateWidget(
+            "No audio loaded",
+            "Generate or load audio to preview the waveform and spectrogram.",
+            "Load or generate audio" if self._show_controls else "",
+        )
+        self._empty_state.action_requested.connect(self.empty_action_requested.emit)
+        self._stack.addWidget(self._empty_state)
+        self._stack.setCurrentWidget(self._empty_state)
+
         layout.addWidget(self._stack)
 
     def _set_mode(self, mode: str):
@@ -276,7 +289,10 @@ class WaveformWidget(QWidget):
         if mode == "spectrogram":
             self._ensure_spectrogram()
         if HAS_PYQTGRAPH:
-            self._stack.setCurrentIndex(0 if mode == "waveform" else 1)
+            if self._has_audio:
+                self._stack.setCurrentIndex(0 if mode == "waveform" else 1)
+            elif hasattr(self, "_empty_state"):
+                self._stack.setCurrentWidget(self._empty_state)
         if self._show_controls and hasattr(self, "_waveform_btn"):
             self._waveform_btn.setEnabled(mode != "waveform")
             self._spectro_btn.setEnabled(mode != "spectrogram")
@@ -538,6 +554,7 @@ class WaveformWidget(QWidget):
 
         if self._mode == "spectrogram":
             self._ensure_spectrogram()
+        self._stack.setCurrentIndex(0 if self._mode == "waveform" else 1)
 
     def _ensure_spectrogram(self):
         """Build the mel image only when the full waveform enters that view."""
@@ -799,6 +816,8 @@ class WaveformWidget(QWidget):
             self._spectro_cursor.hide()
             if self._selection_region is not None:
                 self._selection_region.hide()
+            if hasattr(self, "_empty_state"):
+                self._stack.setCurrentWidget(self._empty_state)
         self._audio_data = None
         self._has_audio = False
         self._spectrogram_ready = False
@@ -831,6 +850,21 @@ class WaveformWidget(QWidget):
         # The thumbnail intentionally releases its source buffer after the
         # waveform display arrays are built, so retain a separate state bit.
         return self._has_audio or self._audio_data is not None
+
+    @property
+    def empty_state(self) -> EmptyStateWidget | None:
+        """Return the first-use card so parent views can tailor its action."""
+        return getattr(self, "_empty_state", None)
+
+    def set_empty_state(
+        self,
+        title: str,
+        message: str,
+        action_text: str = "",
+    ) -> None:
+        """Customize the first-use copy without changing audio behavior."""
+        if self.empty_state is not None:
+            self.empty_state.set_state(title, message, action_text)
 
     @property
     def last_error(self) -> str:

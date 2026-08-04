@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 import numpy as np
 
 from ui.accessibility import install_accessibility
+from ui.widgets import EmptyStateWidget
 from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
 from ui.waveform_widget import WaveformWidget, MiniWaveform
@@ -618,6 +619,13 @@ class MixerView(QWidget):
         self._strips_layout = QVBoxLayout(self._strips_container)
         self._strips_layout.setContentsMargins(0, 0, 0, 0)
         self._strips_layout.setSpacing(4)
+        self._tracks_empty = EmptyStateWidget(
+            "No mixer tracks yet",
+            "Import an audio track to start balancing levels, pan, and mastering.",
+            "Import track",
+        )
+        self._tracks_empty.action_requested.connect(self._add_btn.click)
+        self._strips_layout.addWidget(self._tracks_empty)
         self._strips_layout.addStretch()
 
         self._scroll.setWidget(self._strips_container)
@@ -755,6 +763,7 @@ class MixerView(QWidget):
 
         # ── Bottom: Master output waveform ─────────────────────────────────
         self._master_waveform = WaveformWidget()
+        self._master_waveform.empty_action_requested.connect(self._add_btn.click)
         layout.addWidget(self._master_waveform, 1)
 
         # Status
@@ -890,6 +899,7 @@ class MixerView(QWidget):
         for track_idx, current_strip in enumerate(self._strips):
             current_strip.track_idx = track_idx
         self._master_btn.setEnabled(True)
+        self._tracks_empty.hide()
         self._update_mix_state()
         return idx
 
@@ -1165,6 +1175,7 @@ class MixerView(QWidget):
                 if old_idx in old_originals:
                     self._dynamic_eq_originals[new_idx] = old_originals[old_idx]
             self._master_btn.setEnabled(len(self._strips) > 0)
+            self._tracks_empty.setVisible(not self._strips)
             self._update_mix_state()
             if self.toast_mgr:
                 self.toast_mgr.info(

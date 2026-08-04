@@ -9,7 +9,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel,
     QSpinBox, QDoubleSpinBox, QFrame, QScrollArea, QComboBox,
-    QSlider, QFileDialog,
+    QSlider, QFileDialog, QStackedWidget,
     QLineEdit,
 )
 from PySide6.QtCore import Signal, Qt, QTimer
@@ -17,6 +17,7 @@ from PySide6.QtGui import QKeyEvent
 
 from ui.theme import Palette
 from ui.accessibility import FOCUS_RING_COLOR, install_accessibility, set_accessible
+from ui.widgets import EmptyStateWidget
 from ui.waveform_widget import MiniWaveform
 from core.provenance import sidecar_path_for
 from core.workers import CancelledJobError, InferenceWorker
@@ -429,7 +430,17 @@ class SeedExplorer(QWidget):
         y_label.setAlignment(Qt.AlignCenter)
         self._grid_layout.addWidget(y_label, 0, 0, self._grid_size, 1)
 
-        self._scroll.setWidget(self._grid_widget)
+        self._grid_empty = EmptyStateWidget(
+            "No seed variations yet",
+            "Adjust the seed range and timestep shift, then explore to compare generated variations.",
+            "Explore seeds",
+        )
+        self._grid_empty.action_requested.connect(self._explore_btn.click)
+        self._grid_stack = QStackedWidget()
+        self._grid_stack.addWidget(self._grid_widget)
+        self._grid_stack.addWidget(self._grid_empty)
+        self._grid_stack.setCurrentWidget(self._grid_empty)
+        self._scroll.setWidget(self._grid_stack)
         layout.addWidget(self._scroll, 1)
 
         # Info bar
@@ -456,6 +467,7 @@ class SeedExplorer(QWidget):
                 (self._explore_btn, "Explore seeds", "Generates the configured seed variation grid."),
                 (self._export_btn, "Export starred seeds", "Copies starred audio variations and provenance to a selected folder."),
                 (self._info, "Seed generation status", "Reports generation, playback, and export progress."),
+                (self._grid_empty.action_button, "Explore seeds from empty state", "Starts the configured seed variation grid."),
             ],
             tab_order=[],
             include_descendants=False,
@@ -505,6 +517,8 @@ class SeedExplorer(QWidget):
             self._cells.append(row)
         if hasattr(self, "_explore_btn"):
             self._set_cell_tab_order()
+            if not previous or not previous.get("has_content"):
+                self._grid_stack.setCurrentWidget(self._grid_empty)
         if (
             _show_undo
             and previous
@@ -573,6 +587,7 @@ class SeedExplorer(QWidget):
         """Generate parameters for each grid cell and emit generation request."""
         previous = self.snapshot_grid()
         self._ignore_active_generation_results = False
+        self._grid_stack.setCurrentWidget(self._grid_widget)
         center_seed = self._seed_spin.value()
         seed_range = self._range_spin.value()
         shift_min = self._shift_min_spin.value()
@@ -619,6 +634,7 @@ class SeedExplorer(QWidget):
             return
         if 0 <= row < len(self._cells) and 0 <= col < len(self._cells[row]):
             self._cells[row][col].set_result(audio_path, seed)
+            self._grid_stack.setCurrentWidget(self._grid_widget)
             # Count completed
             done = sum(1 for r in self._cells for c in r if c.audio_path)
             total = self._grid_size ** 2

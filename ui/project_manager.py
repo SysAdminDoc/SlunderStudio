@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, Signal
 
 from ui.theme import ThemeEngine, rgba
 from ui.accessibility import install_accessibility
+from ui.widgets import EmptyStateWidget
 from core.project import ProjectManager, Project, ProjectAsset, get_project_manager
 from core.disclosure import (
     format_human_contributions,
@@ -142,6 +143,8 @@ class ProjectCard(QFrame):
 class ProjectDetailPanel(QWidget):
     """Shows details of the currently open project."""
 
+    create_requested = Signal()
+
     def __init__(self, parent=None, toast_mgr=None):
         super().__init__(parent)
         t = ThemeEngine.get_colors()
@@ -222,7 +225,16 @@ class ProjectDetailPanel(QWidget):
             }}
         """)
         self._asset_list.currentItemChanged.connect(self._on_asset_selected)
-        layout.addWidget(self._asset_list, 1)
+        self._asset_empty = EmptyStateWidget(
+            "No project assets yet",
+            "Import audio or MIDI into the open project to see it here.",
+            "Import asset",
+        )
+        self._asset_empty.action_requested.connect(self._on_asset_empty_action)
+        self._asset_stack = QStackedWidget()
+        self._asset_stack.addWidget(self._asset_list)
+        self._asset_stack.addWidget(self._asset_empty)
+        layout.addWidget(self._asset_stack, 1)
 
         # Version history
         ver_label = QLabel("Version History")
@@ -233,7 +245,16 @@ class ProjectDetailPanel(QWidget):
         self._version_list.setMaximumHeight(120)
         self._version_list.setStyleSheet(self._asset_list.styleSheet())
         self._version_list.currentItemChanged.connect(self._on_version_selected)
-        layout.addWidget(self._version_list)
+        self._version_empty = EmptyStateWidget(
+            "No saved versions yet",
+            "Save a version when you want a recoverable project checkpoint.",
+            "Save version",
+        )
+        self._version_empty.action_requested.connect(self._on_version_empty_action)
+        self._version_stack = QStackedWidget()
+        self._version_stack.addWidget(self._version_list)
+        self._version_stack.addWidget(self._version_empty)
+        layout.addWidget(self._version_stack)
 
         self._version_preview = QLabel("Select a version to preview it.")
         self._version_preview.setWordWrap(True)
@@ -305,6 +326,8 @@ class ProjectDetailPanel(QWidget):
         btn_row.addWidget(self._disclosure_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
+
+        self._update_detail_empty_states(False, False, project_open=False)
 
         install_accessibility(
             self,
@@ -382,6 +405,7 @@ class ProjectDetailPanel(QWidget):
             "Select a version to preview it." if project.versions
             else "No saved versions yet."
         )
+        self._update_detail_empty_states(bool(project.assets), bool(project.versions))
 
     def clear(self):
         self._name_label.setText("No Project Open")
@@ -395,6 +419,60 @@ class ProjectDetailPanel(QWidget):
         self._rerender_btn.setEnabled(False)
         self._disclosure_btn.setEnabled(False)
         self._version_list.clear()
+        self._update_detail_empty_states(False, False, project_open=False)
+
+    def _update_detail_empty_states(
+        self,
+        has_assets: bool,
+        has_versions: bool,
+        *,
+        project_open: bool = True,
+    ) -> None:
+        if has_assets:
+            self._asset_stack.setCurrentWidget(self._asset_list)
+        elif project_open:
+            self._asset_empty.set_state(
+                "No project assets yet",
+                "Import audio or MIDI into the open project to see it here.",
+                "Import asset",
+            )
+            self._asset_stack.setCurrentWidget(self._asset_empty)
+        else:
+            self._asset_empty.set_state(
+                "Open a project to manage assets",
+                "Create or open a project, then import audio or MIDI here.",
+                "Create project",
+            )
+            self._asset_stack.setCurrentWidget(self._asset_empty)
+
+        if has_versions:
+            self._version_stack.setCurrentWidget(self._version_list)
+        elif project_open:
+            self._version_empty.set_state(
+                "No saved versions yet",
+                "Save a version when you want a recoverable project checkpoint.",
+                "Save version",
+            )
+            self._version_stack.setCurrentWidget(self._version_empty)
+        else:
+            self._version_empty.set_state(
+                "Open a project to save versions",
+                "Create or open a project before saving a checkpoint.",
+                "Create project",
+            )
+            self._version_stack.setCurrentWidget(self._version_empty)
+
+    def _on_asset_empty_action(self):
+        if get_project_manager().current is None:
+            self.create_requested.emit()
+        else:
+            self._on_import_asset()
+
+    def _on_version_empty_action(self):
+        if get_project_manager().current is None:
+            self.create_requested.emit()
+        else:
+            self._on_snapshot()
 
     def sync_pending_edits(self):
         """Copy editor contents into the open project before a shell flush."""
@@ -821,6 +899,13 @@ class ProjectManagerView(QWidget):
         self._list_layout = QVBoxLayout(self._list_container)
         self._list_layout.setContentsMargins(0, 0, 0, 0)
         self._list_layout.setSpacing(4)
+        self._library_empty = EmptyStateWidget(
+            "No projects yet",
+            "Create a project to keep lyrics, MIDI, audio, versions, and provenance together.",
+            "New project",
+        )
+        self._library_empty.action_requested.connect(self._on_library_empty_action)
+        self._list_layout.addWidget(self._library_empty)
         self._list_layout.addStretch()
 
         self._scroll.setWidget(self._list_container)
@@ -838,6 +923,7 @@ class ProjectManagerView(QWidget):
 
         # ── Right: Project Detail ──────────────────────────────────────────
         self._detail = ProjectDetailPanel(toast_mgr=toast_mgr)
+        self._detail.create_requested.connect(self._on_new_project)
         layout.addWidget(self._detail, 1)
 
         # Load initial project list
@@ -886,6 +972,7 @@ class ProjectManagerView(QWidget):
             self.toast_mgr.warning(repair_text)
         if repair_text:
             self._last_repair_notice = repair_text
+        self._on_search(self._search.text())
 
     def sync_pending_edits(self):
         """Flush the detail editor into ProjectManager without writing yet."""
@@ -979,6 +1066,7 @@ class ProjectManagerView(QWidget):
 
     def _on_search(self, text: str):
         query = text.lower()
+        visible_count = 0
         for card in self._cards:
             visible = not query or query in card._project_id.lower()
             # Check card's name label
@@ -988,3 +1076,25 @@ class ProjectManagerView(QWidget):
                         visible = True
                     break
             card.setVisible(visible)
+            visible_count += int(visible)
+        if visible_count:
+            self._library_empty.hide()
+        elif query:
+            self._library_empty.set_no_matches(
+                f'No projects match “{text.strip()}”. Clear the search to browse the library.',
+                "Clear search",
+            )
+            self._library_empty.show()
+        else:
+            self._library_empty.set_state(
+                "No projects yet",
+                "Create a project to keep lyrics, MIDI, audio, versions, and provenance together.",
+                "New project",
+            )
+            self._library_empty.show()
+
+    def _on_library_empty_action(self):
+        if self._library_empty.state == "no_matches":
+            self._search.clear()
+        else:
+            self._on_new_project()
