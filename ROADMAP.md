@@ -83,30 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Consolidate audio writing, mixdown and resampling onto one path
-  Why: The same six lines are hand-rolled in eight places in a form that cannot express sample rate
-    or bit depth, which is what produced the remix-export bug, and three different resamplers
-    operate on one signal chain.
-  Evidence: Identical `(audio * 32767).clip(...).astype(np.int16)` + `wave.open` +
-    `setsampwidth(2)` writers at `engines/ai_producer.py:753`, `engines/demucs_engine.py:374`,
-    `engines/diffsinger_engine.py:512`, `engines/fluidsynth_engine.py:236` and `:448`,
-    `engines/rvc_engine.py:617` and `:908`, `engines/sfx_engine.py:420`,
-    `ui/vocal_suite_view.py:2149` — while `core/audio_export.py` and `engines/ace_step_engine.py`
-    correctly use `sf.write` with PCM_16/PCM_24/FLOAT subtypes. `AudioExportSettings.bit_depth`
-    already supports 24 and 32 (`core/audio_export.py:51,367-374`), so the int16 writers silently
-    discard the app's own capability. Mixdown-plus-peak-normalize is copied three times —
-    `ui/stem_mixer.py:300-346`, `ui/mixer_view.py:1276-1325` (identical down to the shared comment)
-    and `engines/ai_producer.py:849-859`. Four resampler backends: `scipy.signal.resample_poly`
-    (`core/audio_buffers.py:118`), `librosa.resample` (`engines/ace_step_engine.py:182,551`),
-    `torchaudio.functional.resample` (`engines/demucs_engine.py:231,323`), plus the limiter's own
-    oversampling — three of them with different filter designs on the same generate → separate →
-    mix → master chain, and only the `audio_buffers` path covered by tests.
-  Touches: `core/audio_export.py`, `core/audio_buffers.py`, all engines, both mixers, tests.
-  Acceptance: One writer used everywhere, honouring rate, channel count and bit depth; one mixdown
-    helper; one resampler for the signal chain with any exception documented and justified; a test
-    asserts no module outside the shared helpers constructs a `wave.open` writer.
-  Complexity: M
-
 - [ ] P2 — Route the remaining destructive actions through trash and Undo
   Why: The app already has the right pattern in three places; several equally destructive actions
     bypass it, and one file is internally inconsistent about it.
