@@ -4,6 +4,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added deterministic advisory lyric feedback for end-rhyme coverage and syllable cadence;
+  feedback explains its heuristic limits and never rewrites a draft automatically.
 - Added a persistent Song Forge Job Queue panel with restart recovery, retry/resume replay
   metadata, bounded resource estimates, and collision-safe export of selected completed outputs.
 - Added opt-in MIDI controller mapping for the selected Mixer track and Piano Roll actions. The

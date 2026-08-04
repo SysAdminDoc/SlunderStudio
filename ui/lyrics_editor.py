@@ -18,6 +18,7 @@ from PySide6.QtGui import (
 
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
+from core.lyrics_analysis import LyricAnalysis, analyze_lyrics
 
 
 # ── Syntax Highlighter ─────────────────────────────────────────────────────────
@@ -65,6 +66,91 @@ class LyricsHighlighter(QSyntaxHighlighter):
                 start = match.capturedStart()
                 length = match.capturedLength()
                 self.setFormat(start, length, fmt)
+
+
+# ── Advisory Lyric Feedback ───────────────────────────────────────────────────
+
+class LyricFeedbackPanel(QWidget):
+    """Show transparent rhyme/cadence signals without rewriting the draft."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("lyricsFeedback")
+        self.setMaximumHeight(106)
+        self.setStyleSheet(
+            f"QWidget#lyricsFeedback {{ background: {Palette.SURFACE0}; "
+            f"border: 1px solid {Palette.SURFACE1}; border-radius: 6px; }}"
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 7, 10, 7)
+        layout.setSpacing(4)
+
+        header = QHBoxLayout()
+        title = QLabel("Advisory lyric feedback")
+        title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: 700;")
+        header.addWidget(title)
+        header.addStretch()
+        self._disclaimer_label = QLabel("No automatic rewrite")
+        self._disclaimer_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 7.5pt;")
+        header.addWidget(self._disclaimer_label)
+        layout.addLayout(header)
+
+        metrics = QHBoxLayout()
+        metrics.setSpacing(16)
+        self._rhyme_label = QLabel()
+        self._cadence_label = QLabel()
+        for label in (self._rhyme_label, self._cadence_label):
+            label.setWordWrap(True)
+            label.setStyleSheet(f"color: {Palette.SUBTEXT1}; font-size: 8pt;")
+            metrics.addWidget(label, 1)
+        layout.addLayout(metrics)
+
+        self._note_label = QLabel()
+        self._note_label.setWordWrap(True)
+        self._note_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 7.75pt;")
+        layout.addWidget(self._note_label)
+        install_accessibility(
+            self,
+            "Advisory lyric feedback",
+            named_controls=[
+                (
+                    self._rhyme_label,
+                    "Lyric end-rhyme feedback",
+                    "Heuristic end-sound coverage; it is not a judgment of lyric quality.",
+                ),
+                (
+                    self._cadence_label,
+                    "Lyric cadence feedback",
+                    "Heuristic syllable-count consistency; stressed beats and pronunciation are not inferred.",
+                ),
+                (
+                    self._note_label,
+                    "Lyric feedback note",
+                    "Advisory prompt only. The lyric text is never rewritten automatically.",
+                ),
+            ],
+        )
+        self.set_analysis(LyricAnalysis())
+
+    @property
+    def analysis(self) -> LyricAnalysis:
+        return self._analysis
+
+    def set_analysis(self, analysis: LyricAnalysis):
+        self._analysis = analysis
+        if not analysis.lines:
+            self._rhyme_label.setText("End-rhyme coverage\nAdd lyric lines")
+            self._cadence_label.setText("Cadence consistency\nAdd lyric lines")
+        else:
+            self._rhyme_label.setText(
+                f"End-rhyme coverage\n{analysis.rhyme_coverage:.0f}% "
+                f"({analysis.rhyme_covered_lines}/{analysis.rhyme_eligible_lines} lines)"
+            )
+            self._cadence_label.setText(
+                f"Cadence consistency\n{analysis.cadence_consistency:.0f}% "
+                f"({analysis.average_syllables:.1f} syllables/line)"
+            )
+        self._note_label.setText(" ".join(analysis.advisory_notes))
 
 
 # ── Lyrics Editor Widget ──────────────────────────────────────────────────────
@@ -146,6 +232,9 @@ class LyricsEditor(QWidget):
         self._highlighter = LyricsHighlighter(self._editor.document())
 
         layout.addWidget(self._editor, 1)
+
+        self._feedback = LyricFeedbackPanel()
+        layout.addWidget(self._feedback)
 
         # Status bar
         self._status = QLabel("")
@@ -327,6 +416,7 @@ class LyricsEditor(QWidget):
 
     def _on_text_changed(self):
         text = self.text
+        self._feedback.set_analysis(analyze_lyrics(text))
         words = len(text.split()) if text.strip() else 0
         lines = text.count("\n") + 1 if text.strip() else 0
         sections = len(self.get_sections())
