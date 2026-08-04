@@ -311,6 +311,15 @@ class ModelInfo:
     signature_certificate_chain: list[str] = field(default_factory=list)
     generator_id: str = ""
     local_mirror: str = ""
+    variant_family: str = ""
+    quantization: str = ""
+    quantization_bits: int = 0
+    quality_label: str = ""
+    benchmark_quality_score: Optional[float] = None
+    benchmark_latency_tokens_per_second: Optional[float] = None
+    benchmark_hardware: str = ""
+    benchmark_sample_count: int = 0
+    benchmark_method: str = ""
 
     def __post_init__(self) -> None:
         """Give every registry entry a portable, revision-pinned mirror key."""
@@ -366,6 +375,22 @@ class ModelInfo:
     def advertised_vram_tier(self) -> str:
         """Return the explicit registry tier, falling back to the VRAM estimate."""
         return self.vram_tier or vram_tier_for_gb(self.vram_gb)
+
+    @property
+    def variant_label(self) -> str:
+        """Return a compact quantization label for cards and diagnostics."""
+        if self.quantization:
+            return self.quantization
+        return "Full precision / package managed"
+
+    @property
+    def has_local_benchmark(self) -> bool:
+        """Whether this entry carries a complete numeric local benchmark."""
+        return (
+            self.benchmark_quality_score is not None
+            and self.benchmark_latency_tokens_per_second is not None
+            and self.benchmark_sample_count > 0
+        )
 
 
 @dataclass(frozen=True)
@@ -448,6 +473,22 @@ def model_tasks(registry: Optional[dict[str, ModelInfo]] = None) -> tuple[str, .
     ordered = [task for task in RECOMMENDATION_TASKS if task in labels]
     ordered.extend(sorted(labels - set(ordered)))
     return tuple(ordered)
+
+
+def model_variants(
+    model_id_or_family: str,
+    registry: Optional[dict[str, ModelInfo]] = None,
+) -> list[ModelInfo]:
+    """Return all quantization variants for one model or variant family."""
+    active_registry = registry if registry is not None else BUILTIN_MODELS
+    requested = active_registry.get(model_id_or_family)
+    family = requested.variant_family if requested is not None else model_id_or_family
+    if not family:
+        return [requested] if requested is not None else []
+    return sorted(
+        [info for info in active_registry.values() if info.variant_family == family],
+        key=lambda info: (info.quantization_bits or 999, info.model_id),
+    )
 
 
 def _task_score(info: ModelInfo, task: str) -> float:
@@ -923,6 +964,113 @@ def _register_song_generator_models() -> None:
 _register_song_generator_models()
 
 
+def _register_gguf_quantized_variants() -> None:
+    """Register paired Q4/Q8 GGUF entries with honest benchmark provenance."""
+    specs = (
+        {
+            "base_id": "llama-3.1-8b-q4",
+            "family": "llama-3.1-8b-instruct",
+            "quantization": "Q4_K_M",
+            "bits": 4,
+            "quality": "Good / recommended",
+            "file": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        },
+        {
+            "base_id": "llama-3.2-3b-q4",
+            "family": "llama-3.2-3b-instruct",
+            "quantization": "Q4_K_M",
+            "bits": 4,
+            "quality": "Good / recommended",
+            "file": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        },
+        {
+            "base_id": "qwen-2.5-14b-q4",
+            "family": "qwen-2.5-14b-instruct",
+            "quantization": "Q4_K_M",
+            "bits": 4,
+            "quality": "Good / recommended",
+            "file": "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+        },
+    )
+    q8_specs = (
+        {
+            "base_id": "llama-3.1-8b-q4",
+            "model_id": "llama-3.1-8b-q8",
+            "family": "llama-3.1-8b-instruct",
+            "file": "Meta-Llama-3.1-8B-Instruct-Q8_0.gguf",
+            "disk_gb": 7.9542,
+            "vram_gb": 9.0,
+            "quality": "Extremely high",
+        },
+        {
+            "base_id": "llama-3.2-3b-q4",
+            "model_id": "llama-3.2-3b-q8",
+            "family": "llama-3.2-3b-instruct",
+            "file": "Llama-3.2-3B-Instruct-Q8_0.gguf",
+            "disk_gb": 3.1869,
+            "vram_gb": 4.0,
+            "quality": "Extremely high",
+        },
+        {
+            "base_id": "qwen-2.5-14b-q4",
+            "model_id": "qwen-2.5-14b-q8",
+            "family": "qwen-2.5-14b-instruct",
+            "file": "Qwen2.5-14B-Instruct-Q8_0.gguf",
+            "disk_gb": 14.6233,
+            "vram_gb": 16.0,
+            "quality": "Extremely high",
+        },
+    )
+
+    benchmark_method = (
+        "Upstream imatrix model-card quality label and exact published file size; "
+        "run core.model_variants.measure_variant for local numeric quality, token "
+        "latency, RAM, and peak VRAM measurements."
+    )
+    for spec in specs:
+        info = BUILTIN_MODELS[spec["base_id"]]
+        BUILTIN_MODELS[spec["base_id"]] = replace(
+            info,
+            variant_family=spec["family"],
+            quantization=spec["quantization"],
+            quantization_bits=spec["bits"],
+            quality_label=spec["quality"],
+            benchmark_method=benchmark_method,
+        )
+
+    for spec in q8_specs:
+        base = BUILTIN_MODELS[spec["base_id"]]
+        BUILTIN_MODELS[spec["model_id"]] = replace(
+            base,
+            model_id=spec["model_id"],
+            name=f"{base.name.split(' (', 1)[0]} (Q8_0)",
+            description=(
+                f"Higher-quality 8-bit variant of {base.name.split(' (', 1)[0]}; "
+                "uses more disk and VRAM for lower quantization loss."
+            ),
+            is_core=False,
+            vram_gb=spec["vram_gb"],
+            disk_gb=spec["disk_gb"],
+            allow_patterns=[spec["file"]],
+            variant_family=spec["family"],
+            quantization="Q8_0",
+            quantization_bits=8,
+            quality_label=spec["quality"],
+            measurement_basis=(
+                f"Hugging Face model card labels Q8_0 as {spec['quality'].lower()}; "
+                f"the immutable file is {spec['disk_gb']:.4f} GiB. "
+                "Local latency, quality, and peak-VRAM figures are not inferred "
+                "from this catalog entry."
+            ),
+            measurement_date="2026-08-03",
+            benchmark_method=benchmark_method,
+            local_mirror="",
+        )
+
+
+_register_gguf_quantized_variants()
+
+
 MODEL_RUNTIME_PACKAGES: dict[str, tuple[tuple[str, str], ...]] = {
     ACE_STEP_MODEL_ID: (
         ("torch", "torch"),
@@ -930,8 +1078,11 @@ MODEL_RUNTIME_PACKAGES: dict[str, tuple[tuple[str, str], ...]] = {
         ("transformers", "transformers"),
     ),
     "llama-3.1-8b-q4": (("llama-cpp-python", "llama_cpp"),),
+    "llama-3.1-8b-q8": (("llama-cpp-python", "llama_cpp"),),
     "llama-3.2-3b-q4": (("llama-cpp-python", "llama_cpp"),),
+    "llama-3.2-3b-q8": (("llama-cpp-python", "llama_cpp"),),
     "qwen-2.5-14b-q4": (("llama-cpp-python", "llama_cpp"),),
+    "qwen-2.5-14b-q8": (("llama-cpp-python", "llama_cpp"),),
     "midi-llm-1b": (
         ("torch", "torch"),
         ("transformers", "transformers"),

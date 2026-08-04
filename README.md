@@ -158,7 +158,7 @@ Models are downloaded on-demand through the Model Hub. Nothing downloads until y
 | Model | Size | Module | Required |
 |-------|------|--------|----------|
 | ACE-Step 1.5 XL Turbo (DiT) | ~10.4 GB | Song Forge | Recommended |
-| Llama 3.1 8B Q4_K_M | ~4.9 GB | Lyrics Engine | Recommended |
+| Llama 3.1 8B Q4_K_M / Q8_0 | ~4.9 / 8.0 GB | Lyrics Engine | Recommended / high quality |
 | DiffSinger (ONNX) | ~500 MB | Vocal Suite | Optional |
 | RVC v2 | ~200 MB/voice | Voice profile metadata only; verified adapter required | Unavailable |
 | Demucs (htdemucs) | ~300 MB | Stem Separation | Optional |
@@ -169,6 +169,8 @@ When Offline Mode is enabled in Settings, all HuggingFace API calls and model do
 Model Hub cards show each model's license, gated/token status, and commercial-use status. Generated and exported provenance sidecars carry source model license policy forward, and Song Forge export warns when a source model is limited, non-commercial, or governed by model-specific terms.
 Built-in Hugging Face downloads use reviewed immutable commit revisions and hash every cached file before loading. Model Hub can check upstream sources on demand, display bounded release notes for an immutable target SHA, validate the complete target cache before activation, and retain the prior verified cache for one-click rollback. When a publisher includes an OpenSSF Model Signing (OMS) detached signature, the locked `model-signing` verifier checks it against the local model file manifest before any loader runs; Model Hub and provenance show the signer result, while a model without a published signature is explicitly marked unsigned. Remote model code is disabled by default; models that declare custom code or pickle-backed weights require an explicit Model Hub warning and consent scoped to that exact revision.
 Model Hub also records task labels, a dated measurement basis, and a VRAM tier for every built-in model. Its recommendations and hardware filter use the detected accelerator and the same registry VRAM estimate used by activation, calling out CPU fallback instead of presenting an oversized model as a GPU fit.
+Lyrics GGUF models expose paired Q4_K_M and Q8_0 variants where the upstream snapshot provides both files. Q4 uses less disk and VRAM; Q8 preserves more quality at a larger footprint. The optional `core.model_variants` benchmark contract runs fixed prompts and records a caller-supplied quality score, token throughput, exact file size, RAM, and peak VRAM so local measurements stay separate from upstream catalog estimates.
+After downloading a variant, run `py -3.12 tools/benchmark_model_variants.py --model-id llama-3.1-8b-q8` to emit its measurement as one JSON record; add `--output path.json` to persist it.
 Song-generation backends are declarative registry entries: each active entry pins its source revision, portable local-mirror identity, loader, and adapter operations. Non-commercial or unlicensed generator weights fail closed until the exact source/revision terms are accepted. The pinned [HeartMuLa OSS configuration](https://huggingface.co/HeartMuLa/HeartMuLa-oss-3B) is staged behind a separate runtime profile and remains disabled until that compatible environment is available.
 
 ## System Requirements

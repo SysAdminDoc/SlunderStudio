@@ -21,13 +21,25 @@ GGUF_FILENAMES = {
         "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
         "meta-llama-3.1-8b-instruct-q4_k_m.gguf",
     ],
+    "llama-3.1-8b-q8": [
+        "Meta-Llama-3.1-8B-Instruct-Q8_0.gguf",
+        "meta-llama-3.1-8b-instruct-q8_0.gguf",
+    ],
     "llama-3.2-3b-q4": [
         "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
         "llama-3.2-3b-instruct-q4_k_m.gguf",
     ],
+    "llama-3.2-3b-q8": [
+        "Llama-3.2-3B-Instruct-Q8_0.gguf",
+        "llama-3.2-3b-instruct-q8_0.gguf",
+    ],
     "qwen-2.5-14b-q4": [
         "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
         "qwen2.5-14b-instruct-q4_k_m.gguf",
+    ],
+    "qwen-2.5-14b-q8": [
+        "Qwen2.5-14B-Instruct-Q8_0.gguf",
+        "qwen2.5-14b-instruct-q8_0.gguf",
     ],
 }
 

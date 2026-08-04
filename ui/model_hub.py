@@ -235,12 +235,21 @@ class ModelCard(QFrame):
         # -- Stats row --
         stats = QHBoxLayout()
         stats.setSpacing(12)
-        for text in [
+        stat_texts = [
             f"{self.info.vram_gb:.1f} GB VRAM",
             f"{self.info.advertised_vram_tier} tier",
             f"{self.info.disk_gb:.1f} GB disk",
             self.info.license,
-        ]:
+        ]
+        if self.info.quantization:
+            stat_texts.insert(0, self.info.variant_label)
+        if self.info.quality_label:
+            stat_texts.append(f"Quality: {self.info.quality_label}")
+        if self.info.has_local_benchmark:
+            stat_texts.append(
+                f"{self.info.benchmark_latency_tokens_per_second:.1f} tok/s measured"
+            )
+        for text in stat_texts:
             lbl = QLabel(text)
             lbl.setStyleSheet(f"font-size: 8.25pt; color: {Palette.OVERLAY0};")
             stats.addWidget(lbl)
@@ -314,6 +323,8 @@ class ModelCard(QFrame):
         layout.addWidget(self._update_label)
 
         measurement_text = self.info.measurement_basis or "No published measurement basis recorded."
+        if self.info.benchmark_method:
+            measurement_text = f"{measurement_text} {self.info.benchmark_method}"
         measurement_date = self.info.measurement_date or "undated"
         measurement = QLabel(f"Basis ({measurement_date}): {measurement_text}")
         measurement.setWordWrap(True)

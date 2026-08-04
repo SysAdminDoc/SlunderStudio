@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added paired Q4_K_M and Q8_0 GGUF lyrics variants with immutable source revisions,
+  explicit disk/VRAM tradeoffs, upstream quality labels, and a runner-neutral benchmark contract
+  for numeric quality, token latency, RAM, and peak-VRAM measurements.
 - Added Model Hub update checks that persist explicit upstream release notes, accept only immutable
   commit-SHA targets, validate every downloaded file before activation, and retain the last verified
   model cache for health-failure recovery and user-requested rollback.
