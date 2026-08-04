@@ -193,7 +193,9 @@ class ReferencePanelJobTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 1.0)
         if worker.isRunning():
             self.assertIs(self.panel._worker, worker)
-        self.assertTrue(self._wait(lambda: not worker.isRunning()))
+        self.assertTrue(
+            self._wait(lambda: not worker.isRunning() and self.panel._worker is None)
+        )
         self.assertIsNone(self.panel._worker)
         self.assertFalse(self.panel._cancel_btn.isVisible())
 
