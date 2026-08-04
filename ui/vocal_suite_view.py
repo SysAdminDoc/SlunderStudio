@@ -57,7 +57,12 @@ from core.pronunciation import (
     parse_phoneme_text,
 )
 from core.project import get_project_manager
-from ui.file_dialogs import ensure_extension, open_audio_file, save_audio_file
+from ui.file_dialogs import (
+    choose_directory,
+    ensure_extension,
+    open_audio_file,
+    save_audio_file,
+)
 
 
 def _vocal_remix_export_task(
@@ -82,6 +87,80 @@ def _vocal_remix_export_task(
         cancel_event=cancel_event,
     )
     return {"kind": "remix", "path": written}
+
+
+def _vocal_stem_export_task(
+    stem_snapshots: list[dict],
+    output_dir: str,
+    template_id: str,
+    project_name: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    """Export individual stems with the selected DAW naming convention."""
+    from core.audio_export import ExportSettings, export_from_numpy
+    from core.stem_export import stem_export_filenames
+
+    snapshots = [snapshot for snapshot in stem_snapshots if snapshot.get("audio") is not None]
+    if not snapshots:
+        raise ValueError("No stem audio is available to export")
+    os.makedirs(output_dir, exist_ok=True)
+    names = stem_export_filenames(
+        template_id,
+        project_name,
+        [str(snapshot.get("name", "")) for snapshot in snapshots],
+    )
+    written: list[str] = []
+    total = len(snapshots)
+    for index, (snapshot, filename) in enumerate(zip(snapshots, names), 1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError(
+                "Stem export cancelled",
+                outputs=written,
+            )
+        stem_name = str(snapshot.get("name", "") or f"Stem {index}")
+        sample_rate = int(snapshot.get("sample_rate", 44100))
+
+        def _progress(value: int, *, position=index):
+            if progress_cb:
+                progress_cb(int(((position - 1) + max(0, min(100, value)) / 100) * 100 / total))
+
+        written_path = export_from_numpy(
+            np.asarray(snapshot["audio"], dtype=np.float32),
+            sample_rate,
+            os.path.join(output_dir, filename),
+            ExportSettings(
+                format="wav",
+                sample_rate=sample_rate,
+                bit_depth=24,
+                title=stem_name,
+                album=project_name,
+                track_number=f"{index:02d}",
+            ),
+            module="vocal_suite",
+            operation="stem_export",
+            source_paths=[str(snapshot["source_path"])]
+            if snapshot.get("source_path")
+            else [],
+            provenance_extra={
+                "stem_name": stem_name,
+                "stem_export_template": template_id,
+                "stem_export_index": index,
+            },
+            progress_cb=_progress,
+            cancel_event=cancel_event,
+        )
+        written.append(written_path)
+
+    if progress_cb:
+        progress_cb(100)
+    return {
+        "kind": "stems",
+        "paths": written,
+        "output_dir": output_dir,
+        "template_id": template_id,
+    }
 
 
 def _vocal_audio_export_task(
@@ -144,6 +223,7 @@ class VocalSuiteView(QWidget):
         self._stem_model_id = "demucs-v4"
         self._export_worker: Optional[InferenceWorker] = None
         self._export_workers = set()
+        self._stem_export_active = False
         self._model_mgr = ModelManager()
         self._contract_results: dict[str, EngineRunResult] = {}
         self._capability_refresh_timer = QTimer(self)
@@ -1317,6 +1397,7 @@ class VocalSuiteView(QWidget):
         self._stem_mixer = StemMixer()
         self._stem_mixer.empty_action_requested.connect(self._stem_browse_btn.click)
         self._stem_mixer.remix_requested.connect(self._on_remix_export)
+        self._stem_mixer.stems_export_requested.connect(self._on_stem_export)
         self._stem_mixer.stem_play.connect(self._on_play_stem)
         layout.addWidget(self._stem_mixer, 1)
 
@@ -2896,6 +2977,59 @@ class VocalSuiteView(QWidget):
             self._start_operation_progress("Exporting remix")
             worker.start()
 
+    def _on_stem_export(self):
+        """Export each separated stem using the selected target-DAW template."""
+        if self._export_worker is not None and self._export_worker.isRunning():
+            if self._stem_export_active:
+                self._cancel_active_operation()
+            else:
+                self._status.setText("Wait for the current vocal export to finish")
+            return
+        snapshots = self._stem_mixer.get_stem_export_snapshots()
+        if not snapshots:
+            self._status.setText("No separated stems are available to export")
+            return
+        source_path = str(self._stem_input_label.property("path") or "")
+        project_name = os.path.splitext(os.path.basename(source_path))[0] or "slunder-stems"
+        output_dir = choose_directory(
+            self,
+            "Export Stems",
+            operation_kind="vocal_stems_export",
+            dialog=QFileDialog,
+            fallback_dir=self._settings.get("general.output_dir", ""),
+        )
+        if not output_dir:
+            return
+        template_id = self._stem_mixer.stem_export_template_id
+        worker = InferenceWorker(
+            _vocal_stem_export_task,
+            snapshots,
+            output_dir,
+            template_id,
+            project_name,
+            job_kind="vocal_stems_export",
+            job_label=f"Stem export: {project_name}",
+            job_inputs={
+                "stem_count": len(snapshots),
+                "output_dir": output_dir,
+                "template_id": template_id,
+            },
+        )
+        worker.progress.connect(
+            lambda pct: self._on_operation_progress("Exporting stems", pct)
+        )
+        worker.step_info.connect(self._on_operation_step)
+        worker.finished.connect(self._on_export_finished)
+        worker.error.connect(self._on_export_error)
+        worker.cancelled.connect(self._on_export_cancelled)
+        self._export_workers.add(worker)
+        self._export_worker = worker
+        self._stem_export_active = True
+        self._stem_mixer.set_stem_export_busy(True)
+        self._start_operation_progress("Exporting stems")
+        self._status.setText("Exporting stems...")
+        worker.start()
+
     def _on_play_stem(self, stem_name: str):
         strip = self._stem_mixer._strips.get(stem_name)
         if strip is None or strip.audio is None:
@@ -2965,6 +3099,14 @@ class VocalSuiteView(QWidget):
         self._release_export_worker_later(worker)
         self._export_worker = None
         self._finish_operation_progress()
+        if payload.get("kind") == "stems":
+            self._stem_export_active = False
+            self._stem_mixer.set_stem_export_busy(False)
+            count = len(payload.get("paths", []))
+            self._status.setText(
+                f"Exported {count} stems to {payload.get('output_dir', '')}"
+            )
+            return
         output = payload["path"]
         self._current_audio_path = output
         if payload.get("kind") == "remix":
@@ -2981,6 +3123,9 @@ class VocalSuiteView(QWidget):
         self._release_export_worker_later(worker)
         self._export_worker = None
         self._finish_operation_progress()
+        if self._stem_export_active:
+            self._stem_export_active = False
+            self._stem_mixer.set_stem_export_busy(False)
         self._report_error(f"Vocal export failed: {message}")
         self._enable_routing()
 
@@ -2989,6 +3134,12 @@ class VocalSuiteView(QWidget):
         self._release_export_worker_later(worker)
         self._export_worker = None
         self._finish_operation_progress()
+        if self._stem_export_active:
+            self._stem_export_active = False
+            self._stem_mixer.set_stem_export_busy(False)
+            self._status.setText("Stem export cancelled")
+            self._enable_routing()
+            return
         self._status.setText("Vocal export cancelled")
         self._enable_routing()
 

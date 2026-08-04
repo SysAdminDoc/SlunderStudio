@@ -54,7 +54,7 @@ through PyTorch 2.4.1, below the PyTorch 2.10.0 security floor.
 | Song Forge | ACE-Step 1.5 XL Turbo song generation, reference covers, source repaint/extend, stitched long-form songs, and recovered vocal-stem export | ACE-Step, Demucs |
 | Lyrics Engine | AI-powered lyrics writing with 33 genre templates and sortable history | Llama 3.1 8B |
 | MIDI Studio | Piano roll editor with quantize/swing/humanize tools, CC lanes, text-to-MIDI composition, groove-template drums, and chord chart export | MIDI-LLM |
-| Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, consented voice-profile onboarding, selectable Demucs/MDX/MDXC/Roformer stem separation, and vocal auto-tune pitch correction | DiffSinger, Audio Separator |
+| Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, consented voice-profile onboarding, selectable Demucs/MDX/MDXC/Roformer stem separation, target-DAW stem naming/export, and vocal auto-tune pitch correction | DiffSinger, Audio Separator |
 | Stem Separation | Isolate vocals, drums, bass, and other instruments | Demucs (htdemucs) |
 | SFX Generator | Text-to-sound-effect generation | Stable Audio Open |
 | Mixer | Project-rate mixing with validated resampling, channel normalization, dynamic EQ, Mid/Side trims, reference matching, mastering, and validated DAWproject export | Built-in DSP |
@@ -91,6 +91,11 @@ The app chrome, Settings, Lyrics, and Vocal Suite controls use a catalog-backed 
 Mixer converts every imported track to the configured project sample rate with deterministic polyphase resampling and explicit stereo normalization before calculating duration or summing. All lossless engine, mixer, and trim artifacts use the shared settings-aware writer, which preserves the requested sample rate, channel layout, and 16/24/32-bit WAV capability. The mastering true-peak meter intentionally oversamples only for measurement; it does not introduce a second processing resampler. Mixer can analyze each stem, infer a stem role from the track name, and apply local dynamic EQ suggestions with per-band gain, frequency, Q, and reasoning before mastering/export. It can also trim Mid and Side gain independently before limiting, load a reference track, match the final master to its integrated LUFS, report EBU Mode momentary (400 ms), short-term (3 s), and integrated readouts, and target streaming, podcast, EBU R128, broadcast, cinema, or loud CD delivery levels.
 
 Project Manager exports the open project's existing audio assets as a `.dawproject` archive, while Mixer exports the current track buffers with their volume, pan, mute, and solo state. Both paths run off the UI thread, use collision-safe media names, and reopen the archive through Slunder's structural validator before reporting success.
+
+Vocal Suite's Stem Mixer can export each separated stem as a native-rate WAV with a persisted
+target-DAW naming template (Generic, Ableton Live, Bitwig Studio, Cubase, Logic Pro, Pro Tools,
+Studio One, or FL Studio). Each delivery file gets its own provenance sidecar and stable track
+order; the selected convention is also available in Settings > Output.
 
 ## Mastering Presets
 

@@ -6,7 +6,7 @@ Per-stem volume, pan, mute/solo, waveform preview, and remix export.
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider,
-    QFrame, QScrollArea, QProgressBar,
+    QFrame, QScrollArea, QProgressBar, QComboBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -18,6 +18,8 @@ from ui.widgets import ElidedLabel, EmptyStateWidget
 from ui.waveform_widget import MiniWaveform
 from core.audio_buffers import mixdown_audio
 from core.panning import pan_gains
+from core.settings import Settings
+from core.stem_export import STEM_EXPORT_TEMPLATES
 
 
 # ── Stem Colors ────────────────────────────────────────────────────────────────
@@ -44,11 +46,12 @@ class StemStrip(QFrame):
     play_requested = Signal(str)
 
     def __init__(self, stem_name: str, audio: Optional[np.ndarray] = None,
-                 sample_rate: int = 44100, parent=None):
+                 sample_rate: int = 44100, parent=None, *, source_path: str = ""):
         super().__init__(parent)
         self.stem_name = stem_name
         self.audio = audio
         self.sample_rate = sample_rate
+        self.source_path = source_path
         self._volume = 1.0
         self._pan = 0.0
         self._muted = False
@@ -223,6 +226,7 @@ class StemMixer(QWidget):
     """Multi-stem mixer with remix export."""
 
     remix_requested = Signal()
+    stems_export_requested = Signal()
     stem_play = Signal(str)  # stem name
     empty_action_requested = Signal()
 
@@ -230,6 +234,7 @@ class StemMixer(QWidget):
         super().__init__(parent)
         self._strips: dict[str, StemStrip] = {}
         self._sample_rate = 44100
+        self._settings = Settings()
 
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(self)
@@ -241,6 +246,26 @@ class StemMixer(QWidget):
         title = QLabel("Stem Mixer")
         title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9.75pt;")
 
+        naming_label = QLabel("Names")
+        naming_label.setToolTip("Choose the filename convention used for stem delivery exports.")
+        self._export_template_combo = QComboBox()
+        for template in STEM_EXPORT_TEMPLATES:
+            self._export_template_combo.addItem(template.label, template.id)
+        saved_template = str(
+            self._settings.get("general.stem_export_template", "generic") or "generic"
+        )
+        saved_index = self._export_template_combo.findData(saved_template)
+        self._export_template_combo.setCurrentIndex(saved_index if saved_index >= 0 else 0)
+        self._export_template_combo.setMinimumWidth(150)
+        self._export_template_combo.currentIndexChanged.connect(
+            self._on_export_template_changed
+        )
+
+        self._export_stems_btn = QPushButton("Export Stems")
+        self._export_stems_btn.setProperty("class", "success")
+        self._export_stems_btn.setEnabled(False)
+        self._export_stems_btn.clicked.connect(self.stems_export_requested.emit)
+
         self._remix_btn = QPushButton("Export Remix")
         self._remix_btn.setProperty("class", "success")
         self._remix_btn.setEnabled(False)
@@ -248,6 +273,9 @@ class StemMixer(QWidget):
 
         header.addWidget(title)
         header.addStretch()
+        header.addWidget(naming_label)
+        header.addWidget(self._export_template_combo)
+        header.addWidget(self._export_stems_btn)
         header.addWidget(self._remix_btn)
         layout.addLayout(header)
 
@@ -277,9 +305,26 @@ class StemMixer(QWidget):
             self,
             "Stem Mixer",
             named_controls=[
+                (self._export_template_combo, "Stem export naming template", "Selects the target DAW filename convention for separated stem exports."),
+                (self._export_stems_btn, "Export separated stems", "Exports each loaded stem using the selected naming template."),
                 (self._remix_btn, "Export stem remix", "Exports a mix of the loaded stems."),
             ],
         )
+
+    def _on_export_template_changed(self, index: int):
+        template_id = self._export_template_combo.itemData(index)
+        if template_id:
+            self._settings.set("general.stem_export_template", str(template_id))
+
+    @property
+    def stem_export_template_id(self) -> str:
+        return str(self._export_template_combo.currentData() or "generic")
+
+    def set_stem_export_busy(self, busy: bool):
+        """Keep the multi-file export action cancellable from the mixer header."""
+        self._export_stems_btn.setText("Cancel Stem Export" if busy else "Export Stems")
+        self._export_stems_btn.setEnabled(bool(busy) or bool(self._strips))
+        self._export_template_combo.setEnabled(not busy)
 
     def load_stems(self, stems: list, sample_rate: int = 44100):
         """
@@ -290,7 +335,12 @@ class StemMixer(QWidget):
         self._sample_rate = sample_rate
 
         for stem in stems:
-            strip = StemStrip(stem.name, stem.audio, sample_rate)
+            strip = StemStrip(
+                stem.name,
+                stem.audio,
+                sample_rate,
+                source_path=str(getattr(stem, "file_path", "") or ""),
+            )
             strip.play_requested.connect(self.stem_play.emit)
             self._strips[stem.name] = strip
             self._container_layout.insertWidget(
@@ -298,6 +348,7 @@ class StemMixer(QWidget):
             )
 
         self._remix_btn.setEnabled(len(self._strips) > 0)
+        self._export_stems_btn.setEnabled(len(self._strips) > 0)
         self._empty.setVisible(not self._strips)
 
     def clear(self):
@@ -306,6 +357,7 @@ class StemMixer(QWidget):
             strip.deleteLater()
         self._strips.clear()
         self._remix_btn.setEnabled(False)
+        self._export_stems_btn.setEnabled(False)
         self._empty.show()
 
     def get_remix_audio(self) -> Optional[np.ndarray]:
@@ -327,3 +379,16 @@ class StemMixer(QWidget):
 
     def get_stem_names(self) -> list[str]:
         return list(self._strips.keys())
+
+    def get_stem_export_snapshots(self) -> list[dict]:
+        """Return immutable stem buffers and source metadata for a worker export."""
+        return [
+            {
+                "name": strip.stem_name,
+                "audio": np.asarray(strip.audio, dtype=np.float32).copy(),
+                "sample_rate": int(strip.sample_rate),
+                "source_path": strip.source_path,
+            }
+            for strip in self._strips.values()
+            if strip.audio is not None
+        ]

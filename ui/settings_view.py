@@ -26,6 +26,7 @@ from core.i18n import (
     ui_locale_options,
 )
 from core.mastering import LUFS_TARGETS
+from core.stem_export import STEM_EXPORT_TEMPLATES
 from core.credentials import CredentialError
 from core.settings import Settings, APP_VERSION, SECRET_SETTING_KEYS
 from core.audio_engine import (
@@ -235,6 +236,22 @@ class SettingsView(QWidget):
             tr("settings.output.sample_rate"),
             self._sample_rate_combo,
             tr("settings.output.sample_rate_help"),
+        ))
+
+        self._stem_export_template_combo = QComboBox()
+        for template in STEM_EXPORT_TEMPLATES:
+            self._stem_export_template_combo.addItem(
+                template.label,
+                template.id,
+            )
+        self._stem_export_template_combo.setMinimumWidth(220)
+        self._stem_export_template_combo.currentIndexChanged.connect(
+            self._on_stem_export_template_changed
+        )
+        output_layout.addLayout(SettingRow(
+            "Stem export naming",
+            self._stem_export_template_combo,
+            "Chooses the filename template used when exporting separated stems.",
         ))
 
         self._audio_device_combo = QComboBox()
@@ -922,7 +939,8 @@ class SettingsView(QWidget):
         # Block signals on all save-connected widgets to prevent
         # cascading saves during programmatic value changes
         _widgets = [
-            self._format_combo, self._sample_rate_combo, self._gpu_device,
+            self._format_combo, self._sample_rate_combo,
+            self._stem_export_template_combo, self._gpu_device,
             self._c2pa_enabled, self._offline_mode, self._hf_token, self._experience_combo,
             self._ui_locale_combo,
             self._default_language,
@@ -958,6 +976,10 @@ class SettingsView(QWidget):
             idx = self._sample_rate_combo.findText(sr)
             if idx >= 0:
                 self._sample_rate_combo.setCurrentIndex(idx)
+
+            template_id = str(s.get("general.stem_export_template", "generic") or "generic")
+            idx = self._stem_export_template_combo.findData(template_id)
+            self._stem_export_template_combo.setCurrentIndex(idx if idx >= 0 else 0)
 
             self._gpu_device.setValue(s.get("general.gpu_device", 0))
             self._offline_mode.setChecked(s.get("model_hub.offline_mode", False))
@@ -1055,6 +1077,12 @@ class SettingsView(QWidget):
             "lyrics.model_id",
         ):
             self.toast_mgr.success(tr("settings.messages.setting_updated"))
+
+    def _on_stem_export_template_changed(self, index: int):
+        """Persist the selected target-DAW stem filename convention."""
+        template_id = self._stem_export_template_combo.itemData(index)
+        if template_id:
+            self._save("general.stem_export_template", str(template_id))
 
     def _on_ui_locale_changed(self, _index: int):
         """Persist the interface locale and apply layout direction immediately."""
@@ -1209,6 +1237,7 @@ class SettingsView(QWidget):
                 (self._browse_output_btn, "Browse output directory", "Chooses the default render output directory."),
                 (self._format_combo, "Default audio format", "Selects the default export format."),
                 (self._sample_rate_combo, "Sample rate", "Selects the default audio sample rate."),
+                (self._stem_export_template_combo, "Stem export naming", "Selects the filename template used for separated stem exports."),
                 (self._audio_device_combo, "Audio output device", "Selects the PortAudio output device and shows its host API."),
                 (self._refresh_audio_devices_btn, "Refresh audio output devices", "Refreshes the PortAudio output-device list without restarting."),
                 (self._c2pa_enabled, "C2PA Content Credentials", "Opt-in embedding of a signed C2PA manifest on supported audio exports."),
@@ -1251,6 +1280,7 @@ class SettingsView(QWidget):
                 self._browse_output_btn,
                 self._format_combo,
                 self._sample_rate_combo,
+                self._stem_export_template_combo,
                 self._audio_device_combo,
                 self._refresh_audio_devices_btn,
                 self._c2pa_enabled,

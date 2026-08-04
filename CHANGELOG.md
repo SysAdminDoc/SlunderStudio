@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added target-DAW stem export naming templates and cancellable multi-stem delivery from Vocal
+  Suite. Generic, Ableton Live, Bitwig Studio, Cubase, Logic Pro, Pro Tools, Studio One, and FL
+  Studio conventions persist through Settings and produce native-rate WAVs with provenance sidecars.
 - Added Project Manager and Mixer `.dawproject` export actions. Project exports package existing
   audio assets, Mixer exports current track buffers and mix-state metadata, duplicate media names
   are made collision-safe, and both paths validate the completed archive before reporting success.

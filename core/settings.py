@@ -42,6 +42,7 @@ DEFAULTS = {
         # Empty means PortAudio's system default. Otherwise this is the
         # host-api/name identity exposed by core.audio_engine.
         "audio_output_device": "",
+        "stem_export_template": "generic",
         "bit_depth": 24,
         # C2PA signing is deliberately opt-in. Paths point to user-managed
         # credentials; Slunder Studio never generates or stores private keys.
