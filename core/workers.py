@@ -11,7 +11,7 @@ from typing import Any, Callable, Optional
 
 from PySide6.QtCore import QThread, Signal
 
-from core.job_state import JobLog, JobStore, extract_output_paths
+from core.job_state import JobLog, JobStatus, JobStore, extract_output_paths
 from core.admission import (
     AdmissionCancelledError,
     admission_kind_for_job,
@@ -136,6 +136,7 @@ class InferenceWorker(QThread):
         job_metadata: Optional[dict[str, Any]] = None,
         job_store: Optional[JobStore] = None,
         admission_kind: Optional[str] = None,
+        resume_job_id: str = "",
         **kwargs,
     ):
         super().__init__()
@@ -147,6 +148,7 @@ class InferenceWorker(QThread):
         self._job_store = job_store or JobStore()
         self._job_record = None
         self.job_id = ""
+        self._job_metadata: dict[str, Any] = {}
         self._last_job_progress_persisted_at = 0.0
         self._job_log: Optional[JobLog] = None
         self._admission_kind = (
@@ -154,7 +156,18 @@ class InferenceWorker(QThread):
             if admission_kind is not None
             else admission_kind_for_job(job_kind)
         )
-        if job_kind:
+        if resume_job_id:
+            existing = self._job_store.get(str(resume_job_id))
+            if existing is None or existing.status != JobStatus.QUEUED:
+                raise ValueError(
+                    f"Queued job {resume_job_id!r} is unavailable for execution"
+                )
+            self._job_record = existing
+            self.job_id = existing.id
+            if isinstance(existing.metadata, dict):
+                self._job_metadata = dict(existing.metadata)
+        elif job_kind:
+            self._job_metadata = dict(job_metadata) if isinstance(job_metadata, dict) else {}
             self._job_record = self._job_store.create(
                 job_kind,
                 job_label or getattr(task_fn, "__name__", "Inference job"),
@@ -162,6 +175,8 @@ class InferenceWorker(QThread):
                 metadata=job_metadata or {},
             )
             self.job_id = self._job_record.id
+            self._job_log = JobLog(self.job_id)
+        if self.job_id and self._job_log is None:
             self._job_log = JobLog(self.job_id)
 
     def run(self):
@@ -198,13 +213,15 @@ class InferenceWorker(QThread):
             output_paths = extract_output_paths(self._result)
             outputs = {"paths": output_paths} if output_paths else {}
             result_metadata = _extract_job_metadata(self._result)
+            terminal_metadata = dict(self._job_metadata)
+            terminal_metadata.update(result_metadata)
             if self._cancel_event.is_set() or _result_is_cancelled(self._result):
                 self._job_store.cleanup_outputs(output_paths)
                 if self.job_id:
                     self._job_store.mark_cancelled(
                         self.job_id,
                         outputs=outputs,
-                        metadata=result_metadata,
+                        metadata=terminal_metadata,
                     )
                 if self._job_log:
                     self._job_log.warn("Cancelled; partial outputs cleaned.")
@@ -224,7 +241,7 @@ class InferenceWorker(QThread):
                             self.job_id,
                             semantic_error,
                             outputs=outputs,
-                            metadata=result_metadata,
+                            metadata=terminal_metadata,
                         )
                     if self._job_log:
                         self._job_log.error(semantic_error)
@@ -233,7 +250,7 @@ class InferenceWorker(QThread):
                         self._job_store.mark_completed(
                             self.job_id,
                             outputs=outputs,
-                            metadata=result_metadata,
+                            metadata=terminal_metadata,
                         )
                     if self._job_log:
                         self._job_log.info(
@@ -253,7 +270,11 @@ class InferenceWorker(QThread):
                 outputs["preserved_paths"] = preserved
             self._job_store.cleanup_outputs(partial_paths)
             if self.job_id:
-                self._job_store.mark_cancelled(self.job_id, outputs=outputs)
+                self._job_store.mark_cancelled(
+                    self.job_id,
+                    outputs=outputs,
+                    metadata=dict(self._job_metadata),
+                )
             if self._job_log:
                 self._job_log.warn(
                     f"CancelledJobError: {e} "
@@ -269,7 +290,11 @@ class InferenceWorker(QThread):
                 self._job_log.error(f"{type(e).__name__}: {e}")
             self.log.emit(f"Worker error:\n{tb}")
             if self.job_id:
-                self._job_store.mark_failed(self.job_id, f"{type(e).__name__}: {e}")
+                self._job_store.mark_failed(
+                    self.job_id,
+                    f"{type(e).__name__}: {e}",
+                    metadata=dict(self._job_metadata),
+                )
             self.error.emit(f"{type(e).__name__}: {e}")
         finally:
             try:

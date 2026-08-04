@@ -165,6 +165,42 @@ class JobStore:
             recoverable=True,
         )
 
+    def requeue(self, job_id: str, *, resume: bool = False) -> Optional[JobRecord]:
+        """Create a fresh queued record for a failed or recoverable job.
+
+        The original record is retained as an audit trail.  A worker can adopt
+        the returned queued record by id, so retry/resume never mutates a
+        finished record back into an active state.
+        """
+        with self._lock:
+            records = self._read()
+            source = next((record for record in records if record.id == job_id), None)
+            if source is None:
+                return None
+            allowed = {JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.RECOVERABLE}
+            if source.status not in allowed:
+                return None
+            if resume and not (
+                source.status == JobStatus.RECOVERABLE
+                or (source.status == JobStatus.CANCELLED and source.recoverable)
+            ):
+                return None
+            metadata = dict(source.metadata) if isinstance(source.metadata, dict) else {}
+            metadata.update({
+                "retry_of": source.id,
+                "resume": bool(resume),
+            })
+            queued = JobRecord(
+                id=f"job_{int(time.time() * 1000)}_{uuid.uuid4().hex[:12]}",
+                kind=source.kind,
+                label=(f"Resume: {source.label}" if resume else f"Retry: {source.label}"),
+                inputs=_jsonable(source.inputs),
+                metadata=_jsonable(metadata),
+            )
+            records.append(queued)
+            self._write(records)
+            return queued
+
     def mark_completed(
         self,
         job_id: str,

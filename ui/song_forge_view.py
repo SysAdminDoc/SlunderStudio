@@ -22,6 +22,7 @@ from engines.style_tags import StyleTagDB, CATEGORIES
 from engines.song_generator_adapter import resolve_song_generator
 from ui.waveform_widget import WaveformWidget
 from ui.batch_view import BatchView
+from ui.job_queue_view import JobQueueView
 from ui.seed_explorer import SeedExplorer
 from ui.mood_curve_editor import MoodCurveEditor
 from ui.reference_panel import ReferencePanel
@@ -239,6 +240,7 @@ class SongForgeView(QWidget):
         self._song_generator_model_id = active_model_ids[0] if active_model_ids else ""
         self._seed_explore_params: list[dict] = []
         self._routed_reference_context_tags: list[str] = []
+        self._queue_resume_job_id = ""
         self._settings = Settings()
         self._setup_ui()
         self._settings.on_change(self._on_settings_change)
@@ -609,6 +611,10 @@ class SongForgeView(QWidget):
         self._batch_view.use_result.connect(self._use_batch_result)
         self._sub_tabs.addTab(self._batch_view, "Batch Results")
 
+        self._job_queue = JobQueueView(toast_mgr=self._toast)
+        self._job_queue.job_requeued.connect(self._on_queue_job_requeued)
+        self._sub_tabs.addTab(self._job_queue, "Job Queue")
+
         self._seed_explorer = SeedExplorer(toast_mgr=self._toast)
         self._seed_explorer.play_requested.connect(self._play_audio)
         self._seed_explorer.generate_requested.connect(self._on_seed_explore)
@@ -660,7 +666,7 @@ class SongForgeView(QWidget):
                 (self._export_btn, "Export generated song", "Exports the current generated output."),
                 (self._to_vocals_btn, "Send generated song to vocals", "Routes generated audio to Vocal Suite."),
                 (self._to_vocal_stem_btn, "Send recovered vocal stem", "Routes the recovered vocals-only Song Forge stem to Vocal Suite."),
-                (self._sub_tabs, "Song Forge result tools", "Switches between batch results, seed explorer, and mood curve."),
+                (self._sub_tabs, "Song Forge result tools", "Switches between batch results, persistent jobs, seed explorer, and mood curve."),
                 (self._session_state, "Song Forge session state", "Reports generation readiness and result state."),
             ],
             tab_order=[
@@ -817,6 +823,53 @@ class SongForgeView(QWidget):
         worker = self._worker
         return bool(worker and worker.isRunning())
 
+    def _on_queue_job_requeued(self, record):
+        """Restore a Song Forge replay spec and adopt its queued job record."""
+        if getattr(record, "kind", "") != "song_generation":
+            self._status.setText(
+                f"Queued {getattr(record, 'label', 'job')}; no Song Forge runner is registered."
+            )
+            return
+        metadata = getattr(record, "metadata", {})
+        replay = metadata.get("replay") if isinstance(metadata, dict) else None
+        if not isinstance(replay, dict):
+            self._status.setText(
+                "This job has no replay inputs; start a new Song Forge run."
+            )
+            return
+        self.set_lyrics(str(replay.get("lyrics", "") or ""))
+        replay_tags = str(replay.get("style_tags", "") or "")
+        self._quick_tags.setText(replay_tags)
+        self._tag_browser.set_tags(replay_tags)
+        self._mode_tabs.setCurrentIndex(1 if replay.get("advanced") else 0)
+        self._duration_spin.setValue(float(replay.get("duration", 180) or 180))
+        self._shift_spin.setValue(float(replay.get("shift", 3.0) or 3.0))
+        self._steps_spin.setValue(int(replay.get("infer_steps", 8) or 8))
+        seed = replay.get("seed", -1)
+        self._seed_spin.setValue(int(seed) if isinstance(seed, (int, float)) else -1)
+        self._batch_spin.setValue(int(replay.get("batch_count", 1) or 1))
+        self._long_form_check.setChecked(bool(replay.get("long_form", False)))
+        mode = str(replay.get("mode", "normal") or "normal").lower()
+        cover_mode = {
+            "cover": "Cover",
+            "extend": "Extend",
+            "repaint": "Repaint",
+        }.get(mode, "Normal")
+        self._cover_mode_combo.setCurrentText(cover_mode)
+        source_path = str(replay.get("source_audio_path", "") or "")
+        self._cover_source_path = source_path
+        self._cover_source_label.setText(
+            Path(source_path).name if source_path else "No file selected"
+        )
+        self._repaint_start_spin.setValue(float(replay.get("repaint_start", 0.0) or 0.0))
+        self._repaint_end_spin.setValue(float(replay.get("repaint_end", 30.0) or 30.0))
+        self._queue_resume_job_id = str(record.id)
+        self._on_generate()
+
+    def _refresh_persistent_jobs(self):
+        self._batch_view.refresh_recoverable_jobs()
+        self._job_queue.refresh()
+
     def _is_current_worker_signal(self) -> bool:
         """Ignore terminal/progress signals emitted by an obsolete worker."""
         sender = self.sender()
@@ -907,6 +960,32 @@ class SongForgeView(QWidget):
         is_cover = cover_mode == "Cover"
         is_extend = cover_mode == "Extend"
         is_repaint = cover_mode == "Repaint"
+        replay_mode = (
+            "cover" if is_cover else
+            "extend" if is_extend else
+            "repaint" if is_repaint else
+            "batch" if batch_count > 1 else
+            "normal"
+        )
+        job_metadata = {
+            "module": "song_forge",
+            "replay": {
+                "advanced": advanced,
+                "lyrics": lyrics,
+                "style_tags": tags,
+                "duration": duration,
+                "shift": shift,
+                "infer_steps": steps,
+                "seed": seed,
+                "batch_count": batch_count,
+                "long_form": long_form,
+                "mode": replay_mode,
+                "source_audio_path": self._cover_source_path if cover_mode != "Normal" else "",
+                "repaint_start": self._repaint_start_spin.value(),
+                "repaint_end": self._repaint_end_spin.value(),
+            },
+        }
+        resume_job_id = str(getattr(self, "_queue_resume_job_id", "") or "")
 
         if is_cover:
             generate_cover = self._song_generator_operation("generate_cover")
@@ -924,6 +1003,8 @@ class SongForgeView(QWidget):
                 job_kind="song_generation",
                 job_label="Song Forge cover",
                 job_inputs=job_inputs,
+                job_metadata=job_metadata,
+                resume_job_id=resume_job_id,
             )
         elif is_extend:
             generate_extend = self._song_generator_operation("generate_extend")
@@ -942,6 +1023,8 @@ class SongForgeView(QWidget):
                 job_kind="song_generation",
                 job_label="Song Forge extension",
                 job_inputs=job_inputs,
+                job_metadata=job_metadata,
+                resume_job_id=resume_job_id,
             )
         elif is_repaint:
             generate_repaint = self._song_generator_operation("generate_repaint")
@@ -962,6 +1045,8 @@ class SongForgeView(QWidget):
                 job_kind="song_generation",
                 job_label="Song Forge repaint",
                 job_inputs=job_inputs,
+                job_metadata=job_metadata,
+                resume_job_id=resume_job_id,
             )
         elif batch_count > 1:
             generate_song_batch = self._song_generator_operation("generate_song_batch")
@@ -977,6 +1062,8 @@ class SongForgeView(QWidget):
                 job_kind="song_generation",
                 job_label=f"Song Forge batch ({batch_count})",
                 job_inputs=job_inputs,
+                job_metadata=job_metadata,
+                resume_job_id=resume_job_id,
             )
         else:
             generate_song = self._song_generator_operation("generate_song")
@@ -992,7 +1079,11 @@ class SongForgeView(QWidget):
                 job_kind="song_generation",
                 job_label="Song Forge generation",
                 job_inputs=job_inputs,
+                job_metadata=job_metadata,
+                resume_job_id=resume_job_id,
             )
+
+        self._queue_resume_job_id = ""
 
         self._worker.progress.connect(self._on_progress)
         self._worker.step_info.connect(self._on_step)
@@ -1024,7 +1115,7 @@ class SongForgeView(QWidget):
         if not self._is_current_worker_signal():
             return
         self._reset_ui()
-        self._batch_view.refresh_recoverable_jobs()
+        self._refresh_persistent_jobs()
 
         if result.get("cancelled"):
             self._status.setText("Cancelled")
@@ -1075,7 +1166,7 @@ class SongForgeView(QWidget):
         if not self._is_current_worker_signal():
             return
         self._reset_ui()
-        self._batch_view.refresh_recoverable_jobs()
+        self._refresh_persistent_jobs()
         self._status.setText(f"Error: {error_msg[:100]}")
         self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 8.25pt;")
         self._set_session_state("Generation failed", Palette.RED)
@@ -1129,7 +1220,7 @@ class SongForgeView(QWidget):
                     self._seed_explorer.set_cell_failed(*key, "Cancelled")
             self._seed_explore_params = []
             self._reset_ui()
-            self._batch_view.refresh_recoverable_jobs()
+            self._refresh_persistent_jobs()
             self._status.setText(
                 f"Seed exploration cancelled; kept {len(successes)} completed"
             )
@@ -1154,7 +1245,7 @@ class SongForgeView(QWidget):
                     f"Generation cancelled; kept {len(batch_results)} completed"
                 )
         self._reset_ui()
-        self._batch_view.refresh_recoverable_jobs()
+        self._refresh_persistent_jobs()
 
     def _reset_ui(self, clear_worker: bool = True):
         self._is_generating = False
@@ -1472,7 +1563,7 @@ class SongForgeView(QWidget):
         if not self._is_current_worker_signal():
             return
         self._reset_ui()
-        self._batch_view.refresh_recoverable_jobs()
+        self._refresh_persistent_jobs()
         self._seed_explore_params = []
 
         if result.get("cancelled"):
@@ -1496,7 +1587,7 @@ class SongForgeView(QWidget):
         if not self._is_current_worker_signal():
             return
         self._reset_ui()
-        self._batch_view.refresh_recoverable_jobs()
+        self._refresh_persistent_jobs()
         for cell in self._seed_explore_params:
             self._seed_explorer.set_cell_failed(
                 int(cell.get("row", 0)),

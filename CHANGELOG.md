@@ -4,6 +4,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added a persistent Song Forge Job Queue panel with restart recovery, retry/resume replay
+  metadata, bounded resource estimates, and collision-safe export of selected completed outputs.
 - Added opt-in MIDI controller mapping for the selected Mixer track and Piano Roll actions. The
   versioned binding editor accepts CC/note, channel, number, and absolute/trigger/toggle modes;
   live input stays optional through a backend-neutral mido adapter and remains disabled by default.

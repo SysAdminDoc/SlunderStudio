@@ -69,7 +69,7 @@ through PyTorch 2.4.1, below the PyTorch 2.10.0 security floor.
 
 | Module | Description | AI Engine |
 |--------|-------------|-----------|
-| Song Forge | ACE-Step 1.5 XL Turbo song generation, reference covers, source repaint/extend, stitched long-form songs, and recovered vocal-stem export | ACE-Step, Demucs |
+| Song Forge | ACE-Step 1.5 XL Turbo song generation, reference covers, source repaint/extend, stitched long-form songs, persistent retry/resume queue, and recovered vocal-stem export | ACE-Step, Demucs |
 | Lyrics Engine | AI-powered lyrics writing with 33 genre templates and sortable history | Llama 3.1 8B |
 | MIDI Studio | Piano roll editor with quantize/swing/humanize tools, CC lanes, text-to-MIDI composition, groove-template drums, and chord chart export | MIDI-LLM |
 | Vocal Suite | Singing synthesis, humming-to-MIDI lyric melody generation, consented voice-profile onboarding, selectable Demucs/MDX/MDXC/Roformer stem separation, target-DAW stem naming/export, and vocal auto-tune pitch correction | DiffSinger, Audio Separator |
