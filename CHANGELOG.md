@@ -12,6 +12,8 @@ All notable changes to SlunderStudio will be documented in this file.
   per-revision execution consent to model loaders.
 - Added the EBU R128 delivery target at -23 LUFS / -1 dBTP, post-normalization true-peak
   protection, and explicit EBU Mode momentary, short-term, and integrated mastering readouts.
+- Fixed project search to match user-facing names and notes without depending on widget order, and
+  added explicit date/name sorting to project, lyrics-history, and Model Hub lists.
 - Made locked PyInstaller releases reproducible: build timestamps and Python hash seeds are fixed,
   UPX is disabled, ZIP metadata is normalized, generated specs and unstable installer RECORD
   files are removed, and unsigned onedir/onefile artifacts ship with deterministic CycloneDX 1.7

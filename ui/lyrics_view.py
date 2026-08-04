@@ -169,6 +169,15 @@ class HistoryPanel(QWidget):
         self._fav_btn.clicked.connect(lambda: self._set_filter("favorites"))
         filter_row.addWidget(self._fav_btn)
 
+        self._sort_combo = QComboBox()
+        self._sort_combo.addItem("Newest first", "date_desc")
+        self._sort_combo.addItem("Oldest first", "date_asc")
+        self._sort_combo.addItem("Genre (A–Z)", "genre_asc")
+        self._sort_combo.addItem("Prompt (A–Z)", "prompt_asc")
+        self._sort_combo.setMinimumHeight(26)
+        self._sort_combo.currentIndexChanged.connect(self._refresh)
+        filter_row.addWidget(self._sort_combo)
+
         filter_row.addStretch()
         layout.addLayout(filter_row)
 
@@ -203,6 +212,7 @@ class HistoryPanel(QWidget):
                 (self._search, "Search lyrics history", "Filters saved lyrics entries."),
                 (self._all_btn, "Show all lyrics history", "Shows all saved lyrics entries."),
                 (self._fav_btn, "Show favorite lyrics", "Shows only favorite lyrics entries."),
+                (self._sort_combo, "Sort lyrics history", "Sorts saved lyrics by date, genre, or prompt."),
                 (
                     self._list,
                     "Lyrics history list",
@@ -217,6 +227,32 @@ class HistoryPanel(QWidget):
         self._fav_btn.setChecked(mode == "favorites")
         self._refresh()
 
+    @staticmethod
+    def _sort_entries(entries: list[LyricsEntry], sort_key: str | None) -> list[LyricsEntry]:
+        """Apply the selected stable order to any history query result."""
+        sort_key = sort_key or "date_desc"
+        if sort_key == "date_asc":
+            return sorted(entries, key=lambda entry: (entry.timestamp, entry.id))
+        if sort_key == "genre_asc":
+            return sorted(
+                entries,
+                key=lambda entry: (
+                    entry.genre.casefold(),
+                    -entry.timestamp,
+                    -entry.id,
+                ),
+            )
+        if sort_key == "prompt_asc":
+            return sorted(
+                entries,
+                key=lambda entry: (
+                    entry.prompt.casefold(),
+                    -entry.timestamp,
+                    -entry.id,
+                ),
+            )
+        return sorted(entries, key=lambda entry: (entry.timestamp, entry.id), reverse=True)
+
     def _refresh(self, selected_id: Optional[int] = None):
         self._list.clear()
         query = self._search.text().strip()
@@ -227,6 +263,7 @@ class HistoryPanel(QWidget):
             entries = self._db.get_favorites()
         else:
             entries = self._db.get_recent()
+        entries = self._sort_entries(entries, self._sort_combo.currentData())
 
         for entry in entries:
             star = "\u2605 " if entry.is_favorite else ""

@@ -173,7 +173,7 @@ class ProjectManager:
         self._projects_dir = os.path.join(get_config_dir(), "projects")
         self._index_path = os.path.join(self._projects_dir, "index.json")
         self._current: Optional[Project] = None
-        self._index: dict[str, dict] = {}  # id -> {name, path, updated_at}
+        self._index: dict[str, dict] = {}  # id -> {name, notes, path, updated_at}
         self._trash = TrashManager()
         self._repair_status: dict[str, ProjectRepairStatus] = {}
         self._last_repair_status = ProjectRepairStatus()
@@ -281,6 +281,7 @@ class ProjectManager:
                 continue
             rebuilt[project_id] = {
                 "name": str(entry.get("name") or project_id),
+                "notes": str(entry.get("notes") or ""),
                 "path": str(project_dir),
                 "updated_at": self._safe_timestamp(entry.get("updated_at")),
             }
@@ -309,6 +310,7 @@ class ProjectManager:
                 continue
             entry = {
                 "name": str(data.get("name") or project_dir.name),
+                "notes": str(data.get("notes") or ""),
                 "path": str(project_dir),
                 "updated_at": self._safe_timestamp(data.get("updated_at")),
             }
@@ -395,6 +397,7 @@ class ProjectManager:
         self._save_project(project, create_backup=False)
         self._index[project.id] = {
             "name": project.name,
+            "notes": project.notes,
             "path": project_dir,
             "updated_at": project.updated_at,
         }
@@ -472,6 +475,7 @@ class ProjectManager:
 
             self._index[project.id] = {
                 "name": project.name,
+                "notes": project.notes,
                 "path": os.path.join(self._projects_dir, project.id),
                 "updated_at": project.updated_at,
             }

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QScrollArea, QLineEdit, QTextEdit, QFileDialog,
     QListWidget, QListWidgetItem, QStackedWidget, QInputDialog,
-    QDialog, QPlainTextEdit, QMessageBox,
+    QDialog, QPlainTextEdit, QMessageBox, QComboBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -60,6 +60,8 @@ class ProjectCard(QFrame):
     def __init__(self, project_info: dict, parent=None):
         super().__init__(parent)
         self._project_id = project_info["id"]
+        self._project_name = str(project_info.get("name") or "Untitled")
+        self._project_notes = str(project_info.get("notes") or "")
 
         t = ThemeEngine.get_colors()
         self.setFrameShape(QFrame.StyledPanel)
@@ -85,7 +87,7 @@ class ProjectCard(QFrame):
         info = QVBoxLayout()
         info.setSpacing(2)
 
-        name = QLabel(project_info.get("name", "Untitled"))
+        name = QLabel(self._project_name)
         name.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9.75pt;")
         info.addWidget(name)
 
@@ -128,12 +130,20 @@ class ProjectCard(QFrame):
         self._delete_btn = del_btn
         install_accessibility(
             self,
-            f"Project {project_info.get('name', 'Untitled')}",
+            f"Project {self._project_name}",
             named_controls=[
                 (self._open_btn, "Open project", "Opens this project in the studio."),
                 (self._delete_btn, "Delete project", "Moves this project to recoverable trash."),
             ],
         )
+
+    def matches_query(self, query: str) -> bool:
+        """Match only user-facing project metadata, never the internal ID."""
+        normalized = query.casefold().strip()
+        if not normalized:
+            return True
+        searchable = "\n".join((self._project_name, self._project_notes)).casefold()
+        return normalized in searchable
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -909,6 +919,20 @@ class ProjectManagerView(QWidget):
         self._search.textChanged.connect(self._on_search)
         left.addWidget(self._search)
 
+        sort_row = QHBoxLayout()
+        sort_label = QLabel("Sort by")
+        sort_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
+        sort_row.addWidget(sort_label)
+        self._sort_combo = QComboBox()
+        self._sort_combo.addItem("Last modified (newest)", "updated_desc")
+        self._sort_combo.addItem("Last modified (oldest)", "updated_asc")
+        self._sort_combo.addItem("Name (A–Z)", "name_asc")
+        self._sort_combo.addItem("Name (Z–A)", "name_desc")
+        self._sort_combo.setMinimumHeight(30)
+        self._sort_combo.currentIndexChanged.connect(self._refresh_list)
+        sort_row.addWidget(self._sort_combo, 1)
+        left.addLayout(sort_row)
+
         # Project list
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -954,8 +978,31 @@ class ProjectManagerView(QWidget):
             named_controls=[
                 (self._new_btn, "New project", "Creates a new project."),
                 (self._rescan_btn, "Rescan projects", "Rebuilds the project index from project folders."),
-                (self._search, "Search projects", "Filters the project library by name."),
+                (self._search, "Search projects", "Filters the project library by name or notes."),
+                (self._sort_combo, "Sort projects", "Sorts the project library by modified date or name."),
             ],
+        )
+
+    @staticmethod
+    def _sort_projects(projects: list[dict], sort_key: str | None) -> list[dict]:
+        """Return a deterministic project order without changing the stored index."""
+        sort_key = sort_key or "updated_desc"
+        if sort_key in {"name_asc", "name_desc"}:
+            return sorted(
+                projects,
+                key=lambda item: (
+                    str(item.get("name") or "Untitled").casefold(),
+                    str(item.get("id") or "").casefold(),
+                ),
+                reverse=sort_key == "name_desc",
+            )
+        return sorted(
+            projects,
+            key=lambda item: (
+                float(item.get("updated_at") or 0),
+                str(item.get("id") or "").casefold(),
+            ),
+            reverse=sort_key != "updated_asc",
         )
 
     def _refresh_list(self):
@@ -967,7 +1014,9 @@ class ProjectManagerView(QWidget):
         self._cards.clear()
 
         mgr = get_project_manager()
-        projects = mgr.list_projects()
+        projects = self._sort_projects(
+            mgr.list_projects(), self._sort_combo.currentData()
+        )
 
         for info in projects:
             card = ProjectCard(info)
@@ -1085,16 +1134,10 @@ class ProjectManagerView(QWidget):
         return details
 
     def _on_search(self, text: str):
-        query = text.lower()
+        query = text.casefold().strip()
         visible_count = 0
         for card in self._cards:
-            visible = not query or query in card._project_id.lower()
-            # Check card's name label
-            for child in card.findChildren(QLabel):
-                if child.styleSheet() and "bold" in child.styleSheet():
-                    if query in child.text().lower():
-                        visible = True
-                    break
+            visible = card.matches_query(query)
             card.setVisible(visible)
             visible_count += int(visible)
         if visible_count:

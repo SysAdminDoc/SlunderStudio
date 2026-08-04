@@ -733,6 +733,15 @@ class ModelHubView(QWidget):
         self._task_filter.currentIndexChanged.connect(self._filter_cards)
         filter_bar.addWidget(self._task_filter)
 
+        self._sort_combo = QComboBox()
+        self._sort_combo.addItem("Name (A–Z)", "name_asc")
+        self._sort_combo.addItem("Name (Z–A)", "name_desc")
+        self._sort_combo.addItem("Measurement date (newest)", "date_desc")
+        self._sort_combo.addItem("Measurement date (oldest)", "date_asc")
+        self._sort_combo.setMinimumHeight(36)
+        self._sort_combo.currentIndexChanged.connect(self._filter_cards)
+        filter_bar.addWidget(self._sort_combo)
+
         layout.addLayout(filter_bar)
 
         hardware_filter_bar = QHBoxLayout()
@@ -800,6 +809,7 @@ class ModelHubView(QWidget):
                 (self._search, "Search models", "Filters models by name or description."),
                 (self._category_filter, "Model category filter", "Filters models by engine category."),
                 (self._task_filter, "Model task filter", "Filters models by measured task guidance."),
+                (self._sort_combo, "Sort models", "Sorts models by name or registry measurement date."),
                 (self._hardware_filter, "Model hardware filter", "Shows models that fit the detected execution hardware."),
                 (self._downloaded_only, "Downloaded models only", "Shows only installed or loaded models."),
                 (self._gpu_label, "Model Hub GPU status", "Shows GPU availability and active model."),
@@ -810,6 +820,7 @@ class ModelHubView(QWidget):
                 self._search,
                 self._category_filter,
                 self._task_filter,
+                self._sort_combo,
                 self._hardware_filter,
                 self._downloaded_only,
                 *[card._action_btn for card in self._cards.values()],
@@ -1000,7 +1011,49 @@ class ModelHubView(QWidget):
             f"{usage:.1f} GB on disk  |  {downloaded}/{total} models ready"
         )
 
+    @staticmethod
+    def _sort_model_ids(registry: dict[str, ModelInfo], sort_key: str | None) -> list[str]:
+        """Return registry IDs in the explicit user-selected order."""
+        sort_key = sort_key or "name_asc"
+        reverse = sort_key in {"name_desc", "date_desc"}
+        if sort_key in {"date_asc", "date_desc"}:
+            ordered = sorted(
+                registry.items(),
+                key=lambda item: (
+                    item[1].measurement_date or "",
+                    item[1].name.casefold(),
+                    item[0],
+                ),
+                reverse=reverse,
+            )
+        else:
+            ordered = sorted(
+                registry.items(),
+                key=lambda item: (item[1].name.casefold(), item[0]),
+                reverse=reverse,
+            )
+        return [model_id for model_id, _info in ordered]
+
+    def _arrange_cards(self):
+        """Rebuild grid positions without recreating cards or losing state."""
+        for card in self._cards.values():
+            self._grid_layout.removeWidget(card)
+        for row in range(self._grid_layout.rowCount() + 2):
+            self._grid_layout.setRowStretch(row, 0)
+
+        registry = {
+            model_id: self._mgr.registry.get(model_id, card.info)
+            for model_id, card in self._cards.items()
+        }
+        for index, model_id in enumerate(
+            self._sort_model_ids(registry, self._sort_combo.currentData())
+        ):
+            row, column = divmod(index, 3)
+            self._grid_layout.addWidget(self._cards[model_id], row, column)
+        self._grid_layout.setRowStretch((len(self._cards) + 2) // 3, 1)
+
     def _filter_cards(self):
+        self._arrange_cards()
         search = self._search.text().lower()
         cat_filter = self._category_filter.currentData()
         task_filter = self._task_filter.currentData()
