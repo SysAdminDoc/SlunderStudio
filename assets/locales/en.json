@@ -194,6 +194,25 @@
       "c2pa_missing_credentials": "Enablement is saved, but both signer files must be selected before exporting.",
       "c2pa_ready": "Signer paths are configured. The private key is read only during an opted-in export."
     },
+    "osc": {
+      "group": "OSC Control",
+      "control": "Enable OSC control",
+      "enabled": "Enable the versioned OSC transport",
+      "control_help": "Disabled by default. Uses /slunder/v1 and listens on loopback until LAN access is explicitly enabled.",
+      "port": "OSC UDP Port",
+      "port_help": "The local UDP port used for OSC messages.",
+      "lan_access": "LAN access",
+      "allow_lan": "Allow non-loopback OSC sources",
+      "lan_access_help": "LAN access requires this opt-in plus at least one matching host or CIDR entry below.",
+      "allowed_hosts": "Allowed hosts",
+      "allowed_hosts_placeholder": "127.0.0.1, 192.168.1.10, 192.168.1.0/24",
+      "allowed_hosts_help": "Comma-separated IPv4 hosts or CIDR networks. Empty or invalid entries are ignored.",
+      "packet_limit": "Packet size limit",
+      "packet_limit_help": "Datagrams larger than this limit are rejected before parsing.",
+      "rate_limit": "Messages per source / second",
+      "rate_limit_help": "Limits accepted messages separately for each source host.",
+      "note": "OSC control accepts direct messages only. Unknown addresses, unsupported types, oversized packets, untrusted sources, and rate-limited bursts are ignored."
+    },
     "gpu": {
       "group": "GPU and Models",
       "device_index": "GPU Device Index",

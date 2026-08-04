@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added optional versioned OSC transport control for play, pause, stop, toggle, seek, loop, and
+  volume. The UDP listener is disabled and loopback-only by default; LAN access requires an
+  explicit opt-in plus IPv4/CIDR allowlisting, and bounded packet/rate policies reject unsafe
+  traffic before it reaches the UI thread.
 - Added target-DAW stem export naming templates and cancellable multi-stem delivery from Vocal
   Suite. Generic, Ableton Live, Bitwig Studio, Cubase, Logic Pro, Pro Tools, Studio One, and FL
   Studio conventions persist through Settings and produce native-rate WAVs with provenance sidecars.

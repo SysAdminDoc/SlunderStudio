@@ -65,6 +65,15 @@ DEFAULTS = {
         "max_cache_gb": 20.0,
         "trash_retention_days": 30,
     },
+    # OSC control is disabled and loopback-only until the user opts in.
+    "osc": {
+        "enabled": False,
+        "port": 9000,
+        "allow_lan": False,
+        "allowed_hosts": ["127.0.0.1"],
+        "max_packet_bytes": 4096,
+        "max_messages_per_second": 60,
+    },
     "retention": {
         # Age/count/size caps for recovery artifacts. 0 means no limit.
         "jobs": {"max_age_days": 30, "max_count": 500, "max_total_mb": 0},

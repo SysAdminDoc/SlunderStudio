@@ -97,6 +97,11 @@ target-DAW naming template (Generic, Ableton Live, Bitwig Studio, Cubase, Logic 
 Studio One, or FL Studio). Each delivery file gets its own provenance sidecar and stable track
 order; the selected convention is also available in Settings > Output.
 
+Optional OSC transport control is available in Settings > OSC Control. It is disabled and
+loopback-only by default, accepts direct messages in the versioned `/slunder/v1` namespace, and
+requires both an explicit LAN opt-in and matching IPv4 host/CIDR allowlist entries for network
+sources. Packet-size and per-source message-rate limits apply before transport dispatch.
+
 ## Mastering Presets
 
 | Preset | Target LUFS | Character |

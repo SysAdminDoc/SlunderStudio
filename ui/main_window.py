@@ -3,6 +3,8 @@ Slunder Studio — Main Window
 Studio-shell navigation, contextual workspace header, global transport,
 compute status, and drag-and-drop routing.
 """
+import math
+
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QStackedWidget, QPushButton, QFrame, QSlider, QSizePolicy,
@@ -15,6 +17,7 @@ from core.settings import Settings, APP_VERSION
 from core.audio_engine import AudioEngine, format_time
 from core.i18n import tr
 from core.model_manager import ModelManager
+from core.osc import OSCConfig, OSCMessage, OSCServer, OSC_NAMESPACE
 from core.routing import is_audio_path, is_midi_path
 from core.workers import shutdown_workers
 from core.workers import InferenceWorker
@@ -284,6 +287,40 @@ class TransportBar(QWidget):
     def _toggle_play(self):
         self._audio.toggle_play()
 
+    # These small public actions are also the UI-thread boundary for OSC
+    # control.  They keep external control from reaching widget internals.
+    def osc_play(self):
+        """Start or resume playback from an external control request."""
+        self._audio.play()
+
+    def osc_pause(self):
+        """Pause playback from an external control request."""
+        self._audio.pause()
+
+    def osc_stop(self):
+        """Stop playback from an external control request."""
+        self._audio.stop()
+
+    def osc_toggle(self):
+        """Toggle playback from an external control request."""
+        self._audio.toggle_play()
+
+    def osc_seek(self, seconds: float):
+        """Seek to an absolute position from an external control request."""
+        self._audio.seek(seconds)
+
+    def osc_seek_relative(self, seconds: float):
+        """Seek relative to the current position from an external request."""
+        self._audio.seek_relative(seconds)
+
+    def osc_set_loop(self, enabled: bool):
+        """Set loop state from an external control request."""
+        self._loop_btn.setChecked(bool(enabled))
+
+    def osc_set_volume(self, value: float):
+        """Set normalized playback volume from an external control request."""
+        self._vol_slider.setValue(int(round(max(0.0, min(1.0, value)) * 100)))
+
     def _on_seek(self, value):
         if self._duration > 0:
             self._audio.seek(value / 1000 * self._duration)
@@ -309,6 +346,9 @@ class TransportBar(QWidget):
 class MainWindow(QMainWindow):
     """Slunder Studio main application window."""
 
+    osc_message_received = Signal(object, object)
+    osc_server_error = Signal(str)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(tr("app.window_title", version=APP_VERSION))
@@ -322,12 +362,20 @@ class MainWindow(QMainWindow):
         self._model_mgr = ModelManager()
         self._gpu_worker = None
         self._gpu_workers = set()
+        self._osc_server = None
+        self._osc_reconfigure_pending = False
+        self._closing = False
+        self._osc_settings_callback = self._on_osc_settings_changed
 
         # Toast manager
         self.toast_mgr = ToastManager(self)
         self._notification_log_dialog = None
 
         self._build_ui()
+        self.osc_message_received.connect(self._on_osc_message)
+        self.osc_server_error.connect(self._on_osc_server_error)
+        self._settings.on_change(self._osc_settings_callback)
+        self._configure_osc_server()
         from ui.i18n_runtime import apply_pseudolocale
 
         apply_pseudolocale(self)
@@ -664,6 +712,128 @@ class MainWindow(QMainWindow):
         if self.toast_mgr:
             self.toast_mgr.warning(message, duration_ms=10000)
 
+    # ── OSC Control ───────────────────────────────────────────────────────────
+
+    def _on_osc_settings_changed(self, key: str, _value, _old_value):
+        """Rebind OSC after a relevant setting changes on the UI thread."""
+        if key != "*" and key != "osc" and not key.startswith("osc."):
+            return
+        if getattr(self, "_osc_reconfigure_pending", False):
+            return
+        self._osc_reconfigure_pending = True
+        QTimer.singleShot(0, self._apply_pending_osc_settings)
+
+    def _apply_pending_osc_settings(self):
+        self._osc_reconfigure_pending = False
+        self._configure_osc_server()
+
+    def _configure_osc_server(self):
+        """Apply persisted OSC policy without exposing a socket by default."""
+        previous = self._osc_server
+        self._osc_server = None
+        if previous is not None:
+            previous.stop()
+
+        config = OSCConfig.from_settings(self._settings.get_section("osc"))
+        if not config.enabled:
+            return
+
+        server = OSCServer(
+            config,
+            self._emit_osc_message,
+            error_callback=lambda message: self.osc_server_error.emit(message),
+        )
+        try:
+            server.start()
+        except OSError as exc:
+            message = f"OSC control could not listen on UDP {config.port}: {exc}"
+            self._on_osc_server_error(message)
+            return
+        self._osc_server = server
+        bound = server.bound_address or (config.bind_host, config.port)
+        self._status_bar.showMessage(
+            f"OSC control listening on {bound[0]}:{bound[1]}",
+            5000,
+        )
+
+    def _emit_osc_message(self, message: OSCMessage, source: tuple[str, int]):
+        """Queue a validated worker-thread message onto the Qt UI thread."""
+        if not getattr(self, "_closing", False):
+            self.osc_message_received.emit(message, source)
+
+    def _on_osc_server_error(self, message: str):
+        """Surface an unexpected listener failure without touching Qt off-thread."""
+        self._status_bar.showMessage(f"OSC control stopped: {message}", 10000)
+        if self.toast_mgr:
+            self.toast_mgr.warning(
+                f"OSC control stopped: {message}",
+                duration_ms=10000,
+            )
+
+    @staticmethod
+    def _osc_number(arguments: tuple[object, ...]) -> float | None:
+        if len(arguments) != 1 or isinstance(arguments[0], bool):
+            return None
+        value = arguments[0]
+        if not isinstance(value, (int, float)):
+            return None
+        value = float(value)
+        return value if math.isfinite(value) else None
+
+    def _on_osc_message(
+        self,
+        message: OSCMessage,
+        _source: tuple[str, int],
+    ) -> bool:
+        """Dispatch the small, explicit transport command surface."""
+        if not isinstance(message, OSCMessage):
+            return False
+        address = message.address
+        arguments = message.arguments
+        if address == f"{OSC_NAMESPACE}/ping":
+            if arguments:
+                return False
+            self._status_bar.showMessage("OSC control ping received", 1500)
+            return True
+
+        transport_commands = {
+            f"{OSC_NAMESPACE}/transport/play": self._transport.osc_play,
+            f"{OSC_NAMESPACE}/transport/pause": self._transport.osc_pause,
+            f"{OSC_NAMESPACE}/transport/stop": self._transport.osc_stop,
+            f"{OSC_NAMESPACE}/transport/toggle": self._transport.osc_toggle,
+        }
+        action = transport_commands.get(address)
+        if action is not None:
+            if arguments:
+                return False
+            action()
+            return True
+
+        if address == f"{OSC_NAMESPACE}/transport/seek":
+            value = self._osc_number(arguments)
+            if value is None:
+                return False
+            self._transport.osc_seek(value)
+            return True
+        if address == f"{OSC_NAMESPACE}/transport/seek_relative":
+            value = self._osc_number(arguments)
+            if value is None:
+                return False
+            self._transport.osc_seek_relative(value)
+            return True
+        if address == f"{OSC_NAMESPACE}/transport/loop":
+            if len(arguments) != 1 or not isinstance(arguments[0], bool):
+                return False
+            self._transport.osc_set_loop(arguments[0])
+            return True
+        if address == f"{OSC_NAMESPACE}/transport/volume":
+            value = self._osc_number(arguments)
+            if value is None or not 0.0 <= value <= 1.0:
+                return False
+            self._transport.osc_set_volume(value)
+            return True
+        return False
+
     def _apply_gpu_status(self, gpu: dict):
         """Update GPU status widgets from a completed background probe."""
         if gpu.get("available"):
@@ -933,6 +1103,15 @@ class MainWindow(QMainWindow):
             )
             event.ignore()
             return
+        self._closing = True
+        osc_server = getattr(self, "_osc_server", None)
+        if osc_server is not None:
+            osc_server.stop()
+            self._osc_server = None
+        settings = getattr(self, "_settings", None)
+        callback = getattr(self, "_osc_settings_callback", None)
+        if settings is not None and callback is not None:
+            settings.remove_callback(callback)
         AudioEngine().cleanup()
         self._gpu_timer.stop()
         self._model_mgr.unload()

@@ -361,6 +361,83 @@ class SettingsView(QWidget):
 
         layout.addWidget(output_group)
 
+        # ── OSC Control ──
+        osc_group = QGroupBox(tr("settings.osc.group"))
+        osc_layout = QVBoxLayout(osc_group)
+
+        self._osc_enabled = QCheckBox(tr("settings.osc.enabled"))
+        self._osc_enabled.toggled.connect(
+            lambda enabled: self._save("osc.enabled", bool(enabled))
+        )
+        osc_layout.addLayout(SettingRow(
+            tr("settings.osc.control"),
+            self._osc_enabled,
+            tr("settings.osc.control_help"),
+        ))
+
+        self._osc_port = QSpinBox()
+        self._osc_port.setRange(1024, 65535)
+        self._osc_port.setValue(9000)
+        self._osc_port.valueChanged.connect(
+            lambda value: self._save("osc.port", int(value))
+        )
+        osc_layout.addLayout(SettingRow(
+            tr("settings.osc.port"),
+            self._osc_port,
+            tr("settings.osc.port_help"),
+        ))
+
+        self._osc_allow_lan = QCheckBox(tr("settings.osc.allow_lan"))
+        self._osc_allow_lan.toggled.connect(self._on_osc_lan_toggled)
+        osc_layout.addLayout(SettingRow(
+            tr("settings.osc.lan_access"),
+            self._osc_allow_lan,
+            tr("settings.osc.lan_access_help"),
+        ))
+
+        self._osc_allowed_hosts = QLineEdit()
+        self._osc_allowed_hosts.setPlaceholderText(
+            tr("settings.osc.allowed_hosts_placeholder")
+        )
+        self._osc_allowed_hosts.editingFinished.connect(
+            self._save_osc_allowed_hosts
+        )
+        osc_layout.addLayout(SettingRow(
+            tr("settings.osc.allowed_hosts"),
+            self._osc_allowed_hosts,
+            tr("settings.osc.allowed_hosts_help"),
+        ))
+
+        self._osc_packet_bytes = QSpinBox()
+        self._osc_packet_bytes.setRange(256, 65507)
+        self._osc_packet_bytes.valueChanged.connect(
+            lambda value: self._save("osc.max_packet_bytes", int(value))
+        )
+        osc_layout.addLayout(SettingRow(
+            tr("settings.osc.packet_limit"),
+            self._osc_packet_bytes,
+            tr("settings.osc.packet_limit_help"),
+        ))
+
+        self._osc_rate = QSpinBox()
+        self._osc_rate.setRange(1, 10000)
+        self._osc_rate.valueChanged.connect(
+            lambda value: self._save("osc.max_messages_per_second", int(value))
+        )
+        osc_layout.addLayout(SettingRow(
+            tr("settings.osc.rate_limit"),
+            self._osc_rate,
+            tr("settings.osc.rate_limit_help"),
+        ))
+
+        osc_note = QLabel(tr("settings.osc.note"))
+        osc_note.setWordWrap(True)
+        osc_note.setStyleSheet(
+            f"color: {Palette.SUBTEXT0}; font-size: 8.25pt; padding: 2px 0;"
+        )
+        osc_layout.addWidget(osc_note)
+        layout.addWidget(osc_group)
+
         # ── GPU and Models ──
         gpu_group = QGroupBox(tr("settings.gpu.group"))
         gpu_layout = QVBoxLayout(gpu_group)
@@ -945,6 +1022,8 @@ class SettingsView(QWidget):
             self._ui_locale_combo,
             self._default_language,
             self._reduced_motion,
+            self._osc_enabled, self._osc_port, self._osc_allow_lan,
+            self._osc_allowed_hosts, self._osc_packet_bytes, self._osc_rate,
             self._lyrics_model, self._temperature, self._top_p,
             self._max_tokens, self._timestep_shift, self._inference_steps,
             self._batch_count, self._default_duration, self._default_bpm,
@@ -980,6 +1059,20 @@ class SettingsView(QWidget):
             template_id = str(s.get("general.stem_export_template", "generic") or "generic")
             idx = self._stem_export_template_combo.findData(template_id)
             self._stem_export_template_combo.setCurrentIndex(idx if idx >= 0 else 0)
+
+            self._osc_enabled.setChecked(bool(s.get("osc.enabled", False)))
+            self._osc_port.setValue(int(s.get("osc.port", 9000) or 9000))
+            self._osc_allow_lan.setChecked(bool(s.get("osc.allow_lan", False)))
+            allowed_hosts = s.get("osc.allowed_hosts", ["127.0.0.1"])
+            if isinstance(allowed_hosts, (list, tuple)):
+                allowed_hosts = ", ".join(str(host) for host in allowed_hosts)
+            self._osc_allowed_hosts.setText(str(allowed_hosts or ""))
+            self._osc_packet_bytes.setValue(
+                int(s.get("osc.max_packet_bytes", 4096) or 4096)
+            )
+            self._osc_rate.setValue(
+                int(s.get("osc.max_messages_per_second", 60) or 60)
+            )
 
             self._gpu_device.setValue(s.get("general.gpu_device", 0))
             self._offline_mode.setChecked(s.get("model_hub.offline_mode", False))
@@ -1083,6 +1176,20 @@ class SettingsView(QWidget):
         template_id = self._stem_export_template_combo.itemData(index)
         if template_id:
             self._save("general.stem_export_template", str(template_id))
+
+    def _save_osc_allowed_hosts(self):
+        """Persist a comma-separated IPv4 host/CIDR allowlist."""
+        hosts = [
+            host.strip()
+            for host in self._osc_allowed_hosts.text().replace(";", ",").split(",")
+            if host.strip()
+        ]
+        self._save("osc.allowed_hosts", hosts)
+
+    def _on_osc_lan_toggled(self, enabled: bool):
+        """Persist LAN opt-in and keep the allowlist visibly editable."""
+        self._save("osc.allow_lan", bool(enabled))
+        self._osc_allowed_hosts.setEnabled(True)
 
     def _on_ui_locale_changed(self, _index: int):
         """Persist the interface locale and apply layout direction immediately."""
@@ -1245,6 +1352,12 @@ class SettingsView(QWidget):
                 (self._c2pa_certificate_browse, "Browse C2PA certificate", "Selects the C2PA claim-signing certificate chain."),
                 (self._c2pa_private_key_path, "C2PA private key path", "Selects the user-managed PEM private key; the key contents are never copied into settings."),
                 (self._c2pa_private_key_browse, "Browse C2PA private key", "Selects the C2PA claim-signing private key."),
+                (self._osc_enabled, "OSC control", "Enables the versioned OSC transport for local control."),
+                (self._osc_port, "OSC port", "Selects the UDP port used by OSC control."),
+                (self._osc_allow_lan, "Allow OSC LAN access", "Explicitly enables non-loopback OSC sources."),
+                (self._osc_allowed_hosts, "OSC allowed hosts", "Limits LAN OSC to the listed IPv4 hosts or CIDR networks."),
+                (self._osc_packet_bytes, "OSC packet size limit", "Rejects OSC datagrams larger than this many bytes."),
+                (self._osc_rate, "OSC rate limit", "Limits accepted OSC datagrams per source per second."),
                 (self._gpu_device, "GPU device index", "Selects the GPU device index."),
                 (self._offline_mode, "Offline mode", "Disables internet access for Model Hub."),
                 (self._hf_token, "HuggingFace token", "Stores a token for gated model downloads."),
@@ -1288,6 +1401,12 @@ class SettingsView(QWidget):
                 self._c2pa_certificate_browse,
                 self._c2pa_private_key_path,
                 self._c2pa_private_key_browse,
+                self._osc_enabled,
+                self._osc_port,
+                self._osc_allow_lan,
+                self._osc_allowed_hosts,
+                self._osc_packet_bytes,
+                self._osc_rate,
                 self._gpu_device,
                 self._offline_mode,
                 self._hf_token,
