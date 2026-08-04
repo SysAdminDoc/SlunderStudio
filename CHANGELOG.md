@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added `slunder_cli.py` for headless lyrics, MIDI, SFX, audio export, and durable-job inspection.
+  Commands reuse the desktop engine, worker, export, provenance, cancellation, and error
+  contracts, with structured JSON results available through `--json`.
 - Added optional versioned OSC transport control for play, pause, stop, toggle, seek, loop, and
   volume. The UDP listener is disabled and loopback-only by default; LAN access requires an
   explicit opt-in plus IPv4/CIDR allowlisting, and bounded packet/rate policies reject unsafe

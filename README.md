@@ -21,6 +21,24 @@ py -3.12 main.py
 
 Python 3.11 or 3.12 is required. Install core dependencies explicitly before launch; if anything is missing, Slunder Studio opens a diagnostics screen with the exact setup command. AI models are downloaded on-demand from HuggingFace via the built-in Model Hub.
 
+### Headless CLI
+
+The same engine, durable-job, export, provenance, and error contracts are available without
+starting the Qt shell:
+
+```bash
+py -3.12 slunder_cli.py lyrics "write a dark synth-pop chorus" --output chorus.txt
+py -3.12 slunder_cli.py midi "syncopated piano groove" --output groove.mid --demo
+py -3.12 slunder_cli.py sfx "rain on a window" --output-dir renders --demo
+py -3.12 slunder_cli.py export source.wav renders/master.wav --format wav
+```
+
+Add `--json` before or after a command for one machine-readable result containing the schema,
+job ID, status, typed artifacts, and provenance paths. `jobs --status recoverable` inspects the
+same persistent job ledger used by the desktop recovery center. Generation commands remain
+model-gated by default; `--demo` is required for the explicitly labeled MIDI and SFX fallback
+paths.
+
 The reproducible engine evaluation harness uses fixed prompts, seeds, durations, and
 languages. It records runtime/model provenance, latency, RAM/VRAM, failures, audio
 loudness/true peak, artifact hashes, and a separate blinded listener rubric. Run the
