@@ -4,11 +4,12 @@ Slunder Studio - Recoverable trash/quarantine support.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 import time
 import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -17,6 +18,9 @@ from core.settings import Settings, get_trash_dir
 
 class TrashError(RuntimeError):
     """Raised when a recoverable delete or restore cannot be completed."""
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,6 +37,28 @@ class TrashEntry:
     size_bytes: int
     file_count: int
     metadata: dict[str, Any]
+    _extra_fields: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TrashEntry":
+        if not isinstance(data, dict):
+            raise ValueError("Trash manifest root must be an object")
+        known = {
+            item.name for item in fields(cls)
+            if item.name != "_extra_fields"
+        }
+        values = {key: value for key, value in data.items() if key in known}
+        extras = {key: value for key, value in data.items() if key not in known}
+        return cls(**values, _extra_fields=extras)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = dict(self._extra_fields)
+        payload.update({
+            item.name: getattr(self, item.name)
+            for item in fields(self)
+            if item.name != "_extra_fields"
+        })
+        return payload
 
 
 class TrashManager:
@@ -94,7 +120,7 @@ class TrashManager:
                 metadata=metadata or {},
             )
             manifest_path.write_text(
-                json.dumps(asdict(entry), indent=2),
+                json.dumps(entry.to_dict(), indent=2),
                 encoding="utf-8",
             )
             return entry
@@ -147,10 +173,14 @@ class TrashManager:
         if entry is None:
             raise TrashError(f"Trash entry not found: {entry_id}")
 
+        self._validate_entry(entry, self.trash_dir / entry_id / self.MANIFEST_NAME)
+
         source = Path(entry.trash_path)
         dest = Path(entry.original_path)
         if not source.exists():
             raise TrashError(f"Trash payload missing: {source}")
+        if source.is_symlink():
+            raise TrashError(f"Trash payload cannot be a symbolic link: {source}")
         if dest.exists():
             raise TrashError(f"Restore target already exists: {dest}")
 
@@ -164,13 +194,18 @@ class TrashManager:
             raise TrashError(f"Failed to restore {entry_id}: {exc}") from exc
 
     def get_entry(self, entry_id: str) -> Optional[TrashEntry]:
-        manifest = self.trash_dir / entry_id / self.MANIFEST_NAME
+        entry_dir = self._entry_dir(entry_id)
+        manifest = entry_dir / self.MANIFEST_NAME
         if not manifest.exists():
             return None
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
-            return TrashEntry(**data)
-        except Exception as exc:
+            entry = TrashEntry.from_dict(data)
+            self._validate_entry(entry, manifest)
+            return entry
+        except TrashError:
+            raise
+        except (OSError, UnicodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise TrashError(f"Trash manifest is corrupt: {manifest}: {exc}") from exc
 
     def list_entries(self, category: Optional[str] = None) -> list[TrashEntry]:
@@ -178,10 +213,12 @@ class TrashManager:
         for manifest in self.trash_dir.glob(f"*/{self.MANIFEST_NAME}"):
             try:
                 data = json.loads(manifest.read_text(encoding="utf-8"))
-                entry = TrashEntry(**data)
+                entry = TrashEntry.from_dict(data)
+                self._validate_entry(entry, manifest)
                 if category is None or entry.category == category:
                     entries.append(entry)
-            except Exception:
+            except (OSError, UnicodeError, TypeError, ValueError, TrashError) as exc:
+                logger.warning("Skipped unsafe trash manifest %s: %s", manifest, exc)
                 continue
         return sorted(entries, key=lambda e: e.deleted_at, reverse=True)
 
@@ -204,6 +241,43 @@ class TrashManager:
         safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "-", label).strip("-")
         safe_label = safe_label[:48] or "item"
         return f"{category}_{int(time.time() * 1000)}_{uuid.uuid4().hex[:10]}_{safe_label}"
+
+    def _entry_dir(self, entry_id: str) -> Path:
+        if not isinstance(entry_id, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", entry_id):
+            raise TrashError(f"Invalid trash entry id: {entry_id!r}")
+        if entry_id in {".", ".."}:
+            raise TrashError(f"Invalid trash entry id: {entry_id!r}")
+        root = self.trash_dir.resolve(strict=False)
+        entry_dir = self.trash_dir / entry_id
+        if entry_dir.resolve(strict=False).parent != root:
+            raise TrashError(f"Trash entry escapes the trash root: {entry_id!r}")
+        return entry_dir
+
+    def _validate_entry(self, entry: TrashEntry, manifest: Path) -> None:
+        """Validate manifest paths before any manifest-directed filesystem move."""
+        entry_dir = self._entry_dir(entry.id)
+        root = self.trash_dir.resolve(strict=False)
+        expected_manifest = entry_dir.resolve(strict=False) / self.MANIFEST_NAME
+        if manifest.resolve(strict=False) != expected_manifest:
+            raise TrashError("Trash manifest path does not match its entry directory")
+
+        payload = Path(entry.trash_path)
+        if payload.name in {"", ".", ".."}:
+            raise TrashError("Trash payload name is invalid")
+        if payload.parent.resolve(strict=False) != entry_dir.resolve(strict=False):
+            raise TrashError("Trash payload escapes its entry directory")
+        if payload.is_symlink() or payload.resolve(strict=False).parent != entry_dir.resolve(strict=False):
+            raise TrashError("Trash payload is a symbolic-link escape")
+
+        destination = Path(entry.original_path)
+        if not destination.is_absolute():
+            raise TrashError("Trash restore target must be absolute")
+        if any(part in {".", ".."} for part in destination.parts):
+            raise TrashError("Trash restore target contains traversal components")
+        if destination.name != payload.name:
+            raise TrashError("Trash restore target name does not match the payload")
+        if destination.resolve(strict=False).is_relative_to(root):
+            raise TrashError("Trash restore target cannot be inside the trash root")
 
     @staticmethod
     def _summarize(path: Path) -> tuple[int, int]:

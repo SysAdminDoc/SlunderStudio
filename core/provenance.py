@@ -419,8 +419,9 @@ def read_provenance_sidecar(path: str | Path) -> dict[str, Any]:
         else:
             return {}
     try:
-        return json.loads(sidecar.read_text(encoding="utf-8"))
-    except Exception:
+        payload = json.loads(sidecar.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, UnicodeError, TypeError, ValueError):
         return {}
 
 

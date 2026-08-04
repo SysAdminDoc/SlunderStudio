@@ -3,6 +3,7 @@ import time
 import unittest
 import contextlib
 import io
+import json
 from pathlib import Path
 from unittest import mock
 
@@ -55,6 +56,29 @@ class RecoverableTrashTests(unittest.TestCase):
                     category="project",
                     label="missing",
                 )
+
+    def test_manifest_restore_rejects_traversal_and_preserves_unknown_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "generated.wav"
+            source.write_bytes(b"audio")
+            trash = TrashManager(root / "trash")
+            entry = trash.trash_path(source, category="generated_asset", label="generated.wav")
+
+            manifest = Path(entry.manifest_path)
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["future_manifest_field"] = {"version": 2}
+            payload["original_path"] = str(root / ".." / "outside.wav")
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+            with self.assertRaises(TrashError):
+                trash.get_entry(entry.id)
+            self.assertTrue(Path(entry.trash_path).exists())
+
+            payload["original_path"] = str(source)
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            restored = trash.get_entry(entry.id)
+            self.assertEqual(restored.to_dict()["future_manifest_field"], {"version": 2})
 
     def test_project_delete_moves_directory_and_restores_index(self):
         with tempfile.TemporaryDirectory() as tmp:

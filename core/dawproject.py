@@ -4,7 +4,7 @@ Generates cross-DAW .dawproject archives (ZIP containing project.xml,
 metadata.xml, and referenced media files).
 """
 import os
-import time
+import stat
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +19,11 @@ META_NS = "http://bitwig.com/dawproject"
 
 REQUIRED_ARCHIVE_ENTRIES = {"project.xml", "metadata.xml"}
 DAWPROJECT_AUDIO_ASSET_TYPES = frozenset({"audio", "stems", "sfx", "export"})
+DEFAULT_MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024
+
+
+class DAWProjectSecurityError(ValueError):
+    """Raised when a DAWproject archive cannot be handled safely."""
 
 
 @dataclass
@@ -169,6 +174,128 @@ def export_dawproject(
     return output_path
 
 
+def _archive_member_error(name: str) -> str:
+    """Return a reason when a ZIP member is not a safe relative path."""
+    if not isinstance(name, str) or not name:
+        return "empty archive member name"
+    if "\\" in name:
+        return "backslash is not allowed in archive member names"
+    if name.startswith("/") or (len(name) >= 2 and name[1] == ":"):
+        return "absolute archive member path"
+
+    parts = name.split("/")
+    if any(part in {"", ".", ".."} for part in parts[:-1]):
+        return "archive member contains an unsafe path component"
+    if parts[-1] in {".", ".."}:
+        return "archive member contains an unsafe path component"
+    return ""
+
+
+def _is_zip_symlink(info: zipfile.ZipInfo) -> bool:
+    """Detect Unix symlink entries without extracting them first."""
+    mode = (info.external_attr >> 16) & 0xFFFF
+    return stat.S_IFMT(mode) == stat.S_IFLNK
+
+
+def _validate_archive_members(
+    infos: list[zipfile.ZipInfo],
+    result: DAWProjectValidation,
+) -> None:
+    seen: set[str] = set()
+    for info in infos:
+        name = info.filename
+        reason = _archive_member_error(name)
+        if reason:
+            result.valid = False
+            result.errors.append(f"Unsafe archive entry {name!r}: {reason}")
+        if name in seen:
+            result.valid = False
+            result.errors.append(f"Duplicate archive entry: {name}")
+        seen.add(name)
+        if _is_zip_symlink(info):
+            result.valid = False
+            result.errors.append(f"Symbolic-link archive entry is not allowed: {name}")
+
+
+def extract_dawproject(
+    archive_path: str,
+    destination_dir: str | Path,
+    *,
+    max_total_bytes: int = DEFAULT_MAX_EXTRACTED_BYTES,
+) -> Path:
+    """Safely extract a validated DAWproject into ``destination_dir``.
+
+    ZIP extraction is intentionally explicit because ``ZipFile.extractall``
+    historically makes it easy to overlook ``../``, absolute-path, symlink,
+    and decompression-bomb inputs. Existing files are never overwritten.
+    """
+    if max_total_bytes < 0:
+        raise ValueError("max_total_bytes must be non-negative")
+
+    validation = validate_dawproject(archive_path)
+    if not validation.valid:
+        detail = "; ".join(validation.errors[:4])
+        if len(validation.errors) > 4:
+            detail += "; ..."
+        raise DAWProjectSecurityError(f"DAWproject archive rejected: {detail}")
+
+    destination = Path(destination_dir).resolve(strict=False)
+    destination.mkdir(parents=True, exist_ok=True)
+    created: list[Path] = []
+    total_bytes = 0
+    try:
+        with zipfile.ZipFile(archive_path, "r") as archive:
+            infos = archive.infolist()
+            for info in infos:
+                reason = _archive_member_error(info.filename)
+                if reason or _is_zip_symlink(info):
+                    raise DAWProjectSecurityError(
+                        f"Unsafe archive entry {info.filename!r}"
+                    )
+                declared_bytes = max(0, int(info.file_size))
+                if total_bytes + declared_bytes > max_total_bytes:
+                    raise DAWProjectSecurityError(
+                        "DAWproject extracted size exceeds the configured limit"
+                    )
+
+                target = destination / info.filename
+                resolved_target = target.resolve(strict=False)
+                if not resolved_target.is_relative_to(destination):
+                    raise DAWProjectSecurityError(
+                        f"Archive entry resolves outside destination: {info.filename}"
+                    )
+
+                if info.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if not target.parent.resolve(strict=False).is_relative_to(destination):
+                    raise DAWProjectSecurityError(
+                        f"Archive entry parent resolves outside destination: {info.filename}"
+                    )
+                with archive.open(info, "r") as source, target.open("xb") as output:
+                    created.append(target)
+                    while True:
+                        chunk = source.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        total_bytes += len(chunk)
+                        if total_bytes > max_total_bytes:
+                            raise DAWProjectSecurityError(
+                                "DAWproject extracted size exceeds the configured limit"
+                            )
+                        output.write(chunk)
+    except Exception:
+        for path in reversed(created):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+    return destination
+
+
 def spec_from_project(project) -> DAWProjectSpec:
     """Build a DAWproject spec from the existing project asset contract.
 
@@ -226,7 +353,11 @@ def validate_dawproject(archive_path: str) -> DAWProjectValidation:
                 result.errors.append(f"Corrupt ZIP entry: {bad}")
                 return result
 
-            result.entries = zf.namelist()
+            infos = zf.infolist()
+            result.entries = [info.filename for info in infos]
+            _validate_archive_members(infos, result)
+            if not result.valid:
+                return result
 
             for required in REQUIRED_ARCHIVE_ENTRIES:
                 if required not in result.entries:
@@ -244,6 +375,10 @@ def validate_dawproject(archive_path: str) -> DAWProjectValidation:
 
             media_files = {e for e in result.entries if e.startswith("media/")}
             for ref in result.media_refs:
+                if _archive_member_error(ref) or not ref.startswith("media/"):
+                    result.valid = False
+                    result.errors.append(f"Unsafe media reference in project.xml: {ref}")
+                    continue
                 if ref not in media_files:
                     result.valid = False
                     result.errors.append(f"Media reference not found in archive: {ref}")

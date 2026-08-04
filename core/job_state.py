@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
@@ -60,15 +60,28 @@ class JobRecord:
     error: str = ""
     recoverable: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
+    _extra_fields: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "JobRecord":
-        allowed = set(cls.__dataclass_fields__)
-        values = {key: data.get(key) for key in allowed if key in data}
-        return cls(**values)
+        if not isinstance(data, dict):
+            raise ValueError("Job record must be an object")
+        allowed = {
+            item.name for item in fields(cls)
+            if item.name != "_extra_fields"
+        }
+        values = {key: value for key, value in data.items() if key in allowed}
+        extras = {key: value for key, value in data.items() if key not in allowed}
+        return cls(**values, _extra_fields=extras)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = dict(self._extra_fields)
+        payload.update({
+            item.name: getattr(self, item.name)
+            for item in fields(self)
+            if item.name != "_extra_fields"
+        })
+        return payload
 
 
 class JobStore:
@@ -319,14 +332,25 @@ class JobStore:
             return []
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("Job ledger root must be an object")
             if payload.get("schema_version") != JOB_SCHEMA_VERSION:
                 return []
-            return [
-                JobRecord.from_dict(item)
-                for item in payload.get("jobs", [])
-                if isinstance(item, dict)
-            ]
-        except (json.JSONDecodeError, OSError, TypeError):
+            raw_jobs = payload.get("jobs", [])
+            if not isinstance(raw_jobs, list):
+                raise ValueError("Job ledger jobs must be a list")
+            records: list[JobRecord] = []
+            for item in raw_jobs:
+                if not isinstance(item, dict):
+                    logger.warning("Skipped malformed job record in %s", self.path)
+                    continue
+                try:
+                    records.append(JobRecord.from_dict(item))
+                except (TypeError, ValueError) as exc:
+                    logger.warning("Skipped malformed job record in %s: %s", self.path, exc)
+            return records
+        except (json.JSONDecodeError, OSError, UnicodeError, TypeError, ValueError, AttributeError) as exc:
+            logger.warning("Job ledger was unreadable and was quarantined: %s", exc)
             self._quarantine_corrupt_file()
             return []
 

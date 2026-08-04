@@ -218,13 +218,17 @@ class VoiceBank:
             try:
                 with open(self._db_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                if not isinstance(data, dict):
+                    raise ValueError("Voice bank root must be an object")
                 for item in data.get("profiles", []):
+                    if not isinstance(item, dict):
+                        continue
                     profile = VoiceProfile(**{
                         k: v for k, v in item.items()
                         if k in VoiceProfile.__dataclass_fields__
                     })
                     self._profiles[profile.id] = profile
-            except (json.JSONDecodeError, OSError, TypeError):
+            except (json.JSONDecodeError, OSError, UnicodeError, TypeError, ValueError):
                 pass
 
     def _save(self):

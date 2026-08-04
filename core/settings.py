@@ -257,7 +257,7 @@ class Settings:
                         self._repair_status.backup_paths.append(str(backup))
                     should_save = True
                 self._deep_merge(self._data, saved)
-            except (json.JSONDecodeError, IOError, OSError) as exc:
+            except (json.JSONDecodeError, IOError, OSError, UnicodeError, TypeError, ValueError) as exc:
                 backup = self._backup_file(self._config_path, "corrupt")
                 self._repair_status.status = "repaired"
                 self._repair_status.messages.append(
@@ -606,8 +606,12 @@ class Settings:
     def _deep_merge(self, base: dict, override: dict):
         """Recursively merge override into base."""
         for key, value in override.items():
-            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-                self._deep_merge(base[key], value)
+            if key in base and isinstance(base[key], dict):
+                if isinstance(value, dict):
+                    self._deep_merge(base[key], value)
+                # Keep a valid default section when an untrusted config file
+                # replaces an object with a scalar or list.
+                continue
             else:
                 base[key] = value
 
@@ -626,7 +630,8 @@ class Settings:
             schema_version = 1
 
         if schema_version < 2:
-            data.setdefault("general", {})
+            if not isinstance(data.get("general"), dict):
+                data["general"] = {}
             data["general"].setdefault(
                 "trash_retention_days",
                 DEFAULTS["general"]["trash_retention_days"],
@@ -634,7 +639,9 @@ class Settings:
             messages.append("Migrated settings schema from v1 to v2.")
             migrated = True
         if schema_version < 3:
-            song_forge = data.setdefault("song_forge", {})
+            if not isinstance(data.get("song_forge"), dict):
+                data["song_forge"] = {}
+            song_forge = data["song_forge"]
             song_forge.pop("cfg_scale", None)
             song_forge["timestep_shift"] = DEFAULTS["song_forge"]["timestep_shift"]
             song_forge["inference_steps"] = DEFAULTS["song_forge"]["inference_steps"]

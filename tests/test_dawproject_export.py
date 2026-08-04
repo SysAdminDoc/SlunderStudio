@@ -1,8 +1,10 @@
 import os
+import stat
 import tempfile
 import unittest
 import wave
 import zipfile
+from pathlib import Path
 from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
@@ -11,7 +13,9 @@ import numpy as np
 from core.dawproject import (
     DAWProjectSpec,
     DAWProjectValidation,
+    DAWProjectSecurityError,
     DAWTrack,
+    extract_dawproject,
     export_dawproject,
     spec_from_project,
     validate_dawproject,
@@ -239,6 +243,63 @@ class DAWProjectExportTests(unittest.TestCase):
             self.assertEqual(1, result["track_count"])
             validation = validate_dawproject(output)
             self.assertTrue(validation.valid, validation.errors)
+
+    def test_safe_extraction_rejects_traversal_absolute_symlink_and_oversize(self):
+        for member_name in ("../escape.wav", "/absolute.wav", "C:/drive.wav"):
+            with self.subTest(member_name=member_name), tempfile.TemporaryDirectory() as tmp:
+                archive_path = os.path.join(tmp, "unsafe.dawproject")
+                with zipfile.ZipFile(archive_path, "w") as archive:
+                    archive.writestr(member_name, b"unsafe")
+                validation = validate_dawproject(archive_path)
+                self.assertFalse(validation.valid)
+                self.assertTrue(any("Unsafe archive entry" in error for error in validation.errors))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = os.path.join(tmp, "symlink.dawproject")
+            link = zipfile.ZipInfo("media/link.wav")
+            link.create_system = 3
+            link.external_attr = (stat.S_IFLNK | 0o777) << 16
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(link, b"target")
+            validation = validate_dawproject(archive_path)
+            self.assertFalse(validation.valid)
+            self.assertTrue(any("Symbolic-link" in error for error in validation.errors))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source.wav")
+            _write_wav(source, duration=0.01)
+            archive_path = export_dawproject(
+                DAWProjectSpec(tracks=[DAWTrack(media_file=source)]),
+                os.path.join(tmp, "valid.dawproject"),
+            )
+            with self.assertRaises(DAWProjectSecurityError):
+                extract_dawproject(archive_path, os.path.join(tmp, "out"), max_total_bytes=1)
+
+    def test_safe_extraction_preserves_exported_media(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source.wav")
+            _write_wav(source, duration=0.01)
+            archive_path = export_dawproject(
+                DAWProjectSpec(tracks=[DAWTrack(media_file=source)]),
+                os.path.join(tmp, "valid.dawproject"),
+            )
+            destination = extract_dawproject(archive_path, os.path.join(tmp, "out"))
+            self.assertEqual(
+                (destination / "media" / "source.wav").read_bytes(),
+                Path(source).read_bytes(),
+            )
+
+    def test_validation_rejects_truncated_archive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = os.path.join(tmp, "truncated.dawproject")
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("project.xml", "<Project/>")
+                archive.writestr("metadata.xml", "<MetaData/>")
+            with open(archive_path, "rb+") as handle:
+                handle.truncate(max(0, os.path.getsize(archive_path) - 12))
+            validation = validate_dawproject(archive_path)
+            self.assertFalse(validation.valid)
+            self.assertTrue(any("Invalid ZIP" in error for error in validation.errors))
 
 
 if __name__ == "__main__":

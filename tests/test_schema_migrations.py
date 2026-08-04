@@ -7,6 +7,7 @@ from unittest import mock
 
 from core.project import PROJECT_SCHEMA_VERSION, ProjectManager
 from core.settings import APP_VERSION, SETTINGS_SCHEMA_VERSION, Settings
+from core.job_state import JobStore
 from core.trash import TrashManager
 
 
@@ -149,6 +150,71 @@ class SchemaMigrationTests(unittest.TestCase):
             self.assertIn("unreadable", " ".join(status["messages"]))
             self.assertTrue(status["backup_paths"])
             self.assertTrue(Path(status["backup_paths"][0]).is_file())
+
+    def test_project_round_trip_preserves_unknown_top_level_and_nested_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_dir = root / "config"
+            config_dir.mkdir()
+            ProjectManager._instance = None
+            try:
+                with mock.patch("core.project.get_config_dir", return_value=config_dir):
+                    mgr = ProjectManager()
+                    mgr._trash = TrashManager(root / "trash")
+                    project = mgr.create("Future Schema")
+                    path = Path(mgr._index[project.id]["path"]) / "project.json"
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    payload["future_project_field"] = {"enabled": True}
+                    payload["assets"] = [{
+                        "id": "asset_future",
+                        "name": "Future Asset",
+                        "asset_type": "audio",
+                        "future_asset_field": [1, 2, 3],
+                    }]
+                    payload["versions"] = [{
+                        "version": 1,
+                        "future_version_field": "kept",
+                    }]
+                    path.write_text(json.dumps(payload), encoding="utf-8")
+
+                    loaded = mgr.open(project.id)
+                    self.assertIsNotNone(loaded)
+                    self.assertTrue(mgr.save())
+                    saved = json.loads(path.read_text(encoding="utf-8"))
+
+                self.assertEqual(saved["future_project_field"], {"enabled": True})
+                self.assertEqual(saved["assets"][0]["future_asset_field"], [1, 2, 3])
+                self.assertEqual(saved["versions"][0]["future_version_field"], "kept")
+            finally:
+                ProjectManager._instance = None
+
+    def test_job_round_trip_preserves_unknown_fields_and_quarantines_bad_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = JobStore(root)
+            record = store.create("test", "Future job")
+            payload = json.loads(store.path.read_text(encoding="utf-8"))
+            payload["jobs"][0]["future_job_field"] = {"retry_policy": "exponential"}
+            store.path.write_text(json.dumps(payload), encoding="utf-8")
+
+            loaded = store.get(record.id)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(
+                loaded.to_dict()["future_job_field"],
+                {"retry_policy": "exponential"},
+            )
+            store.update_message(record.id, "still present")
+            saved = json.loads(store.path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                saved["jobs"][0]["future_job_field"],
+                {"retry_policy": "exponential"},
+            )
+
+            store.path.write_text("[]", encoding="utf-8")
+            with self.assertLogs("core.job_state", level="WARNING"):
+                self.assertEqual([], store.list_records())
+            self.assertFalse(store.path.exists())
+            self.assertTrue(list(root.glob("jobs.*.corrupt")))
 
 
 if __name__ == "__main__":

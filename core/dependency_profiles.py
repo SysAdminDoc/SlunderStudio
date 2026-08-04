@@ -156,10 +156,14 @@ def load_registry(path: Optional[str | Path] = None) -> dict[str, Any]:
     registry_path = Path(path) if path is not None else profiles_file()
     try:
         payload = json.loads(registry_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise DependencyProfileError(
             f"Cannot read dependency profile registry: {registry_path}"
         ) from exc
+    if not isinstance(payload, dict):
+        raise DependencyProfileError(
+            f"Dependency profile registry root must be an object: {registry_path}"
+        )
     if payload.get("schema_version") != PROFILE_SCHEMA_VERSION:
         raise DependencyProfileError(
             f"Unsupported dependency profile schema: {payload.get('schema_version')!r}"

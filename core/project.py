@@ -13,7 +13,7 @@ import time
 import shutil
 import uuid
 from typing import Optional
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from core.provenance import (
@@ -48,6 +48,7 @@ class ProjectAsset:
     provenance_path: str = ""
     created_at: float = 0.0
     metadata: dict = field(default_factory=dict)
+    _extra_fields: dict = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self):
         if not self.id:
@@ -73,6 +74,7 @@ class ProjectVersion:
     auto_save: bool = False
     # Empty means "derive from auto_save" — older snapshots only carried that flag.
     kind: str = ""
+    _extra_fields: dict = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self):
         if self.kind not in (
@@ -113,6 +115,7 @@ class Project:
     # Explicit, user-entered registration evidence.  The disclosure report
     # keeps these declarations separate from observed project data.
     human_contributions: list[dict] = field(default_factory=list)
+    _extra_fields: dict = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self):
         if not self.id:
@@ -538,7 +541,8 @@ class ProjectManager:
     @staticmethod
     def _serializable(project: Project) -> dict:
         """The exact JSON payload written for a project."""
-        return {
+        data = dict(getattr(project, "_extra_fields", {}) or {})
+        data.update({
             "schema_version": PROJECT_SCHEMA_VERSION,
             "app_version": project.app_version,
             "id": project.id,
@@ -555,19 +559,57 @@ class ProjectManager:
             "pronunciation_overrides": project.pronunciation_overrides,
             "human_contributions": project.human_contributions,
             "mixer_state": project.mixer_state,
-            "assets": [asdict(a) for a in project.assets],
-            "versions": [asdict(v) for v in project.versions],
-        }
+            "assets": [ProjectManager._nested_serializable(a) for a in project.assets],
+            "versions": [ProjectManager._nested_serializable(v) for v in project.versions],
+        })
+        return data
+
+    @staticmethod
+    def _nested_serializable(value) -> dict:
+        data = dict(getattr(value, "_extra_fields", {}) or {})
+        data.update({
+            item.name: getattr(value, item.name)
+            for item in fields(value)
+            if item.name != "_extra_fields"
+        })
+        return data
 
     @staticmethod
     def _project_from_data(data: dict, project_id: str) -> Project:
         """Build a Project from a stored payload (current file or a snapshot)."""
+        if not isinstance(data, dict):
+            raise ValueError("Project root must be an object")
+
+        raw_assets = data.get("assets", [])
+        raw_versions = data.get("versions", [])
+        if not isinstance(raw_assets, list):
+            raise ValueError("Project assets must be a list")
+        if not isinstance(raw_versions, list):
+            raise ValueError("Project versions must be a list")
+
+        raw_time_signature = data.get("time_signature", [4, 4])
+        if (
+            not isinstance(raw_time_signature, (list, tuple))
+            or len(raw_time_signature) != 2
+        ):
+            raise ValueError("Project time_signature must contain two values")
+        raw_tags = data.get("tags", [])
+        raw_mixer_state = data.get("mixer_state", {})
+        if not isinstance(raw_tags, list):
+            raise ValueError("Project tags must be a list")
+        if not isinstance(raw_mixer_state, dict):
+            raise ValueError("Project mixer_state must be an object")
+
         raw_contributions = data.get("human_contributions", [])
         if not isinstance(raw_contributions, list):
             raw_contributions = []
         raw_pronunciation_overrides = data.get("pronunciation_overrides", [])
         if not isinstance(raw_pronunciation_overrides, list):
             raw_pronunciation_overrides = []
+        known_project_fields = {
+            item.name for item in fields(Project)
+            if item.name != "_extra_fields"
+        }
         project = Project(
             schema_version=data.get("schema_version", PROJECT_SCHEMA_VERSION),
             app_version=data.get("app_version", APP_VERSION),
@@ -589,20 +631,54 @@ class ProjectManager:
                 item for item in raw_contributions
                 if isinstance(item, (dict, str))
             ],
-            mixer_state=data.get("mixer_state", {}),
+            mixer_state=raw_mixer_state,
+            _extra_fields={
+                key: value for key, value in data.items()
+                if key not in known_project_fields
+            },
         )
-        ts = data.get("time_signature", [4, 4])
-        project.time_signature = tuple(ts) if isinstance(ts, list) else ts
-        for a_data in data.get("assets", []):
-            project.assets.append(ProjectAsset(**{
-                k: v for k, v in a_data.items()
-                if k in ProjectAsset.__dataclass_fields__
-            }))
-        for v_data in data.get("versions", []):
-            project.versions.append(ProjectVersion(**{
-                k: v for k, v in v_data.items()
-                if k in ProjectVersion.__dataclass_fields__
-            }))
+        project.time_signature = tuple(raw_time_signature)
+        asset_fields = {
+            item.name for item in fields(ProjectAsset)
+            if item.name != "_extra_fields"
+        }
+        for index, a_data in enumerate(raw_assets):
+            if not isinstance(a_data, dict):
+                raise ValueError(f"Project asset {index} must be an object")
+            try:
+                project.assets.append(ProjectAsset(
+                    **{
+                        key: value for key, value in a_data.items()
+                        if key in asset_fields
+                    },
+                    _extra_fields={
+                        key: value for key, value in a_data.items()
+                        if key not in asset_fields
+                    },
+                ))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Project asset {index} is malformed: {exc}") from exc
+
+        version_fields = {
+            item.name for item in fields(ProjectVersion)
+            if item.name != "_extra_fields"
+        }
+        for index, v_data in enumerate(raw_versions):
+            if not isinstance(v_data, dict):
+                raise ValueError(f"Project version {index} must be an object")
+            try:
+                project.versions.append(ProjectVersion(
+                    **{
+                        key: value for key, value in v_data.items()
+                        if key in version_fields
+                    },
+                    _extra_fields={
+                        key: value for key, value in v_data.items()
+                        if key not in version_fields
+                    },
+                ))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Project version {index} is malformed: {exc}") from exc
         return project
 
     def _save_project(self, project: Project, create_backup: bool = True):
@@ -1066,7 +1142,7 @@ class ProjectManager:
                 label=asset.name or asset.id,
                 metadata={
                     "project_id": self._current.id,
-                    "asset": asdict(asset),
+                    "asset": self._nested_serializable(asset),
                 },
             )
         except TrashError as e:
