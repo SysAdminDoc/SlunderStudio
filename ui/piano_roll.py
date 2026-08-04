@@ -735,46 +735,61 @@ class PianoRollWidget(QWidget):
     def _on_velocity_changed(self, value: int):
         self._scene.default_velocity = value
 
-    def _on_quantize(self):
+    def controller_quantize(self) -> bool:
+        """Apply quantize through the public controller-action boundary."""
+        return self._on_quantize()
+
+    def controller_swing(self) -> bool:
+        """Apply swing through the public controller-action boundary."""
+        return self._on_apply_swing()
+
+    def controller_humanize(self) -> bool:
+        """Apply velocity humanization through the controller boundary."""
+        return self._on_humanize_velocity()
+
+    def _on_quantize(self) -> bool:
         """Quantize all notes to current snap grid."""
         from core.midi_utils import quantize_notes
         if self._scene.track is None:
-            return
+            return False
 
         snap = self._scene.snap_value
         if snap <= 0:
-            return
+            return False
 
-        self._replace_track_notes(quantize_notes(self._scene.track.notes, snap, self._scene.tempo))
+        return self._replace_track_notes(
+            quantize_notes(self._scene.track.notes, snap, self._scene.tempo)
+        )
 
-    def _on_apply_swing(self):
+    def _on_apply_swing(self) -> bool:
         from core.midi_utils import apply_swing_to_notes
         if self._scene.track is None:
-            return
+            return False
         snap = self._scene.snap_value
         if snap <= 0:
-            return
+            return False
         amount = self._swing_spin.value() / 100.0
-        self._replace_track_notes(
+        return self._replace_track_notes(
             apply_swing_to_notes(self._scene.track.notes, snap, self._scene.tempo, amount)
         )
 
-    def _on_humanize_velocity(self):
+    def _on_humanize_velocity(self) -> bool:
         from core.midi_utils import humanize_note_velocities
         if self._scene.track is None:
-            return
-        self._replace_track_notes(
+            return False
+        return self._replace_track_notes(
             humanize_note_velocities(self._scene.track.notes, self._humanize_spin.value())
         )
 
-    def _replace_track_notes(self, notes: list[NoteData]):
+    def _replace_track_notes(self, notes: list[NoteData]) -> bool:
         if self._scene.track is None:
-            return
+            return False
         self._record_undo()
         self._scene.track.notes = notes
         self._scene.load_track(self._scene.track, self._scene.tempo, self._scene.bars)
         self._automation_lane.load_track(self._scene.track, self._scene.tempo)
         self.notes_changed.emit()
+        return True
 
     def _record_undo(self):
         """Save the current note and CC state before a destructive edit."""

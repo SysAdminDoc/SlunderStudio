@@ -121,6 +121,12 @@ loopback-only by default, accepts direct messages in the versioned `/slunder/v1`
 requires both an explicit LAN opt-in and matching IPv4 host/CIDR allowlist entries for network
 sources. Packet-size and per-source message-rate limits apply before transport dispatch.
 
+Optional MIDI controller mapping is available in Settings > MIDI Controller. It is disabled by
+default and maps common CC/note controls to transport, the selected Mixer track's volume/pan/
+mute/solo, and Piano Roll quantize/swing/humanize actions. Install `mido` plus a backend such as
+`python-rtmidi` to expose local input ports; without that optional backend, mappings remain safely
+stored and the rest of the app remains usable.
+
 ## Mastering Presets
 
 | Preset | Target LUFS | Character |

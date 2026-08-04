@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added opt-in MIDI controller mapping for the selected Mixer track and Piano Roll actions. The
+  versioned binding editor accepts CC/note, channel, number, and absolute/trigger/toggle modes;
+  live input stays optional through a backend-neutral mido adapter and remains disabled by default.
 - Hardened core archive and persistence boundaries: DAWproject validation/extraction now rejects
   traversal, absolute-path, duplicate, symlink, and oversized entries; recoverable trash validates
   manifest-directed paths; project, job, and trash records preserve unknown schema fields; and

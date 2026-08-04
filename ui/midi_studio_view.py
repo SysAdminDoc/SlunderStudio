@@ -1057,3 +1057,15 @@ class MidiStudioView(QWidget):
     def set_midi_data(self, midi_data: MidiData):
         """Load MIDI from external source (e.g. another module)."""
         self._load_midi_data(midi_data)
+
+    def controller_quantize(self) -> bool:
+        """Apply the Piano Roll quantize action from an external controller."""
+        return self._piano_roll.controller_quantize()
+
+    def controller_swing(self) -> bool:
+        """Apply the Piano Roll swing action from an external controller."""
+        return self._piano_roll.controller_swing()
+
+    def controller_humanize(self) -> bool:
+        """Apply the Piano Roll humanize action from an external controller."""
+        return self._piano_roll.controller_humanize()

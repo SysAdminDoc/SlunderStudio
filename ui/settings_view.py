@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QScrollArea, QComboBox, QLineEdit, QPushButton,
     QSpinBox, QDoubleSpinBox, QCheckBox, QSlider, QListWidget,
-    QFileDialog, QGroupBox, QFormLayout, QTabWidget, QDialog,
+    QFileDialog, QGroupBox, QFormLayout, QTabWidget, QDialog, QGridLayout,
 )
 from PySide6.QtCore import Qt, QTimer
 
@@ -28,6 +28,16 @@ from core.i18n import (
 from core.mastering import LUFS_TARGETS
 from core.stem_export import STEM_EXPORT_TEMPLATES
 from core.credentials import CredentialError
+from core.midi_controller import (
+    DEFAULT_MIDI_BINDINGS,
+    MIDI_BINDING_MODES,
+    MIDI_CHANNEL_OMNI,
+    MidiBinding,
+    MIDI_ACTION_LABELS,
+    bindings_to_settings,
+    normalized_bindings,
+)
+from core.midi_input import list_midi_input_ports
 from core.settings import Settings, APP_VERSION, SECRET_SETTING_KEYS
 from core.audio_engine import (
     AudioEngine,
@@ -117,6 +127,7 @@ class SettingsView(QWidget):
         self._recovery = None
         self._health_report_worker: Optional[InferenceWorker] = None
         self._recovery_worker: Optional[InferenceWorker] = None
+        self._midi_mapping_rows = []
         self._build_ui()
         self._audio.output_device_status.connect(self._on_audio_device_status)
         self._load_values()
@@ -437,6 +448,121 @@ class SettingsView(QWidget):
         )
         osc_layout.addWidget(osc_note)
         layout.addWidget(osc_group)
+
+        # ── MIDI Controller ──
+        midi_controller_group = QGroupBox("MIDI Controller")
+        midi_controller_layout = QVBoxLayout(midi_controller_group)
+
+        self._midi_enabled = QCheckBox("Enable live MIDI controller input")
+        self._midi_enabled.toggled.connect(
+            lambda enabled: self._save("midi_controller.enabled", bool(enabled))
+        )
+        midi_controller_layout.addLayout(SettingRow(
+            "MIDI input",
+            self._midi_enabled,
+            "Opt in to one local MIDI input port. Input stays off until enabled.",
+        ))
+
+        self._midi_port_combo = QComboBox()
+        self._midi_port_combo.setMinimumWidth(260)
+        self._midi_port_combo.currentIndexChanged.connect(self._on_midi_port_changed)
+        self._midi_refresh_btn = QPushButton(tr("settings.actions.refresh"))
+        self._midi_refresh_btn.setObjectName("secondaryBtn")
+        self._midi_refresh_btn.setMinimumHeight(34)
+        self._midi_refresh_btn.clicked.connect(self._refresh_midi_ports)
+        midi_port_controls = QWidget()
+        midi_port_layout = QHBoxLayout(midi_port_controls)
+        midi_port_layout.setContentsMargins(0, 0, 0, 0)
+        midi_port_layout.setSpacing(8)
+        midi_port_layout.addWidget(self._midi_port_combo, 1)
+        midi_port_layout.addWidget(self._midi_refresh_btn)
+        midi_controller_layout.addLayout(SettingRow(
+            "Input port",
+            midi_port_controls,
+            "Select a port supplied by the optional mido backend; System default uses the backend default.",
+        ))
+
+        self._midi_status = QLabel("")
+        self._midi_status.setWordWrap(True)
+        self._midi_status.setStyleSheet(
+            f"color: {Palette.SUBTEXT0}; font-size: 8.25pt; padding: 2px 0;"
+        )
+        midi_controller_layout.addWidget(self._midi_status)
+
+        mapping_note = QLabel(
+            "Bindings target the selected Mixer track. CC values use normalized faders; "
+            "trigger and toggle controls fire once per press."
+        )
+        mapping_note.setWordWrap(True)
+        mapping_note.setStyleSheet(
+            f"color: {Palette.SUBTEXT0}; font-size: 8.25pt; padding: 2px 0;"
+        )
+        midi_controller_layout.addWidget(mapping_note)
+
+        mapping_frame = QWidget()
+        mapping_grid = QGridLayout(mapping_frame)
+        mapping_grid.setContentsMargins(0, 4, 0, 0)
+        mapping_grid.setHorizontalSpacing(8)
+        mapping_grid.setVerticalSpacing(4)
+        for column, label in enumerate(("Action", "Type", "Channel", "Number", "Mode")):
+            heading = QLabel(label)
+            heading.setStyleSheet(
+                f"color: {Palette.SUBTEXT0}; font-size: 7.5pt; font-weight: bold;"
+            )
+            mapping_grid.addWidget(heading, 0, column)
+
+        for row_index, raw_binding in enumerate(DEFAULT_MIDI_BINDINGS, start=1):
+            binding = MidiBinding.from_dict(raw_binding)
+            action_label = QLabel(MIDI_ACTION_LABELS.get(binding.action, binding.action))
+            action_label.setToolTip(binding.action)
+            mapping_grid.addWidget(action_label, row_index, 0)
+
+            type_combo = QComboBox()
+            type_combo.setObjectName(f"midiBindingType{row_index}")
+            type_combo.addItem("CC", "cc")
+            type_combo.addItem("Note", "note")
+            type_combo.setCurrentIndex(type_combo.findData(binding.message_type))
+
+            channel_combo = QComboBox()
+            channel_combo.setObjectName(f"midiBindingChannel{row_index}")
+            channel_combo.addItem("All", MIDI_CHANNEL_OMNI)
+            for channel in range(16):
+                channel_combo.addItem(str(channel + 1), channel)
+            channel_combo.setCurrentIndex(channel_combo.findData(binding.channel))
+
+            number_spin = QSpinBox()
+            number_spin.setObjectName(f"midiBindingNumber{row_index}")
+            number_spin.setRange(0, 127)
+            number_spin.setValue(binding.number)
+            number_spin.setMinimumWidth(68)
+
+            mode_combo = QComboBox()
+            mode_combo.setObjectName(f"midiBindingMode{row_index}")
+            for mode in MIDI_BINDING_MODES:
+                mode_combo.addItem(mode.capitalize(), mode)
+            mode_combo.setCurrentIndex(mode_combo.findData(binding.mode))
+
+            row_controls = {
+                "action": binding.action,
+                "type": type_combo,
+                "channel": channel_combo,
+                "number": number_spin,
+                "mode": mode_combo,
+            }
+            self._midi_mapping_rows.append(row_controls)
+            self._midi_mapping_controls = getattr(self, "_midi_mapping_controls", [])
+            self._midi_mapping_controls.extend((type_combo, channel_combo, number_spin, mode_combo))
+            for control in (type_combo, channel_combo, number_spin, mode_combo):
+                if isinstance(control, QSpinBox):
+                    control.valueChanged.connect(self._on_midi_mapping_changed)
+                else:
+                    control.currentIndexChanged.connect(self._on_midi_mapping_changed)
+            mapping_grid.addWidget(type_combo, row_index, 1)
+            mapping_grid.addWidget(channel_combo, row_index, 2)
+            mapping_grid.addWidget(number_spin, row_index, 3)
+            mapping_grid.addWidget(mode_combo, row_index, 4)
+        midi_controller_layout.addWidget(mapping_frame)
+        layout.addWidget(midi_controller_group)
 
         # ── GPU and Models ──
         gpu_group = QGroupBox(tr("settings.gpu.group"))
@@ -1024,6 +1150,7 @@ class SettingsView(QWidget):
             self._reduced_motion,
             self._osc_enabled, self._osc_port, self._osc_allow_lan,
             self._osc_allowed_hosts, self._osc_packet_bytes, self._osc_rate,
+            self._midi_enabled, self._midi_port_combo,
             self._lyrics_model, self._temperature, self._top_p,
             self._max_tokens, self._timestep_shift, self._inference_steps,
             self._batch_count, self._default_duration, self._default_bpm,
@@ -1031,6 +1158,7 @@ class SettingsView(QWidget):
             self._max_cache, self._autosave_interval,
             self._autosave_enabled, self._max_versions,
         ]
+        _widgets.extend(getattr(self, "_midi_mapping_controls", []))
         for w in _widgets:
             w.blockSignals(True)
 
@@ -1073,6 +1201,27 @@ class SettingsView(QWidget):
             self._osc_rate.setValue(
                 int(s.get("osc.max_messages_per_second", 60) or 60)
             )
+            self._midi_enabled.setChecked(
+                bool(s.get("midi_controller.enabled", False))
+            )
+            configured_bindings = {
+                binding.action: binding
+                for binding in normalized_bindings(
+                    s.get("midi_controller.bindings", None)
+                )
+            }
+            defaults_by_action = {
+                binding.action: binding
+                for binding in normalized_bindings(list(DEFAULT_MIDI_BINDINGS))
+            }
+            for row in self._midi_mapping_rows:
+                binding = configured_bindings.get(
+                    row["action"], defaults_by_action[row["action"]]
+                )
+                row["type"].setCurrentIndex(row["type"].findData(binding.message_type))
+                row["channel"].setCurrentIndex(row["channel"].findData(binding.channel))
+                row["number"].setValue(binding.number)
+                row["mode"].setCurrentIndex(row["mode"].findData(binding.mode))
 
             self._gpu_device.setValue(s.get("general.gpu_device", 0))
             self._offline_mode.setChecked(s.get("model_hub.offline_mode", False))
@@ -1134,6 +1283,7 @@ class SettingsView(QWidget):
             for w in _widgets:
                 w.blockSignals(False)
         self._refresh_audio_devices()
+        self._refresh_midi_ports()
         self._refresh_c2pa_state()
         self._update_repair_status()
         self._refresh_credential_status()
@@ -1176,6 +1326,59 @@ class SettingsView(QWidget):
         template_id = self._stem_export_template_combo.itemData(index)
         if template_id:
             self._save("general.stem_export_template", str(template_id))
+
+    def _on_midi_port_changed(self, index: int):
+        """Persist the selected MIDI input identity, not its display label."""
+        if index < 0:
+            return
+        self._save(
+            "midi_controller.port_name",
+            str(self._midi_port_combo.itemData(index) or ""),
+        )
+
+    def _refresh_midi_ports(self):
+        """Refresh optional MIDI input ports without requiring a backend."""
+        saved = str(self._settings.get("midi_controller.port_name", "") or "")
+        names, status = list_midi_input_ports()
+        self._midi_port_combo.blockSignals(True)
+        try:
+            self._midi_port_combo.clear()
+            self._midi_port_combo.addItem("System default", "")
+            for name in names:
+                self._midi_port_combo.addItem(name, name)
+            if saved and self._midi_port_combo.findData(saved) < 0:
+                self._midi_port_combo.addItem(f"Missing: {saved}", saved)
+            selected = self._midi_port_combo.findData(saved)
+            self._midi_port_combo.setCurrentIndex(max(0, selected))
+        finally:
+            self._midi_port_combo.blockSignals(False)
+
+        if status:
+            self._midi_status.setText(status)
+        elif not names:
+            self._midi_status.setText(
+                "No MIDI input ports detected. Connect a device, then refresh."
+            )
+        else:
+            self._midi_status.setText(
+                "MIDI input is optional and remains disabled until enabled above."
+            )
+
+    def _on_midi_mapping_changed(self, *_args):
+        """Persist the complete validated mapping after one row changes."""
+        bindings = []
+        for row in self._midi_mapping_rows:
+            try:
+                bindings.append(MidiBinding(
+                    action=row["action"],
+                    message_type=str(row["type"].currentData()),
+                    channel=int(row["channel"].currentData()),
+                    number=int(row["number"].value()),
+                    mode=str(row["mode"].currentData()),
+                ))
+            except (TypeError, ValueError):
+                return
+        self._save("midi_controller.bindings", bindings_to_settings(bindings))
 
     def _save_osc_allowed_hosts(self):
         """Persist a comma-separated IPv4 host/CIDR allowlist."""
@@ -1358,6 +1561,14 @@ class SettingsView(QWidget):
                 (self._osc_allowed_hosts, "OSC allowed hosts", "Limits LAN OSC to the listed IPv4 hosts or CIDR networks."),
                 (self._osc_packet_bytes, "OSC packet size limit", "Rejects OSC datagrams larger than this many bytes."),
                 (self._osc_rate, "OSC rate limit", "Limits accepted OSC datagrams per source per second."),
+                (self._midi_enabled, "MIDI controller input", "Enables the optional local MIDI input service."),
+                (self._midi_port_combo, "MIDI input port", "Selects the local MIDI input port."),
+                (self._midi_refresh_btn, "Refresh MIDI input ports", "Refreshes the available MIDI input ports."),
+                *[
+                    (control, f"MIDI binding {row['action']}", "Edits the MIDI message mapped to this action.")
+                    for row in self._midi_mapping_rows
+                    for control in (row["type"], row["channel"], row["number"], row["mode"])
+                ],
                 (self._gpu_device, "GPU device index", "Selects the GPU device index."),
                 (self._offline_mode, "Offline mode", "Disables internet access for Model Hub."),
                 (self._hf_token, "HuggingFace token", "Stores a token for gated model downloads."),
@@ -1407,6 +1618,10 @@ class SettingsView(QWidget):
                 self._osc_allowed_hosts,
                 self._osc_packet_bytes,
                 self._osc_rate,
+                self._midi_enabled,
+                self._midi_port_combo,
+                self._midi_refresh_btn,
+                *self._midi_mapping_controls,
                 self._gpu_device,
                 self._offline_mode,
                 self._hf_token,

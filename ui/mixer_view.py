@@ -1038,6 +1038,8 @@ class MixerView(QWidget):
         self._strips_layout.insertWidget(idx, strip)
         for track_idx, current_strip in enumerate(self._strips):
             current_strip.track_idx = track_idx
+        if len(self._strips) == 1:
+            self._selected_track_index = 0
         self._master_btn.setEnabled(True)
         self._tracks_empty.hide()
         self._update_mix_state()
@@ -1056,6 +1058,55 @@ class MixerView(QWidget):
     @property
     def selected_track_index(self) -> int:
         return getattr(self, "_selected_track_index", -1)
+
+    def set_track_mix(
+        self,
+        index: int,
+        *,
+        volume: Optional[float] = None,
+        pan: Optional[float] = None,
+        muted: Optional[bool] = None,
+        soloed: Optional[bool] = None,
+    ) -> bool:
+        """Set one track's mix controls without exposing strip internals.
+
+        The method is also the UI-thread boundary for MIDI control.  Values
+        are clamped by ``MixerTrackStrip.set_mix_state`` and no widget signal
+        is emitted while a hardware message is being applied.
+        """
+        if not (0 <= int(index) < len(self._strips)):
+            return False
+        strip = self._strips[int(index)]
+        strip.set_mix_state(
+            volume=strip.volume if volume is None else volume,
+            pan=strip.pan if pan is None else pan,
+            muted=strip.is_muted if muted is None else muted,
+            soloed=strip.is_soloed if soloed is None else soloed,
+        )
+        self._update_mix_state()
+        return True
+
+    def set_selected_volume(self, value: float) -> bool:
+        """Set the selected track volume from a normalized 0..1 value."""
+        return self.set_track_mix(self.selected_track_index, volume=value)
+
+    def set_selected_pan(self, value: float) -> bool:
+        """Set the selected track pan from a normalized -1..1 value."""
+        return self.set_track_mix(self.selected_track_index, pan=value)
+
+    def toggle_selected_mute(self) -> bool:
+        """Toggle mute on the selected track."""
+        index = self.selected_track_index
+        if not (0 <= index < len(self._strips)):
+            return False
+        return self.set_track_mix(index, muted=not self._strips[index].is_muted)
+
+    def toggle_selected_solo(self) -> bool:
+        """Toggle solo on the selected track."""
+        index = self.selected_track_index
+        if not (0 <= index < len(self._strips)):
+            return False
+        return self.set_track_mix(index, soloed=not self._strips[index].is_soloed)
 
     def add_track_from_file(
         self,

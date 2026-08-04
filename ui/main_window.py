@@ -17,6 +17,8 @@ from core.settings import Settings, APP_VERSION
 from core.audio_engine import AudioEngine, format_time
 from core.i18n import tr
 from core.model_manager import ModelManager
+from core.midi_controller import MidiControllerRouter, normalized_bindings
+from core.midi_input import MidiInputService
 from core.osc import OSCConfig, OSCMessage, OSCServer, OSC_NAMESPACE
 from core.routing import is_audio_path, is_midi_path
 from core.workers import shutdown_workers
@@ -364,8 +366,14 @@ class MainWindow(QMainWindow):
         self._gpu_workers = set()
         self._osc_server = None
         self._osc_reconfigure_pending = False
+        self._midi_router = MidiControllerRouter(
+            self._settings.get("midi_controller.bindings", None)
+        )
+        self._midi_input = MidiInputService(parent=self)
+        self._midi_reconfigure_pending = False
         self._closing = False
         self._osc_settings_callback = self._on_osc_settings_changed
+        self._midi_settings_callback = self._on_midi_settings_changed
 
         # Toast manager
         self.toast_mgr = ToastManager(self)
@@ -374,8 +382,13 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self.osc_message_received.connect(self._on_osc_message)
         self.osc_server_error.connect(self._on_osc_server_error)
+        self._midi_input.message_received.connect(self._on_midi_message)
+        self._midi_input.status_changed.connect(self._on_midi_status_changed)
+        self._midi_input.error.connect(self._on_midi_input_error)
         self._settings.on_change(self._osc_settings_callback)
+        self._settings.on_change(self._midi_settings_callback)
         self._configure_osc_server()
+        self._configure_midi_input()
         from ui.i18n_runtime import apply_pseudolocale
 
         apply_pseudolocale(self)
@@ -713,6 +726,76 @@ class MainWindow(QMainWindow):
             self.toast_mgr.warning(message, duration_ms=10000)
 
     # ── OSC Control ───────────────────────────────────────────────────────────
+
+    def _on_midi_settings_changed(self, key: str, _value, _old_value):
+        """Rebind the optional MIDI input after a Settings edit."""
+        if key != "*" and key != "midi_controller" and not key.startswith("midi_controller."):
+            return
+        if getattr(self, "_midi_reconfigure_pending", False):
+            return
+        self._midi_reconfigure_pending = True
+        QTimer.singleShot(0, self._apply_pending_midi_settings)
+
+    def _apply_pending_midi_settings(self):
+        self._midi_reconfigure_pending = False
+        self._configure_midi_input()
+
+    def _configure_midi_input(self):
+        """Apply persisted MIDI bindings and opt-in input policy."""
+        self._midi_router.set_bindings(
+            normalized_bindings(self._settings.get("midi_controller.bindings", None))
+        )
+        self._midi_input.stop()
+        if not bool(self._settings.get("midi_controller.enabled", False)):
+            return
+        port_name = str(self._settings.get("midi_controller.port_name", "") or "")
+        self._midi_input.start(port_name)
+
+    def _on_midi_status_changed(self, message: str):
+        if not getattr(self, "_closing", False):
+            self._status_bar.showMessage(message, 5000)
+
+    def _on_midi_input_error(self, message: str):
+        if not getattr(self, "_closing", False):
+            self._status_bar.showMessage(message, 10000)
+
+    def _on_midi_message(self, message) -> bool:
+        """Dispatch a validated MIDI message to public UI action methods."""
+        if getattr(self, "_closing", False):
+            return False
+        events = self._midi_router.dispatch(message)
+        handled = False
+        for event in events:
+            action = event.action
+            if action == "transport.toggle":
+                self._transport.osc_toggle()
+            elif action == "transport.stop":
+                self._transport.osc_stop()
+            elif action == "mixer.volume":
+                handled = self._mixer_view.set_selected_volume(event.value) or handled
+                continue
+            elif action == "mixer.pan":
+                handled = self._mixer_view.set_selected_pan(event.value * 2.0 - 1.0) or handled
+                continue
+            elif action == "mixer.mute":
+                handled = self._mixer_view.toggle_selected_mute() or handled
+                continue
+            elif action == "mixer.solo":
+                handled = self._mixer_view.toggle_selected_solo() or handled
+                continue
+            elif action == "piano.quantize" and event.value >= 0.5:
+                handled = self._midi_studio_view.controller_quantize() or handled
+                continue
+            elif action == "piano.swing" and event.value >= 0.5:
+                handled = self._midi_studio_view.controller_swing() or handled
+                continue
+            elif action == "piano.humanize" and event.value >= 0.5:
+                handled = self._midi_studio_view.controller_humanize() or handled
+                continue
+            else:
+                continue
+            handled = True
+        return handled
 
     def _on_osc_settings_changed(self, key: str, _value, _old_value):
         """Rebind OSC after a relevant setting changes on the UI thread."""
@@ -1108,10 +1191,16 @@ class MainWindow(QMainWindow):
         if osc_server is not None:
             osc_server.stop()
             self._osc_server = None
+        midi_input = getattr(self, "_midi_input", None)
+        if midi_input is not None:
+            midi_input.stop()
         settings = getattr(self, "_settings", None)
         callback = getattr(self, "_osc_settings_callback", None)
         if settings is not None and callback is not None:
             settings.remove_callback(callback)
+        midi_callback = getattr(self, "_midi_settings_callback", None)
+        if settings is not None and midi_callback is not None:
+            settings.remove_callback(midi_callback)
         AudioEngine().cleanup()
         self._gpu_timer.stop()
         self._model_mgr.unload()

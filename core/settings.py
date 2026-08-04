@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from core.version import APP_NAME, APP_VERSION  # noqa: F401 - re-exported
+from core.midi_controller import DEFAULT_MIDI_BINDINGS
 
 SETTINGS_SCHEMA_VERSION = 3
 
@@ -73,6 +74,15 @@ DEFAULTS = {
         "allowed_hosts": ["127.0.0.1"],
         "max_packet_bytes": 4096,
         "max_messages_per_second": 60,
+    },
+    # MIDI input is disabled until the user explicitly enables it.  Bindings
+    # use a versioned, backend-neutral shape so settings remain usable without
+    # an installed live-MIDI driver.
+    "midi_controller": {
+        "schema_version": 1,
+        "enabled": False,
+        "port_name": "",
+        "bindings": copy.deepcopy(list(DEFAULT_MIDI_BINDINGS)),
     },
     "retention": {
         # Age/count/size caps for recovery artifacts. 0 means no limit.
