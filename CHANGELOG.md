@@ -7,6 +7,9 @@ All notable changes to SlunderStudio will be documented in this file.
 - Removed unused workflow/preset/reference-library scaffolding, dead MIDI and dynamic-EQ helpers,
   unobserved model lifecycle/download signals, and orphaned batch/seed UI hooks. Live genre,
   waveform-selection, and model-status contracts remain intact.
+- Model teardown failures now remain visible as model errors, preserve the active reference until
+  release succeeds, block unsafe cache moves, report through Model Hub, and pass only recorded
+  per-revision execution consent to model loaders.
 - Made locked PyInstaller releases reproducible: build timestamps and Python hash seeds are fixed,
   UPX is disabled, ZIP metadata is normalized, generated specs and unstable installer RECORD
   files are removed, and unsigned onedir/onefile artifacts ship with deterministic CycloneDX 1.7

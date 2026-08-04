@@ -286,6 +286,67 @@ class ModelTrustTests(unittest.TestCase):
                 mgr._settings = old_settings
                 mgr._registry = old_registry
 
+    def test_dynamic_loader_passes_only_recorded_execution_consent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = ModelManager()
+            old_registry = mgr._registry
+            try:
+                info = ModelInfo(
+                    model_id="custom-code",
+                    name="Custom Code",
+                    description="Test",
+                    category=ModelCategory.EXTRAS,
+                    vram_gb=1.0,
+                    disk_gb=0.001,
+                    license="MIT",
+                    source="example/custom-code",
+                    revision="f" * 40,
+                    loader_module="test_loader",
+                    loader_fn="load_model",
+                    requires_remote_code=True,
+                )
+                loader = MagicMock(return_value=object())
+                module = types.SimpleNamespace(load_model=loader)
+                mgr._registry = {"custom-code": info}
+                with patch.object(mgr, "get_cache_dir", return_value=Path(tmp)), \
+                        patch("importlib.import_module", return_value=module), \
+                        patch.object(mgr, "has_executable_model_consent", return_value=False):
+                    mgr._dynamic_load(info)
+                self.assertFalse(loader.call_args.kwargs["execution_consent"])
+
+                loader.reset_mock()
+                with patch.object(mgr, "get_cache_dir", return_value=Path(tmp)), \
+                        patch("importlib.import_module", return_value=module), \
+                        patch.object(mgr, "has_executable_model_consent", return_value=True):
+                    mgr._dynamic_load(info)
+                self.assertTrue(loader.call_args.kwargs["execution_consent"])
+            finally:
+                mgr._registry = old_registry
+
+    def test_midi_transformers_guard_rejects_unconsented_executable_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            transformers = types.ModuleType("transformers")
+            transformers.AutoTokenizer = types.SimpleNamespace(
+                from_pretrained=MagicMock()
+            )
+            transformers.AutoModelForCausalLM = types.SimpleNamespace(
+                from_pretrained=MagicMock()
+            )
+            torch = types.ModuleType("torch")
+            torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+            torch.float32 = object()
+            torch.float16 = object()
+            with patch.dict(sys.modules, {"transformers": transformers, "torch": torch}):
+                with self.assertRaisesRegex(
+                    ModelSecurityError,
+                    "Executable model code requires explicit consent",
+                ):
+                    MidiLLMEngine().load_model(
+                        tmp,
+                        device="cpu",
+                        trust_remote_code=True,
+                    )
+
     def test_midi_transformers_loader_is_local_and_disables_remote_code(self):
         with tempfile.TemporaryDirectory() as tmp:
             model = MagicMock()

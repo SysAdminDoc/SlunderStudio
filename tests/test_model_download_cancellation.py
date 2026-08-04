@@ -20,6 +20,9 @@ class _ToastRecorder:
     def info(self, message):
         self.messages.append(message)
 
+    def error(self, message):
+        self.messages.append(message)
+
 
 class ModelDownloadCancellationTests(unittest.TestCase):
     def setUp(self):
@@ -158,6 +161,28 @@ class ModelDownloadCancellationTests(unittest.TestCase):
 
         self.assertNotIn("failed", " ".join(toast.messages).lower())
         self.assertIn("activation cancelled", toast.messages[-1].lower())
+
+    def test_activation_cancel_preserves_release_error_state(self):
+        model_id = "llama-3.1-8b-q4"
+        toast = _ToastRecorder()
+        view = ModelHubView.__new__(ModelHubView)
+        view._activation_workers = {model_id: mock.Mock()}
+        view._cards = {model_id: mock.Mock()}
+        view.toast_mgr = toast
+        view._mgr = mock.Mock()
+        view._mgr.current_model_id = model_id
+        view._mgr.deactivate_model.return_value = EngineActivationResult(
+            model_id=model_id,
+            outcome=ActivationOutcome.FAILED,
+            error="Failed to release model: GPU teardown failed",
+        )
+        view._update_gpu_display = mock.Mock()
+
+        view._on_activation_cancelled(model_id)
+
+        view._mgr._set_status.assert_not_called()
+        self.assertIn("GPU teardown failed", toast.messages[-1])
+        view._update_gpu_display.assert_called_once_with()
 
 
 if __name__ == "__main__":

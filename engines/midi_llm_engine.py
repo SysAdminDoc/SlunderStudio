@@ -672,10 +672,11 @@ class MidiLLMEngine:
         execution_consent: bool = False,
     ):
         """Load MIDI-LLM from a verified local snapshot."""
+        from core.model_manager import ModelSecurityError
+
         try:
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
-            from core.model_manager import ModelSecurityError
 
             if device in {"auto", "cuda"}:
                 device = configured_torch_device(torch)
@@ -729,6 +730,10 @@ class MidiLLMEngine:
             if progress_callback:
                 progress_callback(1.0, "Model loaded")
 
+        except ModelSecurityError:
+            self.model = None
+            self.tokenizer = None
+            raise
         except Exception as e:
             self.model = None
             self.tokenizer = None

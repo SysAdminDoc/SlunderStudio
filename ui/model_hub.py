@@ -1265,7 +1265,14 @@ class ModelHubView(QWidget):
     def _on_activation_cancelled(self, model_id: str):
         self._activation_workers.pop(model_id, None)
         if self._mgr.current_model_id == model_id:
-            self._mgr.deactivate_model(model_id)
+            result = self._mgr.deactivate_model(model_id)
+            if not result.is_success:
+                if self.toast_mgr:
+                    self.toast_mgr.error(
+                        result.error or f"Could not release {model_id} after cancellation."
+                    )
+                self._update_gpu_display()
+                return
         status = (
             ModelStatus.DOWNLOADED
             if self._mgr.get_model_readiness(model_id).installed
@@ -1299,7 +1306,10 @@ class ModelHubView(QWidget):
         entry = self._mgr.delete_model_cache(model_id)
         if not entry:
             if self.toast_mgr:
-                self.toast_mgr.error(f"Failed to remove {info.name} from disk.")
+                self.toast_mgr.error(
+                    self._mgr.get_model_error(model_id)
+                    or f"Failed to remove {info.name} from disk."
+                )
             return
 
         self._cards[model_id].update_status(ModelStatus.NOT_DOWNLOADED)

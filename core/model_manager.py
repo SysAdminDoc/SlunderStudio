@@ -51,6 +51,11 @@ class StaleModelRequestError(RuntimeError):
     pass
 
 
+class ModelReleaseError(RuntimeError):
+    """Raised when an active model cannot release its runtime resources."""
+    pass
+
+
 class DownloadInFlightError(RuntimeError):
     """Raised when a model download is already running for the same model."""
     pass
@@ -909,6 +914,7 @@ class ModelManager(QObject):
         self._request_counter = 0
         self._pending_request = 0
         self._downloads_in_flight: set[str] = set()
+        self._model_errors: dict[str, str] = {}
 
         # Initialize status for all registered models
         for model_id in self._registry:
@@ -961,6 +967,11 @@ class ModelManager(QObject):
     def get_status(self, model_id: str) -> ModelStatus:
         with self._state_lock:
             return self._status.get(model_id, ModelStatus.NOT_DOWNLOADED)
+
+    def get_model_error(self, model_id: str) -> str:
+        """Return the latest actionable lifecycle error for a model, if any."""
+        with self._state_lock:
+            return self._model_errors.get(model_id, "")
 
     def get_missing_runtime_packages(self, model_id: str) -> tuple[str, ...]:
         """Return declared runtime packages that cannot currently be imported."""
@@ -1050,7 +1061,12 @@ class ModelManager(QObject):
                 f"Review and approve the pinned {info.name} revision in Model Hub."
             )
         elif self.get_status(model_id) == ModelStatus.ERROR:
-            remedy = f"Retry {info.name} activation in Model Hub."
+            detail = self.get_model_error(model_id)
+            remedy = (
+                f"{detail} Retry {info.name} activation in Model Hub."
+                if detail
+                else f"Retry {info.name} activation in Model Hub."
+            )
         else:
             remedy = f"Activate {info.name} in Model Hub."
 
@@ -1236,18 +1252,26 @@ class ModelManager(QObject):
             return self._pending_request
 
     def _release_model_object(self, model: Any):
-        """Best-effort teardown of a model object we are about to drop."""
+        """Release a model object or raise while retaining ownership on failure."""
         if model is None:
             return
+        hook = None
+        hook_name = ""
+        for candidate_name in ("unload_model", "cleanup", "to"):
+            candidate = getattr(model, candidate_name, None)
+            if callable(candidate):
+                hook = candidate
+                hook_name = candidate_name
+                break
+        if hook is None:
+            return
         try:
-            if hasattr(model, "unload_model"):
-                model.unload_model()
-            elif hasattr(model, "cleanup"):
-                model.cleanup()
-            elif hasattr(model, "to"):
-                model.to("cpu")
-        except Exception:
-            pass
+            hook("cpu") if hook_name == "to" else hook()
+        except Exception as exc:
+            raise ModelReleaseError(
+                f"Failed to release {type(model).__name__}: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
 
     def load_model(self, model_id: str, loader_fn: Optional[Callable] = None) -> Any:
         """
@@ -1272,6 +1296,11 @@ class ModelManager(QObject):
                 else None
             )
         if already is not None:
+            if self.get_status(model_id) == ModelStatus.ERROR:
+                detail = self.get_model_error(model_id)
+                raise ModelReleaseError(
+                    detail or f"{model_id} remains active after a release failure."
+                )
             self._set_status(model_id, ModelStatus.LOADED)
             return already
 
@@ -1288,6 +1317,11 @@ class ModelManager(QObject):
                     else None
                 )
             if already is not None:
+                if self.get_status(model_id) == ModelStatus.ERROR:
+                    detail = self.get_model_error(model_id)
+                    raise ModelReleaseError(
+                        detail or f"{model_id} remains active after a release failure."
+                    )
                 self._set_status(model_id, ModelStatus.LOADED)
                 return already
 
@@ -1303,8 +1337,9 @@ class ModelManager(QObject):
                     # Dynamic import from registry
                     model = self._dynamic_load(info)
             except Exception as e:
-                self._set_status(model_id, ModelStatus.ERROR)
                 error_msg = f"{type(e).__name__}: {e}"
+                self._record_model_error(model_id, error_msg)
+                self._set_status(model_id, ModelStatus.ERROR)
                 cleanup_gpu()
                 raise
 
@@ -1315,7 +1350,13 @@ class ModelManager(QObject):
                     self._current_model_id = model_id
 
             if superseded:
-                self._release_model_object(model)
+                try:
+                    self._release_model_object(model)
+                except ModelReleaseError as exc:
+                    self._record_model_error(model_id, str(exc))
+                    self._set_status(model_id, ModelStatus.ERROR)
+                    cleanup_gpu()
+                    raise
                 del model
                 cleanup_gpu()
                 raise StaleModelRequestError(
@@ -1370,7 +1411,13 @@ class ModelManager(QObject):
             )
 
         if cancel_event and cancel_event.is_set():
-            self.deactivate_model(model_id)
+            deactivation = self.deactivate_model(model_id)
+            if not deactivation.is_success:
+                return EngineActivationResult(
+                    model_id=model_id,
+                    outcome=ActivationOutcome.FAILED,
+                    error=deactivation.error,
+                )
             return EngineActivationResult(
                 model_id=model_id,
                 outcome=ActivationOutcome.CANCELLED,
@@ -1403,7 +1450,14 @@ class ModelManager(QObject):
                     f"{current_id}."
                 ),
             )
-        self.unload()
+        try:
+            self.unload()
+        except ModelReleaseError as exc:
+            return EngineActivationResult(
+                model_id=target,
+                outcome=ActivationOutcome.FAILED,
+                error=str(exc),
+            )
         return EngineActivationResult(
             model_id=target,
             outcome=ActivationOutcome.INACTIVE,
@@ -1432,7 +1486,10 @@ class ModelManager(QObject):
                 if self._current_model_id != model_id:
                     return False
                 self._claim_request()
-            self._unload_locked()
+            try:
+                self._unload_locked()
+            except ModelReleaseError:
+                return False
             return True
 
     def _unload_locked(self):
@@ -1440,12 +1497,21 @@ class ModelManager(QObject):
         with self._state_lock:
             model = self._current_model
             model_id = self._current_model_id
-            self._current_model = None
-            self._current_model_id = None
         if model is None:
-            return
+            return True
 
-        self._release_model_object(model)
+        try:
+            self._release_model_object(model)
+        except ModelReleaseError as exc:
+            if model_id:
+                self._record_model_error(model_id, str(exc))
+                self._set_status(model_id, ModelStatus.ERROR)
+            raise
+
+        with self._state_lock:
+            if self._current_model is model:
+                self._current_model = None
+                self._current_model_id = None
         del model
         cleanup_gpu()
 
@@ -1456,6 +1522,7 @@ class ModelManager(QObject):
                 self._set_status(model_id, ModelStatus.NOT_DOWNLOADED)
 
         self._emit_gpu_status()
+        return True
 
     def _dynamic_load(self, info: ModelInfo) -> Any:
         """Load a verified local model while denying loader-initiated network access."""
@@ -1479,9 +1546,7 @@ class ModelManager(QObject):
                 local_files_only=True,
                 trust_remote_code=info.requires_remote_code,
                 prefer_safetensors=not info.allows_unsafe_weights,
-                execution_consent=bool(
-                    info.requires_remote_code or info.allows_unsafe_weights
-                ),
+                execution_consent=self.has_executable_model_consent(info.model_id),
             )
         finally:
             for key, value in previous_offline.items():
@@ -1831,7 +1896,8 @@ class ModelManager(QObject):
         ):
             return None
 
-        self.unload_if_current(model_id)
+        if self.current_model_id == model_id and not self.unload_if_current(model_id):
+            return None
 
         return self._trash.trash_path(
             path,
@@ -2060,7 +2126,8 @@ class ModelManager(QObject):
         if not cache_path.exists():
             return None
 
-        self.unload_if_current(model_id)
+        if self.current_model_id == model_id and not self.unload_if_current(model_id):
+            return None
 
         try:
             entry = self._trash.trash_path(
@@ -2169,9 +2236,17 @@ class ModelManager(QObject):
     def _set_status(self, model_id: str, status: ModelStatus):
         with self._state_lock:
             self._status[model_id] = status
+            if status != ModelStatus.ERROR:
+                self._model_errors.pop(model_id, None)
             self._readiness_cache.clear()
             self._readiness_cache_state = None
             self._disk_usage_cache = None
             self._disk_usage_cache_path = None
         # Emitted outside the lock: receivers may call back into the manager.
         self.status_changed.emit(model_id, status.value)
+
+    def _record_model_error(self, model_id: str, error: str):
+        with self._state_lock:
+            self._model_errors[model_id] = str(error)
+            self._readiness_cache.clear()
+            self._readiness_cache_state = None

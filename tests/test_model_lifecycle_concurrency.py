@@ -15,6 +15,7 @@ from core.model_manager import (
     ModelCategory,
     ModelInfo,
     ModelManager,
+    ModelReleaseError,
     ModelStatus,
     StaleModelRequestError,
 )
@@ -32,6 +33,15 @@ class _FakeEngine:
 
     def unload_model(self):
         self.unloaded = True
+
+
+class _FailingEngine:
+    def __init__(self):
+        self.fail_release = True
+
+    def unload_model(self):
+        if self.fail_release:
+            raise RuntimeError("GPU teardown failed")
 
 
 def _info(model_id: str) -> ModelInfo:
@@ -265,6 +275,32 @@ class ModelLifecycleConcurrencyTests(unittest.TestCase):
         self.assertEqual(self.mgr.current_model_id, "alpha")
         self.assertTrue(self.mgr.unload_if_current("alpha"))
         self.assertIsNone(self.mgr.current_model_id)
+
+    def test_failed_unload_preserves_model_and_reports_error_state(self):
+        engine = _FailingEngine()
+        self.mgr._current_model = engine
+        self.mgr._current_model_id = "alpha"
+        self.mgr._status["alpha"] = ModelStatus.LOADED
+        statuses = []
+        self.mgr.status_changed.connect(
+            lambda model_id, status: statuses.append((model_id, status))
+        )
+
+        with self.assertRaises(ModelReleaseError):
+            self.mgr.unload()
+
+        result = self.mgr.deactivate_model("alpha")
+
+        self.assertEqual(ActivationOutcome.FAILED, result.outcome)
+        self.assertIn("GPU teardown failed", result.error)
+        self.assertIs(self.mgr.current_model, engine)
+        self.assertEqual("alpha", self.mgr.current_model_id)
+        self.assertEqual(ModelStatus.ERROR, self.mgr.get_status("alpha"))
+        self.assertIn("GPU teardown failed", self.mgr.get_model_error("alpha"))
+        self.assertIn(("alpha", ModelStatus.ERROR.value), statuses)
+        self.assertNotIn(("alpha", ModelStatus.DOWNLOADED.value), statuses)
+
+        engine.fail_release = False
 
     def test_concurrent_download_of_same_model_is_rejected(self):
         started = threading.Event()
