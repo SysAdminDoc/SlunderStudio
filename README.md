@@ -134,6 +134,7 @@ All models run entirely on your local machine. No cloud APIs, no subscriptions, 
 When Offline Mode is enabled in Settings, all HuggingFace API calls and model downloads are blocked — models load from local cache only or fail with an explicit offline error.
 Model Hub cards show each model's license, gated/token status, and commercial-use status. Generated and exported provenance sidecars carry source model license policy forward, and Song Forge export warns when a source model is limited, non-commercial, or governed by model-specific terms.
 Built-in Hugging Face downloads use reviewed immutable commit revisions and hash every cached file before loading. Remote model code is disabled by default; models that declare custom code or pickle-backed weights require an explicit Model Hub warning and consent scoped to that exact revision.
+Model Hub also records task labels, a dated measurement basis, and a VRAM tier for every built-in model. Its recommendations and hardware filter use the detected accelerator and the same registry VRAM estimate used by activation, calling out CPU fallback instead of presenting an oversized model as a GPU fit.
 
 ## System Requirements
 
@@ -142,10 +143,10 @@ Built-in Hugging Face downloads use reviewed immutable commit revisions and hash
 | OS | Windows 10 / Linux / macOS | Windows 11 / Ubuntu 22.04+ |
 | Python | 3.11 | 3.12 |
 | RAM | 8 GB | 16 GB+ |
-| GPU | None (CPU mode) | NVIDIA 8GB+ VRAM (CUDA) |
+| GPU | None (CPU mode) | NVIDIA 16GB+ VRAM for the ACE-Step XL path; 4–8GB tiers fit smaller models |
 | Disk | 2 GB (app only) | 45 GB+ (full model registry) |
 
-GPU acceleration requires PyTorch with CUDA support. The app runs on CPU without any GPU, but generation will be slower.
+GPU acceleration requires PyTorch with CUDA support. The app runs on CPU without any GPU, but generation will be slower. The Model Hub explains the published VRAM tier for each task and filters recommendations against the detected device; an 8GB CUDA card can run lower-VRAM models, while ACE-Step XL is presented as a 16GB CPU-offload tier.
 
 ## Configuration
 
@@ -278,7 +279,7 @@ SlunderStudio/
 ## FAQ
 
 **Q: Do I need a GPU?**
-No. Everything runs on CPU. A CUDA-capable NVIDIA GPU (8GB+ VRAM) dramatically speeds up AI generation but is not required.
+No. Everything runs on CPU. A CUDA-capable NVIDIA GPU accelerates supported models; 4–8GB cards fit lower-VRAM models, while the default ACE-Step XL generation path is recommended at 16GB+ with CPU offload. Model Hub shows the exact fit and fallback status for the detected device.
 
 **Q: How much disk space do models need?**
 About 15.3 GB for the recommended ACE-Step and Llama checkpoints. The full built-in model registry is approximately 38.4 GB. Models download on-demand — nothing installs until you request it.

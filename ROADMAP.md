@@ -83,25 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Recommend models by task using published measurements
-  Why: This is the single most-requested thing across the separation ecosystem and nobody ships it;
-    users are currently asked to choose between checkpoint filenames.
-  Evidence: Ultimate Vocal Remover's most-upvoted issue in its history is #344 (42 upvotes, 29
-    comments) — a *user* wrote the "which model is best" documentation the project never shipped —
-    paired with #333 asking for processing-method documentation. Slunder's Model Hub currently
-    lists models without task guidance. Published SDR figures exist to ground it: a
-    BS-Roformer ×2 + Mel-Band Roformer(ft) + SCNet XL ensemble reaches 11.93 SDR vocals / 18.23
-    instrumental, with per-stem specialists (DrumSep Mel-Band Roformer kick 22.22, SCNet XL +
-    BS-Roformer SW bass 14.87, guitar 9.05, piano 7.83). ACE-Step 1.5's own VRAM ladder is the model
-    for generation-side guidance: 2B turbo DiT-only with INT8 and CPU offload at <=6 GB, up to XL
-    plus a 4B LM at >=24 GB — which means the README's flat "NVIDIA 8GB+" hides a real tier ceiling.
-  Touches: `core/model_manager.py` registry schema, `ui/model_hub.py`, `ui/onboarding.py`, README.
-  Acceptance: Each model carries task labels ("best vocal isolation", "fastest", "lowest VRAM"),
-    a measured basis with its source and date, and its VRAM tier; Model Hub can filter by task and
-    by detected hardware; the recommendation shown for the detected GPU matches the tier that will
-    actually run. Depends on the separator adapter item for the separation half.
-  Complexity: M
-
 - [ ] P2 — Fix per-word lyric pronunciation without re-rolling the take
   Why: It is the loudest unaddressed complaint across the generative-vocal ecosystem, and this app
     is unusually well placed to solve it because it already has a piano roll.

@@ -43,6 +43,9 @@ All notable changes to SlunderStudio will be documented in this file.
   actions, and made mixer track removal, Settings reset, and Seed Explorer replacement restoreable
   from in-memory snapshots. Secret settings remain in the OS credential store during undo.
 - Added Project Manager asset deletion with an 8-second Undo toast, restored the selected asset
+- Added source-dated task recommendations and VRAM tiers to the model registry. Model Hub and
+  onboarding now filter recommendations against detected hardware, show their measurement basis,
+  and mark CPU fallback instead of presenting an oversized GPU model as a fit.
   through the existing project trash manifest, and surfaced import failures without letting them
   escape through the application exception hook.
 - Added fail-closed provenance re-rendering. Versioned sidecars now record source hashes,

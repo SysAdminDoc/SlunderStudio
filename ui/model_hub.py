@@ -22,6 +22,10 @@ from core.model_manager import (
     ModelSecurityError,
     ModelStatus,
     OfflineModeError,
+    model_hardware_fit,
+    model_supports_task,
+    model_tasks,
+    recommend_model_for_task,
 )
 from core.credentials import CredentialError
 from core.settings import Settings
@@ -228,6 +232,7 @@ class ModelCard(QFrame):
         stats.setSpacing(12)
         for text in [
             f"{self.info.vram_gb:.1f} GB VRAM",
+            f"{self.info.advertised_vram_tier} tier",
             f"{self.info.disk_gb:.1f} GB disk",
             self.info.license,
         ]:
@@ -240,6 +245,14 @@ class ModelCard(QFrame):
             stats.addWidget(g)
         stats.addStretch()
         layout.addLayout(stats)
+
+        task_text = ", ".join(self.info.task_labels) or "No task guidance recorded"
+        task_label = QLabel(f"Tasks: {task_text}")
+        task_label.setWordWrap(True)
+        task_label.setToolTip(task_text)
+        task_label.setStyleSheet(f"font-size: 11px; color: {Palette.BLUE};")
+        layout.addWidget(task_label)
+        self._task_label = task_label
 
         rights = QLabel(
             f"License: {self.info.license}  |  Commercial: {self.info.commercial_use_label}  |  "
@@ -282,6 +295,22 @@ class ModelCard(QFrame):
         trust.setStyleSheet(f"font-size: 10px; color: {Palette.SUBTEXT0};")
         layout.addWidget(trust)
         self._trust_label = trust
+
+        measurement_text = self.info.measurement_basis or "No published measurement basis recorded."
+        measurement_date = self.info.measurement_date or "undated"
+        measurement = QLabel(f"Basis ({measurement_date}): {measurement_text}")
+        measurement.setWordWrap(True)
+        measurement.setToolTip(
+            f"Source: {self.info.measurement_source or 'not recorded'}"
+        )
+        measurement.setStyleSheet(f"font-size: 10px; color: {Palette.SUBTEXT0};")
+        layout.addWidget(measurement)
+        self._measurement_label = measurement
+
+        self._hardware_label = QLabel("Hardware fit: checking detected hardware...")
+        self._hardware_label.setWordWrap(True)
+        self._hardware_label.setStyleSheet(f"font-size: 10px; color: {Palette.YELLOW};")
+        layout.addWidget(self._hardware_label)
 
         # -- Download panel (hidden by default, expands inline) --
         self._dl_panel = QFrame()
@@ -568,6 +597,28 @@ class ModelCard(QFrame):
         self._cancel_btn.setEnabled(False)
         self._size_label.setText("Finishing current transfer...")
 
+    def update_hardware_status(self, hardware: dict):
+        """Show whether this model fits the currently detected execution tier."""
+        fit = model_hardware_fit(self.info, hardware)
+        if fit.status in {"cuda", "mps", "cpu"}:
+            color = Palette.GREEN
+            prefix = "Fits"
+        elif fit.status == "cpu-fallback":
+            color = Palette.YELLOW
+            prefix = "CPU fallback"
+        else:
+            color = Palette.RED
+            prefix = "Unavailable"
+        self._hardware_label.setText(
+            f"Hardware: {prefix} — {fit.reason} Tier: {fit.tier}."
+        )
+        self._hardware_label.setStyleSheet(f"font-size: 10px; color: {color};")
+        set_accessible(
+            self._hardware_label,
+            f"{self.info.name} hardware fit",
+            self._hardware_label.text(),
+        )
+
 
 class ModelHubView(QWidget):
     """Model Hub page with grid of model cards, search/filter, and disk usage."""
@@ -580,6 +631,12 @@ class ModelHubView(QWidget):
         self._stopping_downloads: set[str] = set()
         self._activation_workers: dict[str, InferenceWorker] = {}
         self._mgr = ModelManager()
+        self._hardware_profile = {
+            "available": False,
+            "backend": "cpu",
+            "name": "Detecting hardware",
+            "total_gb": 0,
+        }
         self._job_store = JobStore()
         self._build_ui()
         self._connect_signals()
@@ -632,6 +689,15 @@ class ModelHubView(QWidget):
         gpu_layout.addWidget(self._disk_label)
         layout.addWidget(self._gpu_bar)
 
+        self._recommendation_label = QLabel("Recommendations will update after hardware detection.")
+        self._recommendation_label.setWordWrap(True)
+        self._recommendation_label.setStyleSheet(
+            f"background: rgba(137, 180, 250, 24); color: {Palette.BLUE}; "
+            "border: 1px solid rgba(137, 180, 250, 70); border-radius: 6px; "
+            "padding: 8px 10px; font-size: 12px;"
+        )
+        layout.addWidget(self._recommendation_label)
+
         # Filter bar
         filter_bar = QHBoxLayout()
         filter_bar.setSpacing(12)
@@ -652,10 +718,30 @@ class ModelHubView(QWidget):
         self._category_filter.currentIndexChanged.connect(self._filter_cards)
         filter_bar.addWidget(self._category_filter)
 
+        self._task_filter = QComboBox()
+        self._task_filter.addItem("All Tasks", "all")
+        for task in model_tasks(self._mgr.registry):
+            self._task_filter.addItem(task.title().replace("Vram", "VRAM"), task)
+        self._task_filter.setFixedHeight(36)
+        self._task_filter.currentIndexChanged.connect(self._filter_cards)
+        filter_bar.addWidget(self._task_filter)
+
+        layout.addLayout(filter_bar)
+
+        hardware_filter_bar = QHBoxLayout()
+        hardware_filter_bar.setSpacing(12)
+        self._hardware_filter = QComboBox()
+        self._hardware_filter.addItem("Fits detected hardware", "fit")
+        self._hardware_filter.addItem("All models", "all")
+        self._hardware_filter.setFixedHeight(36)
+        self._hardware_filter.currentIndexChanged.connect(self._filter_cards)
+        hardware_filter_bar.addWidget(self._hardware_filter)
+
         self._downloaded_only = QCheckBox("Downloaded only")
         self._downloaded_only.stateChanged.connect(self._filter_cards)
-        filter_bar.addWidget(self._downloaded_only)
-        layout.addLayout(filter_bar)
+        hardware_filter_bar.addWidget(self._downloaded_only)
+        hardware_filter_bar.addStretch()
+        layout.addLayout(hardware_filter_bar)
 
         # Scrollable grid
         scroll = QScrollArea()
@@ -697,13 +783,18 @@ class ModelHubView(QWidget):
             named_controls=[
                 (self._search, "Search models", "Filters models by name or description."),
                 (self._category_filter, "Model category filter", "Filters models by engine category."),
+                (self._task_filter, "Model task filter", "Filters models by measured task guidance."),
+                (self._hardware_filter, "Model hardware filter", "Shows models that fit the detected execution hardware."),
                 (self._downloaded_only, "Downloaded models only", "Shows only installed or loaded models."),
                 (self._gpu_label, "Model Hub GPU status", "Shows GPU availability and active model."),
                 (self._disk_label, "Model disk usage", "Shows downloaded model storage usage."),
+                (self._recommendation_label, "Model recommendations", "Shows task recommendations ranked for the detected hardware."),
             ],
             tab_order=[
                 self._search,
                 self._category_filter,
+                self._task_filter,
+                self._hardware_filter,
                 self._downloaded_only,
                 *[card._action_btn for card in self._cards.values()],
             ],
@@ -721,6 +812,12 @@ class ModelHubView(QWidget):
             action = "open"
         self._search.clear()
         self._category_filter.setCurrentIndex(0)
+        task_filter = getattr(self, "_task_filter", None)
+        if task_filter is not None:
+            task_filter.setCurrentIndex(0)
+        hardware_filter = getattr(self, "_hardware_filter", None)
+        if hardware_filter is not None:
+            hardware_filter.setCurrentIndex(1)
         self._downloaded_only.setChecked(False)
         self._filter_cards()
         card = self._cards[model_id]
@@ -747,8 +844,10 @@ class ModelHubView(QWidget):
         for model_id, card in self._cards.items():
             status = self._mgr.get_status(model_id)
             card.update_status(status)
+            card.update_hardware_status(self._hardware_profile)
         self._update_disk_display()
         self._update_recovery_banner()
+        self._update_recommendation_label()
 
         # Alert user about partial downloads on startup
         partials = [
@@ -804,21 +903,74 @@ class ModelHubView(QWidget):
     def _update_gpu_display(self, gpu_info: dict = None):
         if gpu_info is None:
             gpu_info = self._mgr.get_gpu_status()
+        self._hardware_profile = dict(gpu_info)
         if gpu_info.get("available"):
             name = gpu_info["name"]
-            total = gpu_info["total_gb"]
-            used = gpu_info["used_gb"]
+            total = float(gpu_info.get("total_gb", 0) or 0)
+            used = float(gpu_info.get("used_gb", 0) or 0)
             current = gpu_info.get("current_model_name", "None")
-            self._gpu_label.setText(
-                f"{name}  |  {used:.1f} / {total:.1f} GB  |  "
-                f"Active: {current or 'None'}"
+            if gpu_info.get("backend") == "mps":
+                self._gpu_label.setText(f"{name}  |  MPS  |  Active: {current or 'None'}")
+            else:
+                self._gpu_label.setText(
+                    f"{name}  |  {used:.1f} / {total:.1f} GB  |  "
+                    f"Active: {current or 'None'}"
+                )
+            self._gpu_label.setStyleSheet(
+                f"font-size: 13px; font-weight: 600; color: {Palette.BLUE};"
             )
         else:
             self._gpu_label.setText(
-                "No CUDA GPU detected — models will run on CPU (much slower)"
+                "No accelerator detected — models will run on CPU (much slower)"
             )
             self._gpu_label.setStyleSheet(
                 f"font-size: 13px; font-weight: 600; color: {Palette.YELLOW};"
+            )
+        self._update_hardware_filter_label()
+        for card in self._cards.values():
+            card.update_hardware_status(self._hardware_profile)
+        self._update_recommendation_label()
+        self._filter_cards()
+
+    def _update_hardware_filter_label(self):
+        if self._hardware_profile.get("available"):
+            backend = self._hardware_profile.get("backend", "cuda").upper()
+            total = float(self._hardware_profile.get("total_gb", 0) or 0)
+            suffix = f"{total:.1f} GB" if total else "shared memory"
+            text = f"Fits detected {backend} ({suffix})"
+        else:
+            text = "Fits detected CPU execution"
+        self._hardware_filter.setItemText(0, text)
+
+    def _update_recommendation_label(self):
+        selected_task = self._task_filter.currentData()
+        tasks = (
+            [selected_task]
+            if selected_task and selected_task != "all"
+            else ["best vocal isolation", "fastest", "lowest vram"]
+        )
+        hardware_name = self._hardware_profile.get("name", "detected hardware")
+        recommendations = []
+        for task in tasks:
+            info = recommend_model_for_task(
+                task,
+                registry=self._mgr.registry,
+                hardware=self._hardware_profile,
+            )
+            if info is None:
+                continue
+            fit = model_hardware_fit(info, self._hardware_profile)
+            mode = "GPU fit" if fit.fits and fit.status in {"cuda", "mps"} else (
+                "CPU fallback" if fit.status == "cpu-fallback" else fit.status
+            )
+            recommendations.append(f"{task.title().replace('Vram', 'VRAM')}: {info.name} ({mode})")
+        if recommendations:
+            self._recommendation_label.setText(
+                f"Recommendations for {hardware_name}: " + "; ".join(recommendations) + "."
+            )
+        else:
+            self._recommendation_label.setText(
+                "No measured recommendation is registered for this task and hardware combination."
             )
 
     def _update_disk_display(self):
@@ -835,6 +987,8 @@ class ModelHubView(QWidget):
     def _filter_cards(self):
         search = self._search.text().lower()
         cat_filter = self._category_filter.currentData()
+        task_filter = self._task_filter.currentData()
+        hardware_filter = self._hardware_filter.currentData()
         downloaded_only = self._downloaded_only.isChecked()
 
         for model_id, card in self._cards.items():
@@ -846,11 +1000,18 @@ class ModelHubView(QWidget):
                 visible = False
             if cat_filter != "all" and info.category.value != cat_filter:
                 visible = False
+            if task_filter != "all" and not model_supports_task(info, task_filter):
+                visible = False
+            if hardware_filter == "fit" and not model_hardware_fit(
+                info, self._hardware_profile
+            ).fits:
+                visible = False
             if downloaded_only and status not in (
                 ModelStatus.DOWNLOADED, ModelStatus.LOADED
             ):
                 visible = False
             card.setVisible(visible)
+        self._update_recommendation_label()
 
     # -- Download Management -----------------------------------------------
 

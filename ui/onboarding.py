@@ -20,7 +20,11 @@ from PySide6.QtGui import QFont
 from core.settings import APP_VERSION
 from core.device import configured_cuda_index
 from core.engine_contract import ModelReadiness
-from core.model_manager import ModelManager
+from core.model_manager import (
+    ModelManager,
+    model_hardware_fit,
+    recommend_model_for_task,
+)
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
@@ -386,6 +390,13 @@ class ModelGuidePage(QWidget):
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
+        manager = ModelManager()
+        hardware = (
+            manager.get_gpu_status()
+            if hasattr(manager, "get_gpu_status")
+            else {"available": False, "backend": "cpu", "name": "CPU"}
+        )
+        registry = getattr(manager, "registry", {})
 
         title = QLabel("AI Models")
         title.setStyleSheet(f"color: {t['text']}; font-size: 18px; font-weight: bold;")
@@ -400,6 +411,15 @@ class ModelGuidePage(QWidget):
         info.setStyleSheet(f"color: {t['text_secondary']}; font-size: 12px;")
         layout.addWidget(info)
 
+        hardware_name = hardware.get("name", "detected hardware")
+        hardware_note = QLabel(
+            f"Recommendations are ranked for {hardware_name}. "
+            "A CPU fallback is called out when the detected GPU is below a model's declared tier."
+        )
+        hardware_note.setWordWrap(True)
+        hardware_note.setStyleSheet(f"color: {Palette.BLUE}; font-size: 11px;")
+        layout.addWidget(hardware_note)
+
         # Recommended models
         models_frame = QFrame()
         models_frame.setStyleSheet(f"""
@@ -410,14 +430,35 @@ class ModelGuidePage(QWidget):
         ml.setContentsMargins(16, 12, 16, 12)
         ml.setSpacing(10)
 
-        models = [
-            ("ACE-Step 1.5 XL Turbo", "Song generation and source editing", "~10.4 GB", True),
-            ("Llama 3.1 8B Q4", "Lyrics generation and producer planning", "~4.9 GB", True),
-            ("DiffSinger", "Singing voice synthesis", "~500 MB", False),
-            ("RVC v2", "Voice conversion", "~200 MB per voice", False),
-            ("Demucs (htdemucs)", "Stem separation", "~300 MB", False),
-            ("Stable Audio Open", "SFX generation", "~3 GB", False),
+        recommendation_specs = [
+            ("best song generation", "Song generation and source editing"),
+            ("best lyrics", "Lyrics generation and producer planning"),
+            ("singing voice synthesis", "Singing voice synthesis"),
+            ("voice conversion", "Voice conversion"),
+            ("best vocal isolation", "Vocal isolation"),
+            ("sfx generation", "SFX generation"),
         ]
+        models = []
+        for task, description in recommendation_specs:
+            info_item = recommend_model_for_task(
+                task,
+                registry=registry,
+                hardware=hardware,
+            )
+            if info_item is None:
+                continue
+            fit = model_hardware_fit(info_item, hardware)
+            mode = "GPU fit" if fit.fits and fit.status in {"cuda", "mps"} else (
+                "CPU fallback" if fit.status == "cpu-fallback" else fit.status
+            )
+            models.append(
+                (
+                    info_item.name,
+                    f"{description} · {mode} · {info_item.advertised_vram_tier}",
+                    f"{info_item.disk_gb:.1f} GB",
+                    True,
+                )
+            )
 
         for name, desc, size, recommended in models:
             row = QHBoxLayout()
@@ -457,7 +498,6 @@ class ModelGuidePage(QWidget):
         readiness_title = QLabel("Runtime readiness")
         readiness_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12px;")
         readiness_layout.addWidget(readiness_title)
-        manager = ModelManager()
         self._manager = manager
         self._core_models = manager.get_core_models()
         for info_item in self._core_models:

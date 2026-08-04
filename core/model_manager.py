@@ -108,6 +108,49 @@ COMMERCIAL_USE_LABELS = {
 }
 
 
+RECOMMENDATION_TASKS = (
+    "best vocal isolation",
+    "fastest",
+    "lowest vram",
+    "best song generation",
+    "best lyrics",
+    "midi composition",
+    "singing voice synthesis",
+    "voice conversion",
+    "voice cloning",
+    "multi-stem separation",
+    "sfx generation",
+    "alignment",
+)
+
+
+def normalize_task_label(value: str) -> str:
+    """Normalize task labels for registry and UI comparisons."""
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def vram_tier_for_gb(vram_gb: float, *, available: bool = True) -> str:
+    """Return the published hardware tier used by the recommendation UI."""
+    if not available or float(vram_gb or 0) <= 0:
+        return "CPU"
+    value = float(vram_gb)
+    if value <= 4:
+        return "≤4 GB"
+    if value <= 6:
+        return "4–6 GB"
+    if value <= 8:
+        return "6–8 GB"
+    if value <= 12:
+        return "8–12 GB"
+    if value <= 16:
+        return "12–16 GB"
+    if value <= 20:
+        return "16–20 GB"
+    if value <= 24:
+        return "20–24 GB"
+    return "≥24 GB"
+
+
 @dataclass
 class ModelInfo:
     """Metadata for a registered model."""
@@ -136,6 +179,14 @@ class ModelInfo:
     commercial_use: str = COMMERCIAL_USE_UNKNOWN
     commercial_use_note: str = ""
     license_url: str = ""
+    task_labels: list[str] = field(default_factory=list)
+    task_scores: dict[str, float] = field(default_factory=dict)
+    measurement_basis: str = ""
+    measurement_source: str = ""
+    measurement_date: str = ""
+    vram_tier: str = ""
+    cpu_supported: bool = True
+    mps_supported: bool = True
 
     @property
     def commercial_use_label(self) -> str:
@@ -179,6 +230,143 @@ class ModelInfo:
             "access": self.access_label,
         }
 
+    @property
+    def advertised_vram_tier(self) -> str:
+        """Return the explicit registry tier, falling back to the VRAM estimate."""
+        return self.vram_tier or vram_tier_for_gb(self.vram_gb)
+
+
+@dataclass(frozen=True)
+class HardwareFit:
+    """Whether a model is a GPU fit, CPU fallback, or unavailable."""
+
+    status: str
+    fits: bool
+    tier: str
+    reason: str
+
+
+def model_hardware_fit(
+    info: ModelInfo,
+    hardware: Optional[dict[str, Any]] = None,
+) -> HardwareFit:
+    """Classify a model against the detected hardware without loading it."""
+    profile = hardware if hardware is not None else get_gpu_info()
+    backend = str(profile.get("backend", "cuda" if profile.get("available") else "cpu"))
+    available = bool(profile.get("available"))
+    total_gb = float(profile.get("total_gb", 0) or 0)
+
+    if backend == "mps":
+        if not info.mps_supported:
+            return HardwareFit(
+                "unsupported",
+                False,
+                "MPS",
+                f"{info.name} does not declare Apple Silicon support.",
+            )
+        if total_gb > 0 and total_gb < info.vram_gb:
+            return HardwareFit(
+                "cpu-fallback" if info.cpu_supported else "unsupported",
+                False,
+                "MPS",
+                f"Detected unified memory {total_gb:.1f} GB is below the {info.vram_gb:.1f} GB estimate.",
+            )
+        return HardwareFit("mps", True, "MPS", "Declared Apple Silicon path fits the detected hardware.")
+
+    if not available:
+        if info.cpu_supported:
+            return HardwareFit("cpu", True, "CPU", "Runs on CPU; GPU acceleration is unavailable.")
+        return HardwareFit("unsupported", False, "CPU", "This model does not declare CPU support.")
+
+    tier = vram_tier_for_gb(total_gb)
+    if total_gb >= info.vram_gb:
+        return HardwareFit(
+            "cuda",
+            True,
+            tier,
+            f"{total_gb:.1f} GB detected; the registry estimate is {info.vram_gb:.1f} GB.",
+        )
+    if info.cpu_supported:
+        return HardwareFit(
+            "cpu-fallback",
+            False,
+            tier,
+            f"{total_gb:.1f} GB detected; needs about {info.vram_gb:.1f} GB for the declared GPU path.",
+        )
+    return HardwareFit(
+        "unsupported",
+        False,
+        tier,
+        f"{total_gb:.1f} GB detected; needs about {info.vram_gb:.1f} GB and has no CPU fallback.",
+    )
+
+
+def model_supports_task(info: ModelInfo, task: str) -> bool:
+    """Return whether a registry model carries the requested task label."""
+    needle = normalize_task_label(task)
+    return bool(needle) and any(
+        normalize_task_label(label) == needle for label in info.task_labels
+    )
+
+
+def model_tasks(registry: Optional[dict[str, ModelInfo]] = None) -> tuple[str, ...]:
+    """Return stable task filter values from the active model registry."""
+    values = registry.values() if registry is not None else BUILTIN_MODELS.values()
+    labels = {normalize_task_label(label) for info in values for label in info.task_labels}
+    ordered = [task for task in RECOMMENDATION_TASKS if task in labels]
+    ordered.extend(sorted(labels - set(ordered)))
+    return tuple(ordered)
+
+
+def _task_score(info: ModelInfo, task: str) -> float:
+    needle = normalize_task_label(task)
+    for label, score in info.task_scores.items():
+        if normalize_task_label(label) == needle:
+            try:
+                return float(score)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+def recommend_models_for_task(
+    task: str,
+    registry: Optional[dict[str, ModelInfo]] = None,
+    hardware: Optional[dict[str, Any]] = None,
+) -> list[ModelInfo]:
+    """Rank models for a task, preferring models that fit this hardware."""
+    active_registry = registry if registry is not None else BUILTIN_MODELS
+    candidates = [info for info in active_registry.values() if model_supports_task(info, task)]
+    if not candidates:
+        return []
+
+    fits = [info for info in candidates if model_hardware_fit(info, hardware).fits]
+    ranked = fits or candidates
+    normalized = normalize_task_label(task)
+    if normalized == "lowest vram":
+        return sorted(
+            ranked,
+            key=lambda info: (info.vram_gb, -_task_score(info, normalized), info.name.lower()),
+        )
+    return sorted(
+        ranked,
+        key=lambda info: (
+            -_task_score(info, normalized),
+            info.vram_gb,
+            info.name.lower(),
+        ),
+    )
+
+
+def recommend_model_for_task(
+    task: str,
+    registry: Optional[dict[str, ModelInfo]] = None,
+    hardware: Optional[dict[str, Any]] = None,
+) -> Optional[ModelInfo]:
+    """Return the top task recommendation, or ``None`` when no label exists."""
+    ranked = recommend_models_for_task(task, registry=registry, hardware=hardware)
+    return ranked[0] if ranked else None
+
 
 def hash_file_sha256(path: Path) -> str:
     """Hash a model file for tamper detection."""
@@ -217,7 +405,7 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
             "stereo songs, source repainting, reference covers, and extensions."
         ),
         category=ModelCategory.SONG_FORGE,
-        vram_gb=4.0,
+        vram_gb=16.0,
         disk_gb=10.4,
         license=ACE_STEP_LICENSE,
         source=ACE_STEP_SOURCE,
@@ -225,6 +413,15 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         is_core=True,
         tags=list(ACE_STEP_CAPABILITIES),
+        task_labels=["best song generation", "long-form generation", "source-conditioned editing"],
+        task_scores={"best song generation": 1.0},
+        measurement_basis=(
+            "Official GPU guide: XL is supported with CPU offload at 16–20 GB, "
+            "uses about 9 GB for weights, and is fully supported at 20 GB+."
+        ),
+        measurement_source="https://github.com/ace-step/ACE-Step-1.5/blob/main/docs/en/GPU_COMPATIBILITY.md",
+        measurement_date="2026-08-03",
+        vram_tier="16–20 GB",
         ignore_patterns=list(ACE_STEP_IGNORE_PATTERNS),
         revision=ACE_STEP_REVISION,
         trust_note=(
@@ -251,6 +448,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         is_core=True,
         tags=["lyrics", "text", "creative writing", "LLM"],
+        task_labels=["best lyrics"],
+        task_scores={"best lyrics": 1.0},
+        measurement_basis="Published Q4 model-card footprint and the registry's 5.0 GB runtime estimate; not an independent Slunder benchmark.",
+        measurement_source="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+        measurement_date="2026-08-03",
+        vram_tier="4–6 GB",
         allow_patterns=["Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"],
         revision="bf5b95e96dac0462e2a09145ec66cae9a3f12067",
         commercial_use=COMMERCIAL_USE_TERMS,
@@ -269,6 +472,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.lyrics_engine",
         loader_fn="load_model",
         tags=["lyrics", "text", "fast", "LLM"],
+        task_labels=["best lyrics", "fastest", "lowest vram"],
+        task_scores={"best lyrics": 0.8, "fastest": 1.0},
+        measurement_basis="Published Q4 model-card footprint and the registry's 2.5 GB runtime estimate; lower-resource option, not an independent speed benchmark.",
+        measurement_source="https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
+        measurement_date="2026-08-03",
+        vram_tier="≤4 GB",
         allow_patterns=["Llama-3.2-3B-Instruct-Q4_K_M.gguf"],
         revision="5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
         commercial_use=COMMERCIAL_USE_TERMS,
@@ -287,6 +496,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.lyrics_engine",
         loader_fn="load_model",
         tags=["lyrics", "multilingual", "premium", "LLM"],
+        task_labels=["best lyrics"],
+        task_scores={"best lyrics": 1.1},
+        measurement_basis="Published Q4 model-card footprint and the registry's 10.0 GB runtime estimate; quality-oriented option, not an independent Slunder benchmark.",
+        measurement_source="https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF",
+        measurement_date="2026-08-03",
+        vram_tier="8–12 GB",
         allow_patterns=["Qwen2.5-14B-Instruct-Q4_K_M.gguf"],
         revision="05244aa5d871c661c80082a15d3bce44714d068d",
         commercial_use=COMMERCIAL_USE_ALLOWED,
@@ -306,6 +521,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         is_core=True,
         tags=["MIDI", "composition", "multitrack", "instrumental"],
+        task_labels=["midi composition", "fastest"],
+        task_scores={"midi composition": 1.0, "fastest": 0.8},
+        measurement_basis="Published model snapshot and the registry's 3.0 GB runtime estimate; no independent latency claim is made.",
+        measurement_source="https://huggingface.co/slseanwu/MIDI-LLM_Llama-3.2-1B",
+        measurement_date="2026-08-03",
+        vram_tier="≤4 GB",
         revision="8b82ab9ec144348900e9ea4623b123e0b12f60b3",
         ignore_patterns=["*.bin", "*.pt", "*.pth", "*.ckpt", "*.pkl", "*.pickle"],
         commercial_use=COMMERCIAL_USE_TERMS,
@@ -325,6 +546,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         pip_managed=True,
         tags=["singing", "voice synthesis", "MIDI"],
+        task_labels=["singing voice synthesis", "lowest vram"],
+        task_scores={"singing voice synthesis": 1.0},
+        measurement_basis="Published engine/runtime requirements plus the registry's 5.0 GB estimate; voice checkpoints vary and are not independently benchmarked here.",
+        measurement_source="https://github.com/openvpi/DiffSinger",
+        measurement_date="2026-08-03",
+        vram_tier="4–6 GB",
         commercial_use=COMMERCIAL_USE_ALLOWED,
         commercial_use_note="Apache 2.0 engine; individual voice models may carry separate terms.",
         license_url="https://github.com/openvpi/DiffSinger",
@@ -341,6 +568,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.rvc_engine",
         loader_fn="load_model",
         tags=["voice conversion", "AI cover", "timbre"],
+        task_labels=["voice conversion", "fastest", "lowest vram"],
+        task_scores={"voice conversion": 1.0, "fastest": 0.7},
+        measurement_basis="Published RVC runtime footprint and the registry's 3.0 GB estimate; profile/checkpoint size varies.",
+        measurement_source="https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
+        measurement_date="2026-08-03",
+        vram_tier="≤4 GB",
         allow_patterns=["hubert_base.pt", "rmvpe.pt", "pretrained_v2/*"],
         revision="5836e9ea8ad6b7852f906acfa440e65a36e72396",
         allows_unsafe_weights=True,
@@ -361,6 +594,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.rvc_engine",
         loader_fn="load_model",
         tags=["voice cloning", "TTS", "zero-shot"],
+        task_labels=["voice cloning"],
+        task_scores={"voice cloning": 1.0},
+        measurement_basis="Published GPT-SoVITS runtime footprint and the registry's 6.0 GB estimate; reference/model size varies.",
+        measurement_source="https://github.com/RVC-Boss/GPT-SoVITS",
+        measurement_date="2026-08-03",
+        vram_tier="4–6 GB",
         revision="336b2ec4e8d4ac74740798dd40af44e74659ecaf",
         allows_unsafe_weights=True,
         trust_note="Pinned upstream revision; pickle-backed weights require per-revision consent.",
@@ -381,6 +620,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         pip_managed=True,
         tags=["stem separation", "vocals", "drums", "remixing"],
+        task_labels=["multi-stem separation", "fastest", "lowest vram"],
+        task_scores={"multi-stem separation": 1.0, "fastest": 0.9},
+        measurement_basis="Audio Separator's published Demucs listing reports vocals 10.0, drums 9.4, bass 11.3 SDR for htdemucs; registry run estimate is 4.0 GB VRAM.",
+        measurement_source="https://github.com/nomadkaraoke/python-audio-separator",
+        measurement_date="2026-08-03",
+        vram_tier="≤4 GB",
         commercial_use=COMMERCIAL_USE_ALLOWED,
         commercial_use_note="MIT model package.",
         license_url="https://github.com/facebookresearch/demucs",
@@ -398,6 +643,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_fn="load_model",
         pip_managed=True,
         tags=["stem separation", "MDX", "MDXC", "Roformer", "UVR"],
+        task_labels=["best vocal isolation", "vocal separation"],
+        task_scores={"best vocal isolation": 12.9755},
+        measurement_basis="Audio Separator's published model listing reports BS-Roformer vocals SDR 12.9 and instrumental SDR 17.0; the checkpoint registry estimates 4.0 GB VRAM.",
+        measurement_source="https://github.com/nomadkaraoke/python-audio-separator",
+        measurement_date="2026-08-03",
+        vram_tier="≤4 GB",
         trusted_source=True,
         trust_note="The adapter is MIT; each downloaded checkpoint must be reviewed separately.",
         commercial_use=COMMERCIAL_USE_UNKNOWN,
@@ -416,6 +667,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.sfx_engine",
         loader_fn="load_model",
         tags=["SFX", "sound effects", "ambient", "foley"],
+        task_labels=["sfx generation"],
+        task_scores={"sfx generation": 1.0},
+        measurement_basis="Published Stable Audio Open model-card footprint and the registry's 8.0 GB runtime estimate; no independent Slunder quality benchmark.",
+        measurement_source="https://huggingface.co/stabilityai/stable-audio-open-1.0",
+        measurement_date="2026-08-03",
+        vram_tier="6–8 GB",
         gated=True,
         revision="f21265c1e2710b3bd2386596943f0007f55f802e",
         ignore_patterns=["*.bin", "*.pt", "*.pth", "*.ckpt", "*.pkl", "*.pickle"],
@@ -435,6 +692,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.audio_analyzer",
         loader_fn="load_model",
         tags=["alignment", "transcription", "lyrics sync"],
+        task_labels=["alignment", "lowest vram"],
+        task_scores={"alignment": 1.0},
+        measurement_basis="Published Whisper tiny model-card footprint and the registry's 1.0 GB runtime estimate.",
+        measurement_source="https://huggingface.co/openai/whisper-tiny",
+        measurement_date="2026-08-03",
+        vram_tier="≤4 GB",
         revision="169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
         # The loader uses the repository's safe Transformers checkpoint;
         # pickle-backed pytorch_model.bin remains excluded.
@@ -454,6 +717,12 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
         loader_module="engines.ace_step_engine",
         loader_fn="load_model",
         tags=["instrumental", "short clips", "sketching"],
+        task_labels=["fastest", "lowest vram", "instrumental sketches"],
+        task_scores={"fastest": 0.6},
+        measurement_basis="Published MusicGen model-card footprint and the registry's 5.0 GB runtime estimate; this is a non-commercial sketching path.",
+        measurement_source="https://huggingface.co/facebook/musicgen-medium",
+        measurement_date="2026-08-03",
+        vram_tier="4–6 GB",
         revision="d3bd7b00761b78ad7a8a05145ee31e7832e9916c",
         allows_unsafe_weights=True,
         trust_note="Pinned upstream revision; pickle-backed weights require per-revision consent.",
@@ -536,6 +805,7 @@ def get_gpu_info() -> dict:
             allocated = torch.cuda.memory_allocated(index) / (1024**3)
             return {
                 "available": True,
+                "backend": "cuda",
                 "name": props.name,
                 "index": index,
                 "total_gb": round(total, 1),
@@ -543,11 +813,25 @@ def get_gpu_info() -> dict:
                 "reserved_gb": round(reserved, 1),
                 "free_gb": round(total - reserved, 1),
             }
+        if torch is not None:
+            mps = getattr(getattr(torch, "backends", None), "mps", None)
+            if mps is not None and mps.is_available():
+                return {
+                    "available": True,
+                    "backend": "mps",
+                    "name": "Apple Silicon (MPS)",
+                    "index": 0,
+                    "total_gb": 0,
+                    "used_gb": 0,
+                    "reserved_gb": 0,
+                    "free_gb": 0,
+                }
     except (ImportError, RuntimeError, AttributeError):
         pass
 
     return {
         "available": False,
+        "backend": "cpu",
         "name": "No GPU detected",
         "total_gb": 0,
         "used_gb": 0,
