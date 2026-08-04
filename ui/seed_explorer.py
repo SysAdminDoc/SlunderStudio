@@ -20,6 +20,7 @@ from ui.accessibility import FOCUS_RING_COLOR, install_accessibility, set_access
 from ui.widgets import EmptyStateWidget
 from ui.waveform_widget import MiniWaveform
 from core.provenance import sidecar_path_for
+from ui.file_dialogs import choose_directory
 from core.workers import CancelledJobError, InferenceWorker
 
 
@@ -666,8 +667,11 @@ class SeedExplorer(QWidget):
                         "col": c.col,
                     })
         if starred:
-            destination = QFileDialog.getExistingDirectory(
-                self, "Export Starred Variations"
+            destination = choose_directory(
+                self,
+                "Export Starred Variations",
+                operation_kind="seed_variations_export",
+                dialog=QFileDialog,
             )
             if not destination:
                 return

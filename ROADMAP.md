@@ -83,26 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Fix the file-dialog experience across every import and export
-  Why: Twelve open dialogs and eight save dialogs each reinvent their own behaviour, and the
-    differences are all regressions.
-  Evidence: `getOpenFileNames` is used **zero times** anywhere, so importing eight stems means eight
-    dialogs. Every `getOpenFileName` passes `""` as the start directory, so the picker resets to the
-    working directory each time even though `general.output_dir` exists. Filters disagree for the
-    same job: `ui/vocal_suite_view.py:1547` (clone reference) omits `.ogg` that its four siblings
-    accept. Save dialogs disagree about formats — `ui/mixer_view.py:1436` is the only one that
-    builds its filter from `DELIVERY_FORMATS` and codec availability, while
-    `ui/ai_producer_view.py:804`, `ui/vocal_suite_view.py:2144` and `:2180` offer WAV only.
-    Drag-and-drop is odd too: `ui/main_window.py:637-652` accepts `.aiff`, which no file dialog
-    does, and an audio drop calls `audio.play()` immediately (`:642`) rather than loading it into
-    the active view.
-  Touches: all views with file dialogs, `core/settings.py`, `core/audio_export.py`.
-  Acceptance: One shared helper provides filters from the export/import format tables; multi-select
-    works wherever multiple files are meaningful; the last-used directory per operation kind
-    persists; accepted extensions match between dialogs and drag-and-drop; dropping audio loads it
-    into the current view rather than starting playback.
-  Complexity: M
-
 - [ ] P2 — Rewrite user-facing copy that leaks internal vocabulary
   Why: Engine-contract and compliance internals are rendered verbatim in primary status lines across
     several views, not just the one tooltip already tracked.

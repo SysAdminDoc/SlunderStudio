@@ -21,8 +21,21 @@ ARTIFACT_LYRICS = "lyrics"
 
 ARTIFACT_KINDS = (ARTIFACT_AUDIO, ARTIFACT_MIDI, ARTIFACT_STEMS, ARTIFACT_LYRICS)
 
-AUDIO_SUFFIXES = {".wav", ".flac", ".mp3", ".ogg", ".opus", ".m4a", ".aiff"}
-MIDI_SUFFIXES = {".mid", ".midi"}
+# Keep these ordered tuples as the UI's import-format source of truth.  The
+# sets below remain available for fast routing checks.
+AUDIO_EXTENSIONS = (
+    ".wav",
+    ".flac",
+    ".mp3",
+    ".ogg",
+    ".opus",
+    ".m4a",
+    ".aiff",
+    ".aif",
+)
+MIDI_EXTENSIONS = (".mid", ".midi")
+AUDIO_SUFFIXES = set(AUDIO_EXTENSIONS)
+MIDI_SUFFIXES = set(MIDI_EXTENSIONS)
 
 
 class RouteError(RuntimeError):
@@ -84,6 +97,16 @@ def infer_kind(path: str) -> str:
     if suffix in AUDIO_SUFFIXES:
         return ARTIFACT_AUDIO
     return ARTIFACT_AUDIO
+
+
+def is_audio_path(path: str) -> bool:
+    """Return whether a path uses one of the supported audio suffixes."""
+    return Path(path).suffix.lower() in AUDIO_SUFFIXES
+
+
+def is_midi_path(path: str) -> bool:
+    """Return whether a path uses one of the supported MIDI suffixes."""
+    return Path(path).suffix.lower() in MIDI_SUFFIXES
 
 
 def _audio_duration(path: str) -> float:

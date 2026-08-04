@@ -14,6 +14,8 @@ from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
 from ui.waveform_widget import WaveformWidget
+from ui.file_dialogs import open_audio_file
+from core.routing import is_audio_path
 
 
 class AnalysisCard(QFrame):
@@ -212,22 +214,26 @@ class ReferencePanel(QWidget):
         layout.addWidget(self._progress_bar)
 
     def _browse_file(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Reference Track", "",
-            "Audio Files (*.wav *.mp3 *.flac *.ogg *.m4a);;All Files (*)",
+        path, _ = open_audio_file(
+            self,
+            "Select Reference Track",
+            operation_kind="reference_track_import",
+            dialog=QFileDialog,
         )
         if path:
             self._analyze_file(path)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
+        if event.mimeData().hasUrls() and any(
+            is_audio_path(url.toLocalFile()) for url in event.mimeData().urls()
+        ):
             event.acceptProposedAction()
 
     def dropEvent(self, event: QDropEvent):
         urls = event.mimeData().urls()
         if urls:
             path = urls[0].toLocalFile()
-            if path:
+            if path and is_audio_path(path):
                 self._analyze_file(path)
 
     def load_reference_file(self, file_path: str):

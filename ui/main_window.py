@@ -12,9 +12,10 @@ from PySide6.QtCore import Qt, QTimer, QSize, Signal
 from PySide6.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent
 
 from core.settings import Settings, APP_VERSION
-from core.audio_engine import AudioEngine, decode_playback_file, format_time
+from core.audio_engine import AudioEngine, format_time
 from core.i18n import tr
 from core.model_manager import ModelManager
+from core.routing import is_audio_path, is_midi_path
 from core.workers import shutdown_workers
 from core.workers import InferenceWorker
 from ui.theme import Palette, build_stylesheet
@@ -357,8 +358,6 @@ class MainWindow(QMainWindow):
         self._model_mgr = ModelManager()
         self._gpu_worker = None
         self._gpu_workers = set()
-        self._drop_playback_worker = None
-        self._drop_playback_workers = set()
 
         # Toast manager
         self.toast_mgr = ToastManager(self)
@@ -731,17 +730,19 @@ class MainWindow(QMainWindow):
     # ── Drag and Drop ──────────────────────────────────────────────────────────
 
     def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
+        if event.mimeData().hasUrls() and any(
+            is_audio_path(url.toLocalFile()) or is_midi_path(url.toLocalFile())
+            for url in event.mimeData().urls()
+        ):
             event.acceptProposedAction()
 
     def dropEvent(self, event: QDropEvent):
         for url in event.mimeData().urls():
             path = url.toLocalFile()
             if path:
-                ext = path.lower().rsplit(".", 1)[-1] if "." in path else ""
-                if ext in ("wav", "flac", "mp3", "ogg", "aiff"):
-                    self._play_dropped_audio(path)
-                elif ext in ("mid", "midi"):
+                if is_audio_path(path):
+                    self._load_dropped_audio(path)
+                elif is_midi_path(path):
                     self.toast_mgr.info("MIDI file detected — loading in MIDI Studio")
                     self._sidebar.select_page(2)
                     from core.midi_utils import load_midi as load_midi_file
@@ -751,7 +752,28 @@ class MainWindow(QMainWindow):
                     except Exception:
                         self.toast_mgr.warning("Failed to load MIDI file")
                 else:
-                    self.toast_mgr.warning(f"Unsupported file type: .{ext}")
+                    suffix = path.rsplit(".", 1)[-1] if "." in path else "unknown"
+                    self.toast_mgr.warning(f"Unsupported file type: .{suffix}")
+        event.acceptProposedAction()
+
+    def _load_dropped_audio(self, path: str):
+        """Load dropped audio into the active audio-capable workspace."""
+        page = self._pages.currentIndex()
+        if page == 1:
+            self._route_to_forge_reference(path, "drag_drop")
+            return
+        if page == 3:
+            self._on_send_to_vocals(path, "drag_drop")
+            return
+        if page == 5:
+            self._route_to_mixer(path, "drag_drop")
+            return
+
+        # Pages without an audio input still get a useful, non-destructive
+        # destination.  The file is loaded into Mixer rather than being
+        # unexpectedly sent to the audio device.
+        self.toast_mgr.info("Audio loaded in Mixer because this view has no audio input")
+        self._route_to_mixer(path, "drag_drop")
 
     # ── Cross-Module Routing ──────────────────────────────────────────────────
 
@@ -915,64 +937,6 @@ class MainWindow(QMainWindow):
         if self._autosave.enabled:
             self._autosave.start()
         return False
-
-    def _play_dropped_audio(self, path: str):
-        """Decode a dropped audio file before handing it to playback."""
-        if self._drop_playback_worker is not None and self._drop_playback_worker.isRunning():
-            self._drop_playback_worker.cancel()
-        worker = InferenceWorker(decode_playback_file, path)
-        self._drop_playback_workers.add(worker)
-        self._drop_playback_worker = worker
-        worker.progress.connect(
-            lambda pct: self.statusBar().showMessage(f"Loading audio... {pct}%")
-        )
-        worker.finished.connect(self._on_dropped_audio_ready)
-        worker.error.connect(self._on_dropped_audio_error)
-        worker.cancelled.connect(self._on_dropped_audio_cancelled)
-        self.statusBar().showMessage("Loading audio... 0%")
-        worker.start()
-
-    def _release_drop_playback_worker_later(self, worker):
-        if worker is None:
-            return
-        if worker.isRunning():
-            QTimer.singleShot(
-                10,
-                lambda: self._release_drop_playback_worker_later(worker),
-            )
-            return
-        self._drop_playback_workers.discard(worker)
-        if self._drop_playback_worker is worker:
-            self._drop_playback_worker = None
-
-    def _on_dropped_audio_ready(self, payload):
-        worker = self._drop_playback_worker
-        self._release_drop_playback_worker_later(worker)
-        self._drop_playback_worker = None
-        try:
-            audio, sample_rate = payload
-            engine = AudioEngine()
-            if not engine.load_array(audio, sample_rate):
-                raise RuntimeError("Audio playback rejected the decoded buffer")
-            engine.play()
-            self.statusBar().clearMessage()
-            self.toast_mgr.success("Audio loaded")
-        except Exception as exc:
-            self.toast_mgr.error(f"Audio playback failed: {exc}")
-
-    def _on_dropped_audio_error(self, message: str):
-        worker = self._drop_playback_worker
-        self._release_drop_playback_worker_later(worker)
-        self._drop_playback_worker = None
-        self.statusBar().clearMessage()
-        self.toast_mgr.error(f"Audio playback failed: {message}")
-
-    def _on_dropped_audio_cancelled(self):
-        worker = self._drop_playback_worker
-        self._release_drop_playback_worker_later(worker)
-        self._drop_playback_worker = None
-        self.statusBar().clearMessage()
-        self.toast_mgr.info("Audio loading cancelled")
 
     def resizeEvent(self, event):
         """Keep transient notifications anchored to the current window bounds."""

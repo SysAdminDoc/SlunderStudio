@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Consolidated import/export pickers around shared audio, MIDI, and project-asset format tables;
+  remembered the last directory per operation, added multi-file imports, aligned drag/drop
+  extensions, and routed dropped audio into an audio workspace without starting playback.
 - Closed keyboard reachability gaps for piano-roll and mood-curve canvases, added a static gate for
   all custom key handlers, and added a persisted localized reduced-motion preference that disables
   toast geometry animations.

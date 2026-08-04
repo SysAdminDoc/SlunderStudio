@@ -51,6 +51,7 @@ DEFAULTS = {
         "onboarding_complete": False,
         "onboarding_skipped": False,
         "reduced_motion": False,
+        "file_dialog_dirs": {},
         "auto_save_interval": 60,
         "auto_save_enabled": True,
         "max_project_versions": 20,

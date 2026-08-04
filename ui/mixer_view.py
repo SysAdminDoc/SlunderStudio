@@ -23,7 +23,6 @@ from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.workers import CancelledJobError, InferenceWorker
 from core.panning import pan_gains
 from core.audio_export import (
-    DELIVERY_FORMATS,
     ExportSettings,
     export_from_numpy,
 )
@@ -49,6 +48,12 @@ from core.mastering import (
     measure_true_peak_db,
     measure_short_term_lufs,
     suggest_dynamic_eq_curve,
+)
+from ui.file_dialogs import (
+    ensure_extension,
+    open_audio_file,
+    open_audio_files,
+    save_audio_file,
 )
 
 
@@ -525,6 +530,7 @@ class MixerView(QWidget):
         self._dynamic_eq_worker: Optional[InferenceWorker] = None
         self._dynamic_eq_operation_worker: Optional[InferenceWorker] = None
         self._import_worker: Optional[InferenceWorker] = None
+        self._import_queue: list[str] = []
         self._reference_worker: Optional[InferenceWorker] = None
         self._worker_references: set[InferenceWorker] = set()
         self._dynamic_eq_analysis_token = 0
@@ -843,6 +849,8 @@ class MixerView(QWidget):
             self._operation_progress.finish()
             return
         worker, label, button = active
+        if worker is self._import_worker:
+            self._import_queue.clear()
         self._operation_progress.mark_cancelling()
         worker.cancel()
         button.setEnabled(False)
@@ -1106,9 +1114,11 @@ class MixerView(QWidget):
             self._reference_label.setText(f"Ref: {self._reference_name} {ref_lufs:.1f} LUFS")
 
     def _on_load_reference(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Load Loudness Reference", "",
-            "Audio (*.wav *.flac *.mp3 *.ogg)"
+        path, _ = open_audio_file(
+            self,
+            "Load Loudness Reference",
+            operation_kind="mixer_reference",
+            dialog=QFileDialog,
         )
         if not path:
             return
@@ -1178,12 +1188,27 @@ class MixerView(QWidget):
         self._status.setText("Reference load cancelled")
 
     def _on_import_track(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Import Audio Track", "",
-            "Audio (*.wav *.flac *.mp3 *.ogg)"
+        paths, _ = open_audio_files(
+            self,
+            "Import Audio Tracks",
+            operation_kind="mixer_audio_import",
+            dialog=QFileDialog,
         )
-        if path:
-            self.add_track_from_file(path)
+        if not paths:
+            return
+        self._import_queue = paths
+        self._start_next_queued_import()
+
+    def _start_next_queued_import(self):
+        """Import a multi-selection serially so each worker owns the decoder."""
+        if not self._import_queue:
+            self._update_mix_state()
+            return
+        path = self._import_queue.pop(0)
+        self.add_track_from_file(
+            path,
+            on_complete=lambda _success, _index: self._start_next_queued_import(),
+        )
 
     def _on_remove_track(self, idx: int):
         if 0 <= idx < len(self._strips):
@@ -1791,14 +1816,15 @@ class MixerView(QWidget):
                     f"True peak: {result.true_peak_dbtp:.2f} dBTP"
                 )
 
-            # Codec probing and encoding both belong to the worker path. The
-            # dialog offers the known formats; an unavailable encoder reports
-            # its reason from the export worker without freezing the shell.
-            filters = [f"{fmt.upper()} (*.{fmt})" for fmt in DELIVERY_FORMATS]
-            path, _ = QFileDialog.getSaveFileName(
-                self, "Export Mastered Audio", "master.wav", ";;".join(filters)
+            path, selected_filter = save_audio_file(
+                self,
+                "Export Mastered Audio",
+                "master.wav",
+                operation_kind="mixer_master_export",
+                dialog=QFileDialog,
             )
             if path and result.audio is not None:
+                path = ensure_extension(path, selected_filter)
                 fmt = os.path.splitext(path)[1].lower().lstrip(".") or "wav"
                 settings = ExportSettings(
                     format=fmt,

@@ -29,6 +29,7 @@ from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
 from core.workers import InferenceWorker
+from ui.file_dialogs import choose_directory
 
 
 # ── System Check ───────────────────────────────────────────────────────────────
@@ -727,7 +728,12 @@ class QuickStartPage(QWidget):
         return str(self._experience.currentData() or "beginner")
 
     def _browse_output_dir(self):
-        path = QFileDialog.getExistingDirectory(self, "Select output directory")
+        path = choose_directory(
+            self,
+            "Select output directory",
+            operation_kind="onboarding_output_directory",
+            dialog=QFileDialog,
+        )
         if path:
             self._output_dir.setText(path)
 

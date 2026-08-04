@@ -33,6 +33,7 @@ from core.engine_contract import (
     adapt_engine_result,
 )
 from core.model_manager import ModelManager
+from ui.file_dialogs import ensure_extension, open_midi_file, save_file, save_midi_file
 from core.settings import Settings
 from core.provenance import sidecar_path_for
 from core.workers import CancelledJobError, InferenceWorker
@@ -751,8 +752,11 @@ class MidiStudioView(QWidget):
     # ── Import / Export ────────────────────────────────────────────────────────
 
     def _on_import(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Import MIDI File", "", "MIDI Files (*.mid *.midi)"
+        path, _ = open_midi_file(
+            self,
+            "Import MIDI File",
+            operation_kind="midi_import",
+            dialog=QFileDialog,
         )
         if path:
             try:
@@ -767,10 +771,15 @@ class MidiStudioView(QWidget):
             self._report_error("Nothing to export")
             return
 
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export MIDI File", "composition.mid", "MIDI Files (*.mid)"
+        path, selected_filter = save_midi_file(
+            self,
+            "Export MIDI File",
+            "composition.mid",
+            operation_kind="midi_export",
+            dialog=QFileDialog,
         )
         if path:
+            path = ensure_extension(path, selected_filter, default="mid")
             try:
                 save_midi(self._midi_data, path)
                 self._status.setText(f"Exported: {path}")
@@ -784,11 +793,13 @@ class MidiStudioView(QWidget):
             self._report_error("Nothing to export")
             return
 
-        path, selected_filter = QFileDialog.getSaveFileName(
+        path, selected_filter = save_file(
             self,
             "Export Chord Chart",
             "chord_chart.chordpro",
             "ChordPro (*.chordpro);;Chord sheet (*.crd)",
+            "midi_chart_export",
+            dialog=QFileDialog,
         )
         if not path:
             return

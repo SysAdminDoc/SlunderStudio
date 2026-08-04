@@ -56,6 +56,7 @@ from core.pronunciation import (
     parse_phoneme_text,
 )
 from core.project import get_project_manager
+from ui.file_dialogs import ensure_extension, open_audio_file, save_audio_file
 
 
 def _vocal_remix_export_task(
@@ -67,11 +68,13 @@ def _vocal_remix_export_task(
 ):
     from core.audio_export import ExportSettings, export_from_numpy
 
+    fmt = os.path.splitext(output_path)[1].lower().lstrip(".") or "wav"
+
     written = export_from_numpy(
         audio,
         44100,
         output_path,
-        ExportSettings(format="wav", sample_rate=44100),
+        ExportSettings(format=fmt, sample_rate=44100),
         module="vocal_suite",
         operation="remix_export",
         progress_cb=progress_cb,
@@ -96,7 +99,9 @@ def _vocal_audio_export_task(
     written = export_audio(
         source_path,
         output_path,
-        ExportSettings(format="wav"),
+        ExportSettings(
+            format=os.path.splitext(output_path)[1].lower().lstrip(".") or "wav"
+        ),
         module="vocal_suite",
         operation="export_vocal_wav",
         progress_cb=progress_cb,
@@ -1791,8 +1796,11 @@ class VocalSuiteView(QWidget):
         self._update_pronunciation_button()
 
     def _on_melody_browse(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Humming Audio", "", "Audio (*.wav *.flac *.mp3 *.ogg)"
+        path, _ = open_audio_file(
+            self,
+            "Select Humming Audio",
+            operation_kind="vocal_melody_import",
+            dialog=QFileDialog,
         )
         if path:
             self._set_melody_input(path)
@@ -1907,8 +1915,11 @@ class VocalSuiteView(QWidget):
         self._status.setText("Lyric melody generation cancelled")
 
     def _on_rvc_browse(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Audio", "", "Audio (*.wav *.flac *.mp3 *.ogg)"
+        path, _ = open_audio_file(
+            self,
+            "Select Audio",
+            operation_kind="vocal_rvc_import",
+            dialog=QFileDialog,
         )
         if path:
             self._rvc_input_label.setText(os.path.basename(path))
@@ -2115,8 +2126,11 @@ class VocalSuiteView(QWidget):
         self._on_rvc_profile_changed(self._rvc_voice.currentIndex())
 
     def _on_clone_browse_ref(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Reference Audio", "", "Audio (*.wav *.flac *.mp3)"
+        path, _ = open_audio_file(
+            self,
+            "Select Reference Audio",
+            operation_kind="vocal_clone_reference_import",
+            dialog=QFileDialog,
         )
         if path:
             self._clone_ref_label.setText(os.path.basename(path))
@@ -2544,8 +2558,11 @@ class VocalSuiteView(QWidget):
         self._refresh_capability_states()
 
     def _on_autotune_browse(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Vocal Audio", "", "Audio (*.wav *.flac *.mp3 *.ogg)"
+        path, _ = open_audio_file(
+            self,
+            "Select Vocal Audio",
+            operation_kind="vocal_autotune_import",
+            dialog=QFileDialog,
         )
         if path:
             self._set_autotune_input(path)
@@ -2648,8 +2665,11 @@ class VocalSuiteView(QWidget):
         self._status.setText("Auto-tune cancelled")
 
     def _on_stems_browse(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Audio to Separate", "", "Audio (*.wav *.flac *.mp3 *.ogg)"
+        path, _ = open_audio_file(
+            self,
+            "Select Audio to Separate",
+            operation_kind="vocal_stems_import",
+            dialog=QFileDialog,
         )
         if path:
             self._stem_input_label.setText(os.path.basename(path))
@@ -2857,10 +2877,15 @@ class VocalSuiteView(QWidget):
             self._status.setText("No stems to remix")
             return
 
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export Remix", "remix.wav", "WAV (*.wav)"
+        path, selected_filter = save_audio_file(
+            self,
+            "Export Remix",
+            "remix.wav",
+            operation_kind="vocal_remix_export",
+            dialog=QFileDialog,
         )
         if path:
+            path = ensure_extension(path, selected_filter)
             worker = InferenceWorker(
                 _vocal_remix_export_task,
                 audio.copy(),
@@ -2904,11 +2929,16 @@ class VocalSuiteView(QWidget):
             self._report_error("No vocal audio is available to export")
             return
 
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export Vocal WAV", "vocal_output.wav", "WAV (*.wav)"
+        path, selected_filter = save_audio_file(
+            self,
+            "Export Vocal Audio",
+            "vocal_output.wav",
+            operation_kind="vocal_audio_export",
+            dialog=QFileDialog,
         )
         if not path:
             return
+        path = ensure_extension(path, selected_filter)
 
         worker = InferenceWorker(
             _vocal_audio_export_task,
@@ -2916,7 +2946,7 @@ class VocalSuiteView(QWidget):
             path,
         )
         worker.progress.connect(
-            lambda pct: self._on_operation_progress("Exporting vocal WAV", pct)
+            lambda pct: self._on_operation_progress("Exporting vocal audio", pct)
         )
         worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(self._on_export_finished)
@@ -2926,7 +2956,7 @@ class VocalSuiteView(QWidget):
         self._export_worker = worker
         self._export_btn.setEnabled(False)
         self._export_btn.setText("Cancel Export")
-        self._start_operation_progress("Exporting vocal WAV")
+        self._start_operation_progress("Exporting vocal audio")
         worker.start()
 
     def _release_export_worker_later(self, worker):
@@ -2951,7 +2981,8 @@ class VocalSuiteView(QWidget):
         else:
             warnings = payload.get("license_warnings", [])
             suffix = f" Warning: {warnings[0]}" if warnings else ""
-            self._status.setText(f"Exported vocal WAV: {output}{suffix}")
+            fmt = os.path.splitext(output)[1].lstrip(".").upper() or "AUDIO"
+            self._status.setText(f"Exported vocal {fmt}: {output}{suffix}")
         self._enable_routing()
 
     def _on_export_error(self, message: str):

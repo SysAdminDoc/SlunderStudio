@@ -30,6 +30,8 @@ from core.provenance import (
     rerender_from_provenance,
 )
 from core.workers import InferenceWorker
+from core.routing import is_midi_path
+from ui.file_dialogs import choose_directory, open_project_files
 
 
 def _rerender_provenance_task(
@@ -580,26 +582,39 @@ class ProjectDetailPanel(QWidget):
         if not mgr.current:
             return
 
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Import Asset", "",
-            "Audio (*.wav *.flac *.mp3);;MIDI (*.mid *.midi);;All (*.*)"
+        fallback_dir = (
+            os.path.dirname(mgr.current.assets[0].file_path)
+            if mgr.current.assets else None
         )
-        if path:
-            ext = path.lower().rsplit(".", 1)[-1]
-            atype = "midi" if ext in ("mid", "midi") else "audio"
-            try:
-                asset_id = mgr.import_asset(path, atype, "project_manager")
-            except Exception as exc:
-                if self.toast_mgr:
-                    self.toast_mgr.error(f"Asset import failed: {exc}")
-                return
-            if not asset_id:
+        paths, _ = open_project_files(
+            self,
+            "Import Project Assets",
+            operation_kind="project_asset_import",
+            dialog=QFileDialog,
+            fallback_dir=fallback_dir,
+        )
+        if paths:
+            imported = 0
+            for path in paths:
+                atype = "midi" if is_midi_path(path) else "audio"
+                try:
+                    asset_id = mgr.import_asset(path, atype, "project_manager")
+                except Exception as exc:
+                    if self.toast_mgr:
+                        self.toast_mgr.error(f"Asset import failed: {exc}")
+                    continue
+                if asset_id:
+                    imported += 1
+                    continue
                 if self.toast_mgr:
                     self.toast_mgr.error("Asset import failed: no project is open.")
-                return
-            self.load_project(mgr.current)
-            if self.toast_mgr:
-                self.toast_mgr.success("Asset imported into the project.")
+            if imported:
+                self.load_project(mgr.current)
+                if self.toast_mgr:
+                    suffix = "s" if imported != 1 else ""
+                    self.toast_mgr.success(
+                        f"Imported {imported} project asset{suffix}."
+                    )
 
     def _on_delete_asset(self):
         mgr = get_project_manager()
@@ -794,10 +809,15 @@ class ProjectDetailPanel(QWidget):
             return
 
         self.sync_pending_edits()
-        output_dir = QFileDialog.getExistingDirectory(
+        output_dir = choose_directory(
             self,
             "Export AI Disclosure",
-            os.path.dirname(project.assets[0].file_path) if project.assets else "",
+            operation_kind="project_disclosure_export",
+            fallback_dir=(
+                os.path.dirname(project.assets[0].file_path)
+                if project.assets else None
+            ),
+            dialog=QFileDialog,
         )
         if not output_dir:
             return

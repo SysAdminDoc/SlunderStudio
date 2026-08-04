@@ -34,6 +34,7 @@ from core.audio_engine import (
     format_output_device_identity,
 )
 from core.workers import CancelledJobError, InferenceWorker
+from ui.file_dialogs import choose_directory, save_file
 
 
 def _recovery_cleanup_task(
@@ -959,7 +960,12 @@ class SettingsView(QWidget):
             self.toast_mgr.info(tr("settings.messages.locale_changed", locale=selected))
 
     def _browse_output_dir(self):
-        path = QFileDialog.getExistingDirectory(self, tr("settings.dialogs.select_output_directory"))
+        path = choose_directory(
+            self,
+            tr("settings.dialogs.select_output_directory"),
+            operation_kind="settings_output_directory",
+            dialog=QFileDialog,
+        )
         if path:
             self._output_dir.setText(path)
             self._save("general.output_dir", path)
@@ -1133,11 +1139,13 @@ class SettingsView(QWidget):
         if self._health_report_worker is not None:
             self._cancel_active_operation()
             return
-        path, _selected_filter = QFileDialog.getSaveFileName(
+        path, _selected_filter = save_file(
             self,
             tr("settings.dialogs.export_health"),
             "slunderstudio-health-report.zip",
             "Health Report (*.zip)",
+            "health_report_export",
+            dialog=QFileDialog,
         )
         if not path:
             return

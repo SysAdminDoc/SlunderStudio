@@ -26,6 +26,7 @@ from ui.reference_panel import ReferencePanel
 from ui.accessibility import install_accessibility
 from ui.widgets import EmptyStateWidget
 from ui.theme import Palette
+from ui.file_dialogs import ensure_extension, open_audio_file, save_audio_file
 
 
 def _song_forge_export_task(
@@ -772,8 +773,11 @@ class SongForgeView(QWidget):
             self._duration_spin.setToolTip("Target generated song duration.")
 
     def _on_browse_cover_source(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Source Audio", "", "Audio Files (*.wav *.flac *.mp3 *.ogg)"
+        path, _ = open_audio_file(
+            self,
+            "Select Source Audio",
+            operation_kind="song_forge_source_import",
+            dialog=QFileDialog,
         )
         if path:
             self._cover_source_path = path
@@ -1295,11 +1299,15 @@ class SongForgeView(QWidget):
         if not self._current_audio_path:
             return
 
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export Audio", "",
-            "WAV (*.wav);;FLAC (*.flac);;MP3 (*.mp3);;OGG (*.ogg)",
+        path, selected_filter = save_audio_file(
+            self,
+            "Export Audio",
+            "song.wav",
+            operation_kind="song_forge_audio_export",
+            dialog=QFileDialog,
         )
         if path:
+            path = ensure_extension(path, selected_filter)
             from core.audio_export import ExportSettings
 
             fmt = path.rsplit(".", 1)[-1].lower()

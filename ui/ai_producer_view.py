@@ -7,7 +7,7 @@ import os
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
-    QComboBox, QSpinBox, QFrame, QCheckBox, QProgressBar,
+    QComboBox, QSpinBox, QFrame, QCheckBox, QProgressBar, QFileDialog,
 )
 from PySide6.QtCore import Qt, QTimer
 
@@ -21,6 +21,7 @@ from engines.ai_producer import (
 )
 from core.mastering import PRESETS
 from core.workers import InferenceWorker
+from ui.file_dialogs import ensure_extension, save_audio_file
 from core.engine_contract import (
     ArtifactKind,
     CAP_PRODUCER_RUN,
@@ -63,31 +64,25 @@ def _producer_export_task(
     cancel_event=None,
     **_kwargs,
 ) -> str:
-    """Copy a verified producer artifact without blocking the GUI."""
+    """Export a verified producer artifact without blocking the GUI."""
+    from core.audio_export import ExportSettings, export_audio
     from core.workers import CancelledJobError
 
-    total = max(1, os.path.getsize(source_path))
-    copied = 0
+    fmt = os.path.splitext(output_path)[1].lower().lstrip(".") or "wav"
     try:
-        with open(source_path, "rb") as source, open(output_path, "wb") as target:
-            while True:
-                if cancel_event is not None and cancel_event.is_set():
-                    raise CancelledJobError(
-                        "Producer export cancelled",
-                        outputs=[output_path],
-                    )
-                chunk = source.read(1_048_576)
-                if not chunk:
-                    break
-                target.write(chunk)
-                copied += len(chunk)
-                if progress_cb:
-                    progress_cb(min(100, int(copied * 100 / total)))
+        return export_audio(
+            source_path,
+            output_path,
+            ExportSettings(format=fmt),
+            module="ai_producer",
+            operation="producer_export",
+            progress_cb=progress_cb,
+            cancel_event=cancel_event,
+        )
     except CancelledJobError:
         if os.path.exists(output_path):
             os.remove(output_path)
         raise
-    return output_path
 
 
 class StageIndicator(QFrame):
@@ -843,12 +838,15 @@ class AIProducerView(QWidget):
             )
             return
 
-        from PySide6.QtWidgets import QFileDialog
-
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export Final Song", "song.wav", "WAV (*.wav)"
+        path, selected_filter = save_audio_file(
+            self,
+            "Export Final Song",
+            "song.wav",
+            operation_kind="ai_producer_export",
+            dialog=QFileDialog,
         )
         if path:
+            path = ensure_extension(path, selected_filter)
             worker = InferenceWorker(
                 _producer_export_task,
                 self._result.final_audio_path,

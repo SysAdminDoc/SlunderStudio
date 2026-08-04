@@ -80,8 +80,8 @@ class ProjectManagerAssetUITests(unittest.TestCase):
             with (
                 mock.patch("ui.project_manager.get_project_manager", return_value=manager),
                 mock.patch(
-                    "ui.project_manager.QFileDialog.getOpenFileName",
-                    return_value=("C:/source.wav", "Audio (*.wav)"),
+                    "ui.project_manager.QFileDialog.getOpenFileNames",
+                    return_value=(["C:/source.wav"], "Audio Files (*.wav)"),
                 ),
             ):
                 panel._on_import_asset()
