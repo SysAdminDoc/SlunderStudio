@@ -351,6 +351,11 @@ class StemMixer(QWidget):
         self._export_stems_btn.setEnabled(len(self._strips) > 0)
         self._empty.setVisible(not self._strips)
 
+    @property
+    def sample_rate(self) -> int:
+        """Sample rate shared by the currently loaded stem set."""
+        return int(self._sample_rate)
+
     def clear(self):
         for strip in self._strips.values():
             self._container_layout.removeWidget(strip)

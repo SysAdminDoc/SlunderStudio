@@ -68,6 +68,8 @@ from ui.file_dialogs import (
 def _vocal_remix_export_task(
     audio: np.ndarray,
     output_path: str,
+    sample_rate: int = 44100,
+    source_paths: Optional[list[str]] = None,
     progress_cb=None,
     cancel_event=None,
     **_kwargs,
@@ -75,14 +77,22 @@ def _vocal_remix_export_task(
     from core.audio_export import ExportSettings, export_from_numpy
 
     fmt = os.path.splitext(output_path)[1].lower().lstrip(".") or "wav"
+    sample_rate = int(sample_rate)
+    if sample_rate <= 0:
+        raise ValueError("Remix sample rate must be positive")
 
     written = export_from_numpy(
         audio,
-        44100,
+        sample_rate,
         output_path,
-        ExportSettings(format=fmt, sample_rate=44100),
+        ExportSettings(format=fmt, sample_rate=sample_rate),
         module="vocal_suite",
         operation="remix_export",
+        source_paths=[path for path in (source_paths or []) if path],
+        provenance_extra={
+            "remix_sample_rate": sample_rate,
+            "stem_count": int(len(source_paths or [])),
+        },
         progress_cb=progress_cb,
         cancel_event=cancel_event,
     )
@@ -2948,6 +2958,11 @@ class VocalSuiteView(QWidget):
         if audio is None:
             self._status.setText("No stems to remix")
             return
+        source_paths = [
+            str(snapshot.get("source_path", ""))
+            for snapshot in self._stem_mixer.get_stem_export_snapshots()
+            if snapshot.get("source_path")
+        ]
 
         path, selected_filter = save_audio_file(
             self,
@@ -2962,6 +2977,8 @@ class VocalSuiteView(QWidget):
                 _vocal_remix_export_task,
                 audio.copy(),
                 path,
+                self._stem_mixer.sample_rate,
+                source_paths,
             )
             worker.progress.connect(
                 lambda pct: self._on_operation_progress("Exporting remix", pct)
@@ -3038,7 +3055,7 @@ class VocalSuiteView(QWidget):
 
         try:
             engine = AudioEngine()
-            if not engine.load_array(strip.audio, self._stem_mixer._sample_rate):
+            if not engine.load_array(strip.audio, self._stem_mixer.sample_rate):
                 self._report_error(f"Could not load the {stem_name} stem for playback")
                 return
             engine.play()

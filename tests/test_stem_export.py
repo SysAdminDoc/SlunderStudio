@@ -13,7 +13,7 @@ from core.stem_export import (
     stem_export_filename,
     stem_export_filenames,
 )
-from ui.vocal_suite_view import _vocal_stem_export_task
+from ui.vocal_suite_view import _vocal_remix_export_task, _vocal_stem_export_task
 
 
 class StemExportNamingTests(unittest.TestCase):
@@ -90,6 +90,26 @@ class StemExportNamingTests(unittest.TestCase):
             data = json.loads(Path(sidecar).read_text(encoding="utf-8"))
             self.assertEqual("pro_tools", data["extra"]["stem_export_template"])
             self.assertEqual("Vocals", data["extra"]["stem_name"])
+
+    def test_remix_worker_uses_loaded_rate_and_writes_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = os.path.join(tmp, "remix.wav")
+            source = os.path.join(tmp, "vocals.wav")
+            Path(source).write_bytes(b"source placeholder")
+            result = _vocal_remix_export_task(
+                np.zeros((480, 2), dtype=np.float32),
+                output,
+                48000,
+                [source],
+            )
+
+            self.assertEqual(output, result["path"])
+            self.assertEqual(48000, sf.info(output).samplerate)
+            provenance = json.loads(
+                Path(output + ".provenance.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(48000, provenance["extra"]["remix_sample_rate"])
+            self.assertEqual([source], provenance["source_paths"])
 
 
 if __name__ == "__main__":

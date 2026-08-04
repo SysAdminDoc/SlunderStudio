@@ -10,6 +10,8 @@ All notable changes to SlunderStudio will be documented in this file.
   malformed JSON roots fail through repair diagnostics instead of uncaught exceptions.
 - Hardened Model Hub refresh filtering so a transiently stale card is treated as unavailable instead
   of raising from the Qt event loop.
+- Fixed Vocal Suite remix export to use the loaded stems' sample rate and record its source paths and
+  rate in the provenance sidecar.
 - Added central admission control for model work: downloads are globally bounded and
   duplicate-keyed, model-bearing workers queue behind a cancellable inference slot, and health
   reports expose active/queued capacity without duplicating resume or SHA-256 verification.
