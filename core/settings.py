@@ -87,6 +87,10 @@ DEFAULTS = {
         "offline_mode": False,
         "auto_download_core": True,
         "show_experimental": False,
+        # Admission limits keep model downloads from exhausting disk/network
+        # resources and serialize GPU-bound inference by default.
+        "max_concurrent_downloads": 2,
+        "max_concurrent_inference": 1,
         "execution_consents": {},
         "license_consents": {},
         # Update targets are persisted only after an immutable commit SHA and

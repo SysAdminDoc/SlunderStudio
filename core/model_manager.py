@@ -18,6 +18,11 @@ from dataclasses import dataclass, field, replace
 from PySide6.QtCore import QObject, Signal
 
 from core.settings import Settings, get_config_dir
+from core.admission import (
+    AdmissionBusyError,
+    AdmissionCancelledError,
+    global_admission_controller,
+)
 from core.device import configured_cuda_index
 from core.trash import TrashEntry, TrashError, TrashManager
 from core.model_security import ModelSecurityError
@@ -2701,36 +2706,54 @@ class ModelManager(QObject):
             raise ValueError(f"Unknown model: {model_id}")
         self._validate_registry_revision(info)
 
-        limit = self.get_cache_limit_gb()
-        if limit and not self._is_model_cached(model_id):
-            used = self.get_total_disk_usage()
-            if used + info.disk_gb > limit:
-                raise RuntimeError(
-                    f"Model cache limit is {limit:.1f} GB; {info.name} needs about "
-                    f"{info.disk_gb:.1f} GB and {used:.1f} GB is already used. "
-                    "Increase the limit in Settings > Advanced > Cache or remove "
-                    "an installed model from Model Hub."
-                )
-
-        with self._state_lock:
-            if model_id in self._downloads_in_flight:
-                raise DownloadInFlightError(
-                    f"A download for {info.name} is already running."
-                )
-            self._downloads_in_flight.add(model_id)
         try:
-            return self._download_model_locked(
-                info,
-                model_id,
-                progress_cb=progress_cb,
-                speed_cb=speed_cb,
-                downloaded_cb=downloaded_cb,
+            admission_lease = global_admission_controller().acquire(
+                "download",
+                key=model_id,
                 cancel_event=cancel_event,
-                revision_override=revision_override,
             )
-        finally:
+        except AdmissionBusyError as exc:
+            raise DownloadInFlightError(str(exc)) from exc
+        except AdmissionCancelledError as exc:
+            from core.workers import CancelledJobError
+
+            raise CancelledJobError(
+                str(exc), outputs={"model_id": model_id}
+            ) from exc
+        try:
+            # Recheck storage after admission: a preceding download may have
+            # completed while this request was waiting for the global slot.
+            limit = self.get_cache_limit_gb()
+            if limit and not self._is_model_cached(model_id):
+                used = self.get_total_disk_usage()
+                if used + info.disk_gb > limit:
+                    raise RuntimeError(
+                        f"Model cache limit is {limit:.1f} GB; {info.name} needs about "
+                        f"{info.disk_gb:.1f} GB and {used:.1f} GB is already used. "
+                        "Increase the limit in Settings > Advanced > Cache or remove "
+                        "an installed model from Model Hub."
+                    )
             with self._state_lock:
-                self._downloads_in_flight.discard(model_id)
+                if model_id in self._downloads_in_flight:
+                    raise DownloadInFlightError(
+                        f"A download for {info.name} is already running."
+                    )
+                self._downloads_in_flight.add(model_id)
+            try:
+                return self._download_model_locked(
+                    info,
+                    model_id,
+                    progress_cb=progress_cb,
+                    speed_cb=speed_cb,
+                    downloaded_cb=downloaded_cb,
+                    cancel_event=cancel_event,
+                    revision_override=revision_override,
+                )
+            finally:
+                with self._state_lock:
+                    self._downloads_in_flight.discard(model_id)
+        finally:
+            admission_lease.release()
 
     def _download_model_locked(self, info: ModelInfo, model_id: str, progress_cb=None,
                                speed_cb=None, downloaded_cb=None, cancel_event=None,
@@ -3313,6 +3336,10 @@ class ModelManager(QObject):
             else None
         )
         return gpu
+
+    def admission_snapshot(self) -> dict[str, Any]:
+        """Return central model-work capacity without exposing queue internals."""
+        return global_admission_controller().snapshot().to_dict()
 
     def _emit_gpu_status(self):
         self.gpu_status_changed.emit(self.get_gpu_status())

@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added central admission control for model work: downloads are globally bounded and
+  duplicate-keyed, model-bearing workers queue behind a cancellable inference slot, and health
+  reports expose active/queued capacity without duplicating resume or SHA-256 verification.
 - Added paired Q4_K_M and Q8_0 GGUF lyrics variants with immutable source revisions,
   explicit disk/VRAM tradeoffs, upstream quality labels, and a runner-neutral benchmark contract
   for numeric quality, token latency, RAM, and peak-VRAM measurements.

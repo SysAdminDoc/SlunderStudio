@@ -12,6 +12,11 @@ from typing import Any, Callable, Optional
 from PySide6.QtCore import QThread, Signal
 
 from core.job_state import JobLog, JobStore, extract_output_paths
+from core.admission import (
+    AdmissionCancelledError,
+    admission_kind_for_job,
+    global_admission_controller,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -130,6 +135,7 @@ class InferenceWorker(QThread):
         job_inputs: Optional[dict[str, Any]] = None,
         job_metadata: Optional[dict[str, Any]] = None,
         job_store: Optional[JobStore] = None,
+        admission_kind: Optional[str] = None,
         **kwargs,
     ):
         super().__init__()
@@ -143,6 +149,11 @@ class InferenceWorker(QThread):
         self.job_id = ""
         self._last_job_progress_persisted_at = 0.0
         self._job_log: Optional[JobLog] = None
+        self._admission_kind = (
+            admission_kind
+            if admission_kind is not None
+            else admission_kind_for_job(job_kind)
+        )
         if job_kind:
             self._job_record = self._job_store.create(
                 job_kind,
@@ -158,7 +169,24 @@ class InferenceWorker(QThread):
             self._job_store.mark_running(self.job_id, "Starting")
         if self._job_log:
             self._job_log.info(f"Job started: {self.job_id}")
+        admission_lease = None
         try:
+            if self._admission_kind:
+                waiting_notice = [False]
+
+                def _announce_wait():
+                    if not waiting_notice[0]:
+                        waiting_notice[0] = True
+                        self._emit_step("Waiting for model capacity...")
+
+                try:
+                    admission_lease = global_admission_controller().acquire(
+                        self._admission_kind,
+                        cancel_event=self._cancel_event,
+                        wait_cb=_announce_wait,
+                    )
+                except AdmissionCancelledError as exc:
+                    raise CancelledJobError(str(exc)) from exc
             self._result = self.task_fn(
                 *self.args,
                 **self.kwargs,
@@ -245,13 +273,17 @@ class InferenceWorker(QThread):
             self.error.emit(f"{type(e).__name__}: {e}")
         finally:
             try:
-                if self._job_log:
-                    self._job_log.save()
+                if admission_lease is not None:
+                    admission_lease.release()
             finally:
-                # This is distinct from the result-bearing ``finished``
-                # signal: receivers can release their QThread wrapper only
-                # after all task cleanup has completed, without calling wait.
-                self.thread_stopped.emit()
+                try:
+                    if self._job_log:
+                        self._job_log.save()
+                finally:
+                    # This is distinct from the result-bearing ``finished``
+                    # signal: receivers can release their QThread wrapper only
+                    # after all task cleanup has completed, without calling wait.
+                    self.thread_stopped.emit()
 
     def start(self, *args, **kwargs):
         """Register the thread before it can begin work."""

@@ -782,7 +782,11 @@ class LyricsView(QWidget):
             )
 
         self._set_generating(True)
-        self._worker = InferenceWorker(_task)
+        self._worker = InferenceWorker(
+            _task,
+            job_kind="lyrics_generation",
+            job_label="Regenerate lyrics section",
+        )
         self._worker.progress.connect(self._progress.setValue)
         self._worker.finished.connect(self._on_section_regenerated)
         self._worker.error.connect(self._on_generation_error)
@@ -810,7 +814,11 @@ class LyricsView(QWidget):
         self._set_generating(True)
         self._editor.start_streaming()
 
-        self._worker = InferenceWorker(_task)
+        self._worker = InferenceWorker(
+            _task,
+            job_kind="lyrics_generation",
+            job_label="Lyrics generation",
+        )
         self._worker.token.connect(
             self._editor.append_token,
             Qt.ConnectionType.QueuedConnection,

@@ -114,6 +114,7 @@ def collect_health_report(
         "dependencies": _dependency_info(),
         "dependency_profiles": _dependency_profile_info(),
         "gpu": model_manager.get_gpu_status(),
+        "admission": model_manager.admission_snapshot(),
         "ffmpeg": _ffmpeg_info(replacements),
         "models": _model_info(model_manager, replacements),
         "recent_job_failures": _job_failures(job_store, replacements, include_private),
@@ -137,6 +138,8 @@ def format_health_report_text(report: dict[str, Any]) -> str:
         "Runtime",
         f"- GPU: {report.get('gpu', {}).get('name', 'unknown')} "
         f"({report.get('gpu', {}).get('free_gb', 0)} GB free)",
+        f"- Model admission: {report.get('admission', {}).get('active', {})} active / "
+        f"{report.get('admission', {}).get('queued', {})} queued",
         f"- ffmpeg: {'available' if report.get('ffmpeg', {}).get('available') else 'missing'}",
         f"- Config: {report.get('paths', {}).get('config_dir', '')}",
         f"- Output: {report.get('paths', {}).get('output_dir', '')}",
