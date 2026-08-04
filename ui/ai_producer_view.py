@@ -31,6 +31,7 @@ from core.engine_contract import (
     adapt_engine_result,
 )
 from core.model_manager import ModelManager
+from core.song_generator_registry import active_song_generator_model_ids
 
 
 # ── Stage Card ─────────────────────────────────────────────────────────────────
@@ -243,6 +244,8 @@ class AIProducerView(QWidget):
         self._export_worker: Optional[InferenceWorker] = None
         self._export_workers = set()
         self._last_job_id = ""
+        active_model_ids = active_song_generator_model_ids()
+        self._generator_model_id = active_model_ids[0] if active_model_ids else ""
         self._stage_indicators: dict[PipelineStage, StageIndicator] = {}
         self._model_mgr = ModelManager()
 
@@ -582,6 +585,7 @@ class AIProducerView(QWidget):
             self._output_info.setText(self._readiness_message(readiness))
             self._refresh_capability_state()
             return
+        self._generator_model_id = readiness.model_id or self._generator_model_id
 
         genre = self._genre.currentText()
         mood = self._mood.currentText()
@@ -596,6 +600,7 @@ class AIProducerView(QWidget):
             include_sfx=self._sfx_check.isChecked(),
             mastering_preset=self._master_preset.currentText(),
             demo_fallback=self._demo_fallback_check.isChecked(),
+            song_generator_model_id=self._generator_model_id,
         )
 
         self._reset_for_run()
@@ -658,7 +663,7 @@ class AIProducerView(QWidget):
             CAP_PRODUCER_RUN,
             result,
             artifacts,
-            model_id="ace-step-v1.5",
+            model_id=result.song_model_id or self._generator_model_id,
         )
         self._display_result(result)
         self._finish_worker_ui()
@@ -668,7 +673,7 @@ class AIProducerView(QWidget):
         self._contract_result = EngineRunResult.failure(
             CAP_PRODUCER_RUN,
             error_msg,
-            model_id="ace-step-v1.5",
+            model_id=self._generator_model_id,
         )
         message = f"Production failed: {error_msg}"
         self._output_title.setText("Production failed")
@@ -684,7 +689,7 @@ class AIProducerView(QWidget):
         self._contract_result = EngineRunResult.cancelled(
             CAP_PRODUCER_RUN,
             "Production cancelled before a complete result was available.",
-            model_id="ace-step-v1.5",
+            model_id=self._generator_model_id,
         )
         for indicator in self._stage_indicators.values():
             if indicator._status == "running":
@@ -738,7 +743,7 @@ class AIProducerView(QWidget):
         self._refresh_capability_state()
 
     def _on_model_status_changed(self, model_id: str, _status: str):
-        if model_id == "ace-step-v1.5":
+        if model_id in active_song_generator_model_ids():
             self._refresh_capability_state()
 
     def _readiness_message(self, readiness) -> str:

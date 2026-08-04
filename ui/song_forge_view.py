@@ -17,7 +17,9 @@ from PySide6.QtCore import Signal, Qt
 from core.workers import InferenceWorker
 from core.audio_engine import AudioEngine, decode_playback_file
 from core.settings import Settings
+from core.song_generator_registry import active_song_generator_model_ids
 from engines.style_tags import StyleTagDB, CATEGORIES
+from engines.song_generator_adapter import resolve_song_generator
 from ui.waveform_widget import WaveformWidget
 from ui.batch_view import BatchView
 from ui.seed_explorer import SeedExplorer
@@ -233,11 +235,20 @@ class SongForgeView(QWidget):
         self._playback_worker = None
         self._playback_workers = set()
         self._playback_token = 0
+        active_model_ids = active_song_generator_model_ids()
+        self._song_generator_model_id = active_model_ids[0] if active_model_ids else ""
         self._seed_explore_params: list[dict] = []
         self._routed_reference_context_tags: list[str] = []
         self._settings = Settings()
         self._setup_ui()
         self._settings.on_change(self._on_settings_change)
+
+    def _song_generator_operation(self, operation: str):
+        """Resolve one operation from the configured song-generator adapter."""
+        return resolve_song_generator(
+            self._song_generator_model_id,
+            operation=operation,
+        )[1]
 
     def _on_settings_change(self, key: str, value, _old_value):
         """Apply changed Song Forge defaults to the live generation controls."""
@@ -898,7 +909,7 @@ class SongForgeView(QWidget):
         is_repaint = cover_mode == "Repaint"
 
         if is_cover:
-            from engines.ace_step_engine import generate_cover
+            generate_cover = self._song_generator_operation("generate_cover")
             job_inputs["mode"] = "cover"
             job_inputs["source_audio_path"] = self._cover_source_path
             self._worker = InferenceWorker(
@@ -915,7 +926,7 @@ class SongForgeView(QWidget):
                 job_inputs=job_inputs,
             )
         elif is_extend:
-            from engines.ace_step_engine import generate_extend
+            generate_extend = self._song_generator_operation("generate_extend")
             job_inputs["mode"] = "extend"
             job_inputs["source_audio_path"] = self._cover_source_path
             job_inputs["extend_duration"] = duration
@@ -933,7 +944,7 @@ class SongForgeView(QWidget):
                 job_inputs=job_inputs,
             )
         elif is_repaint:
-            from engines.ace_step_engine import generate_repaint
+            generate_repaint = self._song_generator_operation("generate_repaint")
             job_inputs["mode"] = "repaint"
             job_inputs["source_audio_path"] = self._cover_source_path
             job_inputs["repaint_start"] = self._repaint_start_spin.value()
@@ -953,7 +964,7 @@ class SongForgeView(QWidget):
                 job_inputs=job_inputs,
             )
         elif batch_count > 1:
-            from engines.ace_step_engine import generate_song_batch
+            generate_song_batch = self._song_generator_operation("generate_song_batch")
             self._worker = InferenceWorker(
                 generate_song_batch,
                 lyrics=lyrics,
@@ -968,7 +979,7 @@ class SongForgeView(QWidget):
                 job_inputs=job_inputs,
             )
         else:
-            from engines.ace_step_engine import generate_song
+            generate_song = self._song_generator_operation("generate_song")
             self._worker = InferenceWorker(
                 generate_song,
                 lyrics=lyrics,
@@ -1423,7 +1434,7 @@ class SongForgeView(QWidget):
         self._status.setText("Starting seed exploration...")
         self._set_session_state("Exploring seed grid", Palette.BLUE)
 
-        from engines.ace_step_engine import generate_seed_grid
+        generate_seed_grid = self._song_generator_operation("generate_seed_grid")
         self._worker = InferenceWorker(
             generate_seed_grid,
             lyrics=lyrics,

@@ -78,6 +78,7 @@ DEFAULTS = {
         "auto_download_core": True,
         "show_experimental": False,
         "execution_consents": {},
+        "license_consents": {},
     },
     "lyrics": {
         "model_id": "llama-3.1-8b-q4",

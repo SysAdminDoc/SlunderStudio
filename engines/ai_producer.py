@@ -19,6 +19,8 @@ from core.audio_buffers import mixdown_audio, normalize_channel_layout, resample
 from core.audio_export import write_audio_file
 from core.provenance import write_provenance_sidecar
 from core.settings import get_config_dir, get_configured_output_dir
+from core.song_generator_registry import active_song_generator_model_ids
+from engines.song_generator_adapter import resolve_song_generator
 
 
 class PipelineStage(Enum):
@@ -50,6 +52,7 @@ class ProducerBrief:
     mastering_preset: str = "Balanced"
     seed: Optional[int] = None
     demo_fallback: bool = False
+    song_generator_model_id: str = ""
 
 
 @dataclass
@@ -99,6 +102,7 @@ class ProducerResult:
     lyrics_text: str = ""
     style_tags: list[str] = field(default_factory=list)
     song_audio_path: Optional[str] = None
+    song_model_id: str = ""
     vocal_audio_path: Optional[str] = None
     sfx_audio_path: Optional[str] = None
     mastered_audio_path: Optional[str] = None
@@ -694,7 +698,12 @@ class AIProducer:
     ) -> dict:
         """Generate the instrumental track."""
         try:
-            from engines.ace_step_engine import generate_song
+            active_model_ids = active_song_generator_model_ids()
+            model_id = brief.song_generator_model_id or (
+                active_model_ids[0] if active_model_ids else ""
+            )
+            generator, generate_song = resolve_song_generator(model_id)
+            result.song_model_id = generator.model_id
 
             def _progress(pct: int) -> None:
                 if progress_callback:
@@ -735,8 +744,9 @@ class AIProducer:
             )
             if isinstance(song_result, dict):
                 song_result["audio_path"] = audio_path
+                song_result.setdefault("model_id", generator.model_id)
                 return song_result
-            return {"audio_path": audio_path}
+            return {"audio_path": audio_path, "model_id": generator.model_id}
         except Exception as exc:
             if cancel_event and cancel_event.is_set():
                 return {"cancelled": True}

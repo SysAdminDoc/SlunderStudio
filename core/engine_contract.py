@@ -6,6 +6,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from core.song_generator_registry import active_song_generator_model_ids
+
 
 class ArtifactKind(str, Enum):
     AUDIO = "audio"
@@ -287,7 +289,7 @@ ENGINE_CAPABILITIES: dict[str, EngineCapability] = {
     CAP_SONG_GENERATE: EngineCapability(
         id=CAP_SONG_GENERATE,
         label="Generate song",
-        model_ids=("ace-step-v1.5",),
+        model_ids=active_song_generator_model_ids(),
         outputs=(ArtifactKind.AUDIO, ArtifactKind.PROVENANCE),
         auto_activates=True,
         supports_demo=True,
@@ -302,7 +304,7 @@ ENGINE_CAPABILITIES: dict[str, EngineCapability] = {
     CAP_PRODUCER_RUN: EngineCapability(
         id=CAP_PRODUCER_RUN,
         label="Produce song",
-        model_ids=("ace-step-v1.5",),
+        model_ids=active_song_generator_model_ids(),
         outputs=(ArtifactKind.AUDIO, ArtifactKind.PROVENANCE),
         auto_activates=True,
         supports_demo=True,

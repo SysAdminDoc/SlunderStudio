@@ -12,6 +12,10 @@ All notable changes to SlunderStudio will be documented in this file.
   per-revision execution consent to model loaders.
 - Added OMS detached-signature verification before model loading. Model Hub and provenance now
   distinguish verified, invalid, unavailable, and unsigned model signatures.
+- Made song generation registry-driven: active adapters pin source revisions and local-mirror
+  identities, model manifests retain that identity, and non-commercial or unlicensed generator
+  weights require exact-revision acceptance. A pinned HeartMuLa OSS entry is staged behind its
+  separate runtime profile without advertising an unverified desktop path.
 - Added opt-in C2PA Content Credentials for WAV, FLAC, and MP3 exports. Signed manifests carry
   creation/model disclosure assertions and a round-tripped digest binding back to the provenance
   sidecar; signing remains off by default and never generates or stores private keys.

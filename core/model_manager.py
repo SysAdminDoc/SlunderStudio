@@ -37,6 +37,10 @@ from core.engine_contract import (
     RunMode,
     get_capability,
 )
+from core.song_generator_registry import (
+    SONG_GENERATOR_REGISTRY,
+    default_local_mirror,
+)
 from core.ace_step_contract import (
     ACE_STEP_CAPABILITIES,
     ACE_STEP_DISPLAY_NAME,
@@ -205,6 +209,14 @@ class ModelInfo:
     signature_oidc_issuer: str = ""
     signature_public_key: str = ""
     signature_certificate_chain: list[str] = field(default_factory=list)
+    generator_id: str = ""
+    local_mirror: str = ""
+
+    def __post_init__(self) -> None:
+        """Give every registry entry a portable, revision-pinned mirror key."""
+        if not self.local_mirror:
+            revision = self.revision or "package-managed"
+            self.local_mirror = default_local_mirror(self.model_id, revision)
 
     @property
     def commercial_use_label(self) -> str:
@@ -246,6 +258,8 @@ class ModelInfo:
             "requires_export_warning": self.requires_export_warning,
             "gated": self.gated,
             "access": self.access_label,
+            "generator_id": self.generator_id,
+            "local_mirror": self.local_mirror,
         }
 
     @property
@@ -452,6 +466,7 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
             "and source material."
         ),
         license_url=ACE_STEP_LICENSE_URL,
+        generator_id="ace-step",
     ),
     "llama-3.1-8b-q4": ModelInfo(
         model_id="llama-3.1-8b-q4",
@@ -751,6 +766,63 @@ BUILTIN_MODELS: dict[str, ModelInfo] = {
 }
 
 
+def _register_song_generator_models() -> None:
+    """Project active generator configurations into the model registry."""
+    for config in SONG_GENERATOR_REGISTRY.values():
+        if not config.enabled:
+            continue
+        existing = BUILTIN_MODELS.get(config.model_id)
+        if existing is not None:
+            identity = {
+                "source": (existing.source, config.source),
+                "revision": (existing.revision, config.revision),
+                "loader_module": (existing.loader_module, config.adapter_module),
+                "loader_fn": (existing.loader_fn, config.loader_fn),
+                "local_mirror": (existing.local_mirror, config.local_mirror),
+            }
+            mismatches = [
+                name for name, (actual, expected) in identity.items()
+                if actual != expected
+            ]
+            if mismatches:
+                raise RuntimeError(
+                    f"Song generator {config.model_id} disagrees with the model "
+                    f"registry: {', '.join(mismatches)}."
+                )
+            existing.generator_id = config.generator_id
+            continue
+
+        BUILTIN_MODELS[config.model_id] = ModelInfo(
+            model_id=config.model_id,
+            name=config.display_name,
+            description=config.description or f"{config.display_name} song generator.",
+            category=ModelCategory.SONG_FORGE,
+            vram_gb=config.vram_gb,
+            disk_gb=config.disk_gb,
+            license=config.license,
+            source=config.source,
+            loader_module=config.adapter_module,
+            loader_fn=config.loader_fn,
+            is_core=config.is_core,
+            tags=list(config.capabilities),
+            task_labels=["best song generation"],
+            task_scores={"best song generation": 1.0},
+            revision=config.revision,
+            vram_tier=vram_tier_for_gb(config.vram_gb),
+            trust_note=(
+                "Registry-declared generator with a pinned source revision and "
+                "portable local mirror identity."
+            ),
+            commercial_use=config.commercial_use,
+            license_url=config.license_url,
+            generator_id=config.generator_id,
+            local_mirror=config.local_mirror,
+        )
+
+
+_register_song_generator_models()
+
+
 MODEL_RUNTIME_PACKAGES: dict[str, tuple[tuple[str, str], ...]] = {
     ACE_STEP_MODEL_ID: (
         ("torch", "torch"),
@@ -959,6 +1031,8 @@ class ModelManager(QObject):
             "requires_export_warning": True,
             "gated": False,
             "access": "Unknown",
+            "generator_id": "",
+            "local_mirror": "",
         }
         manifest = self.get_download_manifest(model_id)
         if manifest:
@@ -972,10 +1046,68 @@ class ModelManager(QObject):
                 "requires_export_warning",
                 "gated",
                 "access",
+                "generator_id",
+                "local_mirror",
             ):
                 if key in manifest and manifest[key] not in ("", None):
                     metadata[key] = manifest[key]
         return metadata
+
+    @staticmethod
+    def _license_consent_key(info: ModelInfo) -> str:
+        revision = info.revision or "package-managed"
+        return f"{info.model_id}@{revision}"
+
+    def has_license_acceptance(self, model_id: str) -> bool:
+        """Return whether this exact model revision is cleared for use."""
+        info = self.get_model_info(model_id)
+        if info is None:
+            return False
+        if info.license.strip() and info.commercial_use == COMMERCIAL_USE_ALLOWED:
+            return True
+        consents = self._settings.get("model_hub.license_consents", {}) or {}
+        consent = consents.get(self._license_consent_key(info), {}) if isinstance(consents, dict) else {}
+        return bool(
+            isinstance(consent, dict)
+            and consent.get("approved") is True
+            and consent.get("source") == info.source
+            and consent.get("revision") == info.revision
+            and consent.get("license") == info.license
+            and consent.get("commercial_use") == info.commercial_use
+        )
+
+    def record_license_acceptance(self, model_id: str, accepted: bool = True) -> None:
+        """Persist acceptance for one exact source/revision and its license."""
+        info = self.get_model_info(model_id)
+        if info is None:
+            raise ModelSecurityError(f"Unknown model: {model_id}")
+        consents = self._settings.get("model_hub.license_consents", {}) or {}
+        if not isinstance(consents, dict):
+            consents = {}
+        key = self._license_consent_key(info)
+        if accepted:
+            consents[key] = {
+                "approved": True,
+                "source": info.source,
+                "revision": info.revision,
+                "license": info.license,
+                "commercial_use": info.commercial_use,
+            }
+        else:
+            consents.pop(key, None)
+        self._settings.set("model_hub.license_consents", consents)
+
+    def require_model_license_acceptance(self, model_id: str) -> None:
+        """Fail closed for non-commercial or unlicensed model weights."""
+        info = self.get_model_info(model_id)
+        if info is None:
+            raise ModelSecurityError(f"Unknown model: {model_id}")
+        if not self.has_license_acceptance(model_id):
+            license_name = info.license.strip() or "unlicensed weights"
+            raise ModelSecurityError(
+                f"{info.name} requires explicit acceptance of {license_name} "
+                f"for revision {info.revision or 'package-managed'}."
+            )
 
     def get_model_signature_metadata(self, model_id: str) -> dict[str, Any]:
         """Return the persisted OMS state without treating an unsigned model as verified."""
@@ -1602,6 +1734,8 @@ class ModelManager(QObject):
         info = self._registry.get(model_id)
         if info is None:
             raise ModelSecurityError(f"Unknown model: {model_id}")
+        if info.generator_id:
+            self.require_model_license_acceptance(model_id)
         if info.pip_managed:
             return {
                 "model_id": model_id,
@@ -2017,6 +2151,8 @@ class ModelManager(QObject):
         )
         marker.write_text(json.dumps({
             "model_id": model_id,
+            "generator_id": info.generator_id if info else "",
+            "local_mirror": info.local_mirror if info else "",
             "timestamp": _time.time(),
             "file_count": file_count,
             "total_bytes": total_size,
@@ -2085,6 +2221,18 @@ class ModelManager(QObject):
             meta = json.loads(marker.read_text())
             if meta.get("model_id") != model_id:
                 return False, "Manifest model ID mismatch"
+            identity_fields = {
+                "generator_id": info.generator_id,
+                "local_mirror": info.local_mirror,
+            }
+            identity_changed = False
+            for key, expected in identity_fields.items():
+                stored = meta.get(key)
+                if stored not in (None, "") and stored != expected:
+                    return False, f"Manifest {key} mismatch"
+                if stored != expected:
+                    meta[key] = expected
+                    identity_changed = True
             if meta.get("source") != info.source:
                 return False, "Manifest source mismatch"
             if meta.get("revision") != info.revision:
@@ -2131,7 +2279,7 @@ class ModelManager(QObject):
 
             signature = verify_oms_signature(cache_path, info)
             signature_fields = signature.as_manifest_fields()
-            if any(meta.get(key) != value for key, value in signature_fields.items()):
+            if identity_changed or any(meta.get(key) != value for key, value in signature_fields.items()):
                 meta.update(signature_fields)
                 marker.write_text(json.dumps(meta, indent=2))
             if not signature.is_acceptable:
