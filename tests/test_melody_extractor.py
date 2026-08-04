@@ -65,6 +65,12 @@ class MelodyExtractorTests(unittest.TestCase):
         self.assertEqual(["Hey", "you", "broken-hearted"], [entry["text"] for entry in aligned])
         self.assertEqual(62, aligned[1]["pitch"])
 
+    def test_lyrics_tokenizer_skips_section_tags_and_parentheticals(self):
+        self.assertEqual(
+            ["hello", "world"],
+            lyric_units_from_text("[Verse 1]\nhello (softly)\nworld"),
+        )
+
     @unittest.skipUnless(
         importlib.util.find_spec("pretty_midi") is not None,
         "optional pretty-midi dependency is not installed",
@@ -98,6 +104,9 @@ class MelodyExtractorTests(unittest.TestCase):
             self.assertTrue(sidecar_path_for(output).is_file())
             self.assertGreater(result.notes_count, 0)
             self.assertEqual(96, result.tempo)
+            self.assertEqual("hello local singer", result.lyrics)
+            self.assertEqual(result.notes_count, len(result.aligned_notes))
+            self.assertTrue(all(entry["text"] for entry in result.aligned_notes))
             self.assertGreater(midi.total_notes, 0)
             self.assertAlmostEqual(96, midi.tempo, delta=0.5)
 
@@ -114,6 +123,33 @@ class MelodyExtractorTests(unittest.TestCase):
                     self.assertEqual(str(source), view._melody_input_label.property("path"))
                     self.assertTrue(view._melody_generate_btn.isEnabled())
                     self.assertEqual(5, view._tabs.currentIndex())
+                finally:
+                    view.deleteLater()
+
+    def test_vocal_suite_exports_latest_verified_melody_alignment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self._patched_config(root):
+                view = VocalSuiteView()
+                try:
+                    lyrics = "[Verse]\nhello world"
+                    view._melody_lyrics.setPlainText(lyrics)
+                    view._melody_alignment_lyrics = lyrics
+                    view._melody_aligned_notes = [
+                        {"text": "hello", "start": 0.0, "end": 0.5},
+                        {"text": "world", "start": 0.5, "end": 1.0},
+                    ]
+                    view._update_melody_lrc_button()
+                    destination = root / "melody.lrc"
+
+                    written = view.export_melody_lrc_to(str(destination))
+
+                    self.assertEqual(str(destination), written)
+                    self.assertIn("<00:00.50>world", destination.read_text(encoding="utf-8"))
+                    self.assertTrue(view._melody_lrc_btn.isEnabled())
+                    view._melody_lyrics.setPlainText("hello changed")
+                    with self.assertRaises(ValueError):
+                        view.export_melody_lrc_to(str(root / "changed.lrc"))
                 finally:
                     view.deleteLater()
 

@@ -4,6 +4,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added Enhanced LRC export from verified humming-to-lyric note alignment, including line- and
+  word-level timestamps; incomplete or changed alignment is refused.
 - Added deterministic advisory lyric feedback for end-rhyme coverage and syllable cadence;
   feedback explains its heuristic limits and never rewrites a draft automatically.
 - Added a persistent Song Forge Job Queue panel with restart recovery, retry/resume replay

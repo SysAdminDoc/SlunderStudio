@@ -3,7 +3,8 @@ Slunder Studio - Humming-to-melody extraction.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+import re
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -38,6 +39,8 @@ class LyricMelodyResult:
     duration: float = 0.0
     tempo: float = 120.0
     diffsinger_error: str = ""
+    lyrics: str = ""
+    aligned_notes: list[dict] = field(default_factory=list)
 
 
 def generate_lyric_melody(
@@ -127,6 +130,8 @@ def generate_lyric_melody(
         lyric_units=len(lyric_units),
         duration=midi_data.duration,
         tempo=float(params.tempo),
+        lyrics=params.lyrics,
+        aligned_notes=[dict(item) for item in sing_notes],
     )
 
     if cancel_event and cancel_event.is_set():
@@ -212,10 +217,15 @@ def merge_adjacent_notes(notes: list[NoteData], *, max_gap: float) -> list[NoteD
 
 def lyric_units_from_text(lyrics: str) -> list[str]:
     units: list[str] = []
-    for raw in lyrics.replace("\r", "\n").replace("/", " ").split():
-        cleaned = "".join(ch for ch in raw.strip() if ch.isalnum() or ch in "'-")
-        if cleaned:
-            units.append(cleaned)
+    for raw_line in lyrics.replace("\r", "\n").splitlines():
+        line = raw_line.strip()
+        if not line or re.fullmatch(r"\[[^\]]+\]\s*", line):
+            continue
+        line = re.sub(r"\([^)]*\)", " ", line)
+        for raw in line.replace("/", " ").split():
+            cleaned = "".join(ch for ch in raw.strip() if ch.isalnum() or ch in "'-")
+            if cleaned:
+                units.append(cleaned)
     return units
 
 

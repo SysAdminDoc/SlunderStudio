@@ -61,6 +61,7 @@ from ui.file_dialogs import (
     choose_directory,
     ensure_extension,
     open_audio_file,
+    save_file,
     save_audio_file,
 )
 
@@ -216,6 +217,8 @@ class VocalSuiteView(QWidget):
         self._settings = Settings()
         self._current_audio_path: Optional[str] = None
         self._melody_midi_path: Optional[str] = None
+        self._melody_aligned_notes: list[dict] = []
+        self._melody_alignment_lyrics = ""
         self._clone_quality_report = None
         self._melody_worker: Optional[InferenceWorker] = None
         self._sing_worker: Optional[InferenceWorker] = None
@@ -367,6 +370,7 @@ class VocalSuiteView(QWidget):
                 (self._melody_tempo, "Melody tempo", "Sets the generated MIDI tempo."),
                 (self._melody_render_diffsinger, "Render melody vocal", "Attempts DiffSinger rendering after MIDI extraction."),
                 (self._melody_generate_btn, "Generate melody MIDI", "Extracts a MIDI melody from humming audio."),
+                (self._melody_lrc_btn, "Export enhanced LRC", "Exports the verified lyric-to-note alignment with line- and word-level timestamps."),
                 (self._rvc_browse_btn, "Browse RVC input", "Selects input audio for voice conversion."),
                 (self._rvc_voice, "RVC voice", "Selects the target RVC voice model."),
                 (self._rvc_trust_btn, "Trust unsafe RVC checkpoint", self._rvc_trust_btn.toolTip()),
@@ -420,6 +424,7 @@ class VocalSuiteView(QWidget):
                 self._melody_tempo,
                 self._melody_render_diffsinger,
                 self._melody_generate_btn,
+                self._melody_lrc_btn,
                 self._rvc_browse_btn,
                 self._rvc_voice,
                 self._rvc_trust_btn,
@@ -711,6 +716,7 @@ class VocalSuiteView(QWidget):
                 padding: 6px; font-size: 9pt;
             }}
         """)
+        self._melody_lyrics.textChanged.connect(self._update_melody_lrc_button)
         ctrl_layout.addWidget(self._melody_lyrics)
 
         tempo_row = QHBoxLayout()
@@ -743,6 +749,21 @@ class VocalSuiteView(QWidget):
         """)
         self._melody_generate_btn.clicked.connect(self._on_melody_generate)
         ctrl_layout.addWidget(self._melody_generate_btn)
+
+        self._melody_lrc_btn = QPushButton("Export Enhanced LRC")
+        self._melody_lrc_btn.setMinimumHeight(30)
+        self._melody_lrc_btn.setEnabled(False)
+        self._melody_lrc_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {t['surface']}; color: {t['text']};
+                border: 1px solid {t['border']}; border-radius: 5px;
+                font-weight: bold; font-size: 8.25pt;
+            }}
+            QPushButton:hover {{ background: {t['surface_hover']}; }}
+            QPushButton:disabled {{ color: {t['muted']}; background: {t['background']}; }}
+        """)
+        self._melody_lrc_btn.clicked.connect(self._on_melody_export_lrc)
+        ctrl_layout.addWidget(self._melody_lrc_btn)
 
         left.addWidget(ctrl_frame)
         left.addStretch()
@@ -1919,6 +1940,9 @@ class VocalSuiteView(QWidget):
         tempo = float(self._melody_tempo.value())
         render_diffsinger = self._melody_render_diffsinger.isChecked()
         self._reset_engine_routing()
+        self._melody_aligned_notes = []
+        self._melody_alignment_lyrics = ""
+        self._update_melody_lrc_button()
         self._melody_generate_btn.setEnabled(False)
         self._status.setText("Extracting humming melody...")
         self._melody_worker = InferenceWorker(
@@ -1972,10 +1996,22 @@ class VocalSuiteView(QWidget):
         self._melody_generate_btn.setText(tr("vocal.melody.generate"))
         self._melody_generate_btn.setEnabled(True)
         if not result or not result.midi_path:
+            self._melody_aligned_notes = []
+            self._melody_alignment_lyrics = ""
+            self._update_melody_lrc_button()
             self._status.setText("Lyric melody generation finished without a MIDI file")
             return
 
         self._melody_midi_path = result.midi_path
+        self._melody_aligned_notes = [
+            dict(item)
+            for item in getattr(result, "aligned_notes", [])
+            if isinstance(item, dict)
+        ]
+        self._melody_alignment_lyrics = str(
+            getattr(result, "lyrics", "") or self._melody_lyrics.toPlainText()
+        ).strip()
+        self._update_melody_lrc_button()
         if result.vocal_path:
             self._current_audio_path = result.vocal_path
             try:
@@ -1997,6 +2033,9 @@ class VocalSuiteView(QWidget):
         self._finish_operation_progress()
         self._melody_generate_btn.setText(tr("vocal.melody.generate"))
         self._melody_generate_btn.setEnabled(True)
+        self._melody_aligned_notes = []
+        self._melody_alignment_lyrics = ""
+        self._update_melody_lrc_button()
         self._report_error(f"Lyric melody generation failed: {error}")
 
     def _on_melody_cancelled(self):
@@ -2004,7 +2043,66 @@ class VocalSuiteView(QWidget):
         self._finish_operation_progress()
         self._melody_generate_btn.setText(tr("vocal.melody.generate"))
         self._melody_generate_btn.setEnabled(True)
+        self._melody_aligned_notes = []
+        self._melody_alignment_lyrics = ""
+        self._update_melody_lrc_button()
         self._status.setText("Lyric melody generation cancelled")
+
+    def _update_melody_lrc_button(self):
+        if not hasattr(self, "_melody_lrc_btn"):
+            return
+        current_lyrics = self._melody_lyrics.toPlainText().strip()
+        valid = bool(
+            self._melody_aligned_notes
+            and current_lyrics
+            and current_lyrics == self._melody_alignment_lyrics
+        )
+        if valid:
+            from core.lrc import build_lrc_lines
+
+            try:
+                build_lrc_lines(current_lyrics, self._melody_aligned_notes)
+            except ValueError:
+                valid = False
+        self._melody_lrc_btn.setEnabled(valid)
+
+    def export_melody_lrc_to(self, destination: str) -> str:
+        """Export the latest verified humming-to-lyric alignment as Enhanced LRC."""
+        from core.lrc import write_enhanced_lrc
+
+        lyrics = self._melody_lyrics.toPlainText().strip()
+        if not self._melody_aligned_notes:
+            raise ValueError("No verified lyric alignment is available; generate a melody first")
+        if lyrics != self._melody_alignment_lyrics:
+            raise ValueError("Lyrics changed after alignment; regenerate the melody before exporting LRC")
+        return write_enhanced_lrc(destination, lyrics, self._melody_aligned_notes)
+
+    def _on_melody_export_lrc(self):
+        if not self._melody_aligned_notes:
+            self._status.setText("Generate a lyric melody before exporting Enhanced LRC")
+            return
+        default_name = os.path.splitext(
+            os.path.basename(self._melody_midi_path or "lyric_melody")
+        )[0] + ".lrc"
+        path, selected_filter = save_file(
+            self,
+            "Export Enhanced LRC",
+            default_name,
+            "Enhanced LRC (*.lrc);;All Files (*)",
+            "vocal_melody_lrc_export",
+        )
+        if not path:
+            return
+        path = ensure_extension(path, selected_filter, default="lrc")
+        try:
+            written = self.export_melody_lrc_to(path)
+        except (OSError, ValueError) as exc:
+            self._report_error(f"Enhanced LRC export failed: {exc}")
+            return
+        message = f"Enhanced LRC exported: {os.path.basename(written)}"
+        self._status.setText(message)
+        if self.toast_mgr:
+            self.toast_mgr.success(message)
 
     def _on_rvc_browse(self):
         path, _ = open_audio_file(
