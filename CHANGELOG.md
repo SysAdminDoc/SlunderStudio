@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Made locked PyInstaller releases reproducible: build timestamps and Python hash seeds are fixed,
+  UPX is disabled, ZIP metadata is normalized, generated specs and unstable installer RECORD
+  files are removed, and unsigned onedir/onefile artifacts ship with deterministic CycloneDX 1.7
+  file inventories.
 - Rewrote engine and recovery status copy at the presentation boundary: readiness remedies,
   transfer notifications, demo fallbacks, recovery policies, and configuration repair states now
   use localized user language without exposing internal contract terms or full backup paths.

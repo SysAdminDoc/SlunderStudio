@@ -26,6 +26,8 @@ import re
 import tempfile
 import time
 import zipfile
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -130,6 +132,48 @@ FROZEN_SUPPORT_DIRECTORIES = {
     "tcl8",
     "tk8",
 }
+FROZEN_SBOM_NAME = f"{APP_NAME}.cdx.json"
+ZIP_MIN_TIMESTAMP = 315532800  # 1980-01-01, the minimum DOS ZIP timestamp.
+
+
+def _resolve_source_date_epoch() -> str:
+    """Return the stable source timestamp used by every build artifact."""
+    configured = os.environ.get("SOURCE_DATE_EPOCH")
+    if configured is not None:
+        try:
+            value = int(configured)
+        except ValueError as exc:
+            raise RuntimeError("SOURCE_DATE_EPOCH must be a non-negative integer") from exc
+        if value < 0:
+            raise RuntimeError("SOURCE_DATE_EPOCH must be a non-negative integer")
+        return str(value)
+
+    result = subprocess.run(
+        ["git", "show", "-s", "--format=%ct", "HEAD"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    candidate = result.stdout.strip()
+    if result.returncode == 0 and candidate.isdigit():
+        return candidate
+    return "0"
+
+
+def source_date_epoch() -> str:
+    """Return the configured or repository-derived reproducibility timestamp."""
+    return _resolve_source_date_epoch()
+
+
+def reproducible_build_environment(
+    base_environment: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Return a build environment with all Python/time inputs made explicit."""
+    environment = dict(os.environ if base_environment is None else base_environment)
+    environment["PYTHONHASHSEED"] = "0"
+    environment["SOURCE_DATE_EPOCH"] = source_date_epoch()
+    return environment
 
 
 def require_pyinstaller():
@@ -265,7 +309,7 @@ def run_in_clean_environment(arguments: list[str]):
                 str(BUILD_LOCK_PATH),
             ]
         )
-        child_env = os.environ.copy()
+        child_env = reproducible_build_environment()
         child_env["PYTHONNOUSERSITE"] = "1"
         child_env["SLUNDER_CLEAN_BUILD"] = "1"
         forwarded = [argument for argument in arguments if argument != "--clean-env"]
@@ -287,7 +331,14 @@ def build(onefile: bool = False, smoke: bool = True):
     print(f"Command: {' '.join(cmd)}")
     print()
 
-    result = subprocess.run(cmd)
+    build_env = reproducible_build_environment()
+    try:
+        result = subprocess.run(cmd, env=build_env)
+    finally:
+        # PyInstaller emits a project-root spec even when the build is driven
+        # entirely by command-line options. It is generated state, not a
+        # release input, and must never remain in the checkout.
+        remove_generated_spec()
 
     if result.returncode != 0:
         print(f"\nBuild failed with exit code {result.returncode}")
@@ -299,14 +350,29 @@ def build(onefile: bool = False, smoke: bool = True):
         sys.exit(1)
 
     if not onefile:
+        remove_nondeterministic_frozen_metadata(onefolder_dir())
         audit_frozen_modules(onefolder_dir())
+
+    if onefile:
+        sbom_path = create_frozen_sbom(
+            dist_dir(),
+            output=frozen_sbom_path(onefile=True),
+            included_paths=[exe_path],
+            source_date_epoch=build_env["SOURCE_DATE_EPOCH"],
+        )
+    else:
+        sbom_path = create_frozen_sbom(
+            onefolder_dir(),
+            output=frozen_sbom_path(onefile=False),
+            source_date_epoch=build_env["SOURCE_DATE_EPOCH"],
+        )
 
     if smoke:
         smoke_launch(exe_path, onefile=onefile)
     else:
         print("Smoke launch skipped by --no-smoke.")
 
-    artifacts = [exe_path]
+    artifacts = [exe_path, sbom_path]
     if not onefile:
         artifacts.append(create_onedir_zip())
 
@@ -371,6 +437,7 @@ def build_command(onefile: bool = False) -> list[str]:
         "--windowed",  # no console window
         "--noconfirm",
         "--clean",
+        "--noupx",
     ]
 
     if onefile:
@@ -458,10 +525,19 @@ def audit_frozen_modules(distribution_dir: Path):
         )
 
 
+def remove_nondeterministic_frozen_metadata(distribution_dir: Path):
+    """Drop installer RECORD files that encode temporary build-venv state."""
+    for record in distribution_dir.rglob("RECORD"):
+        if record.is_file() and record.parent.name.endswith(".dist-info"):
+            record.unlink()
+
+
 def clean_artifacts():
     """Remove stale distributables before building."""
     paths = [
         onefolder_dir(),
+        frozen_sbom_path(onefile=False),
+        frozen_sbom_path(onefile=True),
         dist_dir() / f"{APP_NAME}.app",
         build_dir(),
         onefile_path(),
@@ -549,6 +625,104 @@ def spec_path() -> Path:
     return PROJECT_ROOT / f"{APP_NAME}.spec"
 
 
+def remove_generated_spec():
+    """Remove the transient PyInstaller spec emitted at the project root."""
+    generated = spec_path()
+    if generated.is_file():
+        generated.unlink()
+
+
+def frozen_sbom_path(*, onefile: bool) -> Path:
+    """Return the SBOM path shipped beside the selected frozen artifact."""
+    if onefile:
+        return dist_dir() / FROZEN_SBOM_NAME
+    return onefolder_dir() / FROZEN_SBOM_NAME
+
+
+def _sbom_timestamp(source_epoch: str) -> str:
+    timestamp = datetime.fromtimestamp(int(source_epoch), tz=timezone.utc)
+    return timestamp.isoformat().replace("+00:00", "Z")
+
+
+def create_frozen_sbom(
+    distribution_dir: Path,
+    *,
+    output: Path | None = None,
+    included_paths: list[Path] | None = None,
+    source_date_epoch: str | None = None,
+) -> Path:
+    """Write a deterministic CycloneDX inventory of the shipped files."""
+    root = Path(distribution_dir).resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"Frozen distribution missing: {root}")
+    target = (Path(output) if output is not None else root / FROZEN_SBOM_NAME).resolve()
+    epoch = str(
+        source_date_epoch
+        if source_date_epoch is not None
+        else _resolve_source_date_epoch()
+    )
+
+    candidates = included_paths if included_paths is not None else list(root.rglob("*"))
+    files: list[tuple[str, Path]] = []
+    for candidate in candidates:
+        path = Path(candidate).resolve()
+        if path == target:
+            continue
+        if not path.is_file():
+            continue
+        try:
+            relative = path.relative_to(root).as_posix()
+        except ValueError as exc:
+            raise ValueError(f"Frozen SBOM input is outside its root: {path}") from exc
+        files.append((relative, path))
+
+    components = []
+    for relative, path in sorted(files):
+        components.append(
+            {
+                "type": "file",
+                "bom-ref": f"file:{relative}",
+                "name": relative,
+                "hashes": [{"alg": "SHA-256", "content": sha256_file(path)}],
+            }
+        )
+    manifest = "\n".join(
+        f"{component['name']}\t{component['hashes'][0]['content']}"
+        for component in components
+    )
+    manifest_digest = hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+    serial = uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        f"slunderstudio:frozen:{APP_VERSION}:{manifest_digest}",
+    )
+    payload = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.7",
+        "serialNumber": f"urn:uuid:{serial}",
+        "version": 1,
+        "metadata": {
+            "timestamp": _sbom_timestamp(epoch),
+            "component": {
+                "type": "application",
+                "name": APP_NAME,
+                "version": APP_VERSION,
+            },
+            "properties": [
+                {"name": "slunderstudio:bundle-file-count", "value": str(len(components))},
+                {"name": "slunderstudio:source-date-epoch", "value": epoch},
+                {"name": "slunderstudio:inventory-excludes", "value": target.name},
+            ],
+        },
+        "components": components,
+    }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return target
+
+
 def create_onedir_zip() -> Path:
     """Zip the one-folder distribution for release upload."""
     source_dir = onefolder_dir()
@@ -558,10 +732,25 @@ def create_onedir_zip() -> Path:
     if not source_dir.is_dir():
         raise FileNotFoundError(f"One-folder distribution missing: {source_dir}")
     target.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+    zip_date_time = time.gmtime(
+        max(int(source_date_epoch()), ZIP_MIN_TIMESTAMP)
+    )[:6]
+    with zipfile.ZipFile(
+        target,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as bundle:
         for path in sorted(source_dir.rglob("*")):
             if path.is_file():
-                bundle.write(path, path.relative_to(dist_dir()))
+                info = zipfile.ZipInfo(
+                    path.relative_to(dist_dir()).as_posix(),
+                    date_time=zip_date_time,
+                )
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.create_system = 0
+                info.external_attr = 0
+                bundle.writestr(info, path.read_bytes())
     print(f"Packaged ZIP: {target}")
     return target
 

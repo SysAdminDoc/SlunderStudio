@@ -25,11 +25,25 @@ from urllib.parse import unquote
 
 
 PROFILE_SCHEMA_VERSION = 1
+SBOM_SPEC_VERSION = "1.7"
 HASH_RE = re.compile(r"--hash=sha256:([0-9a-f]{64})(?:\s|$)", re.IGNORECASE)
 REQUIREMENT_RE = re.compile(
     r"^([A-Za-z0-9_.-]+)==([A-Za-z0-9_.+!-]+)(?:\s+(.+))?$"
 )
 DENYLISTED_PROFILE_PACKAGES = frozenset({"kernels"})
+
+
+def _sbom_timestamp() -> str:
+    """Use the reproducible build timestamp when the caller provides one."""
+    configured = os.environ.get("SOURCE_DATE_EPOCH")
+    if configured is not None:
+        try:
+            timestamp = datetime.fromtimestamp(int(configured), tz=timezone.utc)
+        except (TypeError, ValueError, OSError, OverflowError):
+            timestamp = datetime.now(timezone.utc)
+    else:
+        timestamp = datetime.now(timezone.utc)
+    return timestamp.isoformat().replace("+00:00", "Z")
 
 
 class DependencyProfileError(RuntimeError):
@@ -479,11 +493,11 @@ def create_sbom(
     serial = uuid.uuid5(uuid.NAMESPACE_URL, f"slunderstudio:{profile.name}:{lock_digest}")
     return {
         "bomFormat": "CycloneDX",
-        "specVersion": "1.6",
+        "specVersion": SBOM_SPEC_VERSION,
         "serialNumber": f"urn:uuid:{serial}",
         "version": 1,
         "metadata": {
-            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "timestamp": _sbom_timestamp(),
             "component": {
                 "type": "application",
                 "name": "Slunder Studio optional AI runtime",

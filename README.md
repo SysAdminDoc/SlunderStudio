@@ -35,7 +35,7 @@ the default runner deliberately marks cases as skipped and never gates a release
 
 Optional AI runtimes use platform-specific, SHA-256-locked profiles for CPython
 3.12. Prepare a wheelhouse while connected, then the installation command
-operates with `--no-index` and writes a complete CycloneDX SBOM:
+operates with `--no-index` and writes a complete CycloneDX 1.7 SBOM:
 
 ```bash
 py -3.12 tools/dependency_profiles.py download windows-cpu --wheelhouse C:\SlunderWheelhouse\windows-cpu
@@ -191,11 +191,14 @@ py -3.12 build/build.py --clean-env --onefile # Single .exe (Windows)
 The `--clean-env` build installs `requirements-lock.txt` and the pinned
 `build/requirements-build-lock.txt` with `--require-hashes`, rejects extra
 installed distributions, excludes test/cloud/unused Qt modules, and audits the
-one-folder bundle before it can be packaged. The Windows smoke check always
-uses the private non-input virtual-display isolation helper. The build removes
-stale `dist/` outputs, resolves the platform icon, verifies one onedir process
-or the expected onefile bootloader-parent/child tree, and writes
-`dist/SHA256SUMS.txt`. The default build also creates
+one-folder bundle before it can be packaged. It fixes `PYTHONHASHSEED` and
+`SOURCE_DATE_EPOCH`, disables UPX, normalizes archive timestamps, and writes a
+CycloneDX 1.7 inventory of the files that actually ship as
+`SlunderStudio.cdx.json` inside the bundle. The Windows smoke check always uses
+the private non-input virtual-display isolation helper. The build removes stale
+`dist/` outputs, resolves the platform icon, verifies one onedir process or the
+expected onefile bootloader-parent/child tree, and writes `dist/SHA256SUMS.txt`.
+The default build also creates
 `dist/SlunderStudio-vX.Y.Z-<platform>-<arch>.zip` beside `dist/SlunderStudio/`.
 Every version string — the window title, settings and project schemas,
 provenance sidecars, the README badge, artifact names, and the embedded Windows

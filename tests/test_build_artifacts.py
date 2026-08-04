@@ -55,6 +55,26 @@ class BuildArtifactTests(unittest.TestCase):
         }
         self.assertTrue({"pytest", "aiohttp", "PySide6.QtWebEngineCore"}.issubset(excluded))
 
+    def test_command_disables_upx_and_build_tools_are_pinned(self):
+        command = self.build_script.build_command(onefile=False)
+        self.assertIn("--noupx", command)
+        requirements = (
+            self.build_script.PROJECT_ROOT / "build" / "requirements-build.txt"
+        ).read_text(encoding="utf-8")
+        lock = (
+            self.build_script.PROJECT_ROOT / "build" / "requirements-build-lock.txt"
+        ).read_text(encoding="utf-8")
+        self.assertRegex(requirements, r"(?m)^pyinstaller==[0-9.]+$")
+        self.assertRegex(lock, r"(?m)^pyinstaller==[0-9.]+ \\")
+
+    def test_reproducible_environment_sets_hash_and_source_controls(self):
+        with mock.patch.object(self.build_script, "source_date_epoch", return_value="1700000000"):
+            environment = self.build_script.reproducible_build_environment(
+                {"PYTHONHASHSEED": "random", "SOURCE_DATE_EPOCH": "old"}
+            )
+        self.assertEqual(environment["PYTHONHASHSEED"], "0")
+        self.assertEqual(environment["SOURCE_DATE_EPOCH"], "1700000000")
+
     def test_frozen_module_audit_rejects_unlocked_top_level_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             internal = Path(tmp) / "_internal"
@@ -63,6 +83,17 @@ class BuildArtifactTests(unittest.TestCase):
             (internal / "unexpected_cloud_package").mkdir()
             with self.assertRaisesRegex(RuntimeError, "unexpected_cloud_package"):
                 self.build_script.audit_frozen_modules(Path(tmp))
+
+    def test_frozen_metadata_removes_installer_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "SlunderStudio"
+            record = root / "_internal" / "sample-1.0.dist-info" / "RECORD"
+            record.parent.mkdir(parents=True)
+            record.write_text("temporary build state", encoding="utf-8")
+
+            self.build_script.remove_nondeterministic_frozen_metadata(root)
+
+            self.assertFalse(record.exists())
 
     def test_clean_artifacts_removes_stale_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -78,6 +109,8 @@ class BuildArtifactTests(unittest.TestCase):
             for path in [
                 self.build_script.onefile_path(),
                 self.build_script.onedir_zip_path(),
+                self.build_script.frozen_sbom_path(onefile=False),
+                self.build_script.frozen_sbom_path(onefile=True),
                 root / "dist" / "SlunderStudio-v0.0.1-win64.zip",
                 self.build_script.checksum_path(),
                 self.build_script.spec_path(),
@@ -112,10 +145,46 @@ class BuildArtifactTests(unittest.TestCase):
             with zipfile.ZipFile(zip_path) as bundle:
                 self.assertIn("SlunderStudio/SlunderStudio.exe", bundle.namelist())
                 self.assertIn("SlunderStudio/_internal/helper.dll", bundle.namelist())
+                timestamps = {info.date_time for info in bundle.infolist()}
+                self.assertEqual(len(timestamps), 1)
+            first_hash = self.build_script.sha256_file(zip_path)
+            self.build_script.create_onedir_zip()
+            self.assertEqual(first_hash, self.build_script.sha256_file(zip_path))
             checksum_text = checksums.read_text(encoding="utf-8")
             self.assertIn("SlunderStudio/SlunderStudio.exe", checksum_text)
             self.assertIn(zip_path.name, checksum_text)
             self.assertRegex(checksum_text, r"^[0-9a-f]{64}  ", msg=checksum_text)
+
+    def test_frozen_sbom_is_deterministic_and_covers_bundle_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "SlunderStudio"
+            executable = root / "SlunderStudio.exe"
+            helper = root / "_internal" / "helper.dll"
+            executable.parent.mkdir(parents=True)
+            helper.parent.mkdir(parents=True)
+            executable.write_bytes(b"binary")
+            helper.write_bytes(b"helper")
+
+            sbom = self.build_script.create_frozen_sbom(
+                root,
+                source_date_epoch="1700000000",
+            )
+            payload = json.loads(sbom.read_text(encoding="utf-8"))
+            self.assertEqual(payload["specVersion"], "1.7")
+            self.assertEqual(
+                {component["name"] for component in payload["components"]},
+                {"SlunderStudio.exe", "_internal/helper.dll"},
+            )
+            hashes = {
+                component["name"]: component["hashes"][0]["content"]
+                for component in payload["components"]
+            }
+            self.assertEqual(hashes["SlunderStudio.exe"], self.build_script.sha256_file(executable))
+            self.assertEqual(hashes["_internal/helper.dll"], self.build_script.sha256_file(helper))
+            self.assertEqual(payload["metadata"]["timestamp"], "2023-11-14T22:13:20Z")
+            first_bytes = sbom.read_bytes()
+            self.build_script.create_frozen_sbom(root, source_date_epoch="1700000000")
+            self.assertEqual(first_bytes, sbom.read_bytes())
 
     def test_release_artifacts_are_unsigned(self):
         """Signing is policy-excluded; no code signing path may exist."""

@@ -225,6 +225,7 @@ class DependencyProfileTests(unittest.TestCase):
             )
             sbom = create_sbom(profile, artifacts)
             self.assertEqual(sbom["bomFormat"], "CycloneDX")
+            self.assertEqual(sbom["specVersion"], "1.7")
             self.assertEqual(len(sbom["components"]), len(entries))
             self.assertEqual(
                 {component["name"] for component in sbom["components"]},
