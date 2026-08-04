@@ -6,22 +6,118 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import importlib.metadata
 import json
 import logging
+import platform
 import time
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
 from core.settings import APP_VERSION
 
-PROVENANCE_SCHEMA_VERSION = 1
+PROVENANCE_SCHEMA_VERSION = 2
 PROVENANCE_SUFFIX = ".provenance.json"
 UNKNOWN_LICENSE_WARNING = (
     "Model license metadata is indeterminate; review the model license before release."
 )
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ProvenanceDiff:
+    """One recorded-vs-current value that prevents a guaranteed re-render."""
+
+    field: str
+    recorded: Any
+    current: Any
+    reason: str
+
+    def format(self) -> str:
+        return (
+            f"{self.field}: recorded={self.recorded!r}, "
+            f"current={self.current!r} ({self.reason})"
+        )
+
+
+@dataclass(frozen=True)
+class ProvenanceCompatibility:
+    """Fail-closed compatibility result for a provenance-backed render."""
+
+    compatible: bool
+    diffs: tuple[ProvenanceDiff, ...] = ()
+
+
+class ProvenanceCompatibilityError(RuntimeError):
+    """Raised when a render cannot be guaranteed to match its source artifact."""
+
+    def __init__(self, message: str, diffs: tuple[ProvenanceDiff, ...] = ()):
+        self.diffs = tuple(diffs)
+        detail = "; ".join(diff.format() for diff in self.diffs)
+        super().__init__(f"{message}{': ' + detail if detail else ''}")
+
+
+@dataclass(frozen=True)
+class RerenderResult:
+    """Result of a provenance-backed render and byte comparison."""
+
+    original_path: str
+    rerendered_path: str
+    identical: bool
+    differences: tuple[ProvenanceDiff, ...] = ()
+
+
+_RERENDERERS: dict[str, Any] = {}
+
+
+def register_rerenderer(operation_key: str, renderer) -> None:
+    """Register a lazy renderer for ``<module>:<operation>`` provenance keys."""
+    key = str(operation_key or "").strip()
+    if not key or ":" not in key:
+        raise ValueError("Rerenderer keys must be '<module>:<operation>'")
+    if not callable(renderer):
+        raise TypeError("Rerenderer must be callable")
+    _RERENDERERS[key] = renderer
+
+
+def runtime_fingerprint() -> dict[str, Any]:
+    """Return deterministic runtime inputs that can affect rendered bytes."""
+    package_names = (
+        "numpy",
+        "scipy",
+        "soundfile",
+        "librosa",
+        "torch",
+        "diffusers",
+        "transformers",
+        "onnxruntime",
+    )
+    packages = {}
+    for package in package_names:
+        try:
+            packages[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            packages[package] = ""
+    return {
+        "python": platform.python_version(),
+        "system": platform.system(),
+        "machine": platform.machine(),
+        "packages": packages,
+    }
+
+
+def _source_file_hashes(source_paths: list[str | Path]) -> dict[str, str]:
+    hashes = {}
+    for raw_path in source_paths:
+        path = Path(raw_path)
+        try:
+            hashes[str(path)] = file_sha256(path) if path.is_file() else ""
+        except OSError:
+            hashes[str(path)] = ""
+    return hashes
 
 
 def sidecar_path_for(artifact_path: str | Path) -> Path:
@@ -269,7 +365,10 @@ def write_provenance_sidecar(
         "parameters": _json_safe(parameters or {}),
         "source_asset_ids": _json_safe(source_asset_ids or []),
         "source_paths": _json_safe(source_paths or []),
+        "source_hashes": _source_file_hashes(source_paths or []),
         "export_format": export_format or artifact.suffix.lstrip(".").lower(),
+        "runtime": runtime_fingerprint(),
+        "rerender_key": f"{module}:{operation}",
         "extra": _json_safe(extra or {}),
     }
     sidecar.parent.mkdir(parents=True, exist_ok=True)
@@ -294,6 +393,345 @@ def read_provenance_sidecar(path: str | Path) -> dict[str, Any]:
         return json.loads(sidecar.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+def _current_model_snapshot(model_id: str) -> dict[str, Any]:
+    """Read the installed registry/manifest identity without loading weights."""
+    if not model_id:
+        return {"id": "", "revision": "", "hash": "", "available": True}
+    try:
+        from core.model_manager import ModelManager
+
+        manager = ModelManager()
+        info = manager.get_model_info(model_id)
+        manifest = manager.get_download_manifest(model_id) or {}
+        revision = (
+            manifest.get("resolved_revision")
+            or manifest.get("revision")
+            or (info.revision if info else "")
+        )
+        file_hashes = manifest.get("file_hashes") or {}
+        return {
+            "id": model_id,
+            "revision": revision,
+            "hash": _hash_file_map(file_hashes),
+            "available": bool(manifest) or bool(info and info.pip_managed),
+        }
+    except Exception as exc:  # fail closed in the caller
+        return {
+            "id": model_id,
+            "revision": "",
+            "hash": "",
+            "available": False,
+            "error": type(exc).__name__,
+        }
+
+
+def check_provenance_compatibility(
+    provenance: dict[str, Any],
+    *,
+    current_app_version: Optional[str] = None,
+    current_runtime: Optional[dict[str, Any]] = None,
+    current_model: Optional[dict[str, Any]] = None,
+) -> ProvenanceCompatibility:
+    """Compare recorded render inputs with the current local environment.
+
+    Missing identity fields are differences, not assumptions.  This means old
+    sidecars can still be opened and inspected, but cannot make a bit-identical
+    re-render promise until they are regenerated with the versioned contract.
+    """
+    diffs: list[ProvenanceDiff] = []
+    if not isinstance(provenance, dict):
+        return ProvenanceCompatibility(
+            False,
+            (ProvenanceDiff("provenance", provenance, {}, "record is not an object"),),
+        )
+
+    schema = provenance.get("schema_version")
+    if schema != PROVENANCE_SCHEMA_VERSION:
+        diffs.append(ProvenanceDiff(
+            "schema_version",
+            schema,
+            PROVENANCE_SCHEMA_VERSION,
+            "provenance contract version differs",
+        ))
+
+    expected_app = current_app_version or APP_VERSION
+    recorded_app = provenance.get("app_version", "")
+    if not recorded_app:
+        diffs.append(ProvenanceDiff(
+            "app_version", recorded_app, expected_app, "recorded application version is missing"
+        ))
+    elif recorded_app != expected_app:
+        diffs.append(ProvenanceDiff(
+            "app_version", recorded_app, expected_app, "application version changed"
+        ))
+
+    expected_runtime = current_runtime or runtime_fingerprint()
+    recorded_runtime = provenance.get("runtime")
+    if not isinstance(recorded_runtime, dict):
+        diffs.append(ProvenanceDiff(
+            "runtime", recorded_runtime, expected_runtime, "runtime fingerprint is missing"
+        ))
+    else:
+        for field in ("python", "system", "machine"):
+            recorded = recorded_runtime.get(field, "")
+            current = expected_runtime.get(field, "")
+            if recorded != current:
+                diffs.append(ProvenanceDiff(
+                    f"runtime.{field}", recorded, current, "render runtime changed"
+                ))
+        recorded_packages = recorded_runtime.get("packages")
+        current_packages = expected_runtime.get("packages")
+        if not isinstance(recorded_packages, dict):
+            diffs.append(ProvenanceDiff(
+                "runtime.packages", recorded_packages, current_packages,
+                "package fingerprint is missing",
+            ))
+        else:
+            for package, current in (current_packages or {}).items():
+                recorded = recorded_packages.get(package, "")
+                if recorded != current:
+                    diffs.append(ProvenanceDiff(
+                        f"runtime.packages.{package}", recorded, current,
+                        "dependency version changed",
+                    ))
+
+    model = provenance.get("model") or {}
+    output_kind = str(provenance.get("output_kind", "model"))
+    requires_model = bool(model.get("id")) and output_kind == "model"
+    if requires_model:
+        current = current_model or _current_model_snapshot(str(model.get("id", "")))
+        recorded_revision = model.get("resolved_revision") or model.get("revision", "")
+        current_revision = current.get("revision", "")
+        if not current.get("available"):
+            diffs.append(ProvenanceDiff(
+                "model.available", True, False,
+                "recorded model is not available in the local registry/cache",
+            ))
+        if not recorded_revision:
+            diffs.append(ProvenanceDiff(
+                "model.revision", recorded_revision, current_revision,
+                "immutable model revision is missing",
+            ))
+        elif recorded_revision != current_revision:
+            diffs.append(ProvenanceDiff(
+                "model.revision", recorded_revision, current_revision,
+                "model revision changed",
+            ))
+        recorded_hash = model.get("hash", "")
+        current_hash = current.get("hash", "")
+        if not recorded_hash:
+            diffs.append(ProvenanceDiff(
+                "model.hash", recorded_hash, current_hash,
+                "model file hash is missing",
+            ))
+        elif recorded_hash != current_hash:
+            diffs.append(ProvenanceDiff(
+                "model.hash", recorded_hash, current_hash,
+                "model files changed",
+            ))
+
+    source_paths = provenance.get("source_paths") or []
+    source_hashes = provenance.get("source_hashes")
+    if source_paths and not isinstance(source_hashes, dict):
+        diffs.append(ProvenanceDiff(
+            "source_hashes", source_hashes, {}, "source file hashes are missing"
+        ))
+    elif source_paths:
+        for raw_path in source_paths:
+            path = str(raw_path)
+            recorded = source_hashes.get(path, "")
+            current = ""
+            try:
+                current = file_sha256(path) if Path(path).is_file() else ""
+            except OSError:
+                current = ""
+            if not recorded:
+                diffs.append(ProvenanceDiff(
+                    f"source_hashes.{path}", recorded, current,
+                    "source file hash is missing",
+                ))
+            elif recorded != current:
+                diffs.append(ProvenanceDiff(
+                    f"source_hashes.{path}", recorded, current,
+                    "source file changed or is unavailable",
+                ))
+
+    return ProvenanceCompatibility(not diffs, tuple(diffs))
+
+
+def _rerender_progress(progress_cb, value, *_message):
+    if progress_cb:
+        progress_cb(int(float(value) * 100 if float(value) <= 1 else float(value)))
+
+
+def _rerender_sfx(provenance, output_dir, progress_cb=None, cancel_event=None):
+    from engines.sfx_engine import SFXEngine, SFXParams
+
+    fields = {field.name for field in dataclasses.fields(SFXParams)}
+    payload = {
+        key: value for key, value in (provenance.get("parameters") or {}).items()
+        if key in fields
+    }
+    if provenance.get("seed") is not None:
+        payload["seed"] = int(provenance["seed"])
+    payload["batch_size"] = 1
+    if provenance.get("output_kind") == "demo":
+        payload["allow_demo_output"] = True
+    engine = SFXEngine()
+    engine._output_dir = str(output_dir)
+    if provenance.get("output_kind") == "model":
+        from core.model_manager import ModelManager
+
+        engine = ModelManager().load_model(str((provenance.get("model") or {}).get("id", "")))
+        engine._output_dir = str(output_dir)
+    result = engine.generate(
+        SFXParams(**payload),
+        progress_callback=lambda value, *message: _rerender_progress(
+            progress_cb, value, *message
+        ),
+    )
+    if result.error or not result.file_path:
+        raise RuntimeError(result.error or "SFX rerender produced no artifact")
+    return result.file_path
+
+
+def _rerender_ace_step(provenance, output_dir, progress_cb=None, cancel_event=None):
+    from engines.ace_step_engine import (
+        GenerationParams,
+        _load_managed_engine,
+    )
+    from core.model_manager import ModelManager
+
+    fields = {field.name for field in dataclasses.fields(GenerationParams)}
+    payload = {
+        key: value for key, value in (provenance.get("parameters") or {}).items()
+        if key in fields
+    }
+    if provenance.get("seed") is not None:
+        payload["seed"] = int(provenance["seed"])
+    source_paths = provenance.get("source_paths") or []
+    if source_paths and not payload.get("source_audio_path"):
+        payload["source_audio_path"] = str(source_paths[0])
+    operation = str(provenance.get("operation", ""))
+    payload["long_form"] = operation == "generate_long_form" or bool(payload.get("long_form"))
+    params = GenerationParams(**payload)
+    engine = _load_managed_engine(ModelManager())
+    previous_output_dir = engine._output_dir
+    engine._output_dir = Path(output_dir)
+    try:
+        if payload["long_form"]:
+            result = engine.generate_long_form(
+                params,
+                progress_cb=lambda value: _rerender_progress(progress_cb, value),
+                cancel_event=cancel_event,
+            )
+        else:
+            result = engine.generate(
+                params,
+                progress_cb=lambda value: _rerender_progress(progress_cb, value),
+                cancel_event=cancel_event,
+            )
+    finally:
+        engine._output_dir = previous_output_dir
+    if not result.audio_path:
+        raise RuntimeError("ACE-Step rerender produced no artifact")
+    return result.audio_path
+
+
+def _rerender_autotune(provenance, output_dir, progress_cb=None, cancel_event=None):
+    from engines.vocal_tuning import AutoTuneParams, autotune_file
+
+    fields = {field.name for field in dataclasses.fields(AutoTuneParams)}
+    payload = {
+        key: value for key, value in (provenance.get("parameters") or {}).items()
+        if key in fields
+    }
+    source_paths = provenance.get("source_paths") or []
+    if source_paths and not payload.get("input_path"):
+        payload["input_path"] = str(source_paths[0])
+    if not payload.get("input_path"):
+        raise ValueError("Auto-tune provenance does not name an input file")
+    payload["output_path"] = str(
+        Path(output_dir) / f"{Path(payload['input_path']).stem}_rerendered.wav"
+    )
+    result = autotune_file(
+        AutoTuneParams(**payload),
+        progress_cb=lambda value: _rerender_progress(progress_cb, value),
+        cancel_event=cancel_event,
+    )
+    return result.output_path
+
+
+def rerender_from_provenance(
+    artifact_path: str | Path,
+    *,
+    output_dir: str | Path | None = None,
+    progress_cb=None,
+    cancel_event=None,
+) -> RerenderResult:
+    """Re-render an artifact only when its provenance is locally compatible."""
+    requested = Path(artifact_path)
+    if requested.name.endswith(PROVENANCE_SUFFIX):
+        source_artifact = Path(str(requested)[:-len(PROVENANCE_SUFFIX)])
+    else:
+        source_artifact = requested
+    provenance = read_provenance_sidecar(requested)
+    if not provenance:
+        raise ProvenanceCompatibilityError(
+            "No readable provenance sidecar was found",
+            (ProvenanceDiff("provenance", "", "", "sidecar is missing or invalid"),),
+        )
+    compatibility = check_provenance_compatibility(provenance)
+    if not compatibility.compatible:
+        raise ProvenanceCompatibilityError(
+            "Artifact cannot be guaranteed reproducible", compatibility.diffs
+        )
+
+    key = str(
+        provenance.get("rerender_key")
+        or f"{provenance.get('module', '')}:{provenance.get('operation', '')}"
+    )
+    renderer = _RERENDERERS.get(key)
+    if renderer is None:
+        raise ProvenanceCompatibilityError(
+            "Artifact renderer is not registered",
+            (ProvenanceDiff("rerender_key", key, "", "no renderer is available"),),
+        )
+
+    target_dir = Path(output_dir) if output_dir else source_artifact.parent / "rerenders"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    rerendered = renderer(
+        provenance,
+        target_dir,
+        progress_cb=progress_cb,
+        cancel_event=cancel_event,
+    )
+    rerendered_path = Path(rerendered)
+    if not rerendered_path.is_file():
+        raise RuntimeError(f"Rerenderer did not produce a file: {rerendered_path}")
+
+    expected_hash = str((provenance.get("artifact") or {}).get("sha256", ""))
+    actual_hash = file_sha256(rerendered_path)
+    differences = () if expected_hash and expected_hash == actual_hash else (
+        ProvenanceDiff(
+            "artifact.sha256", expected_hash, actual_hash,
+            "rerendered bytes differ from the recorded artifact",
+        ),
+    )
+    return RerenderResult(
+        original_path=str(source_artifact),
+        rerendered_path=str(rerendered_path),
+        identical=not differences,
+        differences=differences,
+    )
+
+
+register_rerenderer("sfx:generate", _rerender_sfx)
+register_rerenderer("song_forge:generate", _rerender_ace_step)
+register_rerenderer("song_forge:generate_long_form", _rerender_ace_step)
+register_rerenderer("vocal_suite:vocal_autotune", _rerender_autotune)
 
 
 def project_metadata_from_provenance(
@@ -325,7 +763,9 @@ def project_metadata_from_provenance(
             "parameters": provenance.get("parameters", {}),
             "source_asset_ids": provenance.get("source_asset_ids", []),
             "source_paths": provenance.get("source_paths", []),
+            "source_hashes": provenance.get("source_hashes", {}),
             "export_format": provenance.get("export_format") or artifact.get("format", ""),
             "artifact_sha256": artifact.get("sha256", ""),
+            "rerender_key": provenance.get("rerender_key", ""),
         }
     }

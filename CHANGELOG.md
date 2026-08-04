@@ -45,6 +45,9 @@ All notable changes to SlunderStudio will be documented in this file.
 - Added Project Manager asset deletion with an 8-second Undo toast, restored the selected asset
   through the existing project trash manifest, and surfaced import failures without letting them
   escape through the application exception hook.
+- Added fail-closed provenance re-rendering. Versioned sidecars now record source hashes,
+  runtime/package fingerprints, and renderer keys; Project Manager can reproduce compatible
+  ACE-Step, SFX, and auto-tune artifacts off the GUI thread and reports precise mismatches.
 
 ## [v0.1.31] - 2026-08-02
 

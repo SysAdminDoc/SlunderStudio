@@ -23,7 +23,26 @@ from core.disclosure import (
     parse_human_contributions,
     write_disclosure_report,
 )
-from core.provenance import read_provenance_sidecar
+from core.provenance import (
+    check_provenance_compatibility,
+    read_provenance_sidecar,
+    rerender_from_provenance,
+)
+from core.workers import InferenceWorker
+
+
+def _rerender_provenance_task(
+    artifact_path: str,
+    progress_cb=None,
+    cancel_event=None,
+    **_kwargs,
+):
+    """Run a provenance render away from the Project Manager GUI thread."""
+    return rerender_from_provenance(
+        artifact_path,
+        progress_cb=progress_cb,
+        cancel_event=cancel_event,
+    )
 
 
 # ── Project Card ───────────────────────────────────────────────────────────────
@@ -128,6 +147,8 @@ class ProjectDetailPanel(QWidget):
         t = ThemeEngine.get_colors()
         self.toast_mgr = toast_mgr
         self._asset_by_id: dict[str, ProjectAsset] = {}
+        self._rerender_worker = None
+        self._rerender_workers = set()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -259,6 +280,11 @@ class ProjectDetailPanel(QWidget):
         self._provenance_btn.setEnabled(False)
         self._provenance_btn.clicked.connect(self._on_open_provenance)
 
+        self._rerender_btn = QPushButton("Re-render from Provenance")
+        self._rerender_btn.setStyleSheet(btn_style)
+        self._rerender_btn.setEnabled(False)
+        self._rerender_btn.clicked.connect(self._on_rerender_from_provenance)
+
         self._disclosure_btn = QPushButton("Export AI Disclosure")
         self._disclosure_btn.setStyleSheet(btn_style)
         self._disclosure_btn.setEnabled(False)
@@ -275,6 +301,7 @@ class ProjectDetailPanel(QWidget):
         btn_row.addWidget(self._import_btn)
         btn_row.addWidget(self._delete_asset_btn)
         btn_row.addWidget(self._provenance_btn)
+        btn_row.addWidget(self._rerender_btn)
         btn_row.addWidget(self._disclosure_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
@@ -297,6 +324,7 @@ class ProjectDetailPanel(QWidget):
                 (self._import_btn, "Import project asset", "Imports an asset into the project."),
                 (self._delete_asset_btn, "Delete project asset", "Moves the selected asset to recoverable trash."),
                 (self._provenance_btn, "Open asset provenance", "Opens provenance for the selected asset."),
+                (self._rerender_btn, "Re-render from provenance", "Re-renders the selected artifact only when its recorded inputs still match this installation."),
                 (
                     self._disclosure_btn,
                     "Export AI disclosure",
@@ -338,6 +366,7 @@ class ProjectDetailPanel(QWidget):
             self._asset_list.addItem(item)
         self._provenance_btn.setEnabled(False)
         self._delete_asset_btn.setEnabled(False)
+        self._rerender_btn.setEnabled(False)
 
         # Versions
         self._version_list.clear()
@@ -363,6 +392,7 @@ class ProjectDetailPanel(QWidget):
         self._asset_by_id = {}
         self._provenance_btn.setEnabled(False)
         self._delete_asset_btn.setEnabled(False)
+        self._rerender_btn.setEnabled(False)
         self._disclosure_btn.setEnabled(False)
         self._version_list.clear()
 
@@ -536,6 +566,7 @@ class ProjectDetailPanel(QWidget):
         has_provenance = bool(asset and asset.provenance_path and os.path.isfile(asset.provenance_path))
         self._provenance_btn.setEnabled(has_provenance)
         self._delete_asset_btn.setEnabled(asset is not None)
+        self._rerender_btn.setEnabled(has_provenance and self._rerender_worker is None)
 
     def _on_open_provenance(self):
         asset = self._selected_asset()
@@ -572,6 +603,108 @@ class ProjectDetailPanel(QWidget):
         close_btn.clicked.connect(dialog.accept)
         layout.addWidget(close_btn, alignment=Qt.AlignRight)
         dialog.exec()
+
+    def _on_rerender_from_provenance(self):
+        asset = self._selected_asset()
+        if asset is None or not asset.provenance_path:
+            if self.toast_mgr:
+                self.toast_mgr.error("Select an asset with a provenance sidecar first.")
+            return
+        if self._rerender_worker is not None:
+            if self.toast_mgr:
+                self.toast_mgr.warning("A provenance re-render is already running.")
+            return
+
+        provenance = read_provenance_sidecar(asset.provenance_path)
+        compatibility = check_provenance_compatibility(provenance)
+        if not compatibility.compatible:
+            detail = "\n".join(diff.format() for diff in compatibility.diffs[:5])
+            if self.toast_mgr:
+                self.toast_mgr.error(
+                    "Re-render refused; recorded inputs do not match this installation.\n"
+                    + detail
+                )
+            return
+
+        worker = InferenceWorker(_rerender_provenance_task, asset.file_path)
+        self._rerender_worker = worker
+        self._rerender_workers.add(worker)
+        worker.progress.connect(
+            lambda percent: self._meta_label.setText(
+                f"Re-rendering {asset.name}: {percent}%"
+            )
+        )
+        worker.finished.connect(
+            lambda result, item=asset, current_worker=worker:
+            self._on_rerender_finished(item, current_worker, result)
+        )
+        worker.error.connect(
+            lambda message, current_worker=worker:
+            self._on_rerender_error(current_worker, message)
+        )
+        worker.cancelled.connect(
+            lambda current_worker=worker: self._on_rerender_cancelled(current_worker)
+        )
+        worker.thread_stopped.connect(
+            lambda current_worker=worker: self._rerender_workers.discard(current_worker)
+        )
+        self._rerender_btn.setEnabled(False)
+        worker.start()
+        if self.toast_mgr:
+            self.toast_mgr.info(f"Re-rendering {asset.name} from provenance...")
+
+    def _on_rerender_finished(self, source_asset: ProjectAsset, worker, result):
+        if self._rerender_worker is worker:
+            self._rerender_worker = None
+        self._rerender_btn.setEnabled(bool(source_asset.provenance_path))
+        if not result.identical:
+            detail = "\n".join(diff.format() for diff in result.differences)
+            if self.toast_mgr:
+                self.toast_mgr.error(
+                    "Re-render completed but the bytes differ from the source artifact.\n"
+                    + detail
+                )
+            return
+
+        manager = get_project_manager()
+        if manager.current is None:
+            if self.toast_mgr:
+                self.toast_mgr.error("Re-render completed, but no project is open to import it.")
+            return
+        try:
+            asset_id = manager.import_asset(
+                result.rerendered_path,
+                source_asset.asset_type or "audio",
+                "provenance_rerender",
+                name=f"{source_asset.name} (re-rendered)",
+            )
+        except Exception as exc:
+            if self.toast_mgr:
+                self.toast_mgr.error(f"Re-rendered artifact could not be imported: {exc}")
+            return
+        if not asset_id:
+            if self.toast_mgr:
+                self.toast_mgr.error("Re-rendered artifact could not be added to the project.")
+            return
+        self.load_project(manager.current)
+        if self.toast_mgr:
+            self.toast_mgr.success(
+                f"Re-rendered {source_asset.name} bit-identically and added it to the project."
+            )
+
+    def _on_rerender_error(self, worker, message: str):
+        if self._rerender_worker is worker:
+            self._rerender_worker = None
+        self._rerender_btn.setEnabled(True)
+        if self.toast_mgr:
+            self.toast_mgr.error(f"Provenance re-render failed: {message}")
+
+    def _on_rerender_cancelled(self, worker):
+        if self._rerender_worker is worker:
+            self._rerender_worker = None
+        self._rerender_btn.setEnabled(True)
+        if self.toast_mgr:
+            self.toast_mgr.warning("Provenance re-render cancelled.")
 
     def _on_export_disclosure(self):
         """Write the project disclosure record as JSON and TSV."""

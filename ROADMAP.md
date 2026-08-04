@@ -83,22 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Guarantee that any artifact can be re-rendered from its provenance
-  Why: Non-determinism and silent post-update regressions are among the most repeated complaints
-    about generative music tools, and cloud vendors structurally cannot fix it because they
-    deprecate models — this app already stamps everything needed.
-  Evidence: `core/provenance.py:171-240` records seed, model id/revision/hash, parameters, prompt,
-    lyrics and source paths per artifact. Nothing consumes them to reproduce a render. Community
-    reporting documents persona/vocal regressions after model updates and prompts being ignored
-    between versions; Suno has publicly committed to deprecating the models users' catalogues were
-    made with, which is precisely the failure a local tool can rule out.
-  Touches: `core/provenance.py`, engine run paths, `ui/project_manager.py`, tests.
-  Acceptance: A "Re-render from provenance" action reproduces an artifact bit-identically when the
-    same model revision is present, and refuses with a precise diff (model revision, parameter,
-    app version, runtime) when it is not; a test asserts a fixed-seed fixture reproduces exactly on
-    the pinned runtime.
-  Complexity: M
-
 - [ ] P2 — Recommend models by task using published measurements
   Why: This is the single most-requested thing across the separation ecosystem and nobody ships it;
     users are currently asked to choose between checkpoint filenames.

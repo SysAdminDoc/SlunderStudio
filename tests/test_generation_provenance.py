@@ -11,8 +11,10 @@ import numpy as np
 
 from core.project import ProjectManager
 from core.provenance import (
+    check_provenance_compatibility,
     project_metadata_from_provenance,
     read_provenance_sidecar,
+    rerender_from_provenance,
     write_provenance_sidecar,
 )
 from core.trash import TrashManager
@@ -41,7 +43,7 @@ class GenerationProvenanceTests(unittest.TestCase):
             data = read_provenance_sidecar(artifact)
 
             self.assertEqual(sidecar, Path(str(artifact) + ".provenance.json"))
-            self.assertEqual(data["schema_version"], 1)
+            self.assertEqual(data["schema_version"], 2)
             self.assertEqual(data["module"], "song_forge")
             self.assertEqual(data["operation"], "generate")
             self.assertEqual(data["model"]["id"], "ace-step-v1.5")
@@ -57,6 +59,82 @@ class GenerationProvenanceTests(unittest.TestCase):
             self.assertEqual(summary["provenance"]["model_license"], "MIT")
             self.assertEqual(summary["provenance"]["model_commercial_use"], "allowed")
             self.assertEqual(summary["provenance"]["artifact_sha256"], data["artifact"]["sha256"])
+
+    def test_sidecar_records_runtime_and_source_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact = root / "render.wav"
+            source = root / "source.wav"
+            artifact.write_bytes(b"rendered audio")
+            source.write_bytes(b"source audio")
+
+            write_provenance_sidecar(
+                artifact,
+                module="fixture",
+                operation="render",
+                source_paths=[str(source)],
+            )
+            data = read_provenance_sidecar(artifact)
+
+            self.assertEqual("fixture:render", data["rerender_key"])
+            self.assertIn(str(source), data["source_hashes"])
+            self.assertTrue(data["source_hashes"][str(source)])
+            self.assertIn("python", data["runtime"])
+            self.assertIn("packages", data["runtime"])
+
+    def test_compatibility_reports_precise_source_and_runtime_diffs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact = root / "render.wav"
+            source = root / "source.wav"
+            artifact.write_bytes(b"rendered audio")
+            source.write_bytes(b"source audio")
+            write_provenance_sidecar(
+                artifact,
+                module="fixture",
+                operation="render",
+                source_paths=[str(source)],
+            )
+            source.write_bytes(b"changed source")
+            compatibility = check_provenance_compatibility(
+                read_provenance_sidecar(artifact),
+                current_app_version="different-version",
+                current_runtime={
+                    "python": "0.0",
+                    "system": "Other",
+                    "machine": "Other",
+                    "packages": {},
+                },
+            )
+
+            self.assertFalse(compatibility.compatible)
+            fields = {diff.field for diff in compatibility.diffs}
+            self.assertIn("app_version", fields)
+            self.assertIn("runtime.python", fields)
+            self.assertTrue(any(field.startswith("source_hashes.") for field in fields))
+
+    def test_fixed_seed_demo_rerender_is_byte_identical(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            engine = SFXEngine()
+            engine._output_dir = str(root / "original")
+            original = engine.generate(SFXParams(
+                prompt="soft chime",
+                duration=0.2,
+                seed=77,
+                allow_demo_output=True,
+            ))
+
+            rerendered = rerender_from_provenance(
+                original.file_path,
+                output_dir=root / "rerendered",
+            )
+
+            self.assertTrue(rerendered.identical)
+            self.assertEqual(
+                read_provenance_sidecar(original.file_path)["artifact"]["sha256"],
+                read_provenance_sidecar(rerendered.rerendered_path)["artifact"]["sha256"],
+            )
 
     def test_sfx_demo_generation_writes_sidecar(self):
         with tempfile.TemporaryDirectory() as tmp:
