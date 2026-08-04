@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 import numpy as np
 
 from ui.accessibility import install_accessibility
-from ui.widgets import EmptyStateWidget
+from ui.widgets import EmptyStateWidget, OperationProgressWidget
 from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
 from ui.waveform_widget import WaveformWidget, MiniWaveform
@@ -770,6 +770,12 @@ class MixerView(QWidget):
         self._status = QLabel("Import audio tracks to begin mixing")
         self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 11px;")
         layout.addWidget(self._status)
+
+        self._operation_progress = OperationProgressWidget()
+        self._operation_progress.cancel_requested.connect(
+            self._cancel_active_operation
+        )
+        layout.addWidget(self._operation_progress)
         if target_index >= 0:
             self._on_lufs_target_changed()
 
@@ -789,6 +795,7 @@ class MixerView(QWidget):
                 (self._side_gain_spin, "Side gain trim", "Adjusts side-channel gain in dB."),
                 (self._ref_btn, "Load reference track", "Loads a loudness reference track for mastering comparison."),
                 (self._master_btn, "Master and export", "Masters the mix and opens export dialog."),
+                (self._operation_progress.cancel_button, "Cancel mixer operation", "Cancels the running import, EQ, reference, mastering, or export operation."),
             ],
             tab_order=[
                 self._add_btn, self._dynamic_eq_btn,
@@ -816,6 +823,44 @@ class MixerView(QWidget):
         self._status.setText(message)
         if self.toast_mgr is not None:
             self.toast_mgr.error(message)
+
+    def _active_operation(self):
+        """Return the current worker, label, and related action button."""
+        operations = (
+            (self._master_worker, "Mastering", self._master_btn),
+            (self._export_worker, "Master export", self._master_btn),
+            (self._dynamic_eq_operation_worker, "Dynamic EQ", self._dynamic_eq_apply_btn),
+            (self._dynamic_eq_worker, "Dynamic EQ analysis", self._dynamic_eq_btn),
+            (self._import_worker, "Audio import", self._add_btn),
+            (self._reference_worker, "Reference load", self._ref_btn),
+        )
+        return next((item for item in operations if item[0] is not None), None)
+
+    def _cancel_active_operation(self):
+        """Request cancellation without waiting on the worker thread."""
+        active = self._active_operation()
+        if active is None:
+            self._operation_progress.finish()
+            return
+        worker, label, button = active
+        self._operation_progress.mark_cancelling()
+        worker.cancel()
+        button.setEnabled(False)
+        self._status.setText(f"Cancelling {label.lower()}...")
+
+    def _start_operation_progress(self, label: str):
+        self._operation_progress.start(label, determinate=True)
+
+    def _on_operation_progress(self, label: str, percent: int):
+        self._operation_progress.set_progress(percent, label)
+        self._status.setText(f"{label}... {percent}%")
+
+    def _on_operation_step(self, message: str):
+        self._operation_progress.set_step(message)
+        self._status.setText(message)
+
+    def _finish_operation_progress(self):
+        self._operation_progress.finish()
 
     def add_track(self, name: str, audio: np.ndarray, sr: int = 44100):
         """Add an audio track to the mixer."""
@@ -940,8 +985,9 @@ class MixerView(QWidget):
             job_inputs={"path": path, "project_sample_rate": self._project_sample_rate},
         )
         worker.progress.connect(
-            lambda pct: self._status.setText(f"Importing {name}... {pct}%")
+            lambda pct, n=name: self._on_operation_progress(f"Importing {n}", pct)
         )
+        worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(
             lambda payload, n=name, callback=on_complete:
             self._on_import_finished(n, payload, callback)
@@ -956,6 +1002,7 @@ class MixerView(QWidget):
         self._import_worker = worker
         self._add_btn.setEnabled(False)
         self._status.setText(f"Importing {name}...")
+        self._start_operation_progress(f"Importing {name}")
         worker.start()
         return worker
 
@@ -968,6 +1015,7 @@ class MixerView(QWidget):
         worker = self._import_worker
         self._settle_worker(worker)
         self._import_worker = None
+        self._finish_operation_progress()
         try:
             index = self._append_prepared_track(
                 name,
@@ -997,6 +1045,7 @@ class MixerView(QWidget):
         worker = self._import_worker
         self._settle_worker(worker)
         self._import_worker = None
+        self._finish_operation_progress()
         self._report_error(f"Import error: {message}")
         if on_complete:
             on_complete(False, -1)
@@ -1006,6 +1055,7 @@ class MixerView(QWidget):
         worker = self._import_worker
         self._settle_worker(worker)
         self._import_worker = None
+        self._finish_operation_progress()
         self._status.setText("Audio import cancelled")
         if on_complete:
             on_complete(False, -1)
@@ -1075,6 +1125,12 @@ class MixerView(QWidget):
             job_label=f"Mixer reference: {name}",
             job_inputs={"path": str(path)},
         )
+        worker.progress.connect(
+            lambda pct, n=name: self._on_operation_progress(
+                f"Loading reference {n}", pct
+            )
+        )
+        worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(
             lambda payload, n=name: self._on_reference_finished(n, payload)
         )
@@ -1083,12 +1139,14 @@ class MixerView(QWidget):
         self._reference_worker = worker
         self._ref_btn.setEnabled(False)
         self._status.setText(f"Loading loudness reference: {name}...")
+        self._start_operation_progress(f"Loading reference {name}")
         worker.start()
 
     def _on_reference_finished(self, name: str, payload: dict):
         worker = self._reference_worker
         self._settle_worker(worker)
         self._reference_worker = None
+        self._finish_operation_progress()
         try:
             self._apply_reference_analysis(
                 name,
@@ -1107,6 +1165,7 @@ class MixerView(QWidget):
         worker = self._reference_worker
         self._settle_worker(worker)
         self._reference_worker = None
+        self._finish_operation_progress()
         self._ref_btn.setEnabled(True)
         self._report_error(f"Reference load error: {message}")
 
@@ -1114,6 +1173,7 @@ class MixerView(QWidget):
         worker = self._reference_worker
         self._settle_worker(worker)
         self._reference_worker = None
+        self._finish_operation_progress()
         self._ref_btn.setEnabled(True)
         self._status.setText("Reference load cancelled")
 
@@ -1316,6 +1376,7 @@ class MixerView(QWidget):
         worker.progress.connect(
             lambda pct, t=token: self._on_dynamic_eq_analysis_progress(t, pct)
         )
+        worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(
             lambda suggestions, t=token:
             self._on_dynamic_eq_analysis_finished(t, suggestions)
@@ -1327,17 +1388,19 @@ class MixerView(QWidget):
             lambda t=token: self._on_dynamic_eq_analysis_cancelled(t)
         )
         self._dynamic_eq_worker = worker
+        self._start_operation_progress("Dynamic EQ analysis")
         self._update_mix_state()
         worker.start()
 
     def _on_dynamic_eq_analysis_progress(self, token: int, percent: int):
         if token == self._dynamic_eq_analysis_token:
-            self._status.setText(f"Analyzing dynamic EQ curves... {percent}%")
+            self._on_operation_progress("Dynamic EQ analysis", percent)
 
     def _on_dynamic_eq_analysis_finished(self, token: int, suggestions: dict):
         worker = self._dynamic_eq_worker
         self._settle_worker(worker)
         self._dynamic_eq_worker = None
+        self._finish_operation_progress()
         if token != self._dynamic_eq_analysis_token:
             self._update_mix_state()
             return
@@ -1364,6 +1427,7 @@ class MixerView(QWidget):
         worker = self._dynamic_eq_worker
         self._settle_worker(worker)
         self._dynamic_eq_worker = None
+        self._finish_operation_progress()
         if token == self._dynamic_eq_analysis_token:
             self._dynamic_eq_suggestions = {}
             self._report_error(f"Dynamic EQ analysis error: {message}")
@@ -1373,6 +1437,7 @@ class MixerView(QWidget):
         worker = self._dynamic_eq_worker
         self._settle_worker(worker)
         self._dynamic_eq_worker = None
+        self._finish_operation_progress()
         if token == self._dynamic_eq_analysis_token:
             self._status.setText("Dynamic EQ analysis cancelled")
         self._update_mix_state()
@@ -1455,6 +1520,7 @@ class MixerView(QWidget):
         worker.progress.connect(
             lambda pct, t=token, m=mode: self._on_dynamic_eq_operation_progress(t, m, pct)
         )
+        worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(
             lambda result, t=token: self._on_dynamic_eq_operation_finished(t, result)
         )
@@ -1465,19 +1531,24 @@ class MixerView(QWidget):
             lambda t=token: self._on_dynamic_eq_operation_cancelled(t)
         )
         self._dynamic_eq_operation_worker = worker
+        self._start_operation_progress(
+            f"Dynamic EQ {'preview' if mode == 'preview' else 'apply'}"
+        )
         self._update_mix_state()
         worker.start()
 
     def _on_dynamic_eq_operation_progress(self, token: int, mode: str, percent: int):
         if token == self._dynamic_eq_operation_token:
-            self._status.setText(
-                f"Dynamic EQ {'preview' if mode == 'preview' else 'apply'}... {percent}%"
+            self._on_operation_progress(
+                f"Dynamic EQ {'preview' if mode == 'preview' else 'apply'}",
+                percent,
             )
 
     def _on_dynamic_eq_operation_finished(self, token: int, processed: dict):
         worker = self._dynamic_eq_operation_worker
         self._settle_worker(worker)
         self._dynamic_eq_operation_worker = None
+        self._finish_operation_progress()
         if token != self._dynamic_eq_operation_token:
             self._update_mix_state()
             return
@@ -1515,6 +1586,7 @@ class MixerView(QWidget):
         worker = self._dynamic_eq_operation_worker
         self._settle_worker(worker)
         self._dynamic_eq_operation_worker = None
+        self._finish_operation_progress()
         if token == self._dynamic_eq_operation_token:
             self._report_error(f"Dynamic EQ error: {message}")
         self._update_mix_state()
@@ -1523,6 +1595,7 @@ class MixerView(QWidget):
         worker = self._dynamic_eq_operation_worker
         self._settle_worker(worker)
         self._dynamic_eq_operation_worker = None
+        self._finish_operation_progress()
         if token == self._dynamic_eq_operation_token:
             self._status.setText("Dynamic EQ cancelled")
         self._update_mix_state()
@@ -1598,12 +1671,10 @@ class MixerView(QWidget):
 
     def _on_master_export(self):
         if self._master_worker is not None and self._master_worker.isRunning():
-            self._master_worker.cancel()
-            self._status.setText("Cancelling mastering...")
+            self._cancel_active_operation()
             return
         if self._export_worker is not None and self._export_worker.isRunning():
-            self._export_worker.cancel()
-            self._status.setText("Cancelling export...")
+            self._cancel_active_operation()
             return
         if not self._tracks:
             self._status.setText("No audio to master")
@@ -1669,19 +1740,22 @@ class MixerView(QWidget):
         worker.cancelled.connect(self._on_master_cancelled)
         self._master_worker = worker
         self._status.setText("Mastering...")
+        self._start_operation_progress("Mastering")
         self._update_mix_state()
         worker.start()
 
     def _on_master_progress(self, percent: int):
-        self._status.setText(f"Mastering... {percent}%")
+        self._on_operation_progress("Mastering", percent)
 
     def _on_master_step(self, message: str):
+        self._operation_progress.set_step(f"Mastering: {message}")
         self._status.setText(f"Mastering: {message}")
 
     def _on_master_finished(self, payload):
         worker = self._master_worker
         self._settle_worker(worker)
         self._master_worker = None
+        self._finish_operation_progress()
         try:
             if isinstance(payload, tuple) and len(payload) == 2:
                 result, match = payload
@@ -1785,12 +1859,14 @@ class MixerView(QWidget):
             provenance_extra={"mastering": mastering_metadata},
         )
         worker.progress.connect(
-            lambda pct: self._status.setText(f"Exporting master... {pct}%")
+            lambda pct: self._on_operation_progress("Exporting master", pct)
         )
+        worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(self._on_master_export_finished)
         worker.error.connect(self._on_master_export_error)
         worker.cancelled.connect(self._on_master_export_cancelled)
         self._export_worker = worker
+        self._start_operation_progress("Exporting master")
         self._update_mix_state()
         worker.start()
 
@@ -1798,6 +1874,7 @@ class MixerView(QWidget):
         worker = self._export_worker
         self._settle_worker(worker)
         self._export_worker = None
+        self._finish_operation_progress()
         self._status.setText(f"Exported master: {written}")
         self._update_mix_state()
 
@@ -1805,6 +1882,7 @@ class MixerView(QWidget):
         worker = self._export_worker
         self._settle_worker(worker)
         self._export_worker = None
+        self._finish_operation_progress()
         self._report_error(f"Master export error: {message}")
         self._update_mix_state()
 
@@ -1812,6 +1890,7 @@ class MixerView(QWidget):
         worker = self._export_worker
         self._settle_worker(worker)
         self._export_worker = None
+        self._finish_operation_progress()
         self._status.setText("Master export cancelled")
         self._update_mix_state()
 
@@ -1819,6 +1898,7 @@ class MixerView(QWidget):
         worker = self._master_worker
         self._settle_worker(worker)
         self._master_worker = None
+        self._finish_operation_progress()
         self._report_error(f"Mastering error: {message}")
         self._update_mix_state()
 
@@ -1826,5 +1906,6 @@ class MixerView(QWidget):
         worker = self._master_worker
         self._settle_worker(worker)
         self._master_worker = None
+        self._finish_operation_progress()
         self._status.setText("Mastering cancelled")
         self._update_mix_state()

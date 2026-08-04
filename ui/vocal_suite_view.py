@@ -20,6 +20,7 @@ from ui.theme import Palette, ThemeEngine
 from ui.waveform_widget import WaveformWidget
 from ui.stem_mixer import StemMixer
 from ui.accessibility import install_accessibility
+from ui.widgets import OperationProgressWidget
 from core.i18n import (
     GPT_SOVITS_LANGUAGE_CODES,
     language_code_from_label,
@@ -195,6 +196,12 @@ class VocalSuiteView(QWidget):
 
         layout.addWidget(self._tabs, 1)
 
+        self._operation_progress = OperationProgressWidget()
+        self._operation_progress.cancel_requested.connect(
+            self._cancel_active_operation
+        )
+        layout.addWidget(self._operation_progress)
+
         # Bottom action bar
         action_bar = QHBoxLayout()
         action_bar.setSpacing(6)
@@ -255,6 +262,7 @@ class VocalSuiteView(QWidget):
                 (self._sing_vibrato, "Singing vibrato", "Adjusts vibrato expression."),
                 (self._sing_gender, "Singing gender", "Adjusts vocal formant character."),
                 (self._sing_gen_btn, "Synthesize vocals", "Starts DiffSinger vocal synthesis."),
+                (self._operation_progress.cancel_button, "Cancel Vocal Suite operation", "Cancels the running Vocal Suite synthesis, conversion, separation, or export."),
                 (self._sing_pronunciation_units, "Pronunciation lyric unit", "Selects the word or syllable region to correct."),
                 (self._sing_phonemes, "Pronunciation phonemes", "Space-separated phoneme tokens for the selected lyric unit."),
                 (self._sing_pronunciation_btn, "Re-render pronunciation", "Re-synthesizes only the selected pronunciation region and crossfades it into the vocal."),
@@ -1316,14 +1324,52 @@ class VocalSuiteView(QWidget):
         if self.toast_mgr is not None:
             self.toast_mgr.error(message)
 
+    def _active_operation(self):
+        """Return the current worker, its label, and its action button."""
+        operations = (
+            (self._pronunciation_worker, "Pronunciation correction", self._sing_pronunciation_btn),
+            (self._sing_worker, "DiffSinger synthesis", self._sing_gen_btn),
+            (self._melody_worker, "Melody generation", self._melody_generate_btn),
+            (self._rvc_worker, "RVC conversion", self._rvc_convert_btn),
+            (self._clone_worker, "GPT-SoVITS generation", self._clone_gen_btn),
+            (self._autotune_worker, "Auto-tune processing", self._autotune_apply_btn),
+            (self._stem_worker, "Stem separation", self._stem_separate_btn),
+            (self._export_worker, "Vocal export", self._export_btn),
+        )
+        return next((item for item in operations if item[0] is not None), None)
+
+    def _cancel_active_operation(self):
+        """Request cancellation without blocking the GUI thread."""
+        active = self._active_operation()
+        if active is None:
+            self._operation_progress.finish()
+            return
+        worker, label, button = active
+        self._operation_progress.mark_cancelling()
+        worker.cancel()
+        button.setEnabled(False)
+        self._status.setText(f"Cancelling {label.lower()}...")
+
+    def _start_operation_progress(self, label: str):
+        self._operation_progress.start(label, determinate=True)
+
+    def _on_operation_progress(self, label: str, percent: int):
+        self._operation_progress.set_progress(percent, label)
+        self._status.setText(f"{label}... {percent}%")
+
+    def _on_operation_step(self, message: str):
+        self._operation_progress.set_step(message)
+        self._status.setText(message)
+
+    def _finish_operation_progress(self):
+        self._operation_progress.finish()
+
     def _on_sing_generate(self):
         if self._pronunciation_worker is not None:
             self._report_error("Wait for pronunciation correction to finish before generating again")
             return
         if self._sing_worker is not None:
-            self._sing_worker.cancel()
-            self._sing_gen_btn.setEnabled(False)
-            self._status.setText("Cancelling DiffSinger synthesis...")
+            self._cancel_active_operation()
             return
         lyrics = self._sing_lyrics.toPlainText().strip()
         profile = self._selected_voice_profile(self._sing_voice)
@@ -1386,12 +1432,13 @@ class VocalSuiteView(QWidget):
             },
         )
         self._sing_worker.progress.connect(
-            lambda pct: self._status.setText(f"DiffSinger synthesis... {pct}%")
+            lambda pct: self._on_operation_progress("DiffSinger synthesis", pct)
         )
-        self._sing_worker.step_info.connect(self._status.setText)
+        self._sing_worker.step_info.connect(self._on_operation_step)
         self._sing_worker.finished.connect(self._on_sing_generated)
         self._sing_worker.error.connect(self._on_sing_error)
         self._sing_worker.cancelled.connect(self._on_sing_cancelled)
+        self._start_operation_progress("DiffSinger synthesis")
         self._sing_worker.start()
         self._refresh_capability_states()
 
@@ -1441,6 +1488,7 @@ class VocalSuiteView(QWidget):
 
     def _on_sing_generated(self, run: EngineRunResult):
         self._sing_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_SYNTHESIZE] = run
         if not run.is_success:
             self._report_error(f"DiffSinger synthesis failed: {run.error}")
@@ -1479,6 +1527,7 @@ class VocalSuiteView(QWidget):
 
     def _on_sing_error(self, error: str):
         self._sing_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_SYNTHESIZE] = EngineRunResult.failure(
             CAP_VOCAL_SYNTHESIZE,
             error,
@@ -1489,6 +1538,7 @@ class VocalSuiteView(QWidget):
 
     def _on_sing_cancelled(self):
         self._sing_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_SYNTHESIZE] = EngineRunResult.cancelled(
             CAP_VOCAL_SYNTHESIZE,
             "DiffSinger synthesis cancelled",
@@ -1559,9 +1609,7 @@ class VocalSuiteView(QWidget):
 
     def _on_pronunciation_correct(self):
         if self._pronunciation_worker is not None:
-            self._pronunciation_worker.cancel()
-            self._sing_pronunciation_btn.setEnabled(False)
-            self._status.setText("Cancelling pronunciation correction...")
+            self._cancel_active_operation()
             return
         if not self._sing_selected_region or not self._current_audio_path:
             self._report_error("Select a rendered vocal region before correcting pronunciation")
@@ -1603,12 +1651,13 @@ class VocalSuiteView(QWidget):
             job_metadata={"module": "vocal_suite"},
         )
         self._pronunciation_worker.progress.connect(
-            lambda pct: self._status.setText(f"Correcting pronunciation... {pct}%")
+            lambda pct: self._on_operation_progress("Correcting pronunciation", pct)
         )
-        self._pronunciation_worker.step_info.connect(self._status.setText)
+        self._pronunciation_worker.step_info.connect(self._on_operation_step)
         self._pronunciation_worker.finished.connect(self._on_pronunciation_corrected)
         self._pronunciation_worker.error.connect(self._on_pronunciation_error)
         self._pronunciation_worker.cancelled.connect(self._on_pronunciation_cancelled)
+        self._start_operation_progress("Correcting pronunciation")
         self._pronunciation_worker.start()
 
     def _run_pronunciation_correction(
@@ -1705,6 +1754,7 @@ class VocalSuiteView(QWidget):
 
     def _on_pronunciation_corrected(self, payload: dict):
         self._pronunciation_worker = None
+        self._finish_operation_progress()
         self._sing_pronunciation_btn.setText("Re-render selected pronunciation")
         self._pronunciation_overrides = list(payload.get("overrides") or [])
         self._sing_original_audio_path = str(payload.get("original_path") or self._current_audio_path)
@@ -1728,12 +1778,14 @@ class VocalSuiteView(QWidget):
 
     def _on_pronunciation_error(self, error: str):
         self._pronunciation_worker = None
+        self._finish_operation_progress()
         self._sing_pronunciation_btn.setText("Re-render selected pronunciation")
         self._report_error(f"Pronunciation correction failed: {error}")
         self._update_pronunciation_button()
 
     def _on_pronunciation_cancelled(self):
         self._pronunciation_worker = None
+        self._finish_operation_progress()
         self._sing_pronunciation_btn.setText("Re-render selected pronunciation")
         self._status.setText("Pronunciation correction cancelled")
         self._update_pronunciation_button()
@@ -1756,9 +1808,7 @@ class VocalSuiteView(QWidget):
 
     def _on_melody_generate(self):
         if self._melody_worker is not None:
-            self._melody_worker.cancel()
-            self._melody_generate_btn.setEnabled(False)
-            self._status.setText("Cancelling lyric melody generation...")
+            self._cancel_active_operation()
             return
         path = self._melody_input_label.property("path")
         if not path:
@@ -1788,12 +1838,13 @@ class VocalSuiteView(QWidget):
             job_metadata={"module": "vocal_suite"},
         )
         self._melody_worker.progress.connect(
-            lambda pct: self._status.setText(f"Generating melody... {pct}%")
+            lambda pct: self._on_operation_progress("Generating melody", pct)
         )
-        self._melody_worker.step_info.connect(self._status.setText)
+        self._melody_worker.step_info.connect(self._on_operation_step)
         self._melody_worker.finished.connect(self._on_melody_generated)
         self._melody_worker.error.connect(self._on_melody_error)
         self._melody_worker.cancelled.connect(self._on_melody_cancelled)
+        self._start_operation_progress("Generating melody")
         self._melody_worker.start()
         self._melody_generate_btn.setText(tr("lyrics.actions.cancel"))
         self._melody_generate_btn.setEnabled(True)
@@ -1817,6 +1868,7 @@ class VocalSuiteView(QWidget):
 
     def _on_melody_generated(self, result):
         self._melody_worker = None
+        self._finish_operation_progress()
         self._melody_generate_btn.setText(tr("vocal.melody.generate"))
         self._melody_generate_btn.setEnabled(True)
         if not result or not result.midi_path:
@@ -1842,12 +1894,14 @@ class VocalSuiteView(QWidget):
 
     def _on_melody_error(self, error: str):
         self._melody_worker = None
+        self._finish_operation_progress()
         self._melody_generate_btn.setText(tr("vocal.melody.generate"))
         self._melody_generate_btn.setEnabled(True)
         self._report_error(f"Lyric melody generation failed: {error}")
 
     def _on_melody_cancelled(self):
         self._melody_worker = None
+        self._finish_operation_progress()
         self._melody_generate_btn.setText(tr("vocal.melody.generate"))
         self._melody_generate_btn.setEnabled(True)
         self._status.setText("Lyric melody generation cancelled")
@@ -1868,9 +1922,7 @@ class VocalSuiteView(QWidget):
 
     def _on_rvc_convert(self):
         if self._rvc_worker is not None:
-            self._rvc_worker.cancel()
-            self._rvc_convert_btn.setEnabled(False)
-            self._status.setText("Cancelling RVC demo conversion...")
+            self._cancel_active_operation()
             return
         profile_id = self._rvc_voice.currentData()
         profile = VoiceBank().get(profile_id) if profile_id else None
@@ -1927,12 +1979,13 @@ class VocalSuiteView(QWidget):
             },
         )
         self._rvc_worker.progress.connect(
-            lambda pct: self._status.setText(f"RVC conversion... {pct}%")
+            lambda pct: self._on_operation_progress("RVC conversion", pct)
         )
-        self._rvc_worker.step_info.connect(self._status.setText)
+        self._rvc_worker.step_info.connect(self._on_operation_step)
         self._rvc_worker.finished.connect(self._on_rvc_generated)
         self._rvc_worker.error.connect(self._on_rvc_error)
         self._rvc_worker.cancelled.connect(self._on_rvc_cancelled)
+        self._start_operation_progress("RVC conversion")
         self._rvc_worker.start()
         self._refresh_capability_states()
 
@@ -1992,6 +2045,7 @@ class VocalSuiteView(QWidget):
 
     def _on_rvc_generated(self, run: EngineRunResult):
         self._rvc_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_CONVERT] = run
         if not run.is_success:
             self._report_error(f"RVC conversion failed: {run.error}")
@@ -2013,6 +2067,7 @@ class VocalSuiteView(QWidget):
 
     def _on_rvc_error(self, error: str):
         self._rvc_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_CONVERT] = EngineRunResult.failure(
             CAP_VOCAL_CONVERT,
             error,
@@ -2023,6 +2078,7 @@ class VocalSuiteView(QWidget):
 
     def _on_rvc_cancelled(self):
         self._rvc_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_CONVERT] = EngineRunResult.cancelled(
             CAP_VOCAL_CONVERT,
             "RVC conversion cancelled",
@@ -2075,9 +2131,7 @@ class VocalSuiteView(QWidget):
 
     def _on_clone_generate(self):
         if self._clone_worker is not None:
-            self._clone_worker.cancel()
-            self._clone_gen_btn.setEnabled(False)
-            self._status.setText("Cancelling GPT-SoVITS demo...")
+            self._cancel_active_operation()
             return
         text = self._clone_text.toPlainText().strip()
         if not text:
@@ -2143,12 +2197,13 @@ class VocalSuiteView(QWidget):
             },
         )
         self._clone_worker.progress.connect(
-            lambda pct: self._status.setText(f"GPT-SoVITS demo... {pct}%")
+            lambda pct: self._on_operation_progress("GPT-SoVITS generation", pct)
         )
-        self._clone_worker.step_info.connect(self._status.setText)
+        self._clone_worker.step_info.connect(self._on_operation_step)
         self._clone_worker.finished.connect(self._on_clone_generated)
         self._clone_worker.error.connect(self._on_clone_error)
         self._clone_worker.cancelled.connect(self._on_clone_cancelled)
+        self._start_operation_progress("GPT-SoVITS generation")
         self._clone_worker.start()
         self._refresh_capability_states()
 
@@ -2429,6 +2484,7 @@ class VocalSuiteView(QWidget):
 
     def _on_clone_generated(self, payload):
         self._clone_worker = None
+        self._finish_operation_progress()
         if isinstance(payload, dict):
             result = payload.get("result")
             path = payload.get("path", "")
@@ -2467,6 +2523,7 @@ class VocalSuiteView(QWidget):
 
     def _on_clone_error(self, error: str):
         self._clone_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_CLONE] = EngineRunResult.failure(
             CAP_VOCAL_CLONE,
             error,
@@ -2477,6 +2534,7 @@ class VocalSuiteView(QWidget):
 
     def _on_clone_cancelled(self):
         self._clone_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_CLONE] = EngineRunResult.cancelled(
             CAP_VOCAL_CLONE,
             "GPT-SoVITS clone cancelled",
@@ -2507,9 +2565,7 @@ class VocalSuiteView(QWidget):
 
     def _on_autotune_apply(self):
         if self._autotune_worker is not None:
-            self._autotune_worker.cancel()
-            self._autotune_apply_btn.setEnabled(False)
-            self._status.setText("Cancelling auto-tune...")
+            self._cancel_active_operation()
             return
         path = self._autotune_input_label.property("path")
         if not path:
@@ -2530,12 +2586,13 @@ class VocalSuiteView(QWidget):
             job_metadata={"module": "vocal_suite"},
         )
         self._autotune_worker.progress.connect(
-            lambda pct: self._status.setText(f"Auto-tune processing... {pct}%")
+            lambda pct: self._on_operation_progress("Auto-tune processing", pct)
         )
-        self._autotune_worker.step_info.connect(self._status.setText)
+        self._autotune_worker.step_info.connect(self._on_operation_step)
         self._autotune_worker.finished.connect(self._on_autotune_generated)
         self._autotune_worker.error.connect(self._on_autotune_error)
         self._autotune_worker.cancelled.connect(self._on_autotune_cancelled)
+        self._start_operation_progress("Auto-tune processing")
         self._autotune_worker.start()
         self._autotune_apply_btn.setText(tr("lyrics.actions.cancel"))
         self._autotune_apply_btn.setEnabled(True)
@@ -2554,6 +2611,7 @@ class VocalSuiteView(QWidget):
 
     def _on_autotune_generated(self, result):
         self._autotune_worker = None
+        self._finish_operation_progress()
         self._autotune_apply_btn.setText(tr("vocal.autotune.apply"))
         self._autotune_apply_btn.setEnabled(True)
         if not result or not result.output_path:
@@ -2577,12 +2635,14 @@ class VocalSuiteView(QWidget):
 
     def _on_autotune_error(self, error: str):
         self._autotune_worker = None
+        self._finish_operation_progress()
         self._autotune_apply_btn.setText(tr("vocal.autotune.apply"))
         self._autotune_apply_btn.setEnabled(True)
         self._report_error(f"Auto-tune failed: {error}")
 
     def _on_autotune_cancelled(self):
         self._autotune_worker = None
+        self._finish_operation_progress()
         self._autotune_apply_btn.setText(tr("vocal.autotune.apply"))
         self._autotune_apply_btn.setEnabled(True)
         self._status.setText("Auto-tune cancelled")
@@ -2598,9 +2658,7 @@ class VocalSuiteView(QWidget):
 
     def _on_separate(self):
         if self._stem_worker is not None:
-            self._stem_worker.cancel()
-            self._stem_separate_btn.setEnabled(False)
-            self._status.setText("Cancelling stem separation...")
+            self._cancel_active_operation()
             return
         path = self._stem_input_label.property("path")
         if not path:
@@ -2637,12 +2695,13 @@ class VocalSuiteView(QWidget):
             },
         )
         self._stem_worker.progress.connect(
-            lambda pct: self._status.setText(f"Stem separation... {pct}%")
+            lambda pct: self._on_operation_progress("Stem separation", pct)
         )
-        self._stem_worker.step_info.connect(self._status.setText)
+        self._stem_worker.step_info.connect(self._on_operation_step)
         self._stem_worker.finished.connect(self._on_stems_ready)
         self._stem_worker.error.connect(self._on_stems_error)
         self._stem_worker.cancelled.connect(self._on_stems_cancelled)
+        self._start_operation_progress("Stem separation")
         self._stem_worker.start()
         self._refresh_capability_states()
 
@@ -2739,6 +2798,7 @@ class VocalSuiteView(QWidget):
 
     def _on_stems_ready(self, run: EngineRunResult):
         self._stem_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_STEM_SEPARATE] = run
         if not run.is_success:
             self._report_error(f"Stem separation failed: {run.error}")
@@ -2768,6 +2828,7 @@ class VocalSuiteView(QWidget):
 
     def _on_stems_error(self, error: str):
         self._stem_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_STEM_SEPARATE] = EngineRunResult.failure(
             CAP_STEM_SEPARATE,
             error,
@@ -2778,6 +2839,7 @@ class VocalSuiteView(QWidget):
 
     def _on_stems_cancelled(self):
         self._stem_worker = None
+        self._finish_operation_progress()
         self._contract_results[CAP_STEM_SEPARATE] = EngineRunResult.cancelled(
             CAP_STEM_SEPARATE,
             "Stem separation cancelled",
@@ -2788,8 +2850,7 @@ class VocalSuiteView(QWidget):
 
     def _on_remix_export(self):
         if self._export_worker is not None and self._export_worker.isRunning():
-            self._export_worker.cancel()
-            self._status.setText("Cancelling export...")
+            self._cancel_active_operation()
             return
         audio = self._stem_mixer.get_remix_audio()
         if audio is None:
@@ -2806,8 +2867,9 @@ class VocalSuiteView(QWidget):
                 path,
             )
             worker.progress.connect(
-                lambda pct: self._status.setText(f"Exporting remix... {pct}%")
+                lambda pct: self._on_operation_progress("Exporting remix", pct)
             )
+            worker.step_info.connect(self._on_operation_step)
             worker.finished.connect(self._on_export_finished)
             worker.error.connect(self._on_export_error)
             worker.cancelled.connect(self._on_export_cancelled)
@@ -2815,7 +2877,7 @@ class VocalSuiteView(QWidget):
             self._export_worker = worker
             self._export_btn.setEnabled(False)
             self._export_btn.setText("Cancel Export")
-            self._status.setText("Exporting remix... 0%")
+            self._start_operation_progress("Exporting remix")
             worker.start()
 
     def _on_play_stem(self, stem_name: str):
@@ -2836,8 +2898,7 @@ class VocalSuiteView(QWidget):
 
     def _on_export(self):
         if self._export_worker is not None and self._export_worker.isRunning():
-            self._export_worker.cancel()
-            self._status.setText("Cancelling export...")
+            self._cancel_active_operation()
             return
         if not self._current_audio_path:
             self._report_error("No vocal audio is available to export")
@@ -2855,8 +2916,9 @@ class VocalSuiteView(QWidget):
             path,
         )
         worker.progress.connect(
-            lambda pct: self._status.setText(f"Exporting vocal WAV... {pct}%")
+            lambda pct: self._on_operation_progress("Exporting vocal WAV", pct)
         )
+        worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(self._on_export_finished)
         worker.error.connect(self._on_export_error)
         worker.cancelled.connect(self._on_export_cancelled)
@@ -2864,7 +2926,7 @@ class VocalSuiteView(QWidget):
         self._export_worker = worker
         self._export_btn.setEnabled(False)
         self._export_btn.setText("Cancel Export")
-        self._status.setText("Exporting vocal WAV... 0%")
+        self._start_operation_progress("Exporting vocal WAV")
         worker.start()
 
     def _release_export_worker_later(self, worker):
@@ -2881,6 +2943,7 @@ class VocalSuiteView(QWidget):
         worker = self._export_worker
         self._release_export_worker_later(worker)
         self._export_worker = None
+        self._finish_operation_progress()
         output = payload["path"]
         self._current_audio_path = output
         if payload.get("kind") == "remix":
@@ -2895,6 +2958,7 @@ class VocalSuiteView(QWidget):
         worker = self._export_worker
         self._release_export_worker_later(worker)
         self._export_worker = None
+        self._finish_operation_progress()
         self._report_error(f"Vocal export failed: {message}")
         self._enable_routing()
 
@@ -2902,6 +2966,7 @@ class VocalSuiteView(QWidget):
         worker = self._export_worker
         self._release_export_worker_later(worker)
         self._export_worker = None
+        self._finish_operation_progress()
         self._status.setText("Vocal export cancelled")
         self._enable_routing()
 

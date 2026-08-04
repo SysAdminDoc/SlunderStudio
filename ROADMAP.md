@@ -83,26 +83,6 @@ Incomplete work only for Slunder Studio, an offline local-first AI music creatio
 
 ### P2
 
-- [ ] P2 — Give long operations progress and a way to stop
-  Why: Six of roughly ten long-running jobs report only a percentage in a status label, and the
-    Mixer cannot be cancelled at all despite its workers supporting it.
-  Evidence: Determinate `QProgressBar` exists in only four places — `ui/song_forge_view.py:408`,
-    `ui/ai_producer_view.py:415`, `ui/lyrics_view.py:496`, `ui/model_hub.py:294`. Text-only percent
-    elsewhere, most starkly `ui/vocal_suite_view.py`, which has 82 `_status.setText` calls and zero
-    progress bars across DiffSinger, melody extraction, RVC, cloning, auto-tune and separation.
-    `ui/mixer_view.py` workers cancel internally at `:654`, `:914`, `:1248` but expose **no Cancel
-    button anywhere** — cancellation only happens as a side effect of removing a track or starting
-    another operation. No cancel at all on any export, the MIDI render, the health-report ZIP
-    (`ui/settings_view.py:775-794`) or recovery cleanup (`:522-538`).
-    `ui/reference_panel.py:283-288` reconstructs its percentage by string-splitting its own label
-    text, which will break on any copy change.
-  Touches: `ui/vocal_suite_view.py`, `ui/mixer_view.py`, `ui/midi_studio_view.py`,
-    `ui/settings_view.py`, `ui/reference_panel.py`, `ui/sfx_view.py`.
-  Acceptance: Every operation that can exceed roughly a second shows determinate progress where the
-    total is knowable and an explicit indeterminate state where it is not, and exposes Cancel that
-    leaves consistent state; no progress value is derived by parsing display text.
-  Complexity: M
-
 - [ ] P2 — Harden the UI against display scaling
   Why: The app is developed on a 125% display and styles in device pixels, so text clipping is
     structural rather than incidental — which is why it keeps being fixed one widget at a time.

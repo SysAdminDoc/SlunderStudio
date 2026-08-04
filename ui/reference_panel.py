@@ -6,7 +6,7 @@ Reference track analysis UI: drag-drop audio, view analysis results,
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QFrame, QFileDialog, QListWidget, QListWidgetItem, QScrollArea,
-    QGroupBox, QGridLayout,
+    QGroupBox, QGridLayout, QProgressBar,
 )
 from PySide6.QtCore import Signal, Qt, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
@@ -199,6 +199,18 @@ class ReferencePanel(QWidget):
         )
         layout.addWidget(self._progress_label)
 
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setObjectName("referenceAnalysisProgress")
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setAccessibleName("Reference analysis progress")
+        self._progress_bar.setAccessibleDescription(
+            "Shows the percentage completed for reference track analysis."
+        )
+        self._progress_bar.hide()
+        layout.addWidget(self._progress_bar)
+
     def _browse_file(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Select Reference Track", "",
@@ -241,6 +253,9 @@ class ReferencePanel(QWidget):
             f"color: {Palette.BLUE}; font-size: 12px; }}"
         )
         self._cancel_btn.setVisible(True)
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setVisible(True)
 
         worker = InferenceWorker(
             analyze_track,
@@ -317,9 +332,7 @@ class ReferencePanel(QWidget):
 
     def _on_analysis_progress(self, token: int, percent: int):
         if self._is_current(token):
-            self._progress_label.setText(
-                f"{self._progress_label.text().split(' - ')[0]} - {percent}%"
-            )
+            self._progress_bar.setValue(max(0, min(100, int(percent))))
 
     def _on_analysis_done(self, token: int, file_path: str, analysis, worker=None):
         from pathlib import Path
@@ -329,6 +342,7 @@ class ReferencePanel(QWidget):
             return
         self._cancel_btn.setVisible(False)
         self._progress_label.setText("")
+        self._progress_bar.hide()
         self._display_analysis(analysis, Path(file_path).name)
 
     def _on_analysis_error(self, token: int, message: str, worker=None):
@@ -337,6 +351,7 @@ class ReferencePanel(QWidget):
             return
         self._cancel_btn.setVisible(False)
         self._progress_label.setText("")
+        self._progress_bar.hide()
         if "librosa" in message.lower() or "import" in message.lower():
             self._drop_zone.setText("Audio analysis unavailable - install librosa")
         else:
@@ -347,6 +362,7 @@ class ReferencePanel(QWidget):
         if self._is_current(token):
             self._cancel_btn.setVisible(False)
             self._progress_label.setText("")
+            self._progress_bar.hide()
             self._drop_zone.setText("Analysis cancelled")
 
     def _display_analysis(self, analysis, filename: str):

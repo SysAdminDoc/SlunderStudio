@@ -1,6 +1,7 @@
 import os
 import json
 import tempfile
+import time
 import unittest
 import zipfile
 from contextlib import ExitStack
@@ -157,10 +158,18 @@ class DiagnosticsTests(unittest.TestCase):
                         return_value=(str(target), "Health Report (*.zip)"),
                     ), mock.patch(
                         "ui.settings_view.export_health_report",
-                        return_value=target,
+                        side_effect=lambda *_args, **_kwargs: target,
                     ) as export:
                         view._export_health_report()
-                    export.assert_called_once_with(str(target), include_private=True)
+                    deadline = time.monotonic() + 5.0
+                    while view._health_report_worker is not None and time.monotonic() < deadline:
+                        QApplication.processEvents()
+                        time.sleep(0.01)
+                    self.assertIsNone(view._health_report_worker)
+                    export.assert_called_once()
+                    args, kwargs = export.call_args
+                    self.assertEqual(args, (str(target),))
+                    self.assertTrue(kwargs["include_private"])
                     self.assertIn("Health report exported", toast.successes[-1])
                 finally:
                     view.deleteLater()

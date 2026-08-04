@@ -3,6 +3,8 @@ Slunder Studio — Settings View
 Two-tier settings: Simple Mode (essentials) and Advanced Mode (full controls).
 All changes apply immediately with toast feedback.
 """
+from typing import Optional
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QScrollArea, QComboBox, QLineEdit, QPushButton,
@@ -13,6 +15,7 @@ from PySide6.QtCore import Qt, QTimer
 
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
+from ui.widgets import OperationProgressWidget
 from core.diagnostics import export_health_report
 from core.i18n import (
     language_code_from_label,
@@ -30,6 +33,31 @@ from core.audio_engine import (
     enumerate_output_devices,
     format_output_device_identity,
 )
+from core.workers import CancelledJobError, InferenceWorker
+
+
+def _recovery_cleanup_task(
+    center,
+    progress_cb=None,
+    step_cb=None,
+    log_cb=None,
+    cancel_event=None,
+):
+    """Clean recovery categories with a cancellation boundary per category."""
+    from core.retention import CATEGORIES, CATEGORY_LABELS
+
+    removed = {}
+    total = len(CATEGORIES)
+    for index, category in enumerate(CATEGORIES):
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError("Recovery cleanup cancelled")
+        label = CATEGORY_LABELS[category]
+        if step_cb:
+            step_cb(f"Cleaning {label}...")
+        removed[category] = center.clean(category)
+        if progress_cb:
+            progress_cb(int(round((index + 1) * 100 / total)))
+    return removed
 
 
 class SettingRow(QHBoxLayout):
@@ -65,6 +93,8 @@ class SettingsView(QWidget):
         self._settings = Settings()
         self._audio = AudioEngine()
         self._recovery = None
+        self._health_report_worker: Optional[InferenceWorker] = None
+        self._recovery_worker: Optional[InferenceWorker] = None
         self._build_ui()
         self._audio.output_device_status.connect(self._on_audio_device_status)
         self._load_values()
@@ -90,6 +120,12 @@ class SettingsView(QWidget):
             f"color: {Palette.YELLOW}; font-size: 12px; padding: 4px 0;"
         )
         layout.addWidget(self._repair_label)
+
+        self._operation_progress = OperationProgressWidget()
+        self._operation_progress.cancel_requested.connect(
+            self._cancel_active_operation
+        )
+        layout.addWidget(self._operation_progress)
 
         # Tab widget for Simple / Advanced
         self._tabs = QTabWidget()
@@ -612,10 +648,45 @@ class SettingsView(QWidget):
         self._recovery_clean_btn.setEnabled(removable > 0)
 
     def _run_recovery_cleanup(self):
+        if self._recovery_worker is not None:
+            self._cancel_active_operation()
+            return
+        center = self._recovery_center()
+        self._recovery_clean_btn.setEnabled(False)
+        self._recovery_refresh_btn.setEnabled(False)
+        self._recovery_preview_btn.setEnabled(False)
+        self._operation_progress.start(
+            "Cleaning recovery artifacts", determinate=True
+        )
+        worker = InferenceWorker(
+            _recovery_cleanup_task,
+            center,
+            job_kind="recovery_cleanup",
+            job_label="Recovery artifact cleanup",
+            job_metadata={"module": "settings"},
+        )
+        worker.progress.connect(self._on_recovery_cleanup_progress)
+        worker.step_info.connect(self._on_recovery_cleanup_step)
+        worker.finished.connect(self._on_recovery_cleanup_finished)
+        worker.error.connect(self._on_recovery_cleanup_error)
+        worker.cancelled.connect(self._on_recovery_cleanup_cancelled)
+        self._recovery_worker = worker
+        worker.start()
+
+    def _on_recovery_cleanup_progress(self, percent: int):
+        self._operation_progress.set_progress(
+            percent, "Cleaning recovery artifacts"
+        )
+
+    def _on_recovery_cleanup_step(self, message: str):
+        self._operation_progress.set_step(message)
+        self._recovery_status.setText(message)
+
+    def _on_recovery_cleanup_finished(self, removed):
         from core.retention import CATEGORY_LABELS
 
-        center = self._recovery_center()
-        removed = center.clean_all()
+        self._recovery_worker = None
+        self._operation_progress.finish()
         lines = [
             f"{CATEGORY_LABELS[category]}: removed {len(items)}"
             for category, items in removed.items() if items
@@ -632,6 +703,42 @@ class SettingsView(QWidget):
         )
         if self.toast_mgr:
             self.toast_mgr.success(tr("settings.recovery.cleanup_toast", count=total))
+
+        self._set_recovery_operation_controls(enabled=True)
+
+    def _on_recovery_cleanup_error(self, message: str):
+        self._recovery_worker = None
+        self._operation_progress.finish()
+        self._set_recovery_operation_controls(enabled=True)
+        self._recovery_status.setText(f"Recovery cleanup failed: {message}")
+        if self.toast_mgr:
+            self.toast_mgr.error(f"Recovery cleanup failed: {message}")
+
+    def _on_recovery_cleanup_cancelled(self):
+        self._recovery_worker = None
+        self._operation_progress.finish()
+        self._set_recovery_operation_controls(enabled=True)
+        self._refresh_recovery_center()
+        self._recovery_status.setText("Recovery cleanup cancelled")
+
+    def _set_recovery_operation_controls(self, *, enabled: bool):
+        self._recovery_refresh_btn.setEnabled(enabled)
+        self._recovery_preview_btn.setEnabled(enabled)
+        if enabled:
+            self._recovery_clean_btn.setEnabled(False)
+
+    def _cancel_active_operation(self):
+        """Request cancellation for health export or recovery cleanup."""
+        worker = self._health_report_worker or self._recovery_worker
+        if worker is None:
+            self._operation_progress.finish()
+            return
+        self._operation_progress.mark_cancelling()
+        worker.cancel()
+        if worker is self._health_report_worker:
+            self._export_health_btn.setEnabled(False)
+        else:
+            self._recovery_status.setText("Cancelling recovery cleanup...")
 
     def _set_audio_device_status(self, message: str):
         """Show an audio-device warning without hiding the selected setting."""
@@ -1002,12 +1109,16 @@ class SettingsView(QWidget):
                 self._reset_btn,
                 self._health_private_inputs,
                 self._export_health_btn,
+                self._operation_progress.cancel_button,
                 self._open_dir_btn,
                 self._onboarding_btn,
             ],
         )
 
     def _export_health_report(self):
+        if self._health_report_worker is not None:
+            self._cancel_active_operation()
+            return
         path, _selected_filter = QFileDialog.getSaveFileName(
             self,
             tr("settings.dialogs.export_health"),
@@ -1016,17 +1127,54 @@ class SettingsView(QWidget):
         )
         if not path:
             return
-        try:
-            output = export_health_report(
-                path,
-                include_private=self._health_private_inputs.isChecked(),
-            )
-        except Exception as exc:
-            if self.toast_mgr:
-                self.toast_mgr.error(tr("settings.messages.health_export_failed", error=exc))
-            return
+        self._export_health_btn.setEnabled(False)
+        self._operation_progress.start("Exporting health report", determinate=True)
+        worker = InferenceWorker(
+            export_health_report,
+            path,
+            include_private=self._health_private_inputs.isChecked(),
+            job_kind="health_report_export",
+            job_label="Health report export",
+            job_metadata={"module": "settings"},
+        )
+        worker.progress.connect(self._on_health_report_progress)
+        worker.step_info.connect(self._on_health_report_step)
+        worker.finished.connect(self._on_health_report_finished)
+        worker.error.connect(self._on_health_report_error)
+        worker.cancelled.connect(self._on_health_report_cancelled)
+        self._health_report_worker = worker
+        worker.start()
+
+    def _on_health_report_progress(self, percent: int):
+        self._operation_progress.set_progress(percent, "Exporting health report")
+
+    def _on_health_report_step(self, message: str):
+        self._operation_progress.set_step(message)
+
+    def _on_health_report_finished(self, output):
+        self._health_report_worker = None
+        self._operation_progress.finish()
+        self._export_health_btn.setEnabled(True)
         if self.toast_mgr:
-            self.toast_mgr.success(tr("settings.messages.health_exported", filename=output.name))
+            self.toast_mgr.success(
+                tr("settings.messages.health_exported", filename=output.name)
+            )
+
+    def _on_health_report_error(self, message: str):
+        self._health_report_worker = None
+        self._operation_progress.finish()
+        self._export_health_btn.setEnabled(True)
+        if self.toast_mgr:
+            self.toast_mgr.error(
+                tr("settings.messages.health_export_failed", error=message)
+            )
+
+    def _on_health_report_cancelled(self):
+        self._health_report_worker = None
+        self._operation_progress.finish()
+        self._export_health_btn.setEnabled(True)
+        if self.toast_mgr and hasattr(self.toast_mgr, "info"):
+            self.toast_mgr.info("Health report export cancelled")
 
     def _open_config_dir(self):
         import subprocess, sys

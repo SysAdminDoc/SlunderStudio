@@ -14,7 +14,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 
 from ui.theme import Palette, ThemeEngine
 from ui.accessibility import install_accessibility
-from ui.widgets import EmptyStateWidget
+from ui.widgets import EmptyStateWidget, OperationProgressWidget
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.engine_contract import (
     ArtifactKind,
@@ -318,6 +318,12 @@ class SFXView(QWidget):
         self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border: none;")
         ctrl_layout.addWidget(self._status)
 
+        self._operation_progress = OperationProgressWidget()
+        self._operation_progress.cancel_requested.connect(
+            self._cancel_active_operation
+        )
+        ctrl_layout.addWidget(self._operation_progress)
+
         left.addWidget(ctrl_frame)
 
         # Main output waveform
@@ -394,12 +400,27 @@ class SFXView(QWidget):
                 (self._cfg, "SFX guidance scale", "Sets synthesis guidance strength."),
                 (self._batch, "SFX batch size", "Sets how many variations to generate."),
                 (self._gen_btn, "Generate sound effects", "Generates the requested sound effect variations."),
+                (self._operation_progress.cancel_button, "Cancel SFX operation", "Cancels the running SFX generation or preview load."),
                 (self._demo_checkbox, "Enable SFX demo synthesis", "Allows a local demo fallback without the AI model."),
                 (self._clear_btn, "Clear generated sound effects", "Removes all generated sound effect cards."),
             ],
         )
 
     # ── Events ─────────────────────────────────────────────────────────────────
+
+    def _cancel_active_operation(self):
+        """Request cancellation for generation or an asynchronous preview load."""
+        worker = self._generation_worker or self._playback_worker
+        if worker is None:
+            self._operation_progress.finish()
+            return
+        self._operation_progress.mark_cancelling()
+        worker.cancel()
+        if worker is self._generation_worker:
+            self._gen_btn.setEnabled(False)
+            self._status.setText("Cancelling SFX generation...")
+        else:
+            self._status.setText("Cancelling SFX preview load...")
 
     def _on_category_changed(self, category: str):
         self._preset_combo.clear()
@@ -422,9 +443,7 @@ class SFXView(QWidget):
 
     def _on_generate(self):
         if self._generation_worker is not None:
-            self._generation_worker.cancel()
-            self._gen_btn.setEnabled(False)
-            self._status.setText("Cancelling SFX generation...")
+            self._cancel_active_operation()
             return
 
         readiness = self._model_mgr.get_capability_readiness(
@@ -473,14 +492,23 @@ class SFXView(QWidget):
             },
         )
         self._generation_worker.progress.connect(
-            lambda pct: self._status.setText(f"SFX generation... {pct}%")
+            self._on_generation_progress
         )
-        self._generation_worker.step_info.connect(self._status.setText)
+        self._generation_worker.step_info.connect(self._on_generation_step)
         self._generation_worker.finished.connect(self._on_generation_finished)
         self._generation_worker.error.connect(self._on_generation_error)
         self._generation_worker.cancelled.connect(self._on_generation_cancelled)
+        self._operation_progress.start("SFX generation", determinate=True)
         self._generation_worker.start()
         self._refresh_capability_state()
+
+    def _on_generation_progress(self, percent: int):
+        self._operation_progress.set_progress(percent, "SFX generation")
+        self._status.setText(f"SFX generation... {percent}%")
+
+    def _on_generation_step(self, message: str):
+        self._operation_progress.set_step(message)
+        self._status.setText(message)
 
     def _run_generation_batch(
         self,
@@ -563,6 +591,7 @@ class SFXView(QWidget):
 
     def _on_generation_finished(self, batch: EngineBatchResult):
         self._generation_worker = None
+        self._operation_progress.finish()
         self._contract_batch = batch
         successful = batch.successful_runs
         if not successful:
@@ -589,6 +618,7 @@ class SFXView(QWidget):
 
     def _on_generation_error(self, error: str):
         self._generation_worker = None
+        self._operation_progress.finish()
         self._contract_batch = EngineBatchResult(
             capability_id=CAP_SFX_GENERATE,
             error=error,
@@ -600,6 +630,7 @@ class SFXView(QWidget):
         """Keep the variations that finished; only the in-flight one is dropped."""
         worker = self._generation_worker
         self._generation_worker = None
+        self._operation_progress.finish()
         partial = getattr(worker, "result", None) if worker is not None else None
         kept = 0
         if isinstance(partial, EngineBatchResult):
@@ -786,18 +817,28 @@ class SFXView(QWidget):
             self._status.setText("Could not load SFX audio for playback")
             return
         if self._playback_worker is not None and self._playback_worker.isRunning():
-            self._playback_worker.cancel()
+            self._cancel_active_operation()
+            return
         worker = InferenceWorker(_sfx_playback_task, result.file_path)
         self._playback_workers.add(worker)
         self._playback_worker = worker
         worker.progress.connect(
-            lambda pct: self._status.setText(f"Loading SFX preview... {pct}%")
+            self._on_sfx_playback_progress
         )
+        worker.step_info.connect(self._on_sfx_playback_step)
         worker.finished.connect(self._on_sfx_playback_ready)
         worker.error.connect(self._on_sfx_playback_error)
         worker.cancelled.connect(self._on_sfx_playback_cancelled)
-        self._status.setText("Loading SFX preview... 0%")
+        self._operation_progress.start("Loading SFX preview", determinate=True)
         worker.start()
+
+    def _on_sfx_playback_progress(self, percent: int):
+        self._operation_progress.set_progress(percent, "Loading SFX preview")
+        self._status.setText(f"Loading SFX preview... {percent}%")
+
+    def _on_sfx_playback_step(self, message: str):
+        self._operation_progress.set_step(message)
+        self._status.setText(message)
 
     def _play_decoded_sfx(self, audio, sample_rate):
         try:
@@ -821,18 +862,21 @@ class SFXView(QWidget):
 
     def _on_sfx_playback_ready(self, payload):
         worker = self._playback_worker
+        self._operation_progress.finish()
         self._release_playback_worker_later(worker)
         self._playback_worker = None
         self._play_decoded_sfx(*payload)
 
     def _on_sfx_playback_error(self, message: str):
         worker = self._playback_worker
+        self._operation_progress.finish()
         self._release_playback_worker_later(worker)
         self._playback_worker = None
         self._status.setText(f"SFX playback error: {message}")
 
     def _on_sfx_playback_cancelled(self):
         worker = self._playback_worker
+        self._operation_progress.finish()
         self._release_playback_worker_later(worker)
         self._playback_worker = None
         self._status.setText("SFX preview loading cancelled")

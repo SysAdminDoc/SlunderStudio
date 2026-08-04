@@ -14,7 +14,7 @@ from ui.model_hub import ModelHubView
 from ui.project_manager import ProjectDetailPanel
 from ui.seed_explorer import SeedExplorer
 from ui.waveform_widget import WaveformWidget
-from ui.widgets import EmptyStateWidget
+from ui.widgets import EmptyStateWidget, OperationProgressWidget
 
 
 class EmptyStateTests(unittest.TestCase):
@@ -36,6 +36,30 @@ class EmptyStateTests(unittest.TestCase):
         self.assertEqual(state.state, "no_matches")
         self.assertEqual(state.action_button.text(), "Clear filters")
         state.deleteLater()
+
+    def test_operation_progress_keeps_numeric_progress_separate_from_copy(self):
+        progress = OperationProgressWidget()
+        requested = []
+        progress.cancel_requested.connect(lambda: requested.append(True))
+        try:
+            progress.start("Rendering", determinate=True)
+            progress.set_progress(42)
+            progress.set_step("Rendering pass 2")
+            self.assertTrue(progress.isVisible())
+            self.assertEqual(progress.progress_bar.value(), 42)
+            self.assertEqual(progress.message_label.text(), "Rendering pass 2")
+
+            progress.cancel_button.click()
+            self.assertEqual(requested, [True])
+            self.assertFalse(progress.cancel_button.isEnabled())
+            self.assertEqual(progress.progress_bar.minimum(), 0)
+            self.assertEqual(progress.progress_bar.maximum(), 0)
+
+            progress.finish()
+            self.assertFalse(progress.isVisible())
+            self.assertEqual(progress.progress_bar.value(), 0)
+        finally:
+            progress.deleteLater()
 
     def test_lyrics_history_distinguishes_empty_from_no_matches(self):
         with tempfile.TemporaryDirectory() as tmp:

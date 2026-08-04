@@ -31,6 +31,7 @@ from core.settings import (
     get_config_dir,
     get_trash_dir,
 )
+from core.workers import CancelledJobError
 
 
 REPORT_SCHEMA_VERSION = 1
@@ -186,12 +187,34 @@ def export_health_report(
     settings: Optional[Settings] = None,
     model_manager: Optional[ModelManager] = None,
     job_store: Optional[JobStore] = None,
+    progress_cb=None,
+    step_cb=None,
+    log_cb=None,
+    cancel_event=None,
 ) -> Path:
-    """Write a ZIP bundle containing redacted JSON and text health reports."""
+    """Write a ZIP bundle containing redacted JSON and text health reports.
+
+    ``progress_cb`` and ``cancel_event`` are optional so the same exporter can
+    run synchronously for library callers or inside an ``InferenceWorker``
+    without making the UI guess progress from status text.
+    """
     path = Path(target_path).expanduser()
     if path.suffix.lower() != ".zip":
         path = path.with_suffix(".zip")
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    def report_progress(value: int, message: str) -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledJobError(
+                "Health report export cancelled",
+                outputs=[str(path)],
+            )
+        if progress_cb:
+            progress_cb(value)
+        if step_cb and message:
+            step_cb(message)
+
+    report_progress(5, "Collecting health information...")
 
     report = collect_health_report(
         include_private=include_private,
@@ -199,16 +222,22 @@ def export_health_report(
         model_manager=model_manager,
         job_store=job_store,
     )
+    report_progress(65, "Redacting health information...")
     replacements = _redaction_replacements(settings or Settings())
     json_blob = redact_text(
         json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False),
         replacements,
     )
+    report_progress(80, "Formatting support report...")
     text_blob = redact_text(format_health_report_text(json.loads(json_blob)), replacements)
 
+    report_progress(90, "Writing support bundle...")
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        report_progress(94, "Writing JSON report...")
         bundle.writestr("health-report.json", json_blob)
+        report_progress(98, "Writing text report...")
         bundle.writestr("health-report.txt", text_blob)
+    report_progress(100, "Health report export complete")
     return path
 
 

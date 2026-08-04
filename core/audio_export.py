@@ -528,6 +528,8 @@ def export_audio(
     source_paths: Optional[list[str]] = None,
     provenance_extra: Optional[dict] = None,
     progress_cb=None,
+    step_cb=None,
+    log_cb=None,
     cancel_event=None,
 ) -> str:
     """

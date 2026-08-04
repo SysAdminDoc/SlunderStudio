@@ -2,7 +2,14 @@
 
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from ui.theme import Palette
 
@@ -99,6 +106,108 @@ class EmptyStateWidget(QFrame):
     ) -> None:
         """Show a distinct no-results state for a filtered collection."""
         self.set_state("No matches", message, action_text, kind="no_matches")
+
+
+class OperationProgressWidget(QFrame):
+    """Compact progress and cancellation controls for a running operation."""
+
+    cancel_requested = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("operationProgress")
+        self.setAccessibleName("Operation progress")
+        self.setAccessibleDescription(
+            "Shows progress for the current operation and can request cancellation."
+        )
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(8)
+
+        self._message_label = QLabel("")
+        self._message_label.setMinimumWidth(110)
+        self._message_label.setStyleSheet(
+            f"color: {Palette.SUBTEXT0}; font-size: 11px;"
+        )
+        self._message_label.setAccessibleName("Operation status")
+        layout.addWidget(self._message_label)
+
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setObjectName("operationProgressBar")
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setMinimumWidth(140)
+        self._progress_bar.setAccessibleName("Operation progress percentage")
+        self._progress_bar.setAccessibleDescription(
+            "Progress percentage, or an animated indicator while the total is unknown."
+        )
+        layout.addWidget(self._progress_bar, 1)
+
+        self._cancel_button = QPushButton("Cancel")
+        self._cancel_button.setObjectName("operationCancelButton")
+        self._cancel_button.setFixedHeight(28)
+        self._cancel_button.setAccessibleName("Cancel operation")
+        self._cancel_button.setAccessibleDescription(
+            "Requests cancellation of the running operation."
+        )
+        self._cancel_button.clicked.connect(self._on_cancel_clicked)
+        layout.addWidget(self._cancel_button)
+        self.hide()
+
+    @property
+    def message_label(self) -> QLabel:
+        return self._message_label
+
+    @property
+    def progress_bar(self) -> QProgressBar:
+        return self._progress_bar
+
+    @property
+    def cancel_button(self) -> QPushButton:
+        return self._cancel_button
+
+    def start(self, message: str, *, determinate: bool = True) -> None:
+        """Show the control and choose a known or unknown total state."""
+        self._message_label.setText(str(message))
+        self._cancel_button.setEnabled(True)
+        if determinate:
+            self._progress_bar.setRange(0, 100)
+            self._progress_bar.setValue(0)
+        else:
+            self._progress_bar.setRange(0, 0)
+        self.show()
+
+    def set_progress(self, value: int, message: str | None = None) -> None:
+        """Set a determinate percentage without deriving it from display text."""
+        if self._progress_bar.minimum() != 0 or self._progress_bar.maximum() != 100:
+            self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(max(0, min(100, int(value))))
+        if message is not None:
+            self._message_label.setText(str(message))
+
+    def set_step(self, message: str) -> None:
+        """Display a worker step while retaining the current progress mode."""
+        self._message_label.setText(str(message))
+
+    def finish(self) -> None:
+        """Hide the control and reset it for the next operation."""
+        self._cancel_button.setEnabled(True)
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(0)
+        self._message_label.clear()
+        self.hide()
+
+    def mark_cancelling(self) -> None:
+        """Prevent duplicate requests while the worker unwinds."""
+        self._cancel_button.setEnabled(False)
+        self._message_label.setText("Cancelling...")
+        self._progress_bar.setRange(0, 0)
+
+    def _on_cancel_clicked(self) -> None:
+        self.mark_cancelling()
+        self.cancel_requested.emit()
 
 
 class ElidedLabel(QLabel):

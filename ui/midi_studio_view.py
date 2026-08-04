@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, Signal
 
 from ui.theme import Palette, ThemeEngine
 from ui.accessibility import install_accessibility
-from ui.widgets import EmptyStateWidget
+from ui.widgets import EmptyStateWidget, OperationProgressWidget
 from ui.piano_roll import PianoRollWidget
 from ui.midi_mixer import MidiMixer
 from ui.waveform_widget import WaveformWidget
@@ -298,6 +298,12 @@ class MidiStudioView(QWidget):
         self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10px; border:none;")
         gen_layout.addWidget(self._status)
 
+        self._operation_progress = OperationProgressWidget()
+        self._operation_progress.cancel_requested.connect(
+            self._cancel_active_operation
+        )
+        gen_layout.addWidget(self._operation_progress)
+
         left.addWidget(gen_frame)
 
         # ── Mixer ──────────────────────────────────────────────────────────
@@ -456,6 +462,7 @@ class MidiStudioView(QWidget):
                 (self._export_btn, "Export MIDI", "Saves the current MIDI composition."),
                 (self._chart_btn, "Export chord chart", "Saves a chord chart for the current composition."),
                 (self._render_btn, "Render MIDI audio", "Renders the current MIDI composition to audio."),
+                (self._operation_progress.cancel_button, "Cancel MIDI operation", "Cancels the running MIDI generation or render operation."),
                 (self._to_forge_btn, "Send MIDI audio to Song Forge", "Routes rendered audio to Song Forge."),
                 (self._to_vocals_btn, "Send MIDI audio to Vocal Suite", "Routes rendered audio to Vocal Suite."),
                 (self._tabs, "MIDI workspace tabs", "Switches between the piano roll and rendered audio."),
@@ -469,6 +476,21 @@ class MidiStudioView(QWidget):
             self._tempo_spin.setValue(int(value))
 
     # ── Generation ─────────────────────────────────────────────────────────────
+
+    def _cancel_active_operation(self):
+        """Request cancellation for whichever MIDI worker is running."""
+        worker = self._generation_worker or self._render_worker
+        if worker is None:
+            self._operation_progress.finish()
+            return
+        self._operation_progress.mark_cancelling()
+        worker.cancel()
+        if worker is self._generation_worker:
+            self._gen_btn.setEnabled(False)
+            self._status.setText("Cancelling MIDI generation...")
+        else:
+            self._render_btn.setEnabled(False)
+            self._status.setText("Cancelling MIDI render...")
 
     def _build_params(self) -> MidiGenParams:
         ts_text = self._time_sig.currentText()
@@ -494,9 +516,7 @@ class MidiStudioView(QWidget):
     def _on_generate(self):
         """Generate with the active model or an explicitly enabled demo."""
         if self._generation_worker is not None:
-            self._generation_worker.cancel()
-            self._gen_btn.setEnabled(False)
-            self._status.setText("Cancelling MIDI generation...")
+            self._cancel_active_operation()
             return
 
         readiness = self._model_mgr.get_capability_readiness(
@@ -532,14 +552,23 @@ class MidiStudioView(QWidget):
             },
         )
         self._generation_worker.progress.connect(
-            lambda pct: self._status.setText(f"MIDI generation... {pct}%")
+            self._on_generation_progress
         )
-        self._generation_worker.step_info.connect(self._status.setText)
+        self._generation_worker.step_info.connect(self._on_generation_step)
         self._generation_worker.finished.connect(self._on_generation_finished)
         self._generation_worker.error.connect(self._on_generation_error)
         self._generation_worker.cancelled.connect(self._on_generation_cancelled)
+        self._operation_progress.start("MIDI generation", determinate=True)
         self._generation_worker.start()
         self._refresh_capability_state()
+
+    def _on_generation_progress(self, percent: int):
+        self._operation_progress.set_progress(percent, "MIDI generation")
+        self._status.setText(f"MIDI generation... {percent}%")
+
+    def _on_generation_step(self, message: str):
+        self._operation_progress.set_step(message)
+        self._status.setText(message)
 
     def _run_generation(
         self,
@@ -584,6 +613,7 @@ class MidiStudioView(QWidget):
 
     def _on_generation_finished(self, run: EngineRunResult):
         self._generation_worker = None
+        self._operation_progress.finish()
         self._contract_result = run
         if not run.is_success:
             self._report_error(f"MIDI generation failed: {run.error}")
@@ -602,6 +632,7 @@ class MidiStudioView(QWidget):
 
     def _on_generation_error(self, error: str):
         self._generation_worker = None
+        self._operation_progress.finish()
         self._contract_result = EngineRunResult.failure(
             CAP_MIDI_GENERATE,
             error,
@@ -618,6 +649,7 @@ class MidiStudioView(QWidget):
 
     def _on_generation_cancelled(self):
         self._generation_worker = None
+        self._operation_progress.finish()
         self._contract_result = EngineRunResult.cancelled(
             CAP_MIDI_GENERATE,
             "MIDI generation cancelled",
@@ -779,9 +811,8 @@ class MidiStudioView(QWidget):
     def _on_render(self):
         """Render MIDI to audio via a cancellable worker job."""
         if self._render_worker is not None:
-            self._render_worker.cancel()
+            self._cancel_active_operation()
             self._render_btn.setEnabled(False)
-            self._status.setText("Cancelling MIDI render...")
             return
         if not self._midi_data:
             self._report_error("Nothing to render")
@@ -827,14 +858,23 @@ class MidiStudioView(QWidget):
             },
         )
         self._render_worker.progress.connect(
-            lambda pct: self._status.setText(f"MIDI render... {pct}%")
+            self._on_render_progress
         )
-        self._render_worker.step_info.connect(self._status.setText)
+        self._render_worker.step_info.connect(self._on_render_step)
         self._render_worker.finished.connect(self._on_render_finished)
         self._render_worker.error.connect(self._on_render_error)
         self._render_worker.cancelled.connect(self._on_render_cancelled)
+        self._operation_progress.start("MIDI render", determinate=True)
         self._render_worker.start()
         self._render_btn.setText("Cancel Render")
+
+    def _on_render_progress(self, percent: int):
+        self._operation_progress.set_progress(percent, "MIDI render")
+        self._status.setText(f"MIDI render... {percent}%")
+
+    def _on_render_step(self, message: str):
+        self._operation_progress.set_step(message)
+        self._status.setText(message)
 
     def _run_render(
         self,
@@ -911,6 +951,7 @@ class MidiStudioView(QWidget):
 
     def _on_render_finished(self, run: EngineRunResult):
         self._render_worker = None
+        self._operation_progress.finish()
         self._render_btn.setText("Render Audio")
         self._render_btn.setEnabled(True)
         self._contract_result = run
@@ -943,6 +984,7 @@ class MidiStudioView(QWidget):
 
     def _on_render_error(self, error: str):
         self._render_worker = None
+        self._operation_progress.finish()
         self._render_btn.setText("Render Audio")
         self._render_btn.setEnabled(True)
         self._contract_result = EngineRunResult.failure(CAP_MIDI_RENDER, error)
@@ -950,6 +992,7 @@ class MidiStudioView(QWidget):
 
     def _on_render_cancelled(self):
         self._render_worker = None
+        self._operation_progress.finish()
         self._render_btn.setText("Render Audio")
         self._render_btn.setEnabled(True)
         self._contract_result = EngineRunResult.cancelled(
@@ -961,7 +1004,7 @@ class MidiStudioView(QWidget):
     def _on_mix_changed(self):
         """Invalidate stale audio when a mixer control changes."""
         if self._render_worker is not None:
-            self._render_worker.cancel()
+            self._cancel_active_operation()
             self._render_btn.setEnabled(False)
             self._status.setText("Mix changed; cancelling MIDI render...")
             return

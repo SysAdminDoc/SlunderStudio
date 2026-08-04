@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Added a shared determinate progress and cancellation surface for Vocal Suite, Mixer, MIDI,
+  SFX, reference analysis, health-report export, and recovery cleanup. Worker steps now stay
+  separate from numeric progress, and cancellation refreshes partial state without parsing labels.
 - Added reusable, actionable empty states across generation outputs, model and project browsers,
   lyric/style searches, MIDI and audio mixers, seed exploration, SFX results, and all Vocal Suite
   tabs. Filterable collections now distinguish an empty catalog from a search with no matches.
