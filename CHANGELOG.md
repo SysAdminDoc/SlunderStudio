@@ -14,6 +14,8 @@ All notable changes to SlunderStudio will be documented in this file.
   rate in the provenance sidecar.
 - Kept Vocal Suite live conversion and cloning progress/cancellation labels truthful by reserving
   “demo” wording for explicit fallback or consent-scope contexts.
+- Added a text-and-accessible-name Core badge to Model Hub cards so built-in status is not conveyed
+  by title color alone.
 - Added central admission control for model work: downloads are globally bounded and
   duplicate-keyed, model-bearing workers queue behind a cancellable inference slot, and health
   reports expose active/queued capacity without duplicating resume or SHA-256 verification.

@@ -76,6 +76,16 @@ class ModelRecommendationTests(unittest.TestCase):
         finally:
             card.deleteLater()
 
+    def test_model_card_labels_core_status_without_relying_on_color(self):
+        core_info = next(info for info in BUILTIN_MODELS.values() if info.is_core)
+        card = ModelCard(core_info)
+        try:
+            self.assertEqual("Core", card._core_badge.text())
+            self.assertFalse(card._core_badge.isHidden())
+            self.assertIn("core model badge", card._core_badge.accessibleName())
+        finally:
+            card.deleteLater()
+
     def test_model_hub_task_and_hardware_filters_show_fit_recommendation(self):
         view = ModelHubView()
         try:

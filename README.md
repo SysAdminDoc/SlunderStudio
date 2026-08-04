@@ -77,7 +77,7 @@ through PyTorch 2.4.1, below the PyTorch 2.10.0 security floor.
 | SFX Generator | Text-to-sound-effect generation | Stable Audio Open |
 | Mixer | Project-rate mixing with validated resampling, channel normalization, dynamic EQ, Mid/Side trims, reference matching, mastering, and validated DAWproject export | Built-in DSP |
 | AI Producer | Cancellable staged production with verified output, explicit demo/degraded states, and retry | Orchestrator |
-| Model Hub | Download, verify, activate, deactivate, switch, filter, and sort AI models | HuggingFace Hub |
+| Model Hub | Download, verify, activate, deactivate, switch, filter, sort, and identify built-in core AI models | HuggingFace Hub |
 | Projects | Searchable name/notes, date/name sorting, collision-safe asset imports, recoverable library index, version history, provenance tracking, and validated DAWproject export | — |
 
 ## How It Works

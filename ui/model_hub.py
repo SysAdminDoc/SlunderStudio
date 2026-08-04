@@ -217,6 +217,23 @@ class ModelCard(QFrame):
         self._name_label.setWordWrap(True)
         header.addWidget(self._name_label, 1)
 
+        self._core_badge = QLabel("Core" if self.info.is_core else "")
+        self._core_badge.setVisible(bool(self.info.is_core))
+        self._core_badge.setAccessibleName(
+            f"{self.info.name} core model badge"
+        )
+        self._core_badge.setAccessibleDescription(
+            "This is a built-in core model." if self.info.is_core else ""
+        )
+        self._core_badge.setToolTip(
+            "Built-in core model" if self.info.is_core else ""
+        )
+        self._core_badge.setStyleSheet(
+            f"font-size: 8pt; font-weight: 700; color: {Palette.CRUST}; "
+            f"background: {Palette.BLUE}; border-radius: 4px; padding: 2px 6px;"
+        )
+        header.addWidget(self._core_badge)
+
         self._status_badge = QLabel()
         self._status_badge.setMinimumHeight(22)
         header.addWidget(self._status_badge)
