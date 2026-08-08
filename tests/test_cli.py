@@ -13,6 +13,7 @@ import slunder_cli
 from core.audio_export import ExportSettings
 from core.engine_contract import ArtifactKind, EngineArtifact, EngineRunResult, RunOutcome
 from core.job_state import JobStatus, JobStore
+from core.provenance import write_provenance_sidecar
 
 
 class HeadlessCLITests(unittest.TestCase):
@@ -110,6 +111,25 @@ class HeadlessCLITests(unittest.TestCase):
             self.assertIsNotNone(record)
             self.assertEqual(JobStatus.COMPLETED, record.status)
             self.assertIn(str(output), record.outputs["paths"])
+
+    def test_provenance_command_reports_not_replayable_operations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact = Path(tmp) / "unsupported.wav"
+            artifact.write_bytes(b"audio")
+            write_provenance_sidecar(
+                artifact,
+                module="mixer",
+                operation="export_master",
+                export_format="wav",
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                code = slunder_cli.main(["--json", "provenance", str(artifact)])
+
+            self.assertEqual(slunder_cli.EXIT_OK, code)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual("not_replayable", payload["replayability"]["state"])
+            self.assertIn("No registered renderer", payload["replayability"]["reason"])
 
 
 if __name__ == "__main__":

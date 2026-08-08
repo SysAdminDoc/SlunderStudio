@@ -70,6 +70,8 @@
     "vocal_demo_conversion": "يوفر محرك تحويل الصوت الحالي تحويلاً تجريبياً موضحاً.",
     "vocal_demo_synthesis": "يوفر محرك تركيب الصوت الحالي نتيجة تجريبية موضحة.",
     "rerender_selected_file": "يعيد إنشاء الملف المحدد فقط عندما تطابق مدخلاته المسجلة هذه النسخة.",
+    "rerender_capability": "قابلية الإعادة: {state}. {reason}",
+    "rerender_capability_unavailable": "الإعادة غير متاحة: {reason}",
     "rerender_bytes_differ": "اكتملت إعادة الإنشاء، لكن الملف يختلف عن الناتج الأصلي.\nلم تتم إضافة هذه النتيجة.",
     "rerender_import_failed": "تعذر استيراد الملف المعاد إنشاؤه: {error}",
     "rerender_project_failed": "تعذر إضافة الملف المعاد إنشاؤه إلى المشروع.",

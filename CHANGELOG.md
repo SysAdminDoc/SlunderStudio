@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Provenance sidecars now declare byte-, semantic-, or non-replayability from a centralized
+  operation registry. Project Manager disables unsupported re-render actions, and the CLI exposes
+  the same capability and reason through `provenance`.
+
 - C2PA timestamping is now explicit: Offline Mode rejects configured RFC 3161 endpoints,
   timestamp mode is recorded without storing the endpoint URL, and failed timestamp signing
   removes the incomplete export.

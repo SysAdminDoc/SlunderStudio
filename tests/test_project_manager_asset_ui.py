@@ -1,13 +1,16 @@
 import os
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
 from core.project import Project, ProjectAsset
+from core.provenance import write_provenance_sidecar
 from ui.project_manager import ProjectDetailPanel
 
 
@@ -90,6 +93,40 @@ class ProjectManagerAssetUITests(unittest.TestCase):
             self.assertIn("Asset import failed: read-only project", toast.messages)
         finally:
             panel.deleteLater()
+
+    def test_unsupported_provenance_disables_misleading_rerender_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact = Path(tmp) / "master.wav"
+            artifact.write_bytes(b"audio")
+            sidecar = write_provenance_sidecar(
+                artifact,
+                module="mixer",
+                operation="export_master",
+                export_format="wav",
+            )
+            project = Project(
+                id="project-replayability",
+                name="Replayability project",
+                assets=[
+                    ProjectAsset(
+                        id="asset-replayability",
+                        name=artifact.name,
+                        asset_type="audio",
+                        file_path=str(artifact),
+                        module="mixer",
+                        provenance_path=str(sidecar),
+                    )
+                ],
+            )
+            panel = ProjectDetailPanel(toast_mgr=_ToastStub())
+            try:
+                panel.load_project(project)
+                panel._asset_list.setCurrentRow(0)
+                self.assertTrue(panel._provenance_btn.isEnabled())
+                self.assertFalse(panel._rerender_btn.isEnabled())
+                self.assertIn("Replay unavailable", panel._rerender_capability_label.text())
+            finally:
+                panel.deleteLater()
 
 
 if __name__ == "__main__":

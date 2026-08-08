@@ -77,6 +77,8 @@ class GenerationProvenanceTests(unittest.TestCase):
             data = read_provenance_sidecar(artifact)
 
             self.assertEqual("fixture:render", data["rerender_key"])
+            self.assertEqual("not_replayable", data["replayability"]["state"])
+            self.assertIn("No registered renderer", data["replayability"]["reason"])
             self.assertIn(str(source), data["source_hashes"])
             self.assertTrue(data["source_hashes"][str(source)])
             self.assertIn("python", data["runtime"])
@@ -156,6 +158,7 @@ class GenerationProvenanceTests(unittest.TestCase):
             self.assertEqual(data["module"], "sfx")
             self.assertEqual(data["operation"], "generate")
             self.assertEqual(data["output_kind"], "demo")
+            self.assertEqual(data["replayability"]["state"], "byte_replayable")
             self.assertEqual(data["seed"], 77)
             self.assertEqual(data["prompt"], "soft chime")
             self.assertEqual(data["model"]["id"], "stable-audio-open")

@@ -100,6 +100,8 @@
     "vocal_demo_conversion": "The current voice conversion engine provides a clearly labeled demo conversion.",
     "vocal_demo_synthesis": "The current voice synthesis engine provides a clearly labeled demo result.",
     "rerender_selected_file": "Re-renders the selected file only when its recorded inputs still match this installation.",
+    "rerender_capability": "Replayability: {state}. {reason}",
+    "rerender_capability_unavailable": "Replay unavailable: {reason}",
     "rerender_bytes_differ": "Re-render completed, but the file differs from the original output.\nThis result was not imported.",
     "rerender_import_failed": "The re-rendered file could not be imported: {error}",
     "rerender_project_failed": "The re-rendered file could not be added to the project.",

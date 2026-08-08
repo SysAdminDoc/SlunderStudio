@@ -31,13 +31,15 @@ py -3.12 slunder_cli.py lyrics "write a dark synth-pop chorus" --output chorus.t
 py -3.12 slunder_cli.py midi "syncopated piano groove" --output groove.mid --demo
 py -3.12 slunder_cli.py sfx "rain on a window" --output-dir renders --demo
 py -3.12 slunder_cli.py export source.wav renders/master.wav --format wav
+py -3.12 slunder_cli.py provenance renders/master.wav
 ```
 
 Add `--json` before or after a command for one machine-readable result containing the schema,
 job ID, status, typed artifacts, and provenance paths. `jobs --status recoverable` inspects the
 same persistent job ledger used by the desktop recovery center. Generation commands remain
 model-gated by default; `--demo` is required for the explicitly labeled MIDI and SFX fallback
-paths.
+paths. `provenance` reports whether an artifact is byte-replayable, semantically replayable, or
+provenance-only, with the reason used by Project Manager before enabling re-render.
 
 The reproducible engine evaluation harness uses fixed prompts, seeds, durations, and
 languages. It records runtime/model provenance, latency, RAM/VRAM, failures, audio
@@ -126,6 +128,10 @@ default and maps common CC/note controls to transport, the selected Mixer track'
 mute/solo, and Piano Roll quantize/swing/humanize actions. Install `mido` plus a backend such as
 `python-rtmidi` to expose local input ports; without that optional backend, mappings remain safely
 stored and the rest of the app remains usable.
+
+Generated and exported provenance sidecars also declare whether their operation is byte-replayable,
+semantically replayable, or provenance-only; Project Manager and the headless `provenance` command
+use that capability and its reason before offering a re-render.
 
 ## Mastering Presets
 

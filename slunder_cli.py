@@ -32,7 +32,12 @@ from core.engine_contract import (
 )
 from core.job_state import JobStatus, JobStore
 from core.midi_utils import save_midi
-from core.provenance import sidecar_path_for, write_provenance_sidecar
+from core.provenance import (
+    provenance_replayability,
+    read_provenance_sidecar,
+    sidecar_path_for,
+    write_provenance_sidecar,
+)
 from core.settings import APP_VERSION
 from core.version import APP_NAME
 from core.workers import CancelledJobError, InferenceWorker
@@ -693,6 +698,13 @@ def build_parser() -> argparse.ArgumentParser:
     jobs.add_argument("--kind", default=None)
     jobs.add_argument("--job-id", default=None)
 
+    provenance = commands.add_parser(
+        "provenance",
+        help="Inspect an artifact's replayability capability",
+    )
+    _add_output_flags(provenance)
+    provenance.add_argument("path", type=Path)
+
     return parser
 
 
@@ -714,6 +726,28 @@ def _run_jobs(args) -> tuple[dict[str, Any], int]:
         "jobs": [record.to_dict() for record in records],
     }
     return payload, EXIT_OK
+
+
+def _run_provenance(args) -> tuple[dict[str, Any], int]:
+    path = args.path.expanduser()
+    record = read_provenance_sidecar(path)
+    if not record:
+        raise CLIError(f"No readable provenance sidecar was found for: {path}")
+    capability = provenance_replayability(record)
+    return {
+        "schema_version": CLI_SCHEMA_VERSION,
+        "app_name": APP_NAME,
+        "app_version": APP_VERSION,
+        "command": "provenance",
+        "status": JobStatus.COMPLETED,
+        "artifact_path": str(path),
+        "operation": {
+            "module": str(record.get("module", "")),
+            "name": str(record.get("operation", "")),
+            "rerender_key": capability.key,
+        },
+        "replayability": capability.as_dict(),
+    }, EXIT_OK
 
 
 def _validate_args(args) -> None:
@@ -739,6 +773,10 @@ def _validate_args(args) -> None:
         if not args.source.is_file():
             raise CLIError(f"Source audio file does not exist: {args.source}")
         args.output.parent.mkdir(parents=True, exist_ok=True)
+    if args.command == "provenance":
+        args.path = args.path.expanduser()
+        if not args.path.is_file():
+            raise CLIError(f"Artifact or provenance sidecar does not exist: {args.path}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -756,6 +794,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "jobs":
             payload, code = _run_jobs(args)
             _emit_payload(payload, json_output=json_output, human_text=f"{len(payload['jobs'])} job(s)")
+            return code
+        if args.command == "provenance":
+            payload, code = _run_provenance(args)
+            capability = payload["replayability"]
+            _emit_payload(
+                payload,
+                json_output=json_output,
+                human_text=f"{capability['state']}: {capability['reason']}",
+            )
             return code
 
         runner = HeadlessRunner(json_output=json_output, quiet=quiet)

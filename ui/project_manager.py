@@ -33,6 +33,7 @@ from core.disclosure import (
 )
 from core.provenance import (
     check_provenance_compatibility,
+    provenance_replayability,
     read_provenance_sidecar,
     rerender_from_provenance,
 )
@@ -221,6 +222,13 @@ class ProjectDetailPanel(QWidget):
         self._meta_label = QLabel("")
         self._meta_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         layout.addWidget(self._meta_label)
+
+        self._rerender_capability_label = QLabel("")
+        self._rerender_capability_label.setWordWrap(True)
+        self._rerender_capability_label.setStyleSheet(
+            f"color: {t['text_secondary']}; font-size: 8pt; padding: 1px 0;"
+        )
+        layout.addWidget(self._rerender_capability_label)
 
         # Notes
         self._notes = QTextEdit()
@@ -458,6 +466,7 @@ class ProjectDetailPanel(QWidget):
         self._provenance_btn.setEnabled(False)
         self._delete_asset_btn.setEnabled(False)
         self._rerender_btn.setEnabled(False)
+        self._rerender_capability_label.setText("")
 
         # Versions
         self._version_list.clear()
@@ -478,6 +487,7 @@ class ProjectDetailPanel(QWidget):
     def clear(self):
         self._name_label.setText("No Project Open")
         self._meta_label.setText("")
+        self._rerender_capability_label.setText("")
         self._notes.clear()
         self._contributions.clear()
         self._asset_list.clear()
@@ -726,7 +736,33 @@ class ProjectDetailPanel(QWidget):
         has_provenance = bool(asset and asset.provenance_path and os.path.isfile(asset.provenance_path))
         self._provenance_btn.setEnabled(has_provenance)
         self._delete_asset_btn.setEnabled(asset is not None)
-        self._rerender_btn.setEnabled(has_provenance and self._rerender_worker is None)
+        self._set_rerender_capability(asset if has_provenance else None)
+
+    def _set_rerender_capability(self, asset: Optional[ProjectAsset]) -> None:
+        """Show the recorded operation's replay contract before a long run."""
+        if asset is None or not asset.provenance_path:
+            self._rerender_capability_label.setText("")
+            self._rerender_btn.setToolTip("")
+            self._rerender_btn.setEnabled(False)
+            return
+        record = read_provenance_sidecar(asset.provenance_path)
+        capability = provenance_replayability(record)
+        label = capability.state.replace("_", " ").capitalize()
+        self._rerender_btn.setToolTip(capability.reason)
+        if capability.state == "not_replayable":
+            self._rerender_capability_label.setText(
+                tr("runtime.rerender_capability_unavailable", reason=capability.reason)
+            )
+            self._rerender_btn.setEnabled(False)
+        else:
+            self._rerender_capability_label.setText(
+                tr(
+                    "runtime.rerender_capability",
+                    state=label,
+                    reason=capability.reason,
+                )
+            )
+            self._rerender_btn.setEnabled(self._rerender_worker is None)
 
     def _on_open_provenance(self):
         asset = self._selected_asset()
@@ -776,6 +812,17 @@ class ProjectDetailPanel(QWidget):
             return
 
         provenance = read_provenance_sidecar(asset.provenance_path)
+        capability = provenance_replayability(provenance)
+        if capability.state == "not_replayable":
+            self._set_rerender_capability(asset)
+            if self.toast_mgr:
+                self.toast_mgr.error(
+                    tr(
+                        "runtime.rerender_capability_unavailable",
+                        reason=capability.reason,
+                    )
+                )
+            return
         compatibility = check_provenance_compatibility(provenance)
         if not compatibility.compatible:
             detail = "\n".join(diff.format() for diff in compatibility.diffs[:5])
@@ -816,7 +863,7 @@ class ProjectDetailPanel(QWidget):
     def _on_rerender_finished(self, source_asset: ProjectAsset, worker, result):
         if self._rerender_worker is worker:
             self._rerender_worker = None
-        self._rerender_btn.setEnabled(bool(source_asset.provenance_path))
+        self._set_rerender_capability(source_asset)
         if not result.identical:
             detail = "\n".join(diff.format() for diff in result.differences)
             if self.toast_mgr:
@@ -854,14 +901,14 @@ class ProjectDetailPanel(QWidget):
     def _on_rerender_error(self, worker, message: str):
         if self._rerender_worker is worker:
             self._rerender_worker = None
-        self._rerender_btn.setEnabled(True)
+        self._set_rerender_capability(self._selected_asset())
         if self.toast_mgr:
             self.toast_mgr.error(f"Provenance re-render failed: {message}")
 
     def _on_rerender_cancelled(self, worker):
         if self._rerender_worker is worker:
             self._rerender_worker = None
-        self._rerender_btn.setEnabled(True)
+        self._set_rerender_capability(self._selected_asset())
         if self.toast_mgr:
             self.toast_mgr.warning("Provenance re-render cancelled.")
 
