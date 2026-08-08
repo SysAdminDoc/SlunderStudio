@@ -54,6 +54,12 @@ class ReferencePanel(QWidget):
         self._analysis = None
         self._worker = None
         self._analysis_workers = set()
+        # Terminal worker signals can arrive while the native QThread is still
+        # unwinding.  Keep their payloads here until _release_worker_later has
+        # observed a stopped thread, so results never expose live file handles
+        # or native worker state to the rest of the UI.
+        self._pending_analysis_events = {}
+        self._pending_waveform_analysis = None
         # Monotonic token so a result from a superseded file is discarded.
         self._analysis_token = 0
         self._pending_path = ""
@@ -103,6 +109,9 @@ class ReferencePanel(QWidget):
 
         # Mini waveform
         self._waveform = WaveformWidget(show_controls=False)
+        self._waveform.audio_load_finished.connect(
+            self._on_reference_waveform_finished
+        )
         self._waveform.setMinimumHeight(60)
         self._waveform.hide()
         layout.addWidget(self._waveform)
@@ -248,6 +257,7 @@ class ReferencePanel(QWidget):
         from engines.audio_analyzer import analyze_track
 
         self.cancel_analysis()
+        self._pending_waveform_analysis = None
 
         self._pending_path = str(file_path)
         self._analysis_token += 1
@@ -322,11 +332,14 @@ class ReferencePanel(QWidget):
         if worker.isRunning():
             QTimer.singleShot(10, lambda: self._release_worker_later(worker))
             return
+        event = self._pending_analysis_events.pop(worker, None)
         self._analysis_workers.discard(worker)
         if self._worker is worker:
             self._worker = None
             self._cancel_btn.setEnabled(True)
             self._cancel_btn.setVisible(False)
+        if event is not None:
+            self._finalize_analysis_event(event)
 
     def _is_current(self, token: int) -> bool:
         """A result from a superseded selection must never be applied."""
@@ -343,16 +356,30 @@ class ReferencePanel(QWidget):
     def _on_analysis_done(self, token: int, file_path: str, analysis, worker=None):
         from pathlib import Path
 
-        self._release_worker_later(worker)
-        if not self._is_current(token) or analysis is None:
+        if worker is None:
+            if not self._is_current(token) or analysis is None:
+                return
+            self._cancel_btn.setVisible(False)
+            self._progress_label.setText("")
+            self._progress_bar.hide()
+            self._display_analysis(analysis, Path(file_path).name)
             return
-        self._cancel_btn.setVisible(False)
-        self._progress_label.setText("")
-        self._progress_bar.hide()
-        self._display_analysis(analysis, Path(file_path).name)
+        self._pending_analysis_events[worker] = (
+            "done",
+            token,
+            str(file_path),
+            analysis,
+        )
+        self._release_worker_later(worker)
 
     def _on_analysis_error(self, token: int, message: str, worker=None):
+        if worker is None:
+            self._show_analysis_error(token, message)
+            return
+        self._pending_analysis_events[worker] = ("error", token, message)
         self._release_worker_later(worker)
+
+    def _show_analysis_error(self, token: int, message: str):
         if not self._is_current(token):
             return
         self._cancel_btn.setVisible(False)
@@ -364,17 +391,41 @@ class ReferencePanel(QWidget):
             self._drop_zone.setText(f"Analysis failed: {message[:60]}")
 
     def _on_analysis_cancelled(self, token: int, worker=None):
+        if worker is None:
+            self._show_analysis_cancelled(token)
+            return
+        self._pending_analysis_events[worker] = ("cancelled", token)
         self._release_worker_later(worker)
+
+    def _show_analysis_cancelled(self, token: int):
         if self._is_current(token):
             self._cancel_btn.setVisible(False)
             self._progress_label.setText("")
             self._progress_bar.hide()
             self._drop_zone.setText("Analysis cancelled")
 
+    def _finalize_analysis_event(self, event):
+        """Apply a terminal event only after the worker's native thread stops."""
+        kind, token, *payload = event
+        if kind == "done":
+            file_path, analysis = payload
+            if not self._is_current(token) or analysis is None:
+                return
+            from pathlib import Path
+
+            self._cancel_btn.setVisible(False)
+            self._progress_label.setText("")
+            self._progress_bar.hide()
+            self._display_analysis(analysis, Path(file_path).name)
+        elif kind == "error":
+            self._show_analysis_error(token, payload[0])
+        elif kind == "cancelled":
+            self._show_analysis_cancelled(token)
+
     def _display_analysis(self, analysis, filename: str):
         """Show analysis results in the panel."""
         from engines.audio_analyzer import AudioAnalysis
-        self._analysis = analysis
+        self._pending_waveform_analysis = (self._analysis_token, analysis)
 
         # Update drop zone
         self._drop_zone.setText(filename)
@@ -388,7 +439,13 @@ class ReferencePanel(QWidget):
             self._waveform.load_audio(analysis.file_path)
             self._waveform.show()
         except Exception:
-            pass
+            self._pending_waveform_analysis = None
+            self._commit_analysis(analysis)
+            return
+
+        if not self._waveform._audio_load_workers:
+            self._pending_waveform_analysis = None
+            self._commit_analysis(analysis)
 
         # Update metrics
         self._bpm_card.set_value(f"{analysis.bpm:.0f}")
@@ -443,6 +500,7 @@ class ReferencePanel(QWidget):
 
     def clear(self):
         self._analysis = None
+        self._pending_waveform_analysis = None
         self._drop_zone.setText("Drop an audio file here\nor click Browse")
         self._drop_zone.setStyleSheet(
             f"QLabel {{ background: {Palette.MANTLE}; border: 2px dashed {Palette.SURFACE1}; border-radius: 8px; "
@@ -455,3 +513,19 @@ class ReferencePanel(QWidget):
         self._sections_label.hide()
         self._match_btn.setEnabled(False)
         self._use_tags_btn.setEnabled(False)
+
+    def _on_reference_waveform_finished(self, _success: bool):
+        pending = self._pending_waveform_analysis
+        if pending is None:
+            return
+        token, analysis = pending
+        self._pending_waveform_analysis = None
+        if not self._is_current(token):
+            return
+        self._commit_analysis(analysis)
+
+    def _commit_analysis(self, analysis):
+        """Expose analysis actions after the source preview has released it."""
+        self._analysis = analysis
+        self._match_btn.setEnabled(True)
+        self._use_tags_btn.setEnabled(True)

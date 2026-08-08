@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Worker results now publish only after terminal cleanup, and reference/waveform views defer
+  completion until native decoder threads stop so Windows source files can be released safely.
+
 ## [v0.1.32] - 2026-08-03
 
 - Added Enhanced LRC export from verified humming-to-lyric note alignment, including line- and

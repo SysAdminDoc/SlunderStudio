@@ -127,6 +127,25 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(record.error, "model returned no audio")
             self.assertEqual(record.metadata, {"stage": "render"})
 
+    def test_finished_is_emitted_after_terminal_cleanup(self):
+        events = []
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp) / "jobs")
+            job_log = mock.Mock()
+            job_log.save.side_effect = lambda: events.append("log_saved")
+            with mock.patch.object(workers, "JobLog", return_value=job_log):
+                worker = InferenceWorker(
+                    lambda **_kwargs: events.append("task") or {"value": 1},
+                    job_kind="worker-test",
+                    job_label="Completion ordering",
+                    job_store=store,
+                )
+                worker.finished.connect(lambda _result: events.append("finished"))
+                worker.thread_stopped.connect(lambda: events.append("stopped"))
+                worker.run()
+
+        self.assertEqual(events, ["task", "log_saved", "finished", "stopped"])
+
     def test_exception_failure_emits_error_and_marks_job_failed(self):
         errors = []
         with tempfile.TemporaryDirectory() as tmp:

@@ -185,6 +185,7 @@ class InferenceWorker(QThread):
         if self._job_log:
             self._job_log.info(f"Job started: {self.job_id}")
         admission_lease = None
+        emit_result = False
         try:
             if self._admission_kind:
                 waiting_notice = [False]
@@ -256,7 +257,10 @@ class InferenceWorker(QThread):
                         self._job_log.info(
                             f"Completed with {len(output_paths)} output(s)."
                         )
-                self.finished.emit(self._result)
+                # Publish the result after the ``finally`` cleanup below.  A
+                # receiver must never observe a completed job while the
+                # worker still owns its admission lease or job-log handle.
+                emit_result = True
         except CancelledJobError as e:
             output_paths = extract_output_paths(e.outputs)
             preserved = extract_output_paths(e.preserved)
@@ -305,6 +309,8 @@ class InferenceWorker(QThread):
                     if self._job_log:
                         self._job_log.save()
                 finally:
+                    if emit_result:
+                        self.finished.emit(self._result)
                     # This is distinct from the result-bearing ``finished``
                     # signal: receivers can release their QThread wrapper only
                     # after all task cleanup has completed, without calling wait.

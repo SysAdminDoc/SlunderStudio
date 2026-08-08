@@ -156,6 +156,7 @@ class WaveformWidget(QWidget):
         self._audio_load_token = 0
         self._audio_load_worker = None
         self._audio_load_workers = set()
+        self._pending_audio_load_events = {}
         self._spectrogram_token = 0
         self._spectrogram_worker = None
         self._spectrogram_workers = set()
@@ -372,6 +373,10 @@ class WaveformWidget(QWidget):
             QTimer.singleShot(10, lambda: self._forget_worker_later(worker, registry))
             return
         registry.discard(worker)
+        if registry is self._audio_load_workers:
+            event = self._pending_audio_load_events.pop(worker, None)
+            if event is not None:
+                self._finalize_audio_load_event(worker, event)
 
     @staticmethod
     def _disconnect_worker(worker) -> None:
@@ -394,40 +399,45 @@ class WaveformWidget(QWidget):
         self._set_info(f"Loading audio... {percent}%")
 
     def _on_audio_load_finished(self, token: int, worker, payload) -> None:
+        self._pending_audio_load_events[worker] = ("finished", token, payload)
         self._forget_worker_later(worker, self._audio_load_workers)
-        if not _qt_object_alive(self) or self._closed or token != self._audio_load_token:
-            return
-        self._audio_load_worker = None
-        try:
-            audio, sample_rate = payload
-            normalized = self._normalize_audio(audio)
-            if not HAS_PYQTGRAPH:
-                raise RuntimeError("Waveform display is unavailable")
-            self._display_audio(normalized, self._validate_sample_rate(sample_rate))
-            self._set_info("")
-            self.audio_load_finished.emit(True)
-        except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
-            self._last_error = str(exc)
-            self._set_info(f"Error: {exc}")
-            self.audio_load_finished.emit(False)
 
     def _on_audio_load_error(self, token: int, worker, message: str) -> None:
+        self._pending_audio_load_events[worker] = ("error", token, message)
         self._forget_worker_later(worker, self._audio_load_workers)
-        if not _qt_object_alive(self) or self._closed or token != self._audio_load_token:
-            return
-        self._audio_load_worker = None
-        self._last_error = str(message)
-        self._set_info(f"Error: {message}")
-        self.audio_load_finished.emit(False)
 
     def _on_audio_load_cancelled(self, token: int, worker) -> None:
+        self._pending_audio_load_events[worker] = ("cancelled", token)
         self._forget_worker_later(worker, self._audio_load_workers)
+
+    def _finalize_audio_load_event(self, worker, event) -> None:
+        """Apply a terminal file-load event after the decoder thread stops."""
+        kind, token, *payload = event
         if not _qt_object_alive(self) or self._closed or token != self._audio_load_token:
             return
-        self._audio_load_worker = None
-        self._last_error = "Audio loading cancelled"
-        self._set_info(self._last_error)
-        self.audio_load_finished.emit(False)
+        if self._audio_load_worker is worker:
+            self._audio_load_worker = None
+        if kind == "finished":
+            try:
+                audio, sample_rate = payload[0]
+                normalized = self._normalize_audio(audio)
+                if not HAS_PYQTGRAPH:
+                    raise RuntimeError("Waveform display is unavailable")
+                self._display_audio(normalized, self._validate_sample_rate(sample_rate))
+                self._set_info("")
+                self.audio_load_finished.emit(True)
+            except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                self._last_error = str(exc)
+                self._set_info(f"Error: {exc}")
+                self.audio_load_finished.emit(False)
+        elif kind == "error":
+            self._last_error = str(payload[0])
+            self._set_info(f"Error: {payload[0]}")
+            self.audio_load_finished.emit(False)
+        elif kind == "cancelled":
+            self._last_error = "Audio loading cancelled"
+            self._set_info(self._last_error)
+            self.audio_load_finished.emit(False)
 
     def cancel_audio_load(self, *, notify: bool = True) -> None:
         """Request cancellation without blocking the GUI thread."""

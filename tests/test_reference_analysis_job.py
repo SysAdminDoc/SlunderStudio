@@ -160,6 +160,44 @@ class ReferencePanelJobTests(unittest.TestCase):
         self.assertTrue(self._wait(lambda: self.panel._analysis is not None))
         self.assertGreater(self.panel._analysis.duration, 0)
 
+    def test_result_is_published_only_after_native_thread_stops(self):
+        path = write_tone(self.root / "settled.wav", seconds=1.0)
+        self.panel._analyze_file(str(path))
+        worker = self.panel._worker
+
+        self.assertTrue(
+            self._wait(lambda: self.panel._analysis is not None),
+            "analysis result was not published",
+        )
+        self.assertFalse(worker.isRunning())
+        self.assertIsNone(self.panel._worker)
+
+    def test_repeated_results_can_release_source_files_immediately(self):
+        for index in range(4):
+            source = tempfile.TemporaryDirectory()
+            self.addCleanup(source.cleanup)
+            path = write_tone(
+                Path(source.name) / f"source-{index}.wav",
+                seconds=0.5,
+                freq=440.0 + index * 37.0,
+            )
+            self.panel._analysis = None
+            self.panel._analyze_file(str(path))
+            worker = self.panel._worker
+
+            self.assertTrue(
+                self._wait(
+                    lambda p=str(path): self.panel._analysis is not None
+                    and self.panel._analysis.file_path == p
+                ),
+                f"analysis {index} did not settle",
+            )
+            self.assertFalse(worker.isRunning())
+            # Windows must be able to remove the source as soon as the result
+            # becomes visible; a live worker would keep this unlink locked.
+            Path(path).unlink()
+            source.cleanup()
+
     def test_a_newer_selection_supersedes_an_older_result(self):
         first = write_tone(self.root / "first.wav", seconds=1.0, freq=220.0)
         second = write_tone(self.root / "second.wav", seconds=1.0, freq=880.0)
