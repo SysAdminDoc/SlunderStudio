@@ -1,8 +1,10 @@
+import json
 import tempfile
 import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from core.job_state import JobLog, JobStatus, JobStore
 from core.workers import (
@@ -276,6 +278,40 @@ class JobStateTests(unittest.TestCase):
             for i in range(300):
                 log.info(f"Entry {i}")
             self.assertLessEqual(log.entry_count, 200)
+
+    def test_atomic_ledger_write_keeps_previous_generation_when_sync_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = JobStore(root)
+            record = store.create("test", "Durable job")
+            previous = store.path.read_bytes()
+
+            with mock.patch("core.job_state.os.fsync", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    store.update_message(record.id, "new state")
+
+            self.assertEqual(store.path.read_bytes(), previous)
+            payload = json.loads(store.path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["jobs"][0]["message"], "")
+            self.assertEqual(list(root.glob(".jobs.json.*.tmp")), [])
+
+    def test_atomic_job_log_write_keeps_previous_generation_when_replace_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            log = JobLog("durable-log", root=root)
+            log.info("first entry")
+            log.save()
+            previous = log.path.read_bytes()
+            log.info("second entry")
+
+            with mock.patch("core.job_state.os.replace", side_effect=OSError("replace failed")):
+                with self.assertRaises(OSError):
+                    log.save()
+
+            self.assertEqual(log.path.read_bytes(), previous)
+            payload = json.loads(log.path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["entry_count"], 1)
+            self.assertEqual(list(root.glob(".durable-log.log.json.*.tmp")), [])
 
 
 if __name__ == "__main__":

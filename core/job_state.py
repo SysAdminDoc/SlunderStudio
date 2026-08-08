@@ -43,6 +43,62 @@ ACTIVE_STATUSES = {
 _JOB_STORE_LOCK = threading.RLock()
 
 
+def _atomic_write_json(path: Path, payload: Any) -> None:
+    """Persist JSON without exposing a partially-written generation.
+
+    The temporary file lives beside the destination so ``os.replace`` is an
+    atomic same-volume operation.  A failed write or flush leaves the prior
+    destination untouched and removes the temporary candidate.  Directory
+    syncing is best effort because Windows does not expose a portable way to
+    open directories for fsync; the file itself is always flushed and synced
+    before replacement.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            json.dump(payload, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        os.replace(temporary_path, path)
+        temporary_path = None
+        _sync_directory(path.parent)
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink()
+            except OSError:
+                pass
+
+
+def _sync_directory(directory: Path) -> None:
+    """Durably publish a replacement when the platform supports directory fsync."""
+    try:
+        descriptor = os.open(directory, os.O_RDONLY)
+    except (AttributeError, OSError):
+        return
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError:
+            logger.debug("Directory fsync is unavailable for %s", directory)
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+
 @dataclass
 class JobRecord:
     id: str
@@ -391,15 +447,12 @@ class JobStore:
             return []
 
     def _write(self, records: list[JobRecord]) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
         payload = {
             "schema_version": JOB_SCHEMA_VERSION,
             "updated_at": time.time(),
             "jobs": [record.to_dict() for record in records],
         }
-        tmp = self.path.with_name(self.path.name + ".tmp")
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        os.replace(tmp, self.path)
+        _atomic_write_json(self.path, payload)
 
     def _quarantine_corrupt_file(self) -> None:
         if not self.path.exists():
@@ -489,7 +542,7 @@ class JobLog:
             "entry_count": len(self._entries),
             "entries": [e.to_dict() for e in self._entries],
         }
-        self._path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        _atomic_write_json(self._path, payload)
         return self._path
 
     def summary(self, limit: int = 10) -> list[dict[str, Any]]:

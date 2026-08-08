@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Job ledger and per-job log writes now flush and sync temporary JSON before atomic
+  replacement, preserving the last valid generation when persistence fails.
+
 - Provenance sidecars now declare byte-, semantic-, or non-replayability from a centralized
   operation registry. Project Manager disables unsupported re-render actions, and the CLI exposes
   the same capability and reason through `provenance`.
