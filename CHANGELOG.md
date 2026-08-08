@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Job Queue and Batch results copy, status messages, destructive-action toasts,
+  and accessibility descriptions to the locale catalog, including Arabic coverage.
+
 - Job ledger and per-job log writes now flush and sync temporary JSON before atomic
   replacement, preserving the last valid generation when persistence fails.
 

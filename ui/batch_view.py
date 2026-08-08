@@ -98,7 +98,7 @@ class BatchCard(QFrame):
         header = QHBoxLayout()
         header.setSpacing(4)
 
-        self._title = QLabel(f"Variation {self._index + 1}")
+        self._title = QLabel(tr("batch.variation", index=self._index + 1))
         self._title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9pt;")
         header.addWidget(self._title)
 
@@ -149,10 +149,10 @@ class BatchCard(QFrame):
 
         install_accessibility(
             self,
-            f"Variation {self._index + 1}",
+            tr("batch.accessibility.card_name", index=self._index + 1),
             named_controls=[
-                (self._star_btn, f"Star variation {self._index + 1}", "Toggles star rating on this variation."),
-                (self._delete_btn, f"Delete variation {self._index + 1}", "Removes this variation from the batch."),
+                (self._star_btn, tr("batch.accessibility.star_name", state=tr("batch.star"), index=self._index + 1), tr("batch.accessibility.star_description")),
+                (self._delete_btn, tr("batch.accessibility.delete_name", index=self._index + 1), tr("batch.accessibility.delete_description")),
             ],
             tab_order=[self._star_btn, self._delete_btn],
         )
@@ -173,16 +173,16 @@ class BatchCard(QFrame):
         self._audio_path = audio_path
         self._seed = seed
         self._gen_time = gen_time
-        self._seed_label.setText(f"seed: {seed}")
+        self._seed_label.setText(tr("batch.seed", seed=seed))
         if gen_time > 0:
-            self._time_label.setText(f"{gen_time:.1f}s")
+            self._time_label.setText(tr("batch.duration", seconds=gen_time))
 
         self._start_quality_job()
 
     def _start_quality_job(self):
         path = self._audio_path
         if not path or not os.path.isfile(path):
-            self._score_label.setText("Q: unavailable")
+            self._score_label.setText(tr("batch.quality_unavailable"))
             return
 
         self._quality_token += 1
@@ -190,7 +190,7 @@ class BatchCard(QFrame):
         worker = InferenceWorker(_prepare_batch_card_task, path)
         self._quality_workers.add(worker)
         self._quality_worker = worker
-        self._score_label.setText("Q: 0%")
+        self._score_label.setText(tr("batch.quality_progress", percent=0))
         worker.progress.connect(
             lambda percent, t=token: self._on_quality_progress(t, percent)
         )
@@ -216,7 +216,7 @@ class BatchCard(QFrame):
 
     def _on_quality_progress(self, token: int, percent: int):
         if token == self._quality_token and not self._closed:
-            self._score_label.setText(f"Q: {percent}%")
+            self._score_label.setText(tr("batch.quality_progress", percent=percent))
 
     def _on_quality_finished(self, token: int, worker, payload: dict):
         self._forget_quality_worker_later(worker)
@@ -234,14 +234,14 @@ class BatchCard(QFrame):
         if token != self._quality_token or self._closed:
             return
         self._quality_worker = None
-        self._score_label.setText("Q: unavailable")
+        self._score_label.setText(tr("batch.quality_unavailable"))
 
     def _on_quality_cancelled(self, token: int, worker):
         self._forget_quality_worker_later(worker)
         if token != self._quality_token or self._closed:
             return
         self._quality_worker = None
-        self._score_label.setText("Q: cancelled")
+        self._score_label.setText(tr("batch.quality_cancelled"))
 
     def cancel_quality_score(self):
         """Request cancellation without waiting on the GUI thread."""
@@ -250,7 +250,7 @@ class BatchCard(QFrame):
             return
         self._quality_token += 1
         worker.cancel()
-        self._score_label.setText("Q: cancelling...")
+        self._score_label.setText(tr("batch.quality_cancelling"))
 
     def closeEvent(self, event):
         self._closed = True
@@ -287,8 +287,10 @@ class BatchCard(QFrame):
             f"color: {Palette.YELLOW if self._is_starred else Palette.OVERLAY0}; font-size: 12pt; }}"
             f" QPushButton:hover {{ color: {Palette.YELLOW}; }}"
         )
-        state = "Unstar" if self._is_starred else "Star"
-        self._star_btn.setAccessibleName(f"{state} variation {self._index + 1}")
+        state = tr("batch.unstar") if self._is_starred else tr("batch.star")
+        self._star_btn.setAccessibleName(
+            tr("batch.accessibility.star_name", state=state, index=self._index + 1)
+        )
         self._update_style()
 
     @property
@@ -316,7 +318,7 @@ class BatchCard(QFrame):
 
     def set_quality_score(self, score: float):
         self._quality_score = score
-        self._score_label.setText(f"Q:{score:.0f}")
+        self._score_label.setText(tr("batch.quality_value", score=score))
         if score >= 70:
             self._score_label.setStyleSheet(f"color: {Palette.GREEN}; font-size: 7.5pt; font-weight: bold;")
         elif score >= 40:
@@ -358,23 +360,23 @@ class BatchView(QWidget):
         header = QHBoxLayout()
         header.setSpacing(8)
 
-        title = QLabel("Batch Results")
+        title = QLabel(tr("batch.title"))
         title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9.75pt;")
         header.addWidget(title)
 
-        self._count_label = QLabel("0 variations")
+        self._count_label = QLabel(tr("batch.count", count=0))
         self._count_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 8.25pt;")
         header.addWidget(self._count_label)
 
         header.addStretch()
 
-        self._use_best_btn = QPushButton("Use Best")
+        self._use_best_btn = QPushButton(tr("batch.use_best"))
         self._use_best_btn.setMinimumHeight(28)
         self._use_best_btn.setEnabled(False)
         self._use_best_btn.clicked.connect(self._use_best)
         header.addWidget(self._use_best_btn)
 
-        self._clear_btn = QPushButton("Clear All")
+        self._clear_btn = QPushButton(tr("batch.clear_all"))
         self._clear_btn.setMinimumHeight(28)
         self._clear_btn.setProperty("class", "secondary")
         self._clear_btn.clicked.connect(self.clear)
@@ -405,17 +407,17 @@ class BatchView(QWidget):
         layout.addWidget(self._scroll, 1)
 
         # Empty state
-        self._empty_label = QLabel("Generate batch variations to see results here")
+        self._empty_label = QLabel(tr("batch.empty"))
         self._empty_label.setAlignment(Qt.AlignCenter)
         self._empty_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 9pt; padding: 40px;")
         self._grid_layout.addWidget(self._empty_label, 0, 0, 1, 2)
 
         install_accessibility(
             self,
-            "Batch Results",
+            tr("batch.accessibility.name"),
             named_controls=[
-                (self._use_best_btn, "Use best variation", "Selects the first starred or first variation for use."),
-                (self._clear_btn, "Clear all variations", "Removes all batch result cards."),
+                (self._use_best_btn, tr("batch.accessibility.use_best_name"), tr("batch.accessibility.use_best_description")),
+                (self._clear_btn, tr("batch.accessibility.clear_name"), tr("batch.accessibility.clear_description")),
             ],
             tab_order=[self._use_best_btn, self._clear_btn],
         )
@@ -423,9 +425,9 @@ class BatchView(QWidget):
     def _reflow_cards(self):
         for index, card in enumerate(self._cards):
             card._index = index
-            card._title.setText(f"Variation {index + 1}")
+            card._title.setText(tr("batch.variation", index=index + 1))
             self._grid_layout.addWidget(card, index // 2, index % 2)
-        self._count_label.setText(f"{len(self._cards)} variations")
+        self._count_label.setText(tr("batch.count", count=len(self._cards)))
         self._use_best_btn.setEnabled(bool(self._cards))
         self._empty_label.setVisible(not self._cards)
 
@@ -604,9 +606,9 @@ class BatchView(QWidget):
 
         if errors:
             if self.toast_mgr:
-                self.toast_mgr.error("Some batch results could not be restored.")
+                self.toast_mgr.error(tr("batch.restore_failed"))
         elif self.toast_mgr:
-            self.toast_mgr.success("Batch results restored.")
+            self.toast_mgr.success(tr("batch.restored"))
 
     def _remove_with_undo(self, snapshots: list[dict], message: str):
         if not snapshots:
@@ -615,7 +617,7 @@ class BatchView(QWidget):
             self._trash_snapshots(snapshots)
         except Exception as exc:
             if self.toast_mgr:
-                self.toast_mgr.error(f"Batch result delete failed: {exc}")
+                self.toast_mgr.error(tr("batch.delete_failed", error=exc))
             return False
 
         self._remove_snapshots(snapshots)
@@ -623,7 +625,7 @@ class BatchView(QWidget):
             self.toast_mgr.info(
                 message,
                 duration_ms=8000,
-                action_label="Undo",
+                action_label=tr("batch.undo"),
                 action_callback=lambda items=snapshots: self._restore_snapshots(items),
             )
         return True
@@ -632,7 +634,7 @@ class BatchView(QWidget):
         if 0 <= index < len(self._cards):
             self._remove_with_undo(
                 self._snapshot_cards([self._cards[index]]),
-                "Batch result moved to trash.",
+                tr("batch.moved_to_trash"),
             )
 
     def _use_best(self):
@@ -655,7 +657,7 @@ class BatchView(QWidget):
     def clear(self):
         self._remove_with_undo(
             self._snapshot_cards(list(self._cards)),
-            "Batch results moved to trash.",
+            tr("batch.moved_to_trash_plural"),
         )
         self._playing_index = -1
 
@@ -669,12 +671,17 @@ class BatchView(QWidget):
             return
 
         labels = [record.label for record in records[:3]]
-        suffix = f" and {len(records) - 3} more" if len(records) > 3 else ""
+        suffix = (
+            tr("batch.recoverable_more", count=len(records) - 3)
+            if len(records) > 3 else ""
+        )
         self._recovery_label.setText(
-            tr("runtime.recoverable_tasks") + " "
-            + ", ".join(labels)
-            + suffix
-            + ". Partial render files were cleaned; start a new run when ready."
+            tr(
+                "batch.recoverable",
+                tasks=tr("runtime.recoverable_tasks"),
+                labels=", ".join(labels),
+                suffix=suffix,
+            )
         )
         self._recovery_label.setVisible(True)
 

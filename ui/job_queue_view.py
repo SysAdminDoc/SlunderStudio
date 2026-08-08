@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from core.job_queue import estimate_job_resources, export_selected_outputs
 from core.job_state import JobRecord, JobStatus, JobStore, extract_output_paths
+from core.i18n import tr
 from ui.accessibility import install_accessibility
 from ui.file_dialogs import choose_directory
 from ui.theme import Palette
@@ -48,18 +49,18 @@ class JobQueueView(QWidget):
         layout.setSpacing(8)
 
         header = QHBoxLayout()
-        title = QLabel("Persistent Job Queue")
+        title = QLabel(tr("job_queue.title"))
         title.setStyleSheet(
             f"color: {Palette.TEXT}; font-weight: bold; font-size: 9.75pt;"
         )
         header.addWidget(title)
-        self._count_label = QLabel("0 jobs")
+        self._count_label = QLabel(tr("job_queue.count", count=0))
         self._count_label.setStyleSheet(
             f"color: {Palette.OVERLAY0}; font-size: 8.25pt;"
         )
         header.addWidget(self._count_label)
         header.addStretch()
-        self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn = QPushButton(tr("job_queue.refresh"))
         self._refresh_btn.setMinimumHeight(28)
         self._refresh_btn.clicked.connect(self.refresh)
         header.addWidget(self._refresh_btn)
@@ -70,7 +71,7 @@ class JobQueueView(QWidget):
         self._jobs.currentItemChanged.connect(self._on_job_selected)
         layout.addWidget(self._jobs, 1)
 
-        self._details = QLabel("Select a job to see its status and resource estimate.")
+        self._details = QLabel(tr("job_queue.details_empty"))
         self._details.setWordWrap(True)
         self._details.setStyleSheet(
             f"color: {Palette.SUBTEXT0}; font-size: 8.25pt; padding: 4px;"
@@ -78,24 +79,24 @@ class JobQueueView(QWidget):
         layout.addWidget(self._details)
 
         action_row = QHBoxLayout()
-        self._resume_btn = QPushButton("Resume")
+        self._resume_btn = QPushButton(tr("job_queue.resume"))
         self._resume_btn.setEnabled(False)
         self._resume_btn.clicked.connect(lambda: self._requeue_selected(resume=True))
         action_row.addWidget(self._resume_btn)
 
-        self._retry_btn = QPushButton("Retry")
+        self._retry_btn = QPushButton(tr("job_queue.retry"))
         self._retry_btn.setEnabled(False)
         self._retry_btn.clicked.connect(lambda: self._requeue_selected(resume=False))
         action_row.addWidget(self._retry_btn)
 
-        self._export_btn = QPushButton("Export selected outputs")
+        self._export_btn = QPushButton(tr("job_queue.export_selected"))
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._export_selected)
         action_row.addWidget(self._export_btn)
         action_row.addStretch()
         layout.addLayout(action_row)
 
-        self._outputs_label = QLabel("Completed outputs")
+        self._outputs_label = QLabel(tr("job_queue.completed_outputs"))
         self._outputs_label.setStyleSheet(
             f"color: {Palette.TEXT}; font-weight: bold; font-size: 8.75pt;"
         )
@@ -113,14 +114,14 @@ class JobQueueView(QWidget):
 
         install_accessibility(
             self,
-            "Persistent job queue",
+            tr("job_queue.accessibility.name"),
             named_controls=[
-                (self._jobs, "Persistent jobs", "Shows queued, active, recoverable, failed, and completed jobs."),
-                (self._refresh_btn, "Refresh persistent jobs", "Reloads the durable job ledger."),
-                (self._resume_btn, "Resume selected job", "Requeues an interrupted job for its registered workflow."),
-                (self._retry_btn, "Retry selected job", "Creates a fresh queued attempt from a failed job."),
-                (self._export_btn, "Export selected job outputs", "Copies checked completed outputs to a chosen folder."),
-                (self._outputs, "Completed job outputs", "Checks which completed outputs should be exported."),
+                (self._jobs, tr("job_queue.accessibility.jobs_name"), tr("job_queue.accessibility.jobs_description")),
+                (self._refresh_btn, tr("job_queue.accessibility.refresh_name"), tr("job_queue.accessibility.refresh_description")),
+                (self._resume_btn, tr("job_queue.accessibility.resume_name"), tr("job_queue.accessibility.resume_description")),
+                (self._retry_btn, tr("job_queue.accessibility.retry_name"), tr("job_queue.accessibility.retry_description")),
+                (self._export_btn, tr("job_queue.accessibility.export_name"), tr("job_queue.accessibility.export_description")),
+                (self._outputs, tr("job_queue.accessibility.outputs_name"), tr("job_queue.accessibility.outputs_description")),
             ],
             tab_order=[
                 self._jobs,
@@ -148,7 +149,7 @@ class JobQueueView(QWidget):
                     selected_item = item
         finally:
             self._jobs.blockSignals(False)
-        self._count_label.setText(f"{len(self._records)} jobs")
+        self._count_label.setText(tr("job_queue.count", count=len(self._records)))
         if selected_item is not None:
             self._jobs.setCurrentItem(selected_item)
         elif self._jobs.count():
@@ -168,24 +169,32 @@ class JobQueueView(QWidget):
     @staticmethod
     def _job_label(record: JobRecord) -> str:
         estimate = estimate_job_resources(record).summary()
-        return f"[{record.status}] {record.label} · {record.progress}% · {estimate}"
+        return tr(
+            "job_queue.job_label",
+            status=record.status,
+            label=record.label,
+            progress=record.progress,
+            estimate=estimate,
+        )
 
     def _on_job_selected(self, _current, _previous):
         record = self.selected_record
         if record is None:
-            self._details.setText("Select a job to see its status and resource estimate.")
+            self._details.setText(tr("job_queue.details_empty"))
             self._resume_btn.setEnabled(False)
             self._retry_btn.setEnabled(False)
             return
         estimate = estimate_job_resources(record)
-        details = (
-            f"{record.label}\n"
-            f"Status: {record.status} · Progress: {record.progress}%\n"
-            f"Estimate: {estimate.summary()}\n"
-            f"Basis: {estimate.basis}"
+        details = tr(
+            "job_queue.details",
+            label=record.label,
+            status=record.status,
+            progress=record.progress,
+            estimate=estimate.summary(),
+            basis=estimate.basis,
         )
         if record.error:
-            details += f"\nError: {record.error[:240]}"
+            details += "\n" + tr("job_queue.error", error=record.error[:240])
         self._details.setText(details)
         resumable = record.status == JobStatus.RECOVERABLE or (
             record.status == JobStatus.CANCELLED and record.recoverable
@@ -212,7 +221,9 @@ class JobQueueView(QWidget):
                 if str(path) in seen or not path.is_file():
                     continue
                 seen.add(str(path))
-                item = QListWidgetItem(f"{record.label}: {path.name}")
+                item = QListWidgetItem(
+                    tr("job_queue.output_item", label=record.label, name=path.name)
+                )
                 item.setData(Qt.ItemDataRole.UserRole, str(path))
                 item.setFlags(
                     item.flags() | Qt.ItemFlag.ItemIsUserCheckable
@@ -221,7 +232,7 @@ class JobQueueView(QWidget):
                 self._outputs.addItem(item)
         self._export_btn.setEnabled(self._outputs.count() > 0)
         if self._outputs.count() == 0:
-            self._outputs.addItem("No completed output files are available.")
+            self._outputs.addItem(tr("job_queue.no_outputs"))
             self._outputs.item(0).setFlags(Qt.ItemFlag.NoItemFlags)
 
     def _requeue_selected(self, *, resume: bool):
@@ -230,16 +241,16 @@ class JobQueueView(QWidget):
             return
         queued = self._job_store.requeue(record.id, resume=resume)
         if queued is None:
-            self._status.setText("That job cannot be requeued in its current state.")
+            self._status.setText(tr("job_queue.requeue_unavailable"))
             return
         self.refresh()
-        self._status.setText(f"{queued.label} is queued.")
+        self._status.setText(tr("job_queue.queued", label=queued.label))
         self.job_requeued.emit(queued)
 
     def _export_selected(self):
         destination = choose_directory(
             self,
-            "Export selected job outputs",
+            tr("job_queue.export_selected"),
             operation_kind="job_queue_output_export",
         )
         if destination:
@@ -255,18 +266,18 @@ class JobQueueView(QWidget):
             and item.data(Qt.ItemDataRole.UserRole)
         ]
         if not selected:
-            self._status.setText("Check at least one completed output first.")
+            self._status.setText(tr("job_queue.check_outputs"))
             return []
         try:
             written = export_selected_outputs(self._records, selected, destination)
         except (OSError, RuntimeError, ValueError) as exc:
-            self._status.setText(f"Output export failed: {exc}")
+            self._status.setText(tr("job_queue.export_failed", error=exc))
             if self.toast_mgr:
-                self.toast_mgr.error(f"Output export failed: {exc}")
+                self.toast_mgr.error(tr("job_queue.export_failed", error=exc))
             return []
-        self._status.setText(f"Exported {len(written)} output(s).")
+        self._status.setText(tr("job_queue.exported", count=len(written)))
         if self.toast_mgr:
-            self.toast_mgr.success(f"Exported {len(written)} job output(s).")
+            self.toast_mgr.success(tr("job_queue.toast_exported", count=len(written)))
         return written
 
 
