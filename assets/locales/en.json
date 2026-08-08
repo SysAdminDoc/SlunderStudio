@@ -190,9 +190,14 @@
       "c2pa_certificate_placeholder": "Select a PEM certificate chain...",
       "c2pa_private_key": "C2PA private key",
       "c2pa_private_key_placeholder": "Select an unencrypted PEM private key...",
+      "c2pa_timestamp": "RFC 3161 timestamp URL (optional)",
+      "c2pa_timestamp_placeholder": "Leave empty for local-only signing...",
+      "c2pa_timestamp_help": "A nonempty URL contacts a timestamp authority during signing. This is an explicit network opt-in and is blocked by Offline Mode.",
       "c2pa_off": "Content Credentials are off. Exports remain unchanged.",
       "c2pa_missing_credentials": "Enablement is saved, but both signer files must be selected before exporting.",
-      "c2pa_ready": "Signer paths are configured. The private key is read only during an opted-in export."
+      "c2pa_ready": "Signer paths are configured. The private key is read only during an opted-in export.",
+      "c2pa_ready_timestamp": "Signer paths are configured. Signing will contact the configured RFC 3161 authority and record that network timestamp in provenance.",
+      "c2pa_offline_timestamp": "Offline Mode blocks the configured RFC 3161 timestamp URL. Remove it for local-only signing or disable Offline Mode."
     },
     "osc": {
       "group": "OSC Control",

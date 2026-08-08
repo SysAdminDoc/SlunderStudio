@@ -172,7 +172,7 @@ Models are downloaded on-demand through the Model Hub. Nothing downloads until y
 | Stable Audio Open | ~3 GB | SFX Generator | Optional |
 
 All models run entirely on your local machine. No cloud APIs, no subscriptions, no data leaves your computer.
-When Offline Mode is enabled in Settings, all HuggingFace API calls and model downloads are blocked — models load from local cache only or fail with an explicit offline error.
+When Offline Mode is enabled in Settings, all HuggingFace API calls and model downloads are blocked — models load from local cache only or fail with an explicit offline error. C2PA signing is local-only when its optional RFC 3161 timestamp URL is empty; entering a timestamp URL is an explicit network opt-in, is rejected by Offline Mode, and records `timestamp_mode: rfc3161_network` in the signed export's provenance sidecar.
 Model Hub cards show each model's license, gated/token status, and commercial-use status. Generated and exported provenance sidecars carry source model license policy forward, and Song Forge export warns when a source model is limited, non-commercial, or governed by model-specific terms.
 Built-in Hugging Face downloads use reviewed immutable commit revisions and hash every cached file before loading. Model Hub can check upstream sources on demand, display bounded release notes for an immutable target SHA, validate the complete target cache before activation, and retain the prior verified cache for one-click rollback. When a publisher includes an OpenSSF Model Signing (OMS) detached signature, the locked `model-signing` verifier checks it against the local model file manifest before any loader runs; Model Hub and provenance show the signer result, while a model without a published signature is explicitly marked unsigned. Remote model code is disabled by default; models that declare custom code or pickle-backed weights require an explicit Model Hub warning and consent scoped to that exact revision.
 Model Hub also records task labels, a dated measurement basis, and a VRAM tier for every built-in model. Its recommendations and hardware filter use the detected accelerator and the same registry VRAM estimate used by activation, calling out CPU fallback instead of presenting an oversized model as a GPU fit.
@@ -210,7 +210,10 @@ unencrypted P-256 private key. Slunder Studio reads the key only for that export
 generates, copies, or stores the key contents. OGG and Opus exports remain unsigned because the
 current bundled C2PA binding does not embed those formats. Signed exports carry the creation
 action, a C2PA AI-disclosure assertion when a model was used, and a digest binding the manifest
-back to the adjacent provenance sidecar.
+back to the adjacent provenance sidecar. Settings > Output also accepts an optional RFC 3161
+timestamp URL: leave it empty for local-only signing, or enter it when an online timestamp is
+intended. Offline Mode rejects a configured timestamp URL before signing, and timestamp
+authority failures remove the incomplete artifact instead of presenting it as a signed export.
 
 ```
 SlunderStudio/

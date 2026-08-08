@@ -363,6 +363,25 @@ class SettingsView(QWidget):
             key_controls,
         ))
 
+        self._c2pa_timestamp_url = QLineEdit()
+        self._c2pa_timestamp_url.setPlaceholderText(
+            tr("settings.output.c2pa_timestamp_placeholder")
+        )
+        self._c2pa_timestamp_url.editingFinished.connect(
+            lambda: self._save(
+                "general.c2pa_timestamp_url",
+                self._c2pa_timestamp_url.text().strip(),
+            )
+        )
+        self._c2pa_timestamp_url.textChanged.connect(
+            lambda _value: self._refresh_c2pa_state()
+        )
+        output_layout.addLayout(SettingRow(
+            tr("settings.output.c2pa_timestamp"),
+            self._c2pa_timestamp_url,
+            tr("settings.output.c2pa_timestamp_help"),
+        ))
+
         self._c2pa_status = QLabel()
         self._c2pa_status.setWordWrap(True)
         self._c2pa_status.setStyleSheet(
@@ -580,8 +599,7 @@ class SettingsView(QWidget):
         ))
 
         self._offline_mode = QCheckBox(tr("settings.gpu.offline_mode"))
-        self._offline_mode.toggled.connect(
-            lambda v: self._save("model_hub.offline_mode", v))
+        self._offline_mode.toggled.connect(self._on_offline_mode_toggled)
         gpu_layout.addLayout(SettingRow(tr("settings.gpu.disable_internet"), self._offline_mode))
 
         self._hf_token = QLineEdit()
@@ -1144,7 +1162,8 @@ class SettingsView(QWidget):
         _widgets = [
             self._format_combo, self._sample_rate_combo,
             self._stem_export_template_combo, self._gpu_device,
-            self._c2pa_enabled, self._offline_mode, self._hf_token, self._experience_combo,
+            self._c2pa_enabled, self._c2pa_timestamp_url,
+            self._offline_mode, self._hf_token, self._experience_combo,
             self._ui_locale_combo,
             self._default_language,
             self._reduced_motion,
@@ -1173,6 +1192,9 @@ class SettingsView(QWidget):
             )
             self._c2pa_private_key_path.setText(
                 str(s.get("general.c2pa_private_key_path", "") or "")
+            )
+            self._c2pa_timestamp_url.setText(
+                str(s.get("general.c2pa_timestamp_url", "") or "")
             )
             fmt = s.get("general.audio_format", "wav").upper()
             idx = self._format_combo.findText(fmt)
@@ -1416,13 +1438,24 @@ class SettingsView(QWidget):
         self._save("general.c2pa_enabled", bool(enabled))
         self._refresh_c2pa_state()
 
+    def _on_offline_mode_toggled(self, enabled: bool):
+        self._save("model_hub.offline_mode", bool(enabled))
+        if hasattr(self, "_c2pa_status"):
+            self._refresh_c2pa_state()
+
     def _refresh_c2pa_state(self):
         """Explain the opt-in state without reading or exposing private keys."""
         if not self._c2pa_enabled.isChecked():
             text = tr("settings.output.c2pa_off")
             color = Palette.SUBTEXT0
+        elif self._offline_mode.isChecked() and self._c2pa_timestamp_url.text().strip():
+            text = tr("settings.output.c2pa_offline_timestamp")
+            color = Palette.YELLOW
         elif not self._c2pa_certificate_path.text().strip() or not self._c2pa_private_key_path.text().strip():
             text = tr("settings.output.c2pa_missing_credentials")
+            color = Palette.YELLOW
+        elif self._c2pa_timestamp_url.text().strip():
+            text = tr("settings.output.c2pa_ready_timestamp")
             color = Palette.YELLOW
         else:
             text = tr("settings.output.c2pa_ready")
@@ -1555,6 +1588,7 @@ class SettingsView(QWidget):
                 (self._c2pa_certificate_browse, "Browse C2PA certificate", "Selects the C2PA claim-signing certificate chain."),
                 (self._c2pa_private_key_path, "C2PA private key path", "Selects the user-managed PEM private key; the key contents are never copied into settings."),
                 (self._c2pa_private_key_browse, "Browse C2PA private key", "Selects the C2PA claim-signing private key."),
+                (self._c2pa_timestamp_url, "C2PA timestamp URL", "Optional RFC 3161 timestamp authority. A configured URL makes signing a network operation and is blocked by Offline Mode."),
                 (self._osc_enabled, "OSC control", "Enables the versioned OSC transport for local control."),
                 (self._osc_port, "OSC port", "Selects the UDP port used by OSC control."),
                 (self._osc_allow_lan, "Allow OSC LAN access", "Explicitly enables non-loopback OSC sources."),
@@ -1612,6 +1646,7 @@ class SettingsView(QWidget):
                 self._c2pa_certificate_browse,
                 self._c2pa_private_key_path,
                 self._c2pa_private_key_browse,
+                self._c2pa_timestamp_url,
                 self._osc_enabled,
                 self._osc_port,
                 self._osc_allow_lan,

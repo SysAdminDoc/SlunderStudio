@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- C2PA timestamping is now explicit: Offline Mode rejects configured RFC 3161 endpoints,
+  timestamp mode is recorded without storing the endpoint URL, and failed timestamp signing
+  removes the incomplete export.
+
 - Worker results now publish only after terminal cleanup, and reference/waveform views defer
   completion until native decoder threads stop so Windows source files can be released safely.
 

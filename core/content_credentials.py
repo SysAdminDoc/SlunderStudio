@@ -58,6 +58,9 @@ class C2PAConfig:
     certificate_path: str = ""
     private_key_path: str = ""
     timestamp_url: str = ""
+    # Supplied by the persisted app policy.  Explicit test/integration callers
+    # can set it when they are emulating Offline Mode.
+    offline_mode: bool = False
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,7 @@ class C2PAResult:
     specification: str
     format: str
     provenance_digest: str
+    timestamp_mode: str
     validation_state: str
     validation_codes: tuple[str, ...]
     manifest_labels: tuple[str, ...]
@@ -78,6 +82,7 @@ class C2PAResult:
             "specification": self.specification,
             "format": self.format,
             "provenance_digest": self.provenance_digest,
+            "timestamp_mode": self.timestamp_mode,
             "validation_state": self.validation_state,
             "validation_codes": list(self.validation_codes),
             "manifest_labels": list(self.manifest_labels),
@@ -89,6 +94,9 @@ def configured_c2pa_config() -> C2PAConfig:
     from core.settings import Settings
 
     settings = Settings()
+    offline = settings.get("model_hub.offline_mode", False)
+    if not isinstance(offline, bool):
+        offline = str(offline).strip().lower() in {"1", "true", "yes"}
     return C2PAConfig(
         certificate_path=str(
             settings.get("general.c2pa_certificate_path", "") or ""
@@ -99,6 +107,7 @@ def configured_c2pa_config() -> C2PAConfig:
         timestamp_url=str(
             settings.get("general.c2pa_timestamp_url", "") or ""
         ).strip(),
+        offline_mode=offline,
     )
 
 
@@ -117,14 +126,20 @@ def c2pa_format_for_export(export_format: str) -> str:
 
 def validate_c2pa_config(config: C2PAConfig) -> tuple[Path, Path]:
     """Validate signer locations without exposing their contents."""
-    certificate = _required_file(config.certificate_path, "certificate")
-    private_key = _required_file(config.private_key_path, "private key")
-    if config.timestamp_url and not config.timestamp_url.startswith(
+    timestamp_url = str(config.timestamp_url or "").strip()
+    if timestamp_url and config.offline_mode:
+        raise ContentCredentialsError(
+            "Offline Mode blocks RFC 3161 C2PA timestamps. Remove the timestamp "
+            "URL or disable Offline Mode before signing."
+        )
+    if timestamp_url and not timestamp_url.startswith(
         ("http://", "https://")
     ):
         raise ContentCredentialsError(
             "C2PA timestamp URL must start with http:// or https://."
         )
+    certificate = _required_file(config.certificate_path, "certificate")
+    private_key = _required_file(config.private_key_path, "private key")
     return certificate, private_key
 
 
@@ -281,6 +296,7 @@ def embed_c2pa_manifest(
     c2pa_format_for_export(export_format)
     signer_config = config or configured_c2pa_config()
     certificate_path, private_key_path = validate_c2pa_config(signer_config)
+    timestamp_url = str(signer_config.timestamp_url or "").strip()
     sidecar = read_provenance_sidecar(artifact)
     if not sidecar:
         raise ContentCredentialsError(
@@ -299,14 +315,22 @@ def embed_c2pa_manifest(
             manifest,
             certificate_path=certificate_path,
             private_key_path=private_key_path,
-            timestamp_url=signer_config.timestamp_url,
+            timestamp_url=timestamp_url,
         )
         os.replace(temporary_path, artifact)
     except ContentCredentialsError:
         raise
     except Exception as exc:  # noqa: BLE001 - normalize native errors
+        detail = " ".join(str(exc).split())[:240] or type(exc).__name__
+        if timestamp_url:
+            message = (
+                "C2PA signing with the RFC 3161 timestamp authority failed: "
+                f"{detail} Remove the timestamp URL or verify the endpoint and retry."
+            )
+        else:
+            message = f"C2PA signing failed: {detail}"
         raise ContentCredentialsError(
-            f"C2PA signing failed: {type(exc).__name__}: {exc}"
+            message
         ) from exc
     finally:
         try:
@@ -314,7 +338,12 @@ def embed_c2pa_manifest(
         except OSError:
             pass
 
-    return _verify_c2pa_round_trip(artifact, digest, export_format)
+    return _verify_c2pa_round_trip(
+        artifact,
+        digest,
+        export_format,
+        timestamp_mode="rfc3161_network" if timestamp_url else "none",
+    )
 
 
 def _temporary_sibling(artifact: Path) -> str:
@@ -399,6 +428,8 @@ def _verify_c2pa_round_trip(
     artifact: Path,
     digest: str,
     export_format: str,
+    *,
+    timestamp_mode: str,
 ) -> C2PAResult:
     try:
         import c2pa
@@ -465,6 +496,7 @@ def _verify_c2pa_round_trip(
         specification=C2PA_SPEC_VERSION,
         format=export_format,
         provenance_digest=digest,
+        timestamp_mode=timestamp_mode,
         validation_state=validation_state,
         validation_codes=codes,
         manifest_labels=labels,

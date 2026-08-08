@@ -2,15 +2,18 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
 from core.audio_export import ExportSettings, export_from_numpy
 from core.content_credentials import (
     C2PAConfig,
+    C2PAResult,
     ContentCredentialsError,
     c2pa_format_for_export,
     build_c2pa_manifest,
+    embed_c2pa_manifest,
 )
 
 
@@ -162,6 +165,92 @@ class ContentCredentialsTests(unittest.TestCase):
                 str(output),
                 ExportSettings(format="wav", sample_rate=48000, c2pa_enabled=True),
             )
+        self.assertFalse(output.exists())
+        self.assertFalse(Path(str(output) + ".provenance.json").exists())
+
+    def test_offline_mode_rejects_timestamp_before_signer_contact(self):
+        output = self.root / "offline.wav"
+        output.write_bytes(b"RIFF test")
+        config = C2PAConfig(
+            certificate_path=str(self.cert_path),
+            private_key_path=str(self.key_path),
+            timestamp_url="https://tsa.example.test/rfc3161",
+            offline_mode=True,
+        )
+        with mock.patch("core.content_credentials._sign_file") as sign_file:
+            with self.assertRaisesRegex(ContentCredentialsError, "Offline Mode"):
+                embed_c2pa_manifest(output, config=config)
+        sign_file.assert_not_called()
+
+    def test_online_timestamp_mode_is_recorded_without_exposing_the_url(self):
+        output = self.root / "timestamped.wav"
+        output.write_bytes(b"RIFF test")
+        Path(str(output) + ".provenance.json").write_text(
+            json.dumps({
+                "schema_version": 2,
+                "module": "export",
+                "operation": "export_audio",
+                "artifact": {"name": output.name},
+                "parameters": {},
+                "extra": {},
+            }),
+            encoding="utf-8",
+        )
+        config = C2PAConfig(
+            certificate_path=str(self.cert_path),
+            private_key_path=str(self.key_path),
+            timestamp_url="https://tsa.example.test/rfc3161",
+        )
+        verified = C2PAResult(
+            status="embedded",
+            specification="2.4",
+            format="wav",
+            provenance_digest="digest",
+            timestamp_mode="rfc3161_network",
+            validation_state="Valid",
+            validation_codes=(),
+            manifest_labels=("org.slunderstudio.provenance",),
+        )
+
+        def fake_sign(source, destination, *_args, **_kwargs):
+            Path(destination).write_bytes(Path(source).read_bytes())
+
+        with mock.patch(
+            "core.content_credentials._sign_file",
+            side_effect=fake_sign,
+        ) as sign_file, mock.patch(
+            "core.content_credentials._verify_c2pa_round_trip",
+            return_value=verified,
+        ) as verify:
+            result = embed_c2pa_manifest(output, config=config)
+
+        self.assertEqual("rfc3161_network", result.as_dict()["timestamp_mode"])
+        self.assertNotIn("tsa.example.test", json.dumps(result.as_dict()))
+        self.assertEqual(
+            "https://tsa.example.test/rfc3161",
+            sign_file.call_args.kwargs["timestamp_url"],
+        )
+        self.assertEqual("rfc3161_network", verify.call_args.kwargs["timestamp_mode"])
+
+    def test_timestamp_failure_removes_export_and_reports_action(self):
+        output = self.root / "timestamp-failure.wav"
+        config = C2PAConfig(
+            certificate_path=str(self.cert_path),
+            private_key_path=str(self.key_path),
+            timestamp_url="https://tsa.example.test/rfc3161",
+        )
+        with mock.patch(
+            "core.content_credentials._sign_file",
+            side_effect=TimeoutError("authority timed out"),
+        ):
+            with self.assertRaisesRegex(ContentCredentialsError, "timestamp authority"):
+                export_from_numpy(
+                    np.zeros((4800, 1), dtype=np.float32),
+                    48000,
+                    str(output),
+                    ExportSettings(format="wav", sample_rate=48000, c2pa_enabled=True),
+                    c2pa_config=config,
+                )
         self.assertFalse(output.exists())
         self.assertFalse(Path(str(output) + ".provenance.json").exists())
 
