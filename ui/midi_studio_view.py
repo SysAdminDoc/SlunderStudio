@@ -4,6 +4,8 @@ Main MIDI Studio page: text-to-MIDI generation, piano roll editor,
 per-track mixer, .mid import/export, FluidSynth rendering, and
 cross-module routing (Song Forge, Vocal Suite).
 """
+import copy
+import math
 from typing import Optional
 from pathlib import Path
 from PySide6.QtWidgets import (
@@ -90,6 +92,7 @@ class MidiStudioView(QWidget):
         self._generation_worker: Optional[InferenceWorker] = None
         self._render_worker: Optional[InferenceWorker] = None
         self._contract_result: Optional[EngineRunResult] = None
+        self._reference_constraints: dict = {}
         self._settings = Settings()
 
         t = ThemeEngine.get_colors()
@@ -181,7 +184,7 @@ class MidiStudioView(QWidget):
         tempo_l.setMinimumWidth(30)
         tempo_l.setStyleSheet(param_style)
         self._tempo_spin = QSpinBox()
-        self._tempo_spin.setRange(40, 300)
+        self._tempo_spin.setRange(20, 300)
         self._tempo_spin.setValue(int(self._settings.get("midi_studio.default_bpm", 120)))
         self._tempo_spin.setStyleSheet(param_style)
 
@@ -479,6 +482,43 @@ class MidiStudioView(QWidget):
         """Apply the configured MIDI default to the live composition form."""
         if key == "midi_studio.default_bpm" and self._generation_worker is None:
             self._tempo_spin.setValue(int(value))
+
+    def apply_reference_constraints(self, constraints: dict) -> bool:
+        """Apply effective reference BPM/key while retaining full provenance."""
+        if not isinstance(constraints, dict):
+            return False
+        effective = constraints.get("effective")
+        if not isinstance(effective, dict):
+            effective = constraints
+
+        bpm_value = effective.get("bpm")
+        musical_key = str(effective.get("key") or "").strip()
+        try:
+            bpm = float(bpm_value) if bpm_value is not None else None
+        except (TypeError, ValueError):
+            return False
+        if bpm is not None and (
+            not math.isfinite(bpm) or not 20.0 <= bpm <= 300.0
+        ):
+            return False
+        if musical_key:
+            key_index = self._key_combo.findData(musical_key)
+            if key_index < 0:
+                return False
+
+        if bpm is not None and bpm > 0:
+            self._tempo_spin.setValue(int(round(bpm)))
+        if musical_key:
+            self._key_combo.setCurrentIndex(self._key_combo.findData(musical_key))
+        self._reference_constraints = copy.deepcopy(constraints)
+        self._status.setText(
+            tr(
+                "midi.status.reference_constraints_applied",
+                bpm=bpm if bpm is not None else self._tempo_spin.value(),
+                musical_key=musical_key or self._key_combo.currentData(),
+            )
+        )
+        return True
 
     # ── Generation ─────────────────────────────────────────────────────────────
 

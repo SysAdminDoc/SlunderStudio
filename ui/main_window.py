@@ -618,6 +618,9 @@ class MainWindow(QMainWindow):
         # Page 1: Song Forge (Phase 3)
         self._song_forge_view = SongForgeView(toast_mgr=self.toast_mgr)
         self._song_forge_view.send_to_vocals.connect(self._on_song_forge_to_vocals)
+        self._song_forge_view.send_reference_to_midi.connect(
+            self._on_reference_to_midi
+        )
         self._pages.addWidget(self._song_forge_view)
 
         # Page 2: MIDI Studio (Phase 4)
@@ -1075,6 +1078,22 @@ class MainWindow(QMainWindow):
     def _on_midi_to_forge(self, audio_path: str):
         """Route rendered MIDI audio to Song Forge as reference."""
         return self._route_to_forge_reference(audio_path, "midi_studio")
+
+    def _on_reference_to_midi(self, constraints: dict):
+        """Route corrected reference constraints into MIDI Studio."""
+        self._sidebar.select_page(2)
+        if not self._midi_studio_view.apply_reference_constraints(constraints):
+            self.toast_mgr.error(tr("runtime.reference_failed"))
+            return False
+        effective = constraints.get("effective", constraints)
+        self.toast_mgr.info(
+            tr(
+                "runtime.reference_constraints_routed",
+                bpm=float(effective.get("bpm", 0.0) or 0.0),
+                musical_key=str(effective.get("key", "") or ""),
+            )
+        )
+        return True
 
     def _on_song_forge_to_vocals(self, audio_path: str):
         """Route Song Forge audio to Vocal Suite."""

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QGraphicsView,
     QTabBar,
+    QTableWidget,
     QPushButton,
     QToolButton,
     QSlider,
@@ -46,6 +47,7 @@ CONTROL_TYPES = (
     QListWidget,
     QProgressBar,
     QTabBar,
+    QTableWidget,
 )
 
 FOCUS_STYLES = {
@@ -63,6 +65,7 @@ FOCUS_STYLES = {
     QGraphicsView: f"QGraphicsView:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
     QTabBar: f"QTabBar::tab:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
     QTabWidget: f"QTabWidget:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
+    QTableWidget: f"QTableWidget:focus {{ border: 2px solid {FOCUS_RING_COLOR}; }}",
 }
 
 
@@ -195,6 +198,8 @@ def _fallback_description(widget: QWidget) -> str:
         return tr("accessibility.fallback.panel_switcher")
     if isinstance(widget, QListWidget):
         return tr("accessibility.fallback.selectable_list")
+    if isinstance(widget, QTableWidget):
+        return tr("accessibility.fallback.editable_table")
     if isinstance(widget, QProgressBar):
         return tr("accessibility.fallback.progress")
     if isinstance(widget, QGraphicsView):
@@ -217,6 +222,8 @@ def _fallback_control_key(widget: QWidget) -> str:
         return "accessibility.fallback.panel_switcher_name"
     if isinstance(widget, QListWidget):
         return "accessibility.fallback.selectable_list_name"
+    if isinstance(widget, QTableWidget):
+        return "accessibility.fallback.editable_table_name"
     if isinstance(widget, QProgressBar):
         return "accessibility.fallback.progress_name"
     if isinstance(widget, QGraphicsView):

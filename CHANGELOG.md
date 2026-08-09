@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Reference analysis now exposes confidence and alternate BPM/key candidates,
+  supports validated BPM/key/section corrections with raw-versus-effective
+  provenance, and routes trusted constraints to Song Forge and MIDI Studio.
+
 - Localized accessibility fallback descriptions, Model Hub executable/license/signature
   policy copy, and added full-page Arabic RTL/pseudo-locale regression coverage while
   preserving stable combo data under pseudo-localized labels; removed the legacy

@@ -3,6 +3,7 @@ Slunder Studio — Song Forge View
 Main Song Forge page: Quick/Advanced generation modes, style tag browser,
 batch generation, waveform display, seed explorer, mood curves, reference panel.
 """
+import copy
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -251,6 +252,7 @@ class SongForgeView(QWidget):
     - Reference track panel
     """
     send_to_vocals = Signal(str)  # audio_path
+    send_reference_to_midi = Signal(dict)  # effective reference constraints
 
     def __init__(self, toast_mgr=None, parent=None):
         super().__init__(parent)
@@ -268,6 +270,7 @@ class SongForgeView(QWidget):
         self._song_generator_model_id = active_model_ids[0] if active_model_ids else ""
         self._seed_explore_params: list[dict] = []
         self._routed_reference_context_tags: list[str] = []
+        self._reference_analysis_constraints: dict = {}
         self._queue_resume_job_id = ""
         self._settings = Settings()
         self._setup_ui()
@@ -660,6 +663,7 @@ class SongForgeView(QWidget):
         self._ref_panel = ReferencePanel()
         self._ref_panel.match_requested.connect(self._on_reference_match)
         self._ref_panel.tags_extracted.connect(self._on_reference_tags)
+        self._ref_panel.reference_to_midi.connect(self._on_reference_to_midi)
         self._sub_tabs.addTab(self._ref_panel, tr("song_forge.tabs.reference"))
 
         center_layout.addWidget(self._sub_tabs, 1)
@@ -999,6 +1003,9 @@ class SongForgeView(QWidget):
             "lyrics_chars": len(lyrics),
             "style_tags": tags[:240],
         }
+        reference_constraints = copy.deepcopy(self._reference_analysis_constraints)
+        if reference_constraints:
+            job_inputs["reference_constraints"] = reference_constraints
         routed_reference = self.routed_reference
         if routed_reference:
             if routed_reference.tempo:
@@ -1034,6 +1041,11 @@ class SongForgeView(QWidget):
                 "repaint_end": self._repaint_end_spin.value(),
             },
         }
+        if reference_constraints:
+            job_metadata["reference_analysis"] = copy.deepcopy(reference_constraints)
+            job_metadata["replay"]["reference_constraints"] = copy.deepcopy(
+                reference_constraints
+            )
         resume_job_id = str(getattr(self, "_queue_resume_job_id", "") or "")
 
         if is_cover:
@@ -1707,10 +1719,29 @@ class SongForgeView(QWidget):
 
     def _on_reference_match(self, analysis: dict):
         """Auto-populate parameters from reference track analysis."""
-        tags = analysis.get("suggested_tags", [])
+        tags = list(analysis.get("suggested_tags", []) or [])
         tempo_tag = analysis.get("suggested_tempo_tag", "")
         if tempo_tag:
             tags.append(tempo_tag)
+
+        constraints = copy.deepcopy(analysis.get("generation_constraints") or {})
+        effective = constraints.get("effective") or {
+            "bpm": constraints.get("bpm", analysis.get("bpm", 0.0)),
+            "key": constraints.get("key", analysis.get("key", "")),
+            "sections": constraints.get("sections", analysis.get("sections", [])),
+        }
+        bpm = float(effective.get("bpm") or 0.0)
+        musical_key = str(effective.get("key") or "").strip()
+
+        def append_tag(value: str):
+            if value and value.casefold() not in {tag.casefold() for tag in tags}:
+                tags.append(value)
+
+        if bpm > 0:
+            append_tag(f"{bpm:g} bpm")
+        append_tag(musical_key)
+        if constraints:
+            self._reference_analysis_constraints = constraints
 
         tag_str = ", ".join(tags)
         self._quick_tags.setText(tag_str)
@@ -1732,7 +1763,12 @@ class SongForgeView(QWidget):
 
     def _on_reference_tags(self, tag_str: str):
         """Just use the extracted tags without full match."""
+        self._reference_analysis_constraints = {}
         self._quick_tags.setText(tag_str)
         self._tag_browser.set_tags(tag_str)
         if self._toast:
             self._toast.show_toast(tr("song_forge.messages.reference_tags_applied"), "info")
+
+    def _on_reference_to_midi(self, constraints: dict):
+        """Forward trusted reference constraints to the application shell."""
+        self.send_reference_to_midi.emit(copy.deepcopy(constraints))

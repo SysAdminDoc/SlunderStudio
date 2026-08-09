@@ -323,6 +323,124 @@ class ReferencePanelJobTests(unittest.TestCase):
         self.assertTrue(self._wait(lambda: not previous.isRunning()))
         self.panel.cancel_analysis()
 
+    def test_correction_editor_applies_constraints_without_overwriting_raw_values(self):
+        analysis = AudioAnalysis(
+            duration=120.0,
+            bpm=128.0,
+            bpm_confidence=0.55,
+            key="C major",
+            key_confidence=0.44,
+            sections=[
+                {"start": 0.0, "end": 60.0, "label": "Verse"},
+                {"start": 60.0, "end": 120.0, "label": "Chorus"},
+            ],
+        )
+        self.panel._analysis = analysis
+        self.panel._populate_correction_editor(analysis)
+        self.panel._refresh_analysis_display(analysis)
+
+        self.panel._bpm_override_check.setChecked(True)
+        self.panel._bpm_override_spin.setValue(96.0)
+        self.panel._key_override_check.setChecked(True)
+        self.panel._key_override_combo.setCurrentIndex(
+            self.panel._key_override_combo.findData("A minor")
+        )
+        self.panel._sections_override_check.setChecked(True)
+        self.panel._sections_table.item(0, 1).setText("0")
+        self.panel._sections_table.item(0, 2).setText("48")
+        self.panel._sections_table.item(1, 1).setText("48")
+        self.panel._sections_table.item(1, 2).setText("120")
+
+        self.assertTrue(self.panel._apply_corrections())
+        self.assertEqual(analysis.bpm, 128.0)
+        self.assertEqual(analysis.key, "C major")
+        self.assertEqual(analysis.sections[0]["end"], 60.0)
+        self.assertEqual(analysis.effective_bpm, 96.0)
+        self.assertEqual(analysis.effective_key, "A minor")
+        self.assertEqual(analysis.effective_sections[0]["end"], 48.0)
+
+        match_payloads = []
+        midi_payloads = []
+        self.panel.match_requested.connect(match_payloads.append)
+        self.panel.reference_to_midi.connect(midi_payloads.append)
+        self.panel._on_match()
+        self.panel._on_send_to_midi()
+        self.assertEqual(match_payloads[0]["raw"]["bpm"], 128.0)
+        self.assertEqual(match_payloads[0]["effective"]["bpm"], 96.0)
+        self.assertEqual(midi_payloads[0]["bpm"], 96.0)
+        self.assertEqual(midi_payloads[0]["key"], "A minor")
+
+
+class MidiReferenceConstraintTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._app = QApplication.instance() or QApplication([])
+
+    def test_midi_studio_applies_effective_reference_constraints(self):
+        from ui.midi_studio_view import MidiStudioView
+
+        view = MidiStudioView()
+        try:
+            constraints = {
+                "schema_version": 1,
+                "bpm": 96.0,
+                "key": "A minor",
+                "sections": [{"start": 0.0, "end": 30.0, "label": "Verse"}],
+                "effective": {
+                    "bpm": 96.0,
+                    "key": "A minor",
+                    "sections": [{"start": 0.0, "end": 30.0, "label": "Verse"}],
+                },
+            }
+            self.assertTrue(view.apply_reference_constraints(constraints))
+            self.assertEqual(view._tempo_spin.value(), 96)
+            self.assertEqual(view._key_combo.currentData(), "A minor")
+            self.assertEqual(
+                view._reference_constraints["effective"]["sections"][0]["label"],
+                "Verse",
+            )
+        finally:
+            view.deleteLater()
+
+
+class SongForgeReferenceConstraintTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._app = QApplication.instance() or QApplication([])
+
+    def test_match_adds_effective_constraints_and_keeps_provenance(self):
+        from ui.song_forge_view import SongForgeView
+
+        view = SongForgeView()
+        try:
+            view._on_reference_match(
+                {
+                    "duration": 90.0,
+                    "suggested_tags": ["ambient"],
+                    "suggested_tempo_tag": "moderate",
+                    "energy_curve": [0.2, 0.8],
+                    "generation_constraints": {
+                        "schema_version": 1,
+                        "bpm": 96.0,
+                        "key": "A minor",
+                        "sections": [],
+                        "effective": {
+                            "bpm": 96.0,
+                            "key": "A minor",
+                            "sections": [],
+                        },
+                        "corrections": {"bpm": 96.0, "key": "A minor"},
+                    },
+                }
+            )
+            tags = view._get_tags()
+            self.assertIn("96 bpm", tags)
+            self.assertIn("A minor", tags)
+            self.assertEqual(view._duration_spin.value(), 90.0)
+            self.assertEqual(view._reference_analysis_constraints["bpm"], 96.0)
+        finally:
+            view.deleteLater()
+
 
 if __name__ == "__main__":
     unittest.main()

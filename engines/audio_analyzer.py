@@ -127,6 +127,11 @@ class AudioAnalysis:
             "bpm": self.effective_bpm,
             "key": self.effective_key,
             "sections": self.effective_sections,
+            "effective": {
+                "bpm": self.effective_bpm,
+                "key": self.effective_key,
+                "sections": self.effective_sections,
+            },
             "raw": {
                 "bpm": float(self.bpm),
                 "bpm_confidence": float(self.bpm_confidence),

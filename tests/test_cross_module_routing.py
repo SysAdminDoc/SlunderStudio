@@ -211,6 +211,28 @@ class RouteEndToEndTests(unittest.TestCase):
         self.assertIn("150 bpm", tags.lower())
         self.assertIn("A minor", tags)
 
+    def test_reference_constraints_route_to_midi_studio(self):
+        constraints = {
+            "schema_version": 1,
+            "bpm": 96.0,
+            "key": "A minor",
+            "sections": [{"start": 0.0, "end": 30.0, "label": "Verse"}],
+            "effective": {
+                "bpm": 96.0,
+                "key": "A minor",
+                "sections": [{"start": 0.0, "end": 30.0, "label": "Verse"}],
+            },
+        }
+
+        self.assertTrue(self.window._on_reference_to_midi(constraints))
+        self.assertEqual(self.window._pages.currentIndex(), 2)
+        self.assertEqual(self.window._midi_studio_view._tempo_spin.value(), 96)
+        self.assertEqual(self.window._midi_studio_view._key_combo.currentData(), "A minor")
+        self.assertEqual(
+            self.window._midi_studio_view._reference_constraints["effective"]["sections"][0]["label"],
+            "Verse",
+        )
+
     def test_route_to_vocal_suite_selects_the_file(self):
         artifact = self.window._on_send_to_vocals(str(self.audio_path))
         self.assertIsNotNone(artifact)
