@@ -643,7 +643,7 @@ class AIProducerView(QWidget):
             produce_song,
             brief,
             job_kind="ai_producer",
-            job_label="AI Producer production",
+            job_label=tr("producer.jobs.production"),
             job_inputs={
                 "duration_seconds": brief.duration_seconds,
                 "genre": brief.genre or "auto",

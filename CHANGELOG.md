@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Localized queued job labels for AI Producer, MIDI Studio, and Model Hub, notification
+  history formatting, and onboarding recommendation badges with Arabic coverage.
+
 - Migrated shared empty/progress widgets, waveform and spectrogram states, file-dialog
   filters, stem mixer controls/templates, and Main Window transport, status, OSC,
   drag-and-drop, notification, and autosave copy to the locale catalog with Arabic coverage.

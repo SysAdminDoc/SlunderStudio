@@ -149,7 +149,7 @@ class WelcomePage(QWidget):
         layout.setAlignment(Qt.AlignCenter)
         layout.setSpacing(16)
 
-        logo = QLabel("SLUNDER STUDIO")
+        logo = QLabel(tr("shell.sidebar.brand"))
         logo.setAlignment(Qt.AlignCenter)
         logo.setFont(QFont("Segoe UI", 28, QFont.Bold))
         logo.setStyleSheet(f"color: {t['accent']}; font-size: 21pt; font-weight: bold;")
@@ -460,7 +460,11 @@ class ModelGuidePage(QWidget):
 
         for name, desc, size, recommended in models:
             row = QHBoxLayout()
-            tag = QLabel("REC" if recommended else "OPT")
+            tag = QLabel(
+                tr("onboarding.models.recommended_tag")
+                if recommended
+                else tr("onboarding.models.optional_tag")
+            )
             tag.setMinimumWidth(30)
             tag.setAlignment(Qt.AlignCenter)
             tag.setStyleSheet(

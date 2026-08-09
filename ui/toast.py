@@ -14,6 +14,25 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QTimer, QPropertyAnimation, QRect, QEasingCurve, Signal
 
 from ui.theme import Palette
+from core.i18n import tr
+
+
+def _notification_type_label(toast_type: str) -> str:
+    key = {
+        "info": "info",
+        "warning": "warning",
+        "error": "error",
+        "success": "success",
+    }.get(str(toast_type or "info").lower(), "info")
+    return tr(f"shell.status.notification_types.{key}")
+
+
+def _format_notification(entry: dict) -> str:
+    return tr(
+        "shell.status.notification_prefix",
+        type=_notification_type_label(entry.get("type", "info")),
+        message=entry.get("message", ""),
+    )
 
 
 class Toast(QFrame):
@@ -193,7 +212,7 @@ class ToastHistoryDialog(QDialog):
     def __init__(self, toast_mgr: "ToastManager", parent=None):
         super().__init__(parent)
         self._toast_mgr = toast_mgr
-        self.setWindowTitle("Slunder Studio — Notification History")
+        self.setWindowTitle(tr("shell.notifications.window_title"))
         self.setMinimumSize(640, 420)
 
         layout = QVBoxLayout(self)
@@ -207,14 +226,14 @@ class ToastHistoryDialog(QDialog):
         self._history = QPlainTextEdit()
         self._history.setReadOnly(True)
         self._history.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
-        self._history.setPlaceholderText("No notifications yet.")
-        self._history.setAccessibleName("Notification history")
+        self._history.setPlaceholderText(tr("shell.notifications.empty"))
+        self._history.setAccessibleName(tr("shell.notifications.accessibility_name"))
         self._history.setAccessibleDescription(
-            "A non-timed record of application notifications and errors."
+            tr("shell.notifications.accessibility_description")
         )
         layout.addWidget(self._history, 1)
 
-        close = QPushButton("Close")
+        close = QPushButton(tr("shell.notifications.close"))
         close.clicked.connect(self.close)
         layout.addWidget(close, 0)
 
@@ -227,7 +246,7 @@ class ToastHistoryDialog(QDialog):
     def _refresh(self):
         entries = self._toast_mgr.history
         self._summary.setText(
-            f"{len(entries)} notification(s) retained; newest messages appear last."
+            tr("shell.notifications.summary", count=len(entries))
         )
         self._history.setPlainText(self._toast_mgr.history_text())
 
@@ -262,7 +281,7 @@ class ToastManager:
         if not self._history:
             return ""
         entry = self._history[-1]
-        return f"{entry['type'].capitalize()}: {entry['message']}"
+        return _format_notification(entry)
 
     def history_text(self) -> str:
         """Format retained notifications for the history panel."""
@@ -272,7 +291,11 @@ class ToastManager:
                 "%Y-%m-%d %H:%M:%S"
             )
             lines.append(
-                f"[{timestamp}] {entry['type'].capitalize()}: {entry['message']}"
+                tr(
+                    "shell.notifications.history_line",
+                    timestamp=timestamp,
+                    notification=_format_notification(entry),
+                )
             )
         return "\n".join(lines)
 

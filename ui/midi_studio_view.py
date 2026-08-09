@@ -539,7 +539,7 @@ class MidiStudioView(QWidget):
             params,
             readiness.model_id,
             job_kind="midi_generation",
-            job_label="MIDI Studio generation",
+            job_label=tr("midi.jobs.generation"),
             job_inputs={
                 "prompt_chars": len(params.prompt),
                 "duration_bars": params.duration_bars,
@@ -872,7 +872,7 @@ class MidiStudioView(QWidget):
             solo_tracks,
             track_mix,
             job_kind="midi_render",
-            job_label="MIDI Studio audio render",
+            job_label=tr("midi.jobs.render"),
             job_inputs={
                 "track_count": self._midi_data.track_count,
                 "total_notes": self._midi_data.total_notes,

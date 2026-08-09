@@ -1032,7 +1032,7 @@ class ModelHubView(QWidget):
         worker = InferenceWorker(
             self._mgr.check_for_updates,
             job_kind="model_update_check",
-            job_label="Model update check",
+            job_label=tr("model_hub_ui.jobs.update_check"),
             job_store=self._job_store,
             job_metadata={"module": "model_hub"},
         )
@@ -1089,7 +1089,7 @@ class ModelHubView(QWidget):
             self._mgr.install_model_update,
             model_id,
             job_kind="model_update",
-            job_label=f"Update {info.name}",
+            job_label=tr("model_hub_ui.jobs.update", model=info.name),
             job_inputs={"model_id": model_id, "target_revision": update.target_revision},
             job_metadata={"model_id": model_id, "target_revision": update.target_revision},
             job_store=self._job_store,
@@ -1149,7 +1149,7 @@ class ModelHubView(QWidget):
             self._mgr.rollback_model_update,
             model_id,
             job_kind="model_rollback",
-            job_label=f"Rollback {info.name}",
+            job_label=tr("model_hub_ui.jobs.rollback", model=info.name),
             job_inputs={"model_id": model_id},
             job_metadata={"model_id": model_id},
             job_store=self._job_store,
@@ -1661,7 +1661,7 @@ class ModelHubView(QWidget):
             self._mgr.activate_model,
             model_id,
             job_kind="model_activation",
-            job_label=f"Activate {info.name}",
+            job_label=tr("model_hub_ui.jobs.activation", model=info.name),
             job_inputs={"model_id": model_id},
             job_metadata={"model_id": model_id},
         )

@@ -234,7 +234,8 @@
       "notification_types": {
         "info": "Info",
         "warning": "Warning",
-        "error": "Error"
+        "error": "Error",
+        "success": "Success"
       }
     },
     "dialogs": {
@@ -258,6 +259,15 @@
       "failed": "Autosave failed: {reason}",
       "saved": "Autosaved v{version} — {description}",
       "close_failed": "Could not save the open project; it remains dirty. Fix the storage issue before closing."
+    },
+    "notifications": {
+      "window_title": "Slunder Studio — Notification History",
+      "empty": "No notifications yet.",
+      "close": "Close",
+      "summary": "{count} notification(s) retained; newest messages appear last.",
+      "history_line": "[{timestamp}] {notification}",
+      "accessibility_name": "Notification history",
+      "accessibility_description": "A non-timed record of application notifications and errors."
     }
   },
   "settings": {
@@ -671,6 +681,8 @@
     },
     "models": {
       "title": "AI Models",
+      "recommended_tag": "REC",
+      "optional_tag": "OPT",
       "info": "Slunder Studio uses AI models that run locally on your machine. Models are downloaded from HuggingFace and stored in your config directory. You can manage models anytime from the Model Hub.",
       "detected_hardware": "detected hardware",
       "hardware_note": "Recommendations are ranked for {hardware}. A CPU fallback is called out when the detected GPU is below a model's declared tier.",
@@ -1526,6 +1538,9 @@
     "export_final": "Export Final Song",
     "export_demo": "Export Demo",
     "cancel_export": "Cancel Export",
+    "jobs": {
+      "production": "AI Producer production"
+    },
     "status": {
       "in_progress": "Production in progress",
       "planning": "Planning...",
@@ -1614,6 +1629,10 @@
     "dialog_export": "Export MIDI File",
     "dialog_chart": "Export Chord Chart",
     "info_summary": "Tracks: {tracks}  |  Notes: {notes}  |  Tempo: {tempo:.0f} BPM  |  Duration: {seconds:.1f}s  |  Time Sig: {time_signature}",
+    "jobs": {
+      "generation": "MIDI Studio generation",
+      "render": "MIDI Studio audio render"
+    },
     "piano_roll": {
       "title": "Piano Roll",
       "cc_automation_title": "CC Automation",
@@ -1838,6 +1857,12 @@
     }
   },
   "model_hub_ui": {
+    "jobs": {
+      "update_check": "Model update check",
+      "update": "Update {model}",
+      "rollback": "Rollback {model}",
+      "activation": "Activate {model}"
+    },
     "dialogs": {
       "token_title": "Hugging Face token",
       "token_required": "{model} requires a Hugging Face token.",

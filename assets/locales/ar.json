@@ -204,7 +204,8 @@
       "notification_types": {
         "info": "معلومة",
         "warning": "تحذير",
-        "error": "خطأ"
+        "error": "خطأ",
+        "success": "نجاح"
       }
     },
     "dialogs": {
@@ -228,6 +229,15 @@
       "failed": "فشل الحفظ التلقائي: {reason}",
       "saved": "تم الحفظ التلقائي v{version} — {description}",
       "close_failed": "تعذر حفظ المشروع المفتوح؛ ما زال متسخًا. أصلح مشكلة التخزين قبل الإغلاق."
+    },
+    "notifications": {
+      "window_title": "استوديو سلندر — سجل الإشعارات",
+      "empty": "لا توجد إشعارات بعد.",
+      "close": "إغلاق",
+      "summary": "تم الاحتفاظ بـ {count} إشعار؛ تظهر أحدث الرسائل أخيرًا.",
+      "history_line": "[{timestamp}] {notification}",
+      "accessibility_name": "سجل الإشعارات",
+      "accessibility_description": "سجل غير مؤقت لإشعارات التطبيق وأخطائه."
     }
   },
   "settings": {
@@ -809,6 +819,9 @@
     "export_final": "تصدير الأغنية النهائية",
     "export_demo": "تصدير العرض التجريبي",
     "cancel_export": "إلغاء التصدير",
+    "jobs": {
+      "production": "إنتاج المنتج بالذكاء الاصطناعي"
+    },
     "status": {
       "in_progress": "الإنتاج جارٍ",
       "planning": "جارٍ التخطيط...",
@@ -897,6 +910,10 @@
     "dialog_export": "تصدير ملف MIDI",
     "dialog_chart": "تصدير مخطط التآلفات",
     "info_summary": "المسارات: {tracks}  |  النغمات: {notes}  |  السرعة: {tempo:.0f} BPM  |  المدة: {seconds:.1f}ث  |  التوقيع الزمني: {time_signature}",
+    "jobs": {
+      "generation": "توليد استوديو MIDI",
+      "render": "تصيير صوت استوديو MIDI"
+    },
     "piano_roll": {
       "title": "لوحة البيانو",
       "cc_automation_title": "أتمتة CC",
@@ -1121,6 +1138,12 @@
     }
   },
   "model_hub_ui": {
+    "jobs": {
+      "update_check": "فحص تحديث النموذج",
+      "update": "تحديث {model}",
+      "rollback": "التراجع عن {model}",
+      "activation": "تفعيل {model}"
+    },
     "dialogs": {
       "token_title": "رمز Hugging Face",
       "token_required": "يتطلب {model} رمز Hugging Face.",
@@ -1981,6 +2004,8 @@
     },
     "models": {
       "title": "نماذج الذكاء الاصطناعي",
+      "recommended_tag": "موصى به",
+      "optional_tag": "اختياري",
       "info": "يستخدم Slunder Studio نماذج ذكاء اصطناعي تعمل محلياً على جهازك. تُنزّل النماذج من HuggingFace وتُخزّن في مجلد الإعدادات. يمكنك إدارة النماذج في أي وقت من مركز النماذج.",
       "detected_hardware": "العتاد المكتشف",
       "hardware_note": "تُرتب التوصيات لجهاز {hardware}. يظهر بديل CPU عندما تكون GPU المكتشفة دون المستوى المعلن للنموذج.",
