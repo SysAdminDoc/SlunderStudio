@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated SFX controls, category labels, generation/playback status, result cards,
+  recoverable-delete messages, and accessibility descriptions to the locale catalog.
+
 - Migrated Project Manager library/detail labels, version/provenance/DAWproject flows,
   recoverable-trash messages, and accessibility descriptions to the locale catalog.
 

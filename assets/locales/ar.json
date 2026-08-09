@@ -979,5 +979,119 @@
       "sort_name": "ترتيب المشاريع",
       "sort_description": "يرتب مكتبة المشاريع حسب تاريخ التعديل أو الاسم."
     }
+  },
+  "sfx": {
+    "title": "تحويل النص إلى مؤثر صوتي",
+    "prompt_placeholder": "صف المؤثر الصوتي...\nمثال: 'مطر يتساقط على سقف من الصفيح'",
+    "negative_prompt_placeholder": "الوصف السلبي (اختياري)",
+    "category_label": "الفئة:",
+    "duration_label": "المدة:",
+    "seconds_suffix": "ث",
+    "steps_label": "الخطوات:",
+    "cfg_label": "CFG:",
+    "batch_label": "الدفعة:",
+    "demo_checkbox": "تمكين التوليد التجريبي (دون نموذج ذكاء اصطناعي)",
+    "results_title": "المؤثرات الصوتية المُولدة",
+    "card": {
+      "demo_prefix": "تجريبي ",
+      "seed": "{prefix}البذرة: {seed}",
+      "duration": "‏{duration:.1f}ث | توليد ‏{generation_time:.1f}ث",
+      "demo_synthesis": "توليد تجريبي"
+    },
+    "actions": {
+      "play": "تشغيل",
+      "use_demo": "استخدام التجريبي",
+      "use": "استخدام",
+      "remove_short": "X",
+      "generate": "توليد مؤثر صوتي",
+      "generate_sound_effect": "توليد مؤثر صوتي",
+      "clear_all": "مسح الكل",
+      "cancel_generation": "إلغاء التوليد",
+      "undo": "تراجع"
+    },
+    "categories": {
+      "custom": "مخصص",
+      "nature": "الطبيعة",
+      "urban": "المدينة",
+      "sci_fi": "خيال علمي",
+      "musical": "موسيقي",
+      "ui_game": "واجهة / لعبة",
+      "foley": "فولي"
+    },
+    "empty": {
+      "title": "لا توجد مؤثرات صوتية بعد",
+      "description": "صف صوتاً على اليسار وولّد تنويعاً لبناء قائمة النتائج هذه."
+    },
+    "jobs": {
+      "generation_batch": "دفعة توليد مؤثرات صوتية"
+    },
+    "progress": {
+      "generation": "توليد المؤثرات الصوتية",
+      "loading_preview": "جارٍ تحميل معاينة المؤثر الصوتي"
+    },
+    "status": {
+      "cancelling_generation": "جارٍ إلغاء توليد المؤثر الصوتي...",
+      "cancelling_preview": "جارٍ إلغاء تحميل معاينة المؤثر الصوتي...",
+      "enter_prompt": "أدخل وصفاً أولاً",
+      "generating_demo": "جارٍ توليد مؤثر صوتي تجريبي صريح...",
+      "generating_model": "جارٍ التوليد باستخدام Stable Audio Open...",
+      "generation_progress": "توليد المؤثر الصوتي... ‏{percent}%",
+      "generation_failed": "فشل توليد المؤثر الصوتي: {error}",
+      "no_output": "لم يتم إنتاج أي مخرج",
+      "demo_count": " (‏{count} تجريبي)",
+      "generated": "تم توليد ‏{count}/{total} مؤثر صوتي{suffix} (‏{duration:.1f}ث لكل منها)",
+      "cancelled_kept": "أُلغي توليد المؤثرات الصوتية - تم الاحتفاظ بـ {count} تنويع مكتمل. ولّد مجدداً لإعادة محاولة الباقي.",
+      "cancelled": "أُلغي توليد المؤثرات الصوتية",
+      "restore_failed": "فشلت الاستعادة: {error}",
+      "playback_load_failed": "تعذر تحميل صوت المؤثر للتشغيل",
+      "playback_progress": "جارٍ تحميل معاينة المؤثر الصوتي... ‏{percent}%",
+      "playing_preview": "جارٍ تشغيل معاينة المؤثر الصوتي",
+      "playback_error": "خطأ في تشغيل المؤثر الصوتي: {error}",
+      "playback_cancelled": "أُلغي تحميل معاينة المؤثر الصوتي",
+      "delete_failed": "فشل الحذف: {error}",
+      "clear_failed": "فشل المسح: {error}"
+    },
+    "messages": {
+      "restore_some_failed": "تعذر استعادة بعض نتائج المؤثرات الصوتية.",
+      "restored": "تمت استعادة نتائج المؤثرات الصوتية.",
+      "file_delete_failed": "تعذر نقل ملف المؤثر الصوتي إلى سلة المحذوفات.",
+      "moved_to_trash": "نُقل المؤثر الصوتي إلى سلة المحذوفات.",
+      "clear_delete_failed": "تعذر نقل نتائج المؤثرات الصوتية إلى سلة المحذوفات.",
+      "results_moved_to_trash": "نُقلت نتائج المؤثرات الصوتية إلى سلة المحذوفات."
+    },
+    "accessibility": {
+      "card_name": "تنويع مؤثر صوتي",
+      "play_name": "تشغيل المؤثر الصوتي",
+      "play_description": "يشغل هذا المؤثر الصوتي المُولد.",
+      "use_name": "استخدام المؤثر الصوتي",
+      "use_description": "يرسل هذا المؤثر الصوتي إلى الخلاط.",
+      "delete_name": "حذف المؤثر الصوتي",
+      "delete_description": "يزيل هذا المؤثر الصوتي المُولد.",
+      "view_name": "مولد المؤثرات الصوتية",
+      "prompt_name": "وصف المؤثر الصوتي",
+      "prompt_description": "يصف المؤثر الصوتي المراد توليده.",
+      "negative_name": "الوصف السلبي للمؤثر الصوتي",
+      "negative_description": "يصف الأصوات التي يجب تجنبها.",
+      "category_name": "فئة المؤثر الصوتي",
+      "category_description": "تحدد فئة المؤثر الصوتي.",
+      "preset_name": "إعداد المؤثر الصوتي",
+      "preset_description": "يحدد إعداد وصف الفئة.",
+      "duration_name": "مدة المؤثر الصوتي",
+      "duration_description": "تحدد مدة الصوت المُولد بالثواني.",
+      "steps_name": "خطوات انتشار المؤثر الصوتي",
+      "steps_description": "تحدد عدد خطوات التوليد.",
+      "cfg_name": "مقياس توجيه المؤثر الصوتي",
+      "cfg_description": "تحدد قوة توجيه التوليد.",
+      "batch_name": "حجم دفعة المؤثر الصوتي",
+      "batch_description": "تحدد عدد التنويعات المراد توليدها.",
+      "generate_name": "توليد المؤثرات الصوتية",
+      "generate_description": "يولد تنويعات المؤثر الصوتي المطلوب.",
+      "cancel_name": "إلغاء عملية المؤثر الصوتي",
+      "cancel_description": "يلغي توليد المؤثر الصوتي أو تحميل المعاينة الجاري.",
+      "demo_name": "تمكين توليد المؤثر الصوتي التجريبي",
+      "demo_description": "يسمح ببديل تجريبي محلي دون نموذج الذكاء الاصطناعي.",
+      "clear_name": "مسح المؤثرات الصوتية المُولدة",
+      "clear_description": "يزيل جميع بطاقات المؤثرات الصوتية المُولدة."
+    }
   }
 }

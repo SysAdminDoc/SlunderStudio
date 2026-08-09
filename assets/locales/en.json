@@ -1213,5 +1213,119 @@
       "sort_name": "Sort projects",
       "sort_description": "Sorts the project library by modified date or name."
     }
+  },
+  "sfx": {
+    "title": "Text-to-SFX",
+    "prompt_placeholder": "Describe the sound effect...\ne.g. 'rain falling on a tin roof'",
+    "negative_prompt_placeholder": "Negative prompt (optional)",
+    "category_label": "Category:",
+    "duration_label": "Duration:",
+    "seconds_suffix": "s",
+    "steps_label": "Steps:",
+    "cfg_label": "CFG:",
+    "batch_label": "Batch:",
+    "demo_checkbox": "Enable demo synthesis (no AI model)",
+    "results_title": "Generated SFX",
+    "card": {
+      "demo_prefix": "DEMO ",
+      "seed": "{prefix}Seed: {seed}",
+      "duration": "{duration:.1f}s | {generation_time:.1f}s gen",
+      "demo_synthesis": "Demo synthesis"
+    },
+    "actions": {
+      "play": "Play",
+      "use_demo": "Use Demo",
+      "use": "Use",
+      "remove_short": "X",
+      "generate": "Generate SFX",
+      "generate_sound_effect": "Generate sound effect",
+      "clear_all": "Clear All",
+      "cancel_generation": "Cancel Generation",
+      "undo": "Undo"
+    },
+    "categories": {
+      "custom": "Custom",
+      "nature": "Nature",
+      "urban": "Urban",
+      "sci_fi": "Sci-Fi",
+      "musical": "Musical",
+      "ui_game": "UI / Game",
+      "foley": "Foley"
+    },
+    "empty": {
+      "title": "No sound effects yet",
+      "description": "Describe a sound on the left and generate a variation to build this result list."
+    },
+    "jobs": {
+      "generation_batch": "SFX generation batch"
+    },
+    "progress": {
+      "generation": "SFX generation",
+      "loading_preview": "Loading SFX preview"
+    },
+    "status": {
+      "cancelling_generation": "Cancelling SFX generation...",
+      "cancelling_preview": "Cancelling SFX preview load...",
+      "enter_prompt": "Enter a prompt first",
+      "generating_demo": "Generating explicit demo SFX...",
+      "generating_model": "Generating with Stable Audio Open...",
+      "generation_progress": "SFX generation... {percent}%",
+      "generation_failed": "SFX generation failed: {error}",
+      "no_output": "No output was produced",
+      "demo_count": " ({count} demo)",
+      "generated": "Generated {count}/{total} SFX{suffix} ({duration:.1f}s each)",
+      "cancelled_kept": "SFX generation cancelled - kept {count} completed variation(s). Generate again to retry the rest.",
+      "cancelled": "SFX generation cancelled",
+      "restore_failed": "Restore failed: {error}",
+      "playback_load_failed": "Could not load SFX audio for playback",
+      "playback_progress": "Loading SFX preview... {percent}%",
+      "playing_preview": "Playing SFX preview",
+      "playback_error": "SFX playback error: {error}",
+      "playback_cancelled": "SFX preview loading cancelled",
+      "delete_failed": "Delete failed: {error}",
+      "clear_failed": "Clear failed: {error}"
+    },
+    "messages": {
+      "restore_some_failed": "Some SFX results could not be restored.",
+      "restored": "SFX results restored.",
+      "file_delete_failed": "SFX file could not be moved to trash.",
+      "moved_to_trash": "SFX moved to trash.",
+      "clear_delete_failed": "SFX results could not be moved to trash.",
+      "results_moved_to_trash": "SFX results moved to trash."
+    },
+    "accessibility": {
+      "card_name": "SFX variation",
+      "play_name": "Play sound effect",
+      "play_description": "Plays this generated sound effect.",
+      "use_name": "Use sound effect",
+      "use_description": "Routes this sound effect to the mixer.",
+      "delete_name": "Delete sound effect",
+      "delete_description": "Removes this generated sound effect.",
+      "view_name": "SFX Generator",
+      "prompt_name": "SFX prompt",
+      "prompt_description": "Describes the sound effect to generate.",
+      "negative_name": "SFX negative prompt",
+      "negative_description": "Describes sounds to avoid.",
+      "category_name": "SFX category",
+      "category_description": "Selects a sound effect category.",
+      "preset_name": "SFX preset",
+      "preset_description": "Selects a category prompt preset.",
+      "duration_name": "SFX duration",
+      "duration_description": "Sets the generated sound duration in seconds.",
+      "steps_name": "SFX diffusion steps",
+      "steps_description": "Sets the number of synthesis steps.",
+      "cfg_name": "SFX guidance scale",
+      "cfg_description": "Sets synthesis guidance strength.",
+      "batch_name": "SFX batch size",
+      "batch_description": "Sets how many variations to generate.",
+      "generate_name": "Generate sound effects",
+      "generate_description": "Generates the requested sound effect variations.",
+      "cancel_name": "Cancel SFX operation",
+      "cancel_description": "Cancels the running SFX generation or preview load.",
+      "demo_name": "Enable SFX demo synthesis",
+      "demo_description": "Allows a local demo fallback without the AI model.",
+      "clear_name": "Clear generated sound effects",
+      "clear_description": "Removes all generated sound effect cards."
+    }
   }
 }

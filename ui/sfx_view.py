@@ -32,6 +32,16 @@ from core.workers import CancelledJobError, InferenceWorker
 from engines.sfx_engine import SFXParams, SFXResult, SFX_CATEGORIES
 
 
+_SFX_CATEGORY_LABEL_KEYS = {
+    "Nature": "sfx.categories.nature",
+    "Urban": "sfx.categories.urban",
+    "Sci-Fi": "sfx.categories.sci_fi",
+    "Musical": "sfx.categories.musical",
+    "UI / Game": "sfx.categories.ui_game",
+    "Foley": "sfx.categories.foley",
+}
+
+
 def _sfx_playback_task(path: str, **kwargs):
     return decode_playback_file(path, **kwargs)
 
@@ -79,15 +89,23 @@ class SFXCard(QFrame):
         # Info
         info = QVBoxLayout()
         info.setSpacing(2)
-        prefix = "DEMO " if result.is_demo else ""
-        seed_label = QLabel(f"{prefix}Seed: {result.seed}")
+        prefix = tr("sfx.card.demo_prefix") if result.is_demo else ""
+        seed_label = QLabel(
+            tr("sfx.card.seed", prefix=prefix, seed=result.seed)
+        )
         seed_label.setStyleSheet(f"color: {t['text']}; font-size: 7.5pt; font-weight: bold;")
-        dur_label = QLabel(f"{result.duration:.1f}s | {result.generation_time:.1f}s gen")
+        dur_label = QLabel(
+            tr(
+                "sfx.card.duration",
+                duration=result.duration,
+                generation_time=result.generation_time,
+            )
+        )
         dur_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         info.addWidget(seed_label)
         info.addWidget(dur_label)
         if result.is_demo:
-            demo_label = QLabel("Demo synthesis")
+            demo_label = QLabel(tr("sfx.card.demo_synthesis"))
             demo_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 6.75pt;")
             info.addWidget(demo_label)
         info.addStretch()
@@ -109,16 +127,18 @@ class SFXCard(QFrame):
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
 
-        self._play_btn = QPushButton("Play")
+        self._play_btn = QPushButton(tr("sfx.actions.play"))
         self._play_btn.setStyleSheet(btn_style)
         self._play_btn.clicked.connect(lambda: self.play_requested.emit(self.result))
 
-        self._use_btn = QPushButton("Use Demo" if result.is_demo else "Use")
+        self._use_btn = QPushButton(
+            tr("sfx.actions.use_demo") if result.is_demo else tr("sfx.actions.use")
+        )
         self._use_btn.setProperty("class", "success")
         self._use_btn.setEnabled(result.can_route)
         self._use_btn.clicked.connect(lambda: self.use_requested.emit(self.result))
 
-        self._delete_btn = QPushButton("X")
+        self._delete_btn = QPushButton(tr("sfx.actions.remove_short"))
         self._delete_btn.setMinimumSize(20, 20)
         self._delete_btn.setStyleSheet(btn_style)
         self._delete_btn.clicked.connect(lambda: self.delete_requested.emit(self))
@@ -130,11 +150,23 @@ class SFXCard(QFrame):
 
         install_accessibility(
             self,
-            "SFX variation",
+            tr("sfx.accessibility.card_name"),
             named_controls=[
-                (self._play_btn, "Play sound effect", "Plays this generated sound effect."),
-                (self._use_btn, "Use sound effect", "Routes this sound effect to the mixer."),
-                (self._delete_btn, "Delete sound effect", "Removes this generated sound effect."),
+                (
+                    self._play_btn,
+                    tr("sfx.accessibility.play_name"),
+                    tr("sfx.accessibility.play_description"),
+                ),
+                (
+                    self._use_btn,
+                    tr("sfx.accessibility.use_name"),
+                    tr("sfx.accessibility.use_description"),
+                ),
+                (
+                    self._delete_btn,
+                    tr("sfx.accessibility.delete_name"),
+                    tr("sfx.accessibility.delete_description"),
+                ),
             ],
         )
 
@@ -175,13 +207,13 @@ class SFXView(QWidget):
         ctrl_layout.setContentsMargins(12, 10, 12, 10)
         ctrl_layout.setSpacing(6)
 
-        title = QLabel("Text-to-SFX")
+        title = QLabel(tr("sfx.title"))
         title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
         # Prompt
         self._prompt = QTextEdit()
-        self._prompt.setPlaceholderText("Describe the sound effect...\ne.g. 'rain falling on a tin roof'")
+        self._prompt.setPlaceholderText(tr("sfx.prompt_placeholder"))
         self._prompt.setMaximumHeight(60)
         self._prompt.setStyleSheet(f"""
             QTextEdit {{
@@ -195,7 +227,7 @@ class SFXView(QWidget):
 
         # Negative prompt
         self._neg_prompt = QLineEdit()
-        self._neg_prompt.setPlaceholderText("Negative prompt (optional)")
+        self._neg_prompt.setPlaceholderText(tr("sfx.negative_prompt_placeholder"))
         self._neg_prompt.setStyleSheet(f"""
             QLineEdit {{
                 background: {t['background']}; color: {t['text']};
@@ -216,12 +248,16 @@ class SFXView(QWidget):
 
         # Category presets
         cat_row = QHBoxLayout()
-        cl = QLabel("Category:")
+        cl = QLabel(tr("sfx.category_label"))
         cl.setMinimumWidth(60)
         cl.setStyleSheet(param_style)
         self._category = QComboBox()
-        self._category.addItem("Custom")
-        self._category.addItems(SFX_CATEGORIES.keys())
+        self._category.addItem(tr("sfx.categories.custom"), "")
+        for category in SFX_CATEGORIES:
+            self._category.addItem(
+                tr(_SFX_CATEGORY_LABEL_KEYS.get(category, "sfx.categories.custom")),
+                category,
+            )
         self._category.currentTextChanged.connect(self._on_category_changed)
         self._category.setStyleSheet(param_style)
         cat_row.addWidget(cl)
@@ -237,16 +273,16 @@ class SFXView(QWidget):
 
         # Duration + Steps
         row1 = QHBoxLayout()
-        dl = QLabel("Duration:")
+        dl = QLabel(tr("sfx.duration_label"))
         dl.setMinimumWidth(60)
         dl.setStyleSheet(param_style)
         self._duration = QDoubleSpinBox()
         self._duration.setRange(0.5, 47.0)
         self._duration.setValue(5.0)
-        self._duration.setSuffix("s")
+        self._duration.setSuffix(tr("sfx.seconds_suffix"))
         self._duration.setStyleSheet(param_style)
 
-        sl = QLabel("Steps:")
+        sl = QLabel(tr("sfx.steps_label"))
         sl.setMinimumWidth(38)
         sl.setStyleSheet(param_style)
         self._steps = QSpinBox()
@@ -262,7 +298,7 @@ class SFXView(QWidget):
 
         # CFG + Batch
         row2 = QHBoxLayout()
-        cfl = QLabel("CFG:")
+        cfl = QLabel(tr("sfx.cfg_label"))
         cfl.setMinimumWidth(60)
         cfl.setStyleSheet(param_style)
         self._cfg = QDoubleSpinBox()
@@ -271,7 +307,7 @@ class SFXView(QWidget):
         self._cfg.setSingleStep(0.5)
         self._cfg.setStyleSheet(param_style)
 
-        bl = QLabel("Batch:")
+        bl = QLabel(tr("sfx.batch_label"))
         bl.setMinimumWidth(38)
         bl.setStyleSheet(param_style)
         self._batch = QSpinBox()
@@ -286,7 +322,7 @@ class SFXView(QWidget):
         ctrl_layout.addLayout(row2)
 
         # Generate button
-        self._gen_btn = QPushButton("Generate SFX")
+        self._gen_btn = QPushButton(tr("sfx.actions.generate"))
         self._gen_btn.setMinimumHeight(36)
         self._gen_btn.setStyleSheet(f"""
             QPushButton {{
@@ -300,7 +336,7 @@ class SFXView(QWidget):
         self._gen_btn.clicked.connect(self._on_generate)
         ctrl_layout.addWidget(self._gen_btn)
 
-        self._demo_checkbox = QCheckBox("Enable demo synthesis (no AI model)")
+        self._demo_checkbox = QCheckBox(tr("sfx.demo_checkbox"))
         self._demo_checkbox.setStyleSheet(f"""
             QCheckBox {{
                 color: {t['text_secondary']}; border: none; font-size: 7.5pt;
@@ -341,10 +377,10 @@ class SFXView(QWidget):
         right.setSpacing(6)
 
         results_header = QHBoxLayout()
-        rl = QLabel("Generated SFX")
+        rl = QLabel(tr("sfx.results_title"))
         rl.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
 
-        self._clear_btn = QPushButton("Clear All")
+        self._clear_btn = QPushButton(tr("sfx.actions.clear_all"))
         self._clear_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['surface']}; color: {t['text_secondary']};
@@ -371,9 +407,9 @@ class SFXView(QWidget):
         self._results_layout.setContentsMargins(0, 0, 0, 0)
         self._results_layout.setSpacing(4)
         self._results_empty = EmptyStateWidget(
-            "No sound effects yet",
-            "Describe a sound on the left and generate a variation to build this result list.",
-            "Generate sound effect",
+            tr("sfx.empty.title"),
+            tr("sfx.empty.description"),
+            tr("sfx.actions.generate_sound_effect"),
         )
         self._results_empty.action_requested.connect(self._gen_btn.click)
         self._results_layout.addWidget(self._results_empty)
@@ -390,20 +426,20 @@ class SFXView(QWidget):
         self._update_results_empty_state()
         install_accessibility(
             self,
-            "SFX Generator",
+            tr("sfx.accessibility.view_name"),
             named_controls=[
-                (self._prompt, "SFX prompt", "Describes the sound effect to generate."),
-                (self._neg_prompt, "SFX negative prompt", "Describes sounds to avoid."),
-                (self._category, "SFX category", "Selects a sound effect category."),
-                (self._preset_combo, "SFX preset", "Selects a category prompt preset."),
-                (self._duration, "SFX duration", "Sets the generated sound duration in seconds."),
-                (self._steps, "SFX diffusion steps", "Sets the number of synthesis steps."),
-                (self._cfg, "SFX guidance scale", "Sets synthesis guidance strength."),
-                (self._batch, "SFX batch size", "Sets how many variations to generate."),
-                (self._gen_btn, "Generate sound effects", "Generates the requested sound effect variations."),
-                (self._operation_progress.cancel_button, "Cancel SFX operation", "Cancels the running SFX generation or preview load."),
-                (self._demo_checkbox, "Enable SFX demo synthesis", "Allows a local demo fallback without the AI model."),
-                (self._clear_btn, "Clear generated sound effects", "Removes all generated sound effect cards."),
+                (self._prompt, tr("sfx.accessibility.prompt_name"), tr("sfx.accessibility.prompt_description")),
+                (self._neg_prompt, tr("sfx.accessibility.negative_name"), tr("sfx.accessibility.negative_description")),
+                (self._category, tr("sfx.accessibility.category_name"), tr("sfx.accessibility.category_description")),
+                (self._preset_combo, tr("sfx.accessibility.preset_name"), tr("sfx.accessibility.preset_description")),
+                (self._duration, tr("sfx.accessibility.duration_name"), tr("sfx.accessibility.duration_description")),
+                (self._steps, tr("sfx.accessibility.steps_name"), tr("sfx.accessibility.steps_description")),
+                (self._cfg, tr("sfx.accessibility.cfg_name"), tr("sfx.accessibility.cfg_description")),
+                (self._batch, tr("sfx.accessibility.batch_name"), tr("sfx.accessibility.batch_description")),
+                (self._gen_btn, tr("sfx.accessibility.generate_name"), tr("sfx.accessibility.generate_description")),
+                (self._operation_progress.cancel_button, tr("sfx.accessibility.cancel_name"), tr("sfx.accessibility.cancel_description")),
+                (self._demo_checkbox, tr("sfx.accessibility.demo_name"), tr("sfx.accessibility.demo_description")),
+                (self._clear_btn, tr("sfx.accessibility.clear_name"), tr("sfx.accessibility.clear_description")),
             ],
         )
 
@@ -419,11 +455,12 @@ class SFXView(QWidget):
         worker.cancel()
         if worker is self._generation_worker:
             self._gen_btn.setEnabled(False)
-            self._status.setText("Cancelling SFX generation...")
+            self._status.setText(tr("sfx.status.cancelling_generation"))
         else:
-            self._status.setText("Cancelling SFX preview load...")
+            self._status.setText(tr("sfx.status.cancelling_preview"))
 
     def _on_category_changed(self, category: str):
+        category = self._category.currentData() or category
         self._preset_combo.clear()
         if category in SFX_CATEGORIES:
             self._preset_combo.addItems(SFX_CATEGORIES[category])
@@ -432,9 +469,13 @@ class SFXView(QWidget):
             self._preset_combo.setVisible(False)
         install_accessibility(
             self,
-            "SFX Generator",
+            tr("sfx.accessibility.view_name"),
             named_controls=[
-                (self._preset_combo, "SFX preset", "Selects a category prompt preset."),
+                (
+                    self._preset_combo,
+                    tr("sfx.accessibility.preset_name"),
+                    tr("sfx.accessibility.preset_description"),
+                ),
             ],
         )
 
@@ -467,20 +508,20 @@ class SFXView(QWidget):
         )
 
         if not params.prompt:
-            self._status.setText("Enter a prompt first")
+            self._status.setText(tr("sfx.status.enter_prompt"))
             return
 
         self._status.setText(
-            "Generating explicit demo SFX..."
+            tr("sfx.status.generating_demo")
             if readiness.mode == RunMode.DEMO
-            else "Generating with Stable Audio Open..."
+            else tr("sfx.status.generating_model")
         )
         self._generation_worker = InferenceWorker(
             self._run_generation_batch,
             params,
             readiness.model_id,
             job_kind="sfx_generation",
-            job_label="SFX generation batch",
+            job_label=tr("sfx.jobs.generation_batch"),
             job_inputs={
                 "prompt_chars": len(params.prompt),
                 "duration": params.duration,
@@ -499,13 +540,13 @@ class SFXView(QWidget):
         self._generation_worker.finished.connect(self._on_generation_finished)
         self._generation_worker.error.connect(self._on_generation_error)
         self._generation_worker.cancelled.connect(self._on_generation_cancelled)
-        self._operation_progress.start("SFX generation", determinate=True)
+        self._operation_progress.start(tr("sfx.progress.generation"), determinate=True)
         self._generation_worker.start()
         self._refresh_capability_state()
 
     def _on_generation_progress(self, percent: int):
-        self._operation_progress.set_progress(percent, "SFX generation")
-        self._status.setText(f"SFX generation... {percent}%")
+        self._operation_progress.set_progress(percent, tr("sfx.progress.generation"))
+        self._status.setText(tr("sfx.status.generation_progress", percent=percent))
 
     def _on_generation_step(self, message: str):
         self._operation_progress.set_step(message)
@@ -597,7 +638,10 @@ class SFXView(QWidget):
         successful = batch.successful_runs
         if not successful:
             self._status.setText(
-                f"SFX generation failed: {batch.error or 'No output was produced'}"
+                tr(
+                    "sfx.status.generation_failed",
+                    error=batch.error or tr("sfx.status.no_output"),
+                )
             )
             self._refresh_capability_state()
             return
@@ -610,10 +654,15 @@ class SFXView(QWidget):
         if first.audio is not None:
             self._main_waveform.load_audio(first.audio, first.sample_rate)
         demo_count = sum(run.is_demo for run in successful)
-        suffix = f" ({demo_count} demo)" if demo_count else ""
+        suffix = tr("sfx.status.demo_count", count=demo_count) if demo_count else ""
         self._status.setText(
-            f"Generated {len(successful)}/{len(batch.runs)} SFX{suffix} "
-            f"({first.duration:.1f}s each)"
+            tr(
+                "sfx.status.generated",
+                count=len(successful),
+                total=len(batch.runs),
+                suffix=suffix,
+                duration=first.duration,
+            )
         )
         self._refresh_capability_state()
 
@@ -624,7 +673,7 @@ class SFXView(QWidget):
             capability_id=CAP_SFX_GENERATE,
             error=error,
         )
-        self._status.setText(f"SFX generation failed: {error}")
+        self._status.setText(tr("sfx.status.generation_failed", error=error))
         self._refresh_capability_state()
 
     def _on_generation_cancelled(self):
@@ -651,9 +700,8 @@ class SFXView(QWidget):
                 if first is not None and first.audio is not None:
                     self._main_waveform.load_audio(first.audio, first.sample_rate)
         self._status.setText(
-            f"SFX generation cancelled - kept {kept} completed variation(s). "
-            "Generate again to retry the rest."
-            if kept else "SFX generation cancelled"
+            tr("sfx.status.cancelled_kept", count=kept)
+            if kept else tr("sfx.status.cancelled")
         )
         self._refresh_capability_state()
 
@@ -669,12 +717,12 @@ class SFXView(QWidget):
             allow_demo=self._demo_checkbox.isChecked(),
         )
         if self._generation_worker is not None:
-            self._gen_btn.setText("Cancel Generation")
+            self._gen_btn.setText(tr("sfx.actions.cancel_generation"))
             self._gen_btn.setEnabled(True)
             self._gen_btn.setToolTip(tr("runtime.cancel_generation"))
             return
         has_prompt = bool(self._prompt.toPlainText().strip())
-        self._gen_btn.setText("Generate SFX")
+        self._gen_btn.setText(tr("sfx.actions.generate"))
         self._gen_btn.setEnabled(readiness.can_run and has_prompt)
         self._gen_btn.setToolTip(
             (
@@ -712,9 +760,9 @@ class SFXView(QWidget):
             self._results_empty.hide()
             return
         self._results_empty.set_state(
-            "No sound effects yet",
-            "Describe a sound on the left and generate a variation to build this result list.",
-            "Generate sound effect",
+            tr("sfx.empty.title"),
+            tr("sfx.empty.description"),
+            tr("sfx.actions.generate_sound_effect"),
         )
         self._results_empty.show()
 
@@ -811,18 +859,18 @@ class SFXView(QWidget):
             self._add_result_card(result, index=index)
 
         if errors:
-            self._status.setText(f"Restore failed: {errors[0]}")
+            self._status.setText(tr("sfx.status.restore_failed", error=errors[0]))
             if self.toast_mgr:
-                self.toast_mgr.error("Some SFX results could not be restored.")
+                self.toast_mgr.error(tr("sfx.messages.restore_some_failed"))
         elif self.toast_mgr:
-            self.toast_mgr.success("SFX results restored.")
+            self.toast_mgr.success(tr("sfx.messages.restored"))
 
     def _on_play_sfx(self, result: SFXResult):
         if result.audio is not None:
             self._play_decoded_sfx(result.audio, result.sample_rate)
             return
         if not result.file_path:
-            self._status.setText("Could not load SFX audio for playback")
+            self._status.setText(tr("sfx.status.playback_load_failed"))
             return
         if self._playback_worker is not None and self._playback_worker.isRunning():
             self._cancel_active_operation()
@@ -837,12 +885,12 @@ class SFXView(QWidget):
         worker.finished.connect(self._on_sfx_playback_ready)
         worker.error.connect(self._on_sfx_playback_error)
         worker.cancelled.connect(self._on_sfx_playback_cancelled)
-        self._operation_progress.start("Loading SFX preview", determinate=True)
+        self._operation_progress.start(tr("sfx.progress.loading_preview"), determinate=True)
         worker.start()
 
     def _on_sfx_playback_progress(self, percent: int):
-        self._operation_progress.set_progress(percent, "Loading SFX preview")
-        self._status.setText(f"Loading SFX preview... {percent}%")
+        self._operation_progress.set_progress(percent, tr("sfx.progress.loading_preview"))
+        self._status.setText(tr("sfx.status.playback_progress", percent=percent))
 
     def _on_sfx_playback_step(self, message: str):
         self._operation_progress.set_step(message)
@@ -854,9 +902,9 @@ class SFXView(QWidget):
             if not engine.load_array(audio, sample_rate):
                 raise RuntimeError("Audio playback rejected the decoded buffer")
             engine.play()
-            self._status.setText("Playing SFX preview")
+            self._status.setText(tr("sfx.status.playing_preview"))
         except Exception as exc:
-            self._status.setText(f"SFX playback error: {exc}")
+            self._status.setText(tr("sfx.status.playback_error", error=exc))
 
     def _release_playback_worker_later(self, worker):
         if worker is None:
@@ -880,14 +928,14 @@ class SFXView(QWidget):
         self._operation_progress.finish()
         self._release_playback_worker_later(worker)
         self._playback_worker = None
-        self._status.setText(f"SFX playback error: {message}")
+        self._status.setText(tr("sfx.status.playback_error", error=message))
 
     def _on_sfx_playback_cancelled(self):
         worker = self._playback_worker
         self._operation_progress.finish()
         self._release_playback_worker_later(worker)
         self._playback_worker = None
-        self._status.setText("SFX preview loading cancelled")
+        self._status.setText(tr("sfx.status.playback_cancelled"))
 
     def _on_use_sfx(self, result: SFXResult):
         if result.file_path and result.can_route:
@@ -902,17 +950,17 @@ class SFXView(QWidget):
         try:
             self._trash_sfx_snapshots(snapshots)
         except Exception as exc:
-            self._status.setText(f"Delete failed: {exc}")
+            self._status.setText(tr("sfx.status.delete_failed", error=exc))
             if self.toast_mgr:
-                self.toast_mgr.error("SFX file could not be moved to trash.")
+                self.toast_mgr.error(tr("sfx.messages.file_delete_failed"))
             return
 
         self._remove_sfx_snapshots(snapshots)
         if self.toast_mgr:
             self.toast_mgr.info(
-                "SFX moved to trash.",
+                tr("sfx.messages.moved_to_trash"),
                 duration_ms=8000,
-                action_label="Undo",
+                action_label=tr("sfx.actions.undo"),
                 action_callback=lambda items=snapshots: self._restore_sfx_snapshots(items),
             )
 
@@ -932,16 +980,16 @@ class SFXView(QWidget):
         try:
             self._trash_sfx_snapshots(snapshots)
         except Exception as exc:
-            self._status.setText(f"Clear failed: {exc}")
+            self._status.setText(tr("sfx.status.clear_failed", error=exc))
             if self.toast_mgr:
-                self.toast_mgr.error("SFX results could not be moved to trash.")
+                self.toast_mgr.error(tr("sfx.messages.clear_delete_failed"))
             return
 
         self._remove_sfx_snapshots(snapshots)
         if self.toast_mgr:
             self.toast_mgr.info(
-                "SFX results moved to trash.",
+                tr("sfx.messages.results_moved_to_trash"),
                 duration_ms=8000,
-                action_label="Undo",
+                action_label=tr("sfx.actions.undo"),
                 action_callback=lambda items=snapshots: self._restore_sfx_snapshots(items),
             )
