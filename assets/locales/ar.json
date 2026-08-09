@@ -1301,5 +1301,55 @@
       "cancel_name": "إلغاء عملية الخلاط",
       "cancel_description": "يلغي عملية الاستيراد أو EQ أو المرجع أو الإتقان أو التصدير الجارية."
     }
+  },
+  "lyrics_editor": {
+    "feedback": {
+      "title": "ملاحظات إرشادية للكلمات",
+      "disclaimer": "لا إعادة صياغة تلقائية",
+      "rhyme_empty": "تغطية القافية النهائية\nأضف أسطر الكلمات",
+      "cadence_empty": "اتساق الإيقاع\nأضف أسطر الكلمات",
+      "rhyme_value": "تغطية القافية النهائية\n{percent:.0f}% ({covered}/{eligible} سطر)",
+      "cadence_value": "اتساق الإيقاع\n{percent:.0f}% ({average:.1f} مقطع صوتي/سطر)"
+    },
+    "editor": {
+      "word_count": "{words} كلمة • {lines} سطر • {sections} قسم",
+      "placeholder": "ستظهر الكلمات المُنشأة هنا...\n\nيمكنك أيضاً كتابة الكلمات أو لصقها مباشرة.\nانقر بزر الفأرة الأيمن على وسم قسم لإعادة إنشاء ذلك القسم فقط."
+    },
+    "actions": {
+      "copy": "نسخ",
+      "clear": "مسح",
+      "send_to_forge": "🎶 إرسال إلى Song Forge"
+    },
+    "status": {
+      "generating": "جارٍ الإنشاء...",
+      "complete": "اكتمل الإنشاء"
+    },
+    "menu": {
+      "undo": "تراجع",
+      "redo": "إعادة",
+      "cut": "قص",
+      "copy": "نسخ",
+      "paste": "لصق",
+      "select_all": "تحديد الكل",
+      "regenerate": "🔄 إعادة إنشاء {section}"
+    },
+    "accessibility": {
+      "feedback_name": "ملاحظات إرشادية للكلمات",
+      "rhyme_name": "ملاحظات قافية الكلمات النهائية",
+      "rhyme_description": "تغطية استدلالية للأصوات النهائية؛ ولا تمثل حكماً على جودة الكلمات.",
+      "cadence_name": "ملاحظات إيقاع الكلمات",
+      "cadence_description": "اتساق استدلالي لعدد المقاطع؛ لا يتم استنتاج النبرات أو النطق.",
+      "note_name": "ملاحظة ملاحظات الكلمات",
+      "note_description": "موجه إرشادي فقط. لا تتم إعادة صياغة نص الكلمات تلقائياً.",
+      "editor_name": "محرر الكلمات",
+      "copy_name": "نسخ الكلمات",
+      "copy_description": "ينسخ الكلمات الحالية إلى الحافظة.",
+      "clear_name": "مسح الكلمات",
+      "clear_description": "يمسح محرر الكلمات.",
+      "forge_name": "إرسال الكلمات إلى Song Forge",
+      "forge_description": "يرسل الكلمات الحالية إلى Song Forge.",
+      "text_name": "نص الكلمات",
+      "text_description": "يحرر الكلمات ووسوم أقسامها."
+    }
   }
 }

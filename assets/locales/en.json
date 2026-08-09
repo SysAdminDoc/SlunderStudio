@@ -1535,5 +1535,55 @@
       "cancel_name": "Cancel mixer operation",
       "cancel_description": "Cancels the running import, EQ, reference, mastering, or export operation."
     }
+  },
+  "lyrics_editor": {
+    "feedback": {
+      "title": "Advisory lyric feedback",
+      "disclaimer": "No automatic rewrite",
+      "rhyme_empty": "End-rhyme coverage\nAdd lyric lines",
+      "cadence_empty": "Cadence consistency\nAdd lyric lines",
+      "rhyme_value": "End-rhyme coverage\n{percent:.0f}% ({covered}/{eligible} lines)",
+      "cadence_value": "Cadence consistency\n{percent:.0f}% ({average:.1f} syllables/line)"
+    },
+    "editor": {
+      "word_count": "{words} words • {lines} lines • {sections} sections",
+      "placeholder": "Generated lyrics will appear here...\n\nYou can also type or paste lyrics directly.\nRight-click on a section tag to regenerate just that section."
+    },
+    "actions": {
+      "copy": "Copy",
+      "clear": "Clear",
+      "send_to_forge": "🎶 Send to Song Forge"
+    },
+    "status": {
+      "generating": "Generating...",
+      "complete": "Generation complete"
+    },
+    "menu": {
+      "undo": "Undo",
+      "redo": "Redo",
+      "cut": "Cut",
+      "copy": "Copy",
+      "paste": "Paste",
+      "select_all": "Select All",
+      "regenerate": "🔄 Regenerate {section}"
+    },
+    "accessibility": {
+      "feedback_name": "Advisory lyric feedback",
+      "rhyme_name": "Lyric end-rhyme feedback",
+      "rhyme_description": "Heuristic end-sound coverage; it is not a judgment of lyric quality.",
+      "cadence_name": "Lyric cadence feedback",
+      "cadence_description": "Heuristic syllable-count consistency; stressed beats and pronunciation are not inferred.",
+      "note_name": "Lyric feedback note",
+      "note_description": "Advisory prompt only. The lyric text is never rewritten automatically.",
+      "editor_name": "Lyrics editor",
+      "copy_name": "Copy lyrics",
+      "copy_description": "Copies the current lyrics to the clipboard.",
+      "clear_name": "Clear lyrics",
+      "clear_description": "Clears the lyrics editor.",
+      "forge_name": "Send lyrics to Song Forge",
+      "forge_description": "Routes the current lyrics to Song Forge.",
+      "text_name": "Lyrics text",
+      "text_description": "Edits lyrics and their section markers."
+    }
   }
 }

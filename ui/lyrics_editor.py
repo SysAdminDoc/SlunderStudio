@@ -19,6 +19,7 @@ from PySide6.QtGui import (
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
 from core.lyrics_analysis import LyricAnalysis, analyze_lyrics
+from core.i18n import tr
 
 
 # ── Syntax Highlighter ─────────────────────────────────────────────────────────
@@ -86,11 +87,11 @@ class LyricFeedbackPanel(QWidget):
         layout.setSpacing(4)
 
         header = QHBoxLayout()
-        title = QLabel("Advisory lyric feedback")
+        title = QLabel(tr("lyrics_editor.feedback.title"))
         title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: 700;")
         header.addWidget(title)
         header.addStretch()
-        self._disclaimer_label = QLabel("No automatic rewrite")
+        self._disclaimer_label = QLabel(tr("lyrics_editor.feedback.disclaimer"))
         self._disclaimer_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 7.5pt;")
         header.addWidget(self._disclaimer_label)
         layout.addLayout(header)
@@ -111,22 +112,22 @@ class LyricFeedbackPanel(QWidget):
         layout.addWidget(self._note_label)
         install_accessibility(
             self,
-            "Advisory lyric feedback",
+            tr("lyrics_editor.accessibility.feedback_name"),
             named_controls=[
                 (
                     self._rhyme_label,
-                    "Lyric end-rhyme feedback",
-                    "Heuristic end-sound coverage; it is not a judgment of lyric quality.",
+                    tr("lyrics_editor.accessibility.rhyme_name"),
+                    tr("lyrics_editor.accessibility.rhyme_description"),
                 ),
                 (
                     self._cadence_label,
-                    "Lyric cadence feedback",
-                    "Heuristic syllable-count consistency; stressed beats and pronunciation are not inferred.",
+                    tr("lyrics_editor.accessibility.cadence_name"),
+                    tr("lyrics_editor.accessibility.cadence_description"),
                 ),
                 (
                     self._note_label,
-                    "Lyric feedback note",
-                    "Advisory prompt only. The lyric text is never rewritten automatically.",
+                    tr("lyrics_editor.accessibility.note_name"),
+                    tr("lyrics_editor.accessibility.note_description"),
                 ),
             ],
         )
@@ -139,16 +140,23 @@ class LyricFeedbackPanel(QWidget):
     def set_analysis(self, analysis: LyricAnalysis):
         self._analysis = analysis
         if not analysis.lines:
-            self._rhyme_label.setText("End-rhyme coverage\nAdd lyric lines")
-            self._cadence_label.setText("Cadence consistency\nAdd lyric lines")
+            self._rhyme_label.setText(tr("lyrics_editor.feedback.rhyme_empty"))
+            self._cadence_label.setText(tr("lyrics_editor.feedback.cadence_empty"))
         else:
             self._rhyme_label.setText(
-                f"End-rhyme coverage\n{analysis.rhyme_coverage:.0f}% "
-                f"({analysis.rhyme_covered_lines}/{analysis.rhyme_eligible_lines} lines)"
+                tr(
+                    "lyrics_editor.feedback.rhyme_value",
+                    percent=analysis.rhyme_coverage,
+                    covered=analysis.rhyme_covered_lines,
+                    eligible=analysis.rhyme_eligible_lines,
+                )
             )
             self._cadence_label.setText(
-                f"Cadence consistency\n{analysis.cadence_consistency:.0f}% "
-                f"({analysis.average_syllables:.1f} syllables/line)"
+                tr(
+                    "lyrics_editor.feedback.cadence_value",
+                    percent=analysis.cadence_consistency,
+                    average=analysis.average_syllables,
+                )
             )
         self._note_label.setText(" ".join(analysis.advisory_notes))
 
@@ -183,25 +191,27 @@ class LyricsEditor(QWidget):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
 
-        self._word_count_label = QLabel("0 words \u2022 0 lines")
+        self._word_count_label = QLabel(
+            tr("lyrics_editor.editor.word_count", words=0, lines=0, sections=0)
+        )
         self._word_count_label.setObjectName("caption")
         toolbar.addWidget(self._word_count_label)
 
         toolbar.addStretch()
 
-        self._copy_btn = QPushButton("Copy")
+        self._copy_btn = QPushButton(tr("lyrics_editor.actions.copy"))
         self._copy_btn.setObjectName("ghostBtn")
         self._copy_btn.setMinimumHeight(28)
         self._copy_btn.clicked.connect(self._copy_to_clipboard)
         toolbar.addWidget(self._copy_btn)
 
-        self._clear_btn = QPushButton("Clear")
+        self._clear_btn = QPushButton(tr("lyrics_editor.actions.clear"))
         self._clear_btn.setObjectName("ghostBtn")
         self._clear_btn.setMinimumHeight(28)
         self._clear_btn.clicked.connect(self._clear)
         toolbar.addWidget(self._clear_btn)
 
-        self._forge_btn = QPushButton("\U0001f3b6 Send to Song Forge")
+        self._forge_btn = QPushButton(tr("lyrics_editor.actions.send_to_forge"))
         self._forge_btn.setMinimumHeight(30)
         self._forge_btn.clicked.connect(lambda: self.send_to_song_forge.emit(self.text))
         toolbar.addWidget(self._forge_btn)
@@ -211,9 +221,7 @@ class LyricsEditor(QWidget):
         # Editor
         self._editor = QPlainTextEdit()
         self._editor.setPlaceholderText(
-            "Generated lyrics will appear here...\n\n"
-            "You can also type or paste lyrics directly.\n"
-            "Right-click on a section tag to regenerate just that section."
+            tr("lyrics_editor.editor.placeholder")
         )
         self._editor.setStyleSheet(f"""
             QPlainTextEdit {{
@@ -244,12 +252,12 @@ class LyricsEditor(QWidget):
 
         install_accessibility(
             self,
-            "Lyrics editor",
+            tr("lyrics_editor.accessibility.editor_name"),
             named_controls=[
-                (self._copy_btn, "Copy lyrics", "Copies the current lyrics to the clipboard."),
-                (self._clear_btn, "Clear lyrics", "Clears the lyrics editor."),
-                (self._forge_btn, "Send lyrics to Song Forge", "Routes the current lyrics to Song Forge."),
-                (self._editor, "Lyrics text", "Edits lyrics and their section markers."),
+                (self._copy_btn, tr("lyrics_editor.accessibility.copy_name"), tr("lyrics_editor.accessibility.copy_description")),
+                (self._clear_btn, tr("lyrics_editor.accessibility.clear_name"), tr("lyrics_editor.accessibility.clear_description")),
+                (self._forge_btn, tr("lyrics_editor.accessibility.forge_name"), tr("lyrics_editor.accessibility.forge_description")),
+                (self._editor, tr("lyrics_editor.accessibility.text_name"), tr("lyrics_editor.accessibility.text_description")),
             ],
         )
 
@@ -274,7 +282,7 @@ class LyricsEditor(QWidget):
         self._streaming = True
         self._editor.clear()
         self._editor.setReadOnly(True)
-        self._status.setText("Generating...")
+        self._status.setText(tr("lyrics_editor.status.generating"))
         self._status.setStyleSheet(f"color: {Palette.BLUE}; font-size: 8.25pt;")
 
     def append_token(self, token: str):
@@ -290,7 +298,7 @@ class LyricsEditor(QWidget):
         """End streaming mode — make editor editable again."""
         self._streaming = False
         self._editor.setReadOnly(False)
-        self._status.setText("Generation complete")
+        self._status.setText(tr("lyrics_editor.status.complete"))
         self._on_text_changed()
 
     # ── Section Detection ──────────────────────────────────────────────────────
@@ -371,33 +379,33 @@ class LyricsEditor(QWidget):
         menu = QMenu(self)
 
         # Standard edit actions
-        undo_action = QAction("Undo", self)
+        undo_action = QAction(tr("lyrics_editor.menu.undo"), self)
         undo_action.triggered.connect(self._editor.undo)
         undo_action.setEnabled(self._editor.document().isUndoAvailable())
         menu.addAction(undo_action)
 
-        redo_action = QAction("Redo", self)
+        redo_action = QAction(tr("lyrics_editor.menu.redo"), self)
         redo_action.triggered.connect(self._editor.redo)
         redo_action.setEnabled(self._editor.document().isRedoAvailable())
         menu.addAction(redo_action)
 
         menu.addSeparator()
 
-        cut_action = QAction("Cut", self)
+        cut_action = QAction(tr("lyrics_editor.menu.cut"), self)
         cut_action.triggered.connect(self._editor.cut)
         menu.addAction(cut_action)
 
-        copy_action = QAction("Copy", self)
+        copy_action = QAction(tr("lyrics_editor.menu.copy"), self)
         copy_action.triggered.connect(self._editor.copy)
         menu.addAction(copy_action)
 
-        paste_action = QAction("Paste", self)
+        paste_action = QAction(tr("lyrics_editor.menu.paste"), self)
         paste_action.triggered.connect(self._editor.paste)
         menu.addAction(paste_action)
 
         menu.addSeparator()
 
-        select_all_action = QAction("Select All", self)
+        select_all_action = QAction(tr("lyrics_editor.menu.select_all"), self)
         select_all_action.triggered.connect(self._editor.selectAll)
         menu.addAction(select_all_action)
 
@@ -406,7 +414,10 @@ class LyricsEditor(QWidget):
         if current_section:
             menu.addSeparator()
 
-            regen_action = QAction(f"\U0001f504 Regenerate {current_section}", self)
+            regen_action = QAction(
+                tr("lyrics_editor.menu.regenerate", section=current_section),
+                self,
+            )
             regen_action.triggered.connect(lambda: self.section_regenerate.emit(current_section))
             menu.addAction(regen_action)
 
@@ -420,7 +431,14 @@ class LyricsEditor(QWidget):
         words = len(text.split()) if text.strip() else 0
         lines = text.count("\n") + 1 if text.strip() else 0
         sections = len(self.get_sections())
-        self._word_count_label.setText(f"{words} words \u2022 {lines} lines \u2022 {sections} sections")
+        self._word_count_label.setText(
+            tr(
+                "lyrics_editor.editor.word_count",
+                words=words,
+                lines=lines,
+                sections=sections,
+            )
+        )
         self.text_changed.emit(text)
 
     def _copy_to_clipboard(self):
