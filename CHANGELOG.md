@@ -6,7 +6,8 @@ All notable changes to SlunderStudio will be documented in this file.
 
 - Localized accessibility fallback descriptions, Model Hub executable/license/signature
   policy copy, and added full-page Arabic RTL/pseudo-locale regression coverage while
-  preserving stable combo data under pseudo-localized labels.
+  preserving stable combo data under pseudo-localized labels; removed the legacy
+  app-level static-copy pseudo-locale shim.
 
 - Localized direct MIDI, ChordPro, DAWproject, PEM credential, and Enhanced LRC
   file-picker filters with Arabic coverage.

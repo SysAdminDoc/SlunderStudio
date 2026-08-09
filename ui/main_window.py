@@ -389,9 +389,6 @@ class MainWindow(QMainWindow):
         self._settings.on_change(self._midi_settings_callback)
         self._configure_osc_server()
         self._configure_midi_input()
-        from ui.i18n_runtime import apply_pseudolocale
-
-        apply_pseudolocale(self)
         self._start_gpu_monitor()
         self._start_autosave()
 

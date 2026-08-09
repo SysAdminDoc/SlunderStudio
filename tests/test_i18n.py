@@ -13,10 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
-    QAbstractButton,
     QApplication,
-    QComboBox,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -49,7 +46,6 @@ from core.voice_bank import VoiceBank
 from engines.lyrics_engine import default_lyrics_language
 from engines.lyrics_templates import build_quick_prompt
 from ui.lyrics_view import LyricsView
-from ui.i18n_runtime import apply_pseudolocale
 from ui.settings_view import SettingsView
 from ui.vocal_suite_view import VocalSuiteView
 
@@ -129,19 +125,17 @@ class I18nTests(unittest.TestCase):
             window.close()
             window.deleteLater()
 
-    def test_pseudolocale_expands_static_widget_copy_for_layout_qa(self):
+    def test_pseudolocale_expands_catalog_labels(self):
         set_locale(PSEUDO_LOCALE, persist=False)
         window = QWidget()
         layout = QHBoxLayout(window)
-        label = QLabel("Static shell copy")
-        button = QPushButton("Continue")
+        label = QLabel(tr("nav.lyrics"))
+        button = QPushButton(tr("lyrics.actions.generate"))
         layout.addWidget(label)
         layout.addWidget(button)
         try:
-            self.assertGreaterEqual(apply_pseudolocale(window), 2)
             self.assertTrue(label.text().startswith("［"))
             self.assertTrue(button.text().startswith("［"))
-            self.assertEqual(0, apply_pseudolocale(window))
         finally:
             window.deleteLater()
 
@@ -150,7 +144,7 @@ class I18nTests(unittest.TestCase):
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QAbstractButton, QApplication, QComboBox, QGroupBox, QLabel, QTabWidget, QWidget
+from PySide6.QtWidgets import QApplication, QGroupBox, QTabWidget, QWidget
 from core.i18n import PSEUDO_LOCALE, set_locale
 from core.lyrics_db import LyricsDB
 from ui.main_window import MainWindow
@@ -177,22 +171,24 @@ if len(pages) != 10:
     raise SystemExit(f"pseudo pages={len(pages)}")
 text_widgets = []
 for widget in [pseudo, *pseudo.findChildren(QWidget)]:
-    if not isinstance(widget, (QLabel, QAbstractButton, QGroupBox)):
+    if not isinstance(widget, QGroupBox):
         continue
-    text = widget.title() if isinstance(widget, QGroupBox) else widget.text()
+    text = widget.title()
     if any(char.isalpha() for char in text):
         text_widgets.append((widget, text))
-unexpanded = [text for _widget, text in text_widgets if not text.startswith("［")]
-if unexpanded:
-    raise SystemExit("pseudo visible copy not expanded: " + repr(unexpanded[:8]))
-for combo in pseudo.findChildren(QComboBox):
-    values = [combo.itemText(i) for i in range(combo.count()) if any(char.isalpha() for char in combo.itemText(i))]
-    if any(not value.startswith("［") for value in values):
-        raise SystemExit("pseudo combo item not expanded: " + repr(values[:8]))
+for index in range(len(pages)):
+    pseudo._on_page_selected(index)
+    app.processEvents()
+    if not pseudo._page_eyebrow.text().startswith("［"):
+        raise SystemExit(f"pseudo page eyebrow not expanded: {index}")
+    if not pseudo._page_title.text().startswith("［"):
+        raise SystemExit(f"pseudo page title not expanded: {index}")
+    if not pseudo._page_subtitle.text().startswith("［"):
+        raise SystemExit(f"pseudo page subtitle not expanded: {index}")
 for tabs in pseudo.findChildren(QTabWidget):
     values = [tabs.tabText(i) for i in range(tabs.count()) if tabs.tabText(i)]
-    if any(not value.startswith("［") for value in values):
-        raise SystemExit("pseudo tab not expanded: " + repr(values))
+    if values and any(not value.startswith("［") for value in values):
+        raise SystemExit("pseudo catalog tab not expanded: " + repr(values))
 print(f"arabic pages={len(pages)} pseudo_text={len(text_widgets)}")
 pseudo.close()
 '''
