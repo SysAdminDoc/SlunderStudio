@@ -349,28 +349,28 @@ class VocalSuiteView(QWidget):
         self._on_tab_changed(self._tabs.currentIndex())
         install_accessibility(
             self,
-            "Vocal Suite",
+            tr("vocal.accessibility.view_name"),
             named_controls=[
-                (self._tabs, "Vocal Suite mode", "Switches between singing synthesis, voice conversion, voice cloning, and stem separation."),
-                (self._sing_lyrics, "Singing lyrics", "Lyrics to synthesize with DiffSinger."),
-                (self._sing_voice, "DiffSinger voice", "Selects the singing voice model."),
-                (self._sing_tempo, "Singing tempo", "Sets the vocal synthesis tempo in beats per minute."),
-                (self._sing_key, "Singing key", "Sets the starting singing pitch."),
-                (self._sing_breathiness, "Singing breathiness", "Adjusts breathiness expression."),
-                (self._sing_tension, "Singing tension", "Adjusts vocal tension expression."),
-                (self._sing_vibrato, "Singing vibrato", "Adjusts vibrato expression."),
-                (self._sing_gender, "Singing gender", "Adjusts vocal formant character."),
-                (self._sing_gen_btn, "Synthesize vocals", "Starts DiffSinger vocal synthesis."),
-                (self._operation_progress.cancel_button, "Cancel Vocal Suite operation", "Cancels the running Vocal Suite synthesis, conversion, separation, or export."),
-                (self._sing_pronunciation_units, "Pronunciation lyric unit", "Selects the word or syllable region to correct."),
-                (self._sing_phonemes, "Pronunciation phonemes", "Space-separated phoneme tokens for the selected lyric unit."),
-                (self._sing_pronunciation_btn, "Re-render pronunciation", "Re-synthesizes only the selected pronunciation region and crossfades it into the vocal."),
-                (self._melody_browse_btn, "Browse humming input", "Selects a hummed melody recording."),
-                (self._melody_lyrics, "Melody lyrics", "Lyrics to align with the hummed MIDI melody."),
-                (self._melody_tempo, "Melody tempo", "Sets the generated MIDI tempo."),
-                (self._melody_render_diffsinger, "Render melody vocal", "Attempts DiffSinger rendering after MIDI extraction."),
-                (self._melody_generate_btn, "Generate melody MIDI", "Extracts a MIDI melody from humming audio."),
-                (self._melody_lrc_btn, "Export enhanced LRC", "Exports the verified lyric-to-note alignment with line- and word-level timestamps."),
+                (self._tabs, tr("vocal.accessibility.mode_name"), tr("vocal.accessibility.mode_description")),
+                (self._sing_lyrics, tr("vocal.accessibility.singing_lyrics_name"), tr("vocal.accessibility.singing_lyrics_description")),
+                (self._sing_voice, tr("vocal.accessibility.singing_voice_name"), tr("vocal.accessibility.singing_voice_description")),
+                (self._sing_tempo, tr("vocal.accessibility.singing_tempo_name"), tr("vocal.accessibility.singing_tempo_description")),
+                (self._sing_key, tr("vocal.accessibility.singing_key_name"), tr("vocal.accessibility.singing_key_description")),
+                (self._sing_breathiness, tr("vocal.accessibility.breathiness_name"), tr("vocal.accessibility.breathiness_description")),
+                (self._sing_tension, tr("vocal.accessibility.tension_name"), tr("vocal.accessibility.tension_description")),
+                (self._sing_vibrato, tr("vocal.accessibility.vibrato_name"), tr("vocal.accessibility.vibrato_description")),
+                (self._sing_gender, tr("vocal.accessibility.gender_name"), tr("vocal.accessibility.gender_description")),
+                (self._sing_gen_btn, tr("vocal.accessibility.synthesize_name"), tr("vocal.accessibility.synthesize_description")),
+                (self._operation_progress.cancel_button, tr("vocal.accessibility.cancel_name"), tr("vocal.accessibility.cancel_description")),
+                (self._sing_pronunciation_units, tr("vocal.accessibility.pronunciation_unit_name"), tr("vocal.accessibility.pronunciation_unit_description")),
+                (self._sing_phonemes, tr("vocal.accessibility.phonemes_name"), tr("vocal.accessibility.phonemes_description")),
+                (self._sing_pronunciation_btn, tr("vocal.accessibility.pronunciation_action_name"), tr("vocal.accessibility.pronunciation_action_description")),
+                (self._melody_browse_btn, tr("vocal.accessibility.melody_browse_name"), tr("vocal.accessibility.melody_browse_description")),
+                (self._melody_lyrics, tr("vocal.accessibility.melody_lyrics_name"), tr("vocal.accessibility.melody_lyrics_description")),
+                (self._melody_tempo, tr("vocal.accessibility.melody_tempo_name"), tr("vocal.accessibility.melody_tempo_description")),
+                (self._melody_render_diffsinger, tr("vocal.accessibility.melody_render_name"), tr("vocal.accessibility.melody_render_description")),
+                (self._melody_generate_btn, tr("vocal.accessibility.melody_generate_name"), tr("vocal.accessibility.melody_generate_description")),
+                (self._melody_lrc_btn, tr("vocal.accessibility.melody_lrc_name"), tr("vocal.accessibility.melody_lrc_description")),
                 (self._rvc_browse_btn, "Browse RVC input", "Selects input audio for voice conversion."),
                 (self._rvc_voice, "RVC voice", "Selects the target RVC voice model."),
                 (self._rvc_trust_btn, "Trust unsafe RVC checkpoint", self._rvc_trust_btn.toolTip()),
@@ -484,13 +484,13 @@ class VocalSuiteView(QWidget):
         ctrl_layout.setContentsMargins(12, 10, 12, 10)
         ctrl_layout.setSpacing(6)
 
-        title = QLabel("DiffSinger")
+        title = QLabel(tr("vocal.singing.title"))
         title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
         # Lyrics input
         self._sing_lyrics = QTextEdit()
-        self._sing_lyrics.setPlaceholderText("Enter lyrics to sing...\nEach line = one phrase")
+        self._sing_lyrics.setPlaceholderText(tr("vocal.singing.lyrics_placeholder"))
         self._sing_lyrics.setMaximumHeight(80)
         self._sing_lyrics.setStyleSheet(f"""
             QTextEdit {{
@@ -513,12 +513,12 @@ class VocalSuiteView(QWidget):
 
         # Voice selector
         voice_row = QHBoxLayout()
-        vl = QLabel("Voice:")
+        vl = QLabel(tr("vocal.singing.voice_label"))
         vl.setMinimumWidth(50)
         vl.setStyleSheet(param_style)
         self._sing_voice = QComboBox()
         self._sing_voice.setStyleSheet(param_style)
-        self._sing_voice.addItem("(No voices loaded)")
+        self._sing_voice.addItem(tr("vocal.singing.no_voices"), "")
         self._sing_voice.currentIndexChanged.connect(
             self._refresh_capability_states
         )
@@ -528,7 +528,7 @@ class VocalSuiteView(QWidget):
 
         # Tempo + Key
         row1 = QHBoxLayout()
-        tl = QLabel("BPM:")
+        tl = QLabel(tr("vocal.singing.bpm_label"))
         tl.setMinimumWidth(30)
         tl.setStyleSheet(param_style)
         self._sing_tempo = QSpinBox()
@@ -536,7 +536,7 @@ class VocalSuiteView(QWidget):
         self._sing_tempo.setValue(120)
         self._sing_tempo.setStyleSheet(param_style)
 
-        kl = QLabel("Key:")
+        kl = QLabel(tr("vocal.singing.key_label"))
         kl.setMinimumWidth(24)
         kl.setStyleSheet(param_style)
         self._sing_key = QComboBox()
@@ -550,13 +550,15 @@ class VocalSuiteView(QWidget):
         ctrl_layout.addLayout(row1)
 
         # Expression controls
-        for name, default, range_max in [
-            ("Breathiness", 0, 100), ("Tension", 50, 100),
-            ("Vibrato", 50, 100), ("Gender", 50, 100),
+        for name, label_key, default, range_max in [
+            ("Breathiness", "vocal.singing.breathiness", 0, 100),
+            ("Tension", "vocal.singing.tension", 50, 100),
+            ("Vibrato", "vocal.singing.vibrato", 50, 100),
+            ("Gender", "vocal.singing.gender", 50, 100),
         ]:
             row = QHBoxLayout()
             row.setSpacing(4)
-            lbl = QLabel(f"{name}:")
+            lbl = QLabel(f"{tr(label_key)}:")
             lbl.setMinimumWidth(70)
             lbl.setStyleSheet(param_style)
             slider = QSlider(Qt.Horizontal)
@@ -574,7 +576,7 @@ class VocalSuiteView(QWidget):
             setattr(self, f"_sing_{name.lower()}", slider)
 
         # Generate button
-        self._sing_gen_btn = QPushButton("Synthesize Vocals")
+        self._sing_gen_btn = QPushButton(tr("vocal.singing.synthesize"))
         self._sing_gen_btn.setMinimumHeight(34)
         self._sing_gen_btn.setStyleSheet(f"""
             QPushButton {{
@@ -600,30 +602,31 @@ class VocalSuiteView(QWidget):
         pronunciation_layout = QVBoxLayout(pronunciation_frame)
         pronunciation_layout.setContentsMargins(8, 7, 8, 7)
         pronunciation_layout.setSpacing(5)
-        pronunciation_title = QLabel("Pronunciation correction")
+        pronunciation_title = QLabel(tr("vocal.singing.pronunciation_title"))
         pronunciation_title.setStyleSheet(
             f"color: {t['text']}; font-weight: bold; font-size: 8.25pt; border: none;"
         )
         pronunciation_layout.addWidget(pronunciation_title)
         pronunciation_help = QLabel(
-            "Select a word, adjust the waveform handles, enter model phonemes, "
-            "and re-render only that region."
+            tr("vocal.singing.pronunciation_help")
         )
         pronunciation_help.setWordWrap(True)
         pronunciation_layout.addWidget(pronunciation_help)
         self._sing_pronunciation_units = QComboBox()
-        self._sing_pronunciation_units.addItem("Generate vocals first", None)
+        self._sing_pronunciation_units.addItem(
+            tr("vocal.singing.pronunciation_generate_first"), None
+        )
         self._sing_pronunciation_units.currentIndexChanged.connect(
             self._on_pronunciation_unit_changed
         )
         pronunciation_layout.addWidget(self._sing_pronunciation_units)
         self._sing_phonemes = QLineEdit()
-        self._sing_phonemes.setPlaceholderText("Phonemes, space-separated (example: k ae t)")
+        self._sing_phonemes.setPlaceholderText(tr("vocal.singing.phonemes_placeholder"))
         self._sing_phonemes.textChanged.connect(self._update_pronunciation_button)
         pronunciation_layout.addWidget(self._sing_phonemes)
-        self._sing_region_label = QLabel("No pronunciation region selected")
+        self._sing_region_label = QLabel(tr("vocal.singing.no_region"))
         pronunciation_layout.addWidget(self._sing_region_label)
-        self._sing_pronunciation_btn = QPushButton("Re-render selected pronunciation")
+        self._sing_pronunciation_btn = QPushButton(tr("vocal.singing.pronunciation_action"))
         self._sing_pronunciation_btn.setMinimumHeight(28)
         self._sing_pronunciation_btn.setEnabled(False)
         self._sing_pronunciation_btn.clicked.connect(self._on_pronunciation_correct)
@@ -641,9 +644,9 @@ class VocalSuiteView(QWidget):
         # Right: Waveform output
         self._sing_waveform = WaveformWidget()
         self._sing_waveform.set_empty_state(
-            "No vocal take yet",
-            "Enter lyrics and synthesize a DiffSinger vocal to edit pronunciation and timing.",
-            "Synthesize vocals",
+            tr("vocal.singing.no_take"),
+            tr("vocal.singing.no_take_hint"),
+            tr("vocal.singing.synthesize"),
         )
         self._sing_waveform.empty_action_requested.connect(self._sing_gen_btn.click)
         self._sing_waveform.set_selection_enabled(True)
@@ -750,7 +753,7 @@ class VocalSuiteView(QWidget):
         self._melody_generate_btn.clicked.connect(self._on_melody_generate)
         ctrl_layout.addWidget(self._melody_generate_btn)
 
-        self._melody_lrc_btn = QPushButton("Export Enhanced LRC")
+        self._melody_lrc_btn = QPushButton(tr("vocal.melody.export_lrc"))
         self._melody_lrc_btn.setMinimumHeight(30)
         self._melody_lrc_btn.setEnabled(False)
         self._melody_lrc_btn.setStyleSheet(f"""
@@ -779,9 +782,9 @@ class VocalSuiteView(QWidget):
         preview_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._melody_waveform = WaveformWidget()
         self._melody_waveform.set_empty_state(
-            "No melody preview yet",
-            "Choose a humming recording to preview it, then generate lyric-aligned MIDI.",
-            "Choose humming audio",
+            tr("vocal.melody.no_preview"),
+            tr("vocal.melody.no_preview_hint"),
+            tr("vocal.melody.choose_audio"),
         )
         self._melody_waveform.empty_action_requested.connect(self._melody_browse_btn.click)
         right.addWidget(preview_label)

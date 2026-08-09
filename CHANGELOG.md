@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Vocal Suite DiffSinger singing controls, pronunciation correction, humming-to-MIDI
+  controls, enhanced-LRC action, empty states, and accessibility descriptions to the locale catalog.
+
 - Migrated Song Forge labels, prompts, source-mode controls, generation/export status,
   style-tag browser, result tabs, job labels, and accessibility descriptions to the locale
   catalog while preserving raw engine taxonomy and mode IDs.
