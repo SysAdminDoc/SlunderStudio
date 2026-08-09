@@ -30,6 +30,15 @@ from ui.accessibility import install_accessibility
 from ui.widgets import EmptyStateWidget
 from ui.theme import Palette
 from ui.file_dialogs import ensure_extension, open_audio_file, save_audio_file
+from core.i18n import tr
+
+
+_COVER_MODE_KEYS = {
+    "Normal": "song_forge.source_modes.normal",
+    "Cover": "song_forge.source_modes.cover",
+    "Extend": "song_forge.source_modes.extend",
+    "Repaint": "song_forge.source_modes.repaint",
+}
 
 
 def _song_forge_export_task(
@@ -75,7 +84,7 @@ class StyleTagBrowser(QWidget):
 
         # Search
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search 1000+ style tags...")
+        self._search.setPlaceholderText(tr("song_forge.tag_browser.search_placeholder"))
         self._search.setMinimumHeight(28)
         self._search.textChanged.connect(self._refresh)
         layout.addWidget(self._search)
@@ -84,13 +93,15 @@ class StyleTagBrowser(QWidget):
         cat_row = QHBoxLayout()
         cat_row.setSpacing(4)
         self._cat_combo = QComboBox()
-        self._cat_combo.addItem("All Categories")
-        self._cat_combo.addItems([c.title() for c in self._db.get_categories()])
+        self._cat_combo.addItem(tr("song_forge.tag_browser.all_categories"), "")
+        # Style categories are engine taxonomy; display text and query data stay tied to the raw ID.
+        for category in self._db.get_categories():
+            self._cat_combo.addItem(category.title(), category)
         self._cat_combo.setMinimumHeight(26)
         self._cat_combo.currentIndexChanged.connect(self._refresh)
         cat_row.addWidget(self._cat_combo)
 
-        self._fav_check = QCheckBox("Favorites")
+        self._fav_check = QCheckBox(tr("song_forge.tag_browser.favorites"))
         self._fav_check.setStyleSheet(f"color: {Palette.YELLOW};")
         self._fav_check.toggled.connect(self._refresh)
         cat_row.addWidget(self._fav_check)
@@ -108,9 +119,9 @@ class StyleTagBrowser(QWidget):
         self._tag_list.setSelectionMode(QListWidget.MultiSelection)
         self._tag_list.itemSelectionChanged.connect(self._on_selection_changed)
         self._tag_empty = EmptyStateWidget(
-            "No style tags found",
-            "Browse the catalog or search for a sound, instrument, era, or mood.",
-            "Clear filters",
+            tr("song_forge.tag_browser.no_tags_found"),
+            tr("song_forge.tag_browser.browse_hint"),
+            tr("song_forge.tag_browser.clear_filters"),
         )
         self._tag_empty.action_requested.connect(self._clear_tag_filters)
         self._tag_stack = QStackedWidget()
@@ -119,7 +130,7 @@ class StyleTagBrowser(QWidget):
         layout.addWidget(self._tag_stack, 1)
 
         # Selected tags display
-        self._selected_label = QLabel("No tags selected")
+        self._selected_label = QLabel(tr("song_forge.tag_browser.no_selected"))
         self._selected_label.setWordWrap(True)
         self._selected_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 8.25pt; padding: 4px;")
         layout.addWidget(self._selected_label)
@@ -127,12 +138,28 @@ class StyleTagBrowser(QWidget):
         self._refresh()
         install_accessibility(
             self,
-            "Style tag browser",
+            tr("song_forge.accessibility.tag_browser_name"),
             named_controls=[
-                (self._search, "Search style tags", "Filters the style tag list."),
-                (self._cat_combo, "Style tag category", "Filters tags by category."),
-                (self._fav_check, "Favorite style tags only", "Shows only favorite style tags."),
-                (self._tag_list, "Style tag results", "Selects one or more style tags."),
+                (
+                    self._search,
+                    tr("song_forge.accessibility.tag_search_name"),
+                    tr("song_forge.accessibility.tag_search_description"),
+                ),
+                (
+                    self._cat_combo,
+                    tr("song_forge.accessibility.tag_category_name"),
+                    tr("song_forge.accessibility.tag_category_description"),
+                ),
+                (
+                    self._fav_check,
+                    tr("song_forge.accessibility.tag_favorites_name"),
+                    tr("song_forge.accessibility.tag_favorites_description"),
+                ),
+                (
+                    self._tag_list,
+                    tr("song_forge.accessibility.tag_results_name"),
+                    tr("song_forge.accessibility.tag_results_description"),
+                ),
             ],
             tab_order=[
                 self._search,
@@ -145,8 +172,7 @@ class StyleTagBrowser(QWidget):
     def _refresh(self):
         self._tag_list.clear()
         query = self._search.text()
-        cat_idx = self._cat_combo.currentIndex()
-        category = "" if cat_idx == 0 else self._db.get_categories()[cat_idx - 1]
+        category = self._cat_combo.currentData() or ""
         fav_only = self._fav_check.isChecked()
 
         results = self._db.search(query, category=category, favorites_only=fav_only)
@@ -167,17 +193,17 @@ class StyleTagBrowser(QWidget):
             if category:
                 filters.append(category)
             if fav_only:
-                filters.append("favorites")
+                filters.append(tr("song_forge.tag_browser.favorites_filter"))
             self._tag_empty.set_no_matches(
-                "No style tags match " + ", ".join(filters) + ".",
-                "Clear filters",
+                tr("song_forge.tag_browser.no_match", filters=", ".join(filters)),
+                tr("song_forge.tag_browser.clear_filters"),
             )
             self._tag_stack.setCurrentWidget(self._tag_empty)
         else:
             self._tag_empty.set_state(
-                "No style tags available",
-                "The style tag catalog will appear here when it is available.",
-                "Retry search",
+                tr("song_forge.tag_browser.no_available"),
+                tr("song_forge.tag_browser.no_available_hint"),
+                tr("song_forge.tag_browser.retry_search"),
             )
             self._tag_stack.setCurrentWidget(self._tag_empty)
 
@@ -196,14 +222,16 @@ class StyleTagBrowser(QWidget):
         if self._selected_tags:
             self._selected_label.setText(", ".join(self._selected_tags))
         else:
-            self._selected_label.setText("No tags selected")
+            self._selected_label.setText(tr("song_forge.tag_browser.no_selected"))
 
         self.tags_changed.emit(", ".join(self._selected_tags))
 
     def set_tags(self, tag_string: str):
         """Set selected tags from a comma-separated string."""
         self._selected_tags = [t.strip() for t in tag_string.split(",") if t.strip()]
-        self._selected_label.setText(", ".join(self._selected_tags) or "No tags selected")
+        self._selected_label.setText(
+            ", ".join(self._selected_tags) or tr("song_forge.tag_browser.no_selected")
+        )
         self.tags_changed.emit(tag_string)
         self._refresh()
 
@@ -283,10 +311,10 @@ class SongForgeView(QWidget):
         left_layout.setContentsMargins(0, 0, 18, 0)
         left_layout.setSpacing(8)
 
-        creation_eyebrow = QLabel("CREATION CANVAS")
+        creation_eyebrow = QLabel(tr("song_forge.canvas.eyebrow"))
         creation_eyebrow.setObjectName("pageEyebrow")
         left_layout.addWidget(creation_eyebrow)
-        creation_title = QLabel("Lyrics and direction")
+        creation_title = QLabel(tr("song_forge.canvas.title"))
         creation_title.setObjectName("subheading")
         left_layout.addWidget(creation_title)
 
@@ -300,22 +328,21 @@ class SongForgeView(QWidget):
         ql = QVBoxLayout(quick_page)
         ql.setSpacing(8)
 
-        ql.addWidget(QLabel("Lyrics"))
+        ql.addWidget(QLabel(tr("song_forge.canvas.lyrics_label")))
         self._quick_lyrics = QTextEdit()
         self._quick_lyrics.setPlaceholderText(
-            "Paste lyrics from Lyrics Engine or type directly...\n"
-            "Use [Verse], [Chorus], [Bridge] structure tags."
+            tr("song_forge.canvas.quick_lyrics_placeholder")
         )
         self._quick_lyrics.setObjectName("primaryEditor")
         ql.addWidget(self._quick_lyrics)
 
-        ql.addWidget(QLabel("Style Tags"))
+        ql.addWidget(QLabel(tr("song_forge.canvas.style_tags_label")))
         self._quick_tags = QLineEdit()
-        self._quick_tags.setPlaceholderText("e.g., pop, female vocals, dreamy, 120 bpm")
+        self._quick_tags.setPlaceholderText(tr("song_forge.canvas.style_tags_placeholder"))
         self._quick_tags.setMinimumHeight(30)
         ql.addWidget(self._quick_tags)
 
-        self._mode_tabs.addTab(quick_page, "Quick")
+        self._mode_tabs.addTab(quick_page, tr("song_forge.canvas.quick_tab"))
 
         # Advanced Mode
         adv_page = QWidget()
@@ -326,19 +353,19 @@ class SongForgeView(QWidget):
         al = QVBoxLayout(adv_inner)
         al.setSpacing(6)
 
-        al.addWidget(QLabel("Lyrics"))
+        al.addWidget(QLabel(tr("song_forge.canvas.lyrics_label")))
         self._adv_lyrics = QTextEdit()
-        self._adv_lyrics.setPlaceholderText("Lyrics with structure tags...")
+        self._adv_lyrics.setPlaceholderText(tr("song_forge.canvas.advanced_lyrics_placeholder"))
         self._adv_lyrics.setMinimumHeight(120)
         self._adv_lyrics.setObjectName("primaryEditor")
         al.addWidget(self._adv_lyrics)
 
         # Parameters grid
-        params = QGroupBox("Generation Parameters")
+        params = QGroupBox(tr("song_forge.canvas.parameters_group"))
         pg = QGridLayout(params)
         pg.setSpacing(6)
 
-        pg.addWidget(QLabel("Duration (s):"), 0, 0)
+        pg.addWidget(QLabel(tr("song_forge.canvas.duration_label")), 0, 0)
         self._duration_spin = QDoubleSpinBox()
         self._duration_spin.setRange(10, 600)
         self._duration_spin.setValue(
@@ -347,7 +374,7 @@ class SongForgeView(QWidget):
         self._duration_spin.setSuffix("s")
         pg.addWidget(self._duration_spin, 0, 1)
 
-        pg.addWidget(QLabel("Timestep Shift:"), 0, 2)
+        pg.addWidget(QLabel(tr("song_forge.canvas.shift_label")), 0, 2)
         self._shift_spin = QDoubleSpinBox()
         self._shift_spin.setRange(1.0, 3.0)
         self._shift_spin.setValue(
@@ -356,11 +383,11 @@ class SongForgeView(QWidget):
         self._shift_spin.setSingleStep(1.0)
         self._shift_spin.setDecimals(1)
         self._shift_spin.setToolTip(
-            "ACE-Step 1.5 XL Turbo schedule shift (1, 2, or 3)."
+            tr("song_forge.canvas.shift_tooltip")
         )
         pg.addWidget(self._shift_spin, 0, 3)
 
-        pg.addWidget(QLabel("Steps:"), 1, 0)
+        pg.addWidget(QLabel(tr("song_forge.canvas.steps_label")), 1, 0)
         self._steps_spin = QSpinBox()
         self._steps_spin.setRange(1, 100)
         self._steps_spin.setValue(
@@ -368,50 +395,51 @@ class SongForgeView(QWidget):
         )
         pg.addWidget(self._steps_spin, 1, 1)
 
-        pg.addWidget(QLabel("Seed:"), 1, 2)
+        pg.addWidget(QLabel(tr("song_forge.canvas.seed_label")), 1, 2)
         self._seed_spin = QSpinBox()
         self._seed_spin.setRange(-1, 2**31 - 1)
         self._seed_spin.setValue(-1)
-        self._seed_spin.setSpecialValueText("Random")
+        self._seed_spin.setSpecialValueText(tr("song_forge.canvas.seed_random"))
         pg.addWidget(self._seed_spin, 1, 3)
 
-        pg.addWidget(QLabel("Batch:"), 2, 0)
+        pg.addWidget(QLabel(tr("song_forge.canvas.batch_label")), 2, 0)
         self._batch_spin = QSpinBox()
         self._batch_spin.setRange(1, 16)
         self._batch_spin.setValue(int(self._settings.get("song_forge.batch_count", 4)))
         pg.addWidget(self._batch_spin, 2, 1)
 
-        self._long_form_check = QCheckBox("Long-form stitching")
+        self._long_form_check = QCheckBox(tr("song_forge.canvas.long_form"))
         self._long_form_check.setChecked(True)
         self._long_form_check.setToolTip(
-            "For durations over 120 seconds, render sections separately and stitch them."
+            tr("song_forge.canvas.long_form_tooltip")
         )
         pg.addWidget(self._long_form_check, 2, 2, 1, 2)
 
         al.addWidget(params)
 
         # Genre fusion presets
-        fusion = QGroupBox("Genre Fusion")
+        fusion = QGroupBox(tr("song_forge.canvas.fusion_group"))
         fg = QGridLayout(fusion)
         fg.setSpacing(6)
 
         from engines.lyrics_templates import get_genre_list
+        # Genre names are catalog data from the template engine; IDs remain raw UserRole values.
         genres = get_genre_list()
 
-        fg.addWidget(QLabel("Primary:"), 0, 0)
+        fg.addWidget(QLabel(tr("song_forge.canvas.primary_label")), 0, 0)
         self._fusion_primary = QComboBox()
         for genre in genres:
             self._fusion_primary.addItem(genre["name"], genre["id"])
         fg.addWidget(self._fusion_primary, 0, 1)
 
-        fg.addWidget(QLabel("Secondary:"), 0, 2)
+        fg.addWidget(QLabel(tr("song_forge.canvas.secondary_label")), 0, 2)
         self._fusion_secondary = QComboBox()
         for genre in genres:
             self._fusion_secondary.addItem(genre["name"], genre["id"])
         self._fusion_secondary.setCurrentIndex(min(2, max(0, self._fusion_secondary.count() - 1)))
         fg.addWidget(self._fusion_secondary, 0, 3)
 
-        fg.addWidget(QLabel("Blend:"), 1, 0)
+        fg.addWidget(QLabel(tr("song_forge.canvas.blend_label")), 1, 0)
         self._fusion_slider = QSlider(Qt.Horizontal)
         self._fusion_slider.setRange(0, 100)
         self._fusion_slider.setValue(50)
@@ -422,7 +450,7 @@ class SongForgeView(QWidget):
         self._fusion_weight_label.setStyleSheet(f"color: {Palette.TEAL}; font-size: 8.25pt;")
         fg.addWidget(self._fusion_weight_label, 1, 3)
 
-        self._fusion_apply_btn = QPushButton("Apply Fusion")
+        self._fusion_apply_btn = QPushButton(tr("song_forge.actions.apply_fusion"))
         self._fusion_apply_btn.setMinimumHeight(28)
         self._fusion_apply_btn.setProperty("class", "secondary")
         self._fusion_apply_btn.clicked.connect(self._apply_genre_fusion)
@@ -430,28 +458,34 @@ class SongForgeView(QWidget):
 
         al.addWidget(fusion)
 
-        cover_group = QGroupBox("Source-conditioned Generation")
+        cover_group = QGroupBox(tr("song_forge.canvas.source_group"))
         cg = QGridLayout(cover_group)
         cg.setSpacing(6)
 
-        cg.addWidget(QLabel("Mode:"), 0, 0)
+        cg.addWidget(QLabel(tr("song_forge.canvas.mode_label")), 0, 0)
         self._cover_mode_combo = QComboBox()
-        self._cover_mode_combo.addItems(["Normal", "Cover", "Extend", "Repaint"])
-        self._cover_mode_combo.currentTextChanged.connect(self._on_cover_mode_changed)
+        # Mode IDs are engine contract values; only their display labels are localized.
+        for mode, key in _COVER_MODE_KEYS.items():
+            self._cover_mode_combo.addItem(tr(key), mode)
+        self._cover_mode_combo.currentIndexChanged.connect(
+            lambda _index: self._on_cover_mode_changed(
+                self._cover_mode_combo.currentData() or "Normal"
+            )
+        )
         cg.addWidget(self._cover_mode_combo, 0, 1)
 
-        cg.addWidget(QLabel("Source:"), 1, 0)
-        self._cover_source_label = QLabel("No file selected")
+        cg.addWidget(QLabel(tr("song_forge.canvas.source_label")), 1, 0)
+        self._cover_source_label = QLabel(tr("song_forge.canvas.no_file_selected"))
         self._cover_source_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 8.25pt;")
         cg.addWidget(self._cover_source_label, 1, 1, 1, 2)
 
-        self._cover_browse_btn = QPushButton("Browse")
+        self._cover_browse_btn = QPushButton(tr("song_forge.actions.browse"))
         self._cover_browse_btn.setMinimumHeight(26)
         self._cover_browse_btn.clicked.connect(self._on_browse_cover_source)
         self._cover_browse_btn.setEnabled(False)
         cg.addWidget(self._cover_browse_btn, 1, 3)
 
-        cg.addWidget(QLabel("Start (s):"), 2, 0)
+        cg.addWidget(QLabel(tr("song_forge.canvas.start_label")), 2, 0)
         self._repaint_start_spin = QDoubleSpinBox()
         self._repaint_start_spin.setRange(0.0, 600.0)
         self._repaint_start_spin.setValue(0.0)
@@ -459,7 +493,7 @@ class SongForgeView(QWidget):
         self._repaint_start_spin.setEnabled(False)
         cg.addWidget(self._repaint_start_spin, 2, 1)
 
-        cg.addWidget(QLabel("End (s):"), 2, 2)
+        cg.addWidget(QLabel(tr("song_forge.canvas.end_label")), 2, 2)
         self._repaint_end_spin = QDoubleSpinBox()
         self._repaint_end_spin.setRange(0.0, 600.0)
         self._repaint_end_spin.setValue(30.0)
@@ -477,7 +511,7 @@ class SongForgeView(QWidget):
         adv_layout.setContentsMargins(0, 0, 0, 0)
         adv_layout.addWidget(adv_scroll)
 
-        self._mode_tabs.addTab(adv_page, "Advanced")
+        self._mode_tabs.addTab(adv_page, tr("song_forge.canvas.advanced_tab"))
         self._mode_tabs.setCurrentIndex(
             1 if self._settings.get("general.experience_level", "beginner") == "advanced" else 0
         )
@@ -485,7 +519,7 @@ class SongForgeView(QWidget):
         left_layout.addWidget(self._mode_tabs)
 
         # Style Tag Browser
-        style_eyebrow = QLabel("STYLE LIBRARY")
+        style_eyebrow = QLabel(tr("song_forge.canvas.style_library_eyebrow"))
         style_eyebrow.setObjectName("pageEyebrow")
         left_layout.addWidget(style_eyebrow)
         self._tag_browser = StyleTagBrowser()
@@ -497,13 +531,13 @@ class SongForgeView(QWidget):
         gen_row = QHBoxLayout()
         gen_row.setSpacing(6)
 
-        self._generate_btn = QPushButton("\u2726  Generate song")
+        self._generate_btn = QPushButton(tr("song_forge.actions.generate"))
         self._generate_btn.setObjectName("primaryAction")
         self._generate_btn.setMinimumHeight(46)
         self._generate_btn.clicked.connect(self._on_generate)
         gen_row.addWidget(self._generate_btn)
 
-        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn = QPushButton(tr("song_forge.actions.cancel"))
         self._cancel_btn.setMinimumHeight(46)
         self._cancel_btn.setProperty("class", "danger")
         self._cancel_btn.clicked.connect(self._on_cancel)
@@ -537,15 +571,15 @@ class SongForgeView(QWidget):
         session_heading = QVBoxLayout()
         session_heading.setContentsMargins(0, 0, 0, 0)
         session_heading.setSpacing(1)
-        session_eyebrow = QLabel("RENDER SESSION")
+        session_eyebrow = QLabel(tr("song_forge.session.eyebrow"))
         session_eyebrow.setObjectName("pageEyebrow")
         session_heading.addWidget(session_eyebrow)
-        session_title = QLabel("Output and variations")
+        session_title = QLabel(tr("song_forge.session.title"))
         session_title.setObjectName("subheading")
         session_heading.addWidget(session_title)
         session_header.addLayout(session_heading)
         session_header.addStretch()
-        self._session_state = QLabel("\u25cf  Ready")
+        self._session_state = QLabel(f"\u25cf  {tr('song_forge.session.ready')}")
         self._session_state.setObjectName("localStatus")
         session_header.addWidget(self._session_state)
         center_layout.addLayout(session_header)
@@ -553,9 +587,9 @@ class SongForgeView(QWidget):
         # Waveform
         self._waveform = WaveformWidget()
         self._waveform.set_empty_state(
-            "No song rendered yet",
-            "Choose lyrics or a style prompt, then generate a song to preview the result here.",
-            "Generate song",
+            tr("song_forge.session.no_song"),
+            tr("song_forge.session.no_song_hint"),
+            tr("song_forge.actions.generate"),
         )
         self._waveform.empty_action_requested.connect(self._generate_btn.click)
         self._waveform.setMinimumHeight(132)
@@ -565,21 +599,21 @@ class SongForgeView(QWidget):
         out_row = QHBoxLayout()
         out_row.setSpacing(6)
 
-        self._play_btn = QPushButton("Play")
+        self._play_btn = QPushButton(tr("song_forge.actions.play"))
         self._play_btn.setMinimumHeight(28)
         self._play_btn.setProperty("class", "secondary")
         self._play_btn.setEnabled(False)
         self._play_btn.clicked.connect(self._on_play)
         out_row.addWidget(self._play_btn)
 
-        self._export_btn = QPushButton("Export")
+        self._export_btn = QPushButton(tr("song_forge.actions.export"))
         self._export_btn.setMinimumHeight(28)
         self._export_btn.setProperty("class", "secondary")
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export)
         out_row.addWidget(self._export_btn)
 
-        self._to_vocals_btn = QPushButton("Song \u2192 Vocals")
+        self._to_vocals_btn = QPushButton(tr("song_forge.actions.song_to_vocals"))
         self._to_vocals_btn.setMinimumHeight(28)
         self._to_vocals_btn.setProperty("class", "secondary")
         self._to_vocals_btn.setEnabled(False)
@@ -588,7 +622,7 @@ class SongForgeView(QWidget):
         )
         out_row.addWidget(self._to_vocals_btn)
 
-        self._to_vocal_stem_btn = QPushButton("Stem \u2192 Vocals")
+        self._to_vocal_stem_btn = QPushButton(tr("song_forge.actions.stem_to_vocals"))
         self._to_vocal_stem_btn.setMinimumHeight(28)
         self._to_vocal_stem_btn.setProperty("class", "secondary")
         self._to_vocal_stem_btn.setEnabled(False)
@@ -609,24 +643,24 @@ class SongForgeView(QWidget):
         self._batch_view = BatchView(toast_mgr=self._toast)
         self._batch_view.play_requested.connect(self._play_audio)
         self._batch_view.use_result.connect(self._use_batch_result)
-        self._sub_tabs.addTab(self._batch_view, "Batch Results")
+        self._sub_tabs.addTab(self._batch_view, tr("song_forge.tabs.batch_results"))
 
         self._job_queue = JobQueueView(toast_mgr=self._toast)
         self._job_queue.job_requeued.connect(self._on_queue_job_requeued)
-        self._sub_tabs.addTab(self._job_queue, "Job Queue")
+        self._sub_tabs.addTab(self._job_queue, tr("song_forge.tabs.job_queue"))
 
         self._seed_explorer = SeedExplorer(toast_mgr=self._toast)
         self._seed_explorer.play_requested.connect(self._play_audio)
         self._seed_explorer.generate_requested.connect(self._on_seed_explore)
-        self._sub_tabs.addTab(self._seed_explorer, "Seed Explorer")
+        self._sub_tabs.addTab(self._seed_explorer, tr("song_forge.tabs.seed_explorer"))
 
         self._mood_curve = MoodCurveEditor()
-        self._sub_tabs.addTab(self._mood_curve, "Mood Curve")
+        self._sub_tabs.addTab(self._mood_curve, tr("song_forge.tabs.mood_curve"))
 
         self._ref_panel = ReferencePanel()
         self._ref_panel.match_requested.connect(self._on_reference_match)
         self._ref_panel.tags_extracted.connect(self._on_reference_tags)
-        self._sub_tabs.addTab(self._ref_panel, "Reference")
+        self._sub_tabs.addTab(self._ref_panel, tr("song_forge.tabs.reference"))
 
         center_layout.addWidget(self._sub_tabs, 1)
 
@@ -640,34 +674,34 @@ class SongForgeView(QWidget):
         layout.addWidget(splitter)
         install_accessibility(
             self,
-            "Song Forge",
+            tr("song_forge.accessibility.view_name"),
             named_controls=[
-                (self._mode_tabs, "Song Forge mode", "Switches between quick and advanced song generation controls."),
-                (self._quick_lyrics, "Quick lyrics", "Lyrics or structure tags for quick song generation."),
-                (self._quick_tags, "Quick style tags", "Comma-separated style prompt for quick generation."),
-                (self._adv_lyrics, "Advanced lyrics", "Lyrics with structure tags for advanced generation."),
-                (self._duration_spin, "Song duration", "Target generated song duration in seconds."),
-                (self._shift_spin, "Timestep shift", "Controls the ACE-Step XL Turbo timestep schedule."),
-                (self._steps_spin, "Inference steps", "Controls generation quality and speed."),
-                (self._seed_spin, "Generation seed", "Use random or fixed seed for repeatable generation."),
-                (self._batch_spin, "Batch count", "Number of variations to generate."),
-                (self._long_form_check, "Long-form stitching", "Renders long songs by sections and stitches them."),
-                (self._cover_mode_combo, "Source generation mode", "Chooses normal, cover, extend, or repaint generation."),
-                (self._cover_browse_btn, "Choose source audio", "Chooses the required audio file for source-conditioned generation."),
-                (self._repaint_start_spin, "Repaint start", "Start of the source region to regenerate."),
-                (self._repaint_end_spin, "Repaint end", "End of the source region to regenerate."),
-                (self._fusion_primary, "Primary genre", "First genre for fusion tags."),
-                (self._fusion_secondary, "Secondary genre", "Second genre for fusion tags."),
-                (self._fusion_slider, "Genre blend", "Balances primary and secondary genre tags."),
-                (self._fusion_apply_btn, "Apply genre fusion", "Copies blended genre tags into the prompt."),
-                (self._generate_btn, "Generate song", "Starts ACE-Step song generation."),
-                (self._cancel_btn, "Cancel generation", "Requests cancellation for the running generation."),
-                (self._play_btn, "Play generated song", "Plays the current generated output."),
-                (self._export_btn, "Export generated song", "Exports the current generated output."),
-                (self._to_vocals_btn, "Send generated song to vocals", "Routes generated audio to Vocal Suite."),
-                (self._to_vocal_stem_btn, "Send recovered vocal stem", "Routes the recovered vocals-only Song Forge stem to Vocal Suite."),
-                (self._sub_tabs, "Song Forge result tools", "Switches between batch results, persistent jobs, seed explorer, and mood curve."),
-                (self._session_state, "Song Forge session state", "Reports generation readiness and result state."),
+                (self._mode_tabs, tr("song_forge.accessibility.mode_name"), tr("song_forge.accessibility.mode_description")),
+                (self._quick_lyrics, tr("song_forge.accessibility.quick_lyrics_name"), tr("song_forge.accessibility.quick_lyrics_description")),
+                (self._quick_tags, tr("song_forge.accessibility.quick_tags_name"), tr("song_forge.accessibility.quick_tags_description")),
+                (self._adv_lyrics, tr("song_forge.accessibility.advanced_lyrics_name"), tr("song_forge.accessibility.advanced_lyrics_description")),
+                (self._duration_spin, tr("song_forge.accessibility.duration_name"), tr("song_forge.accessibility.duration_description")),
+                (self._shift_spin, tr("song_forge.accessibility.shift_name"), tr("song_forge.accessibility.shift_description")),
+                (self._steps_spin, tr("song_forge.accessibility.steps_name"), tr("song_forge.accessibility.steps_description")),
+                (self._seed_spin, tr("song_forge.accessibility.seed_name"), tr("song_forge.accessibility.seed_description")),
+                (self._batch_spin, tr("song_forge.accessibility.batch_name"), tr("song_forge.accessibility.batch_description")),
+                (self._long_form_check, tr("song_forge.accessibility.long_form_name"), tr("song_forge.accessibility.long_form_description")),
+                (self._cover_mode_combo, tr("song_forge.accessibility.source_mode_name"), tr("song_forge.accessibility.source_mode_description")),
+                (self._cover_browse_btn, tr("song_forge.accessibility.source_browse_name"), tr("song_forge.accessibility.source_browse_description")),
+                (self._repaint_start_spin, tr("song_forge.accessibility.repaint_start_name"), tr("song_forge.accessibility.repaint_start_description")),
+                (self._repaint_end_spin, tr("song_forge.accessibility.repaint_end_name"), tr("song_forge.accessibility.repaint_end_description")),
+                (self._fusion_primary, tr("song_forge.accessibility.primary_name"), tr("song_forge.accessibility.primary_description")),
+                (self._fusion_secondary, tr("song_forge.accessibility.secondary_name"), tr("song_forge.accessibility.secondary_description")),
+                (self._fusion_slider, tr("song_forge.accessibility.blend_name"), tr("song_forge.accessibility.blend_description")),
+                (self._fusion_apply_btn, tr("song_forge.accessibility.fusion_name"), tr("song_forge.accessibility.fusion_description")),
+                (self._generate_btn, tr("song_forge.accessibility.generate_name"), tr("song_forge.accessibility.generate_description")),
+                (self._cancel_btn, tr("song_forge.accessibility.cancel_name"), tr("song_forge.accessibility.cancel_description")),
+                (self._play_btn, tr("song_forge.accessibility.play_name"), tr("song_forge.accessibility.play_description")),
+                (self._export_btn, tr("song_forge.accessibility.export_name"), tr("song_forge.accessibility.export_description")),
+                (self._to_vocals_btn, tr("song_forge.accessibility.song_to_vocals_name"), tr("song_forge.accessibility.song_to_vocals_description")),
+                (self._to_vocal_stem_btn, tr("song_forge.accessibility.stem_to_vocals_name"), tr("song_forge.accessibility.stem_to_vocals_description")),
+                (self._sub_tabs, tr("song_forge.accessibility.result_tools_name"), tr("song_forge.accessibility.result_tools_description")),
+                (self._session_state, tr("song_forge.accessibility.session_state_name"), tr("song_forge.accessibility.session_state_description")),
             ],
             tab_order=[
                 self._mode_tabs,
@@ -709,7 +743,7 @@ class SongForgeView(QWidget):
         self._quick_lyrics.setPlainText(lyrics_text)
         self._adv_lyrics.setPlainText(lyrics_text)
         if self._toast:
-            self._toast.show_toast("Lyrics loaded into Song Forge", "info")
+            self._toast.show_toast(tr("song_forge.messages.lyrics_loaded"), "info")
 
     def receive_reference(self, artifact) -> bool:
         """Load a routed audio artifact as the reference track and select it.
@@ -730,8 +764,11 @@ class SongForgeView(QWidget):
         self._routed_reference_context_tags = context_tags
         if self._toast:
             self._toast.show_toast(
-                f"Reference from {artifact.source_module}: "
-                f"{artifact.context_summary()}",
+                tr(
+                    "song_forge.messages.reference_loaded",
+                    source=artifact.source_module,
+                    summary=artifact.context_summary(),
+                ),
                 "info",
             )
         return True
@@ -776,6 +813,7 @@ class SongForgeView(QWidget):
                 self._quick_tags.setText(tags)
 
     def _on_cover_mode_changed(self, mode: str):
+        mode = mode or "Normal"
         uses_source = mode in {"Cover", "Extend", "Repaint"}
         is_repaint = mode == "Repaint"
         self._cover_browse_btn.setEnabled(uses_source)
@@ -784,15 +822,15 @@ class SongForgeView(QWidget):
         self._repaint_end_spin.setEnabled(is_repaint)
         if mode == "Extend":
             self._duration_spin.setToolTip(
-                "Additional seconds to generate after the source endpoint."
+                tr("song_forge.canvas.extend_duration_tooltip")
             )
         else:
-            self._duration_spin.setToolTip("Target generated song duration.")
+            self._duration_spin.setToolTip(tr("song_forge.canvas.duration_tooltip"))
 
     def _on_browse_cover_source(self):
         path, _ = open_audio_file(
             self,
-            "Select Source Audio",
+            tr("song_forge.dialogs.select_source_audio"),
             operation_kind="song_forge_source_import",
             dialog=QFileDialog,
         )
@@ -814,7 +852,7 @@ class SongForgeView(QWidget):
         self._tag_browser.set_tags(tag_str)
         self._quick_tags.setText(tag_str)
         if self._toast:
-            self._toast.show_toast("Genre fusion tags applied", "success")
+            self._toast.show_toast(tr("song_forge.messages.fusion_applied"), "success")
 
     def _generation_active(self) -> bool:
         """Return whether a generation is active, including cancellation drain time."""
@@ -827,14 +865,17 @@ class SongForgeView(QWidget):
         """Restore a Song Forge replay spec and adopt its queued job record."""
         if getattr(record, "kind", "") != "song_generation":
             self._status.setText(
-                f"Queued {getattr(record, 'label', 'job')}; no Song Forge runner is registered."
+                tr(
+                    "song_forge.status.no_runner",
+                    label=getattr(record, "label", tr("song_forge.status.job")),
+                )
             )
             return
         metadata = getattr(record, "metadata", {})
         replay = metadata.get("replay") if isinstance(metadata, dict) else None
         if not isinstance(replay, dict):
             self._status.setText(
-                "This job has no replay inputs; start a new Song Forge run."
+                tr("song_forge.status.no_replay_inputs")
             )
             return
         self.set_lyrics(str(replay.get("lyrics", "") or ""))
@@ -855,11 +896,15 @@ class SongForgeView(QWidget):
             "extend": "Extend",
             "repaint": "Repaint",
         }.get(mode, "Normal")
-        self._cover_mode_combo.setCurrentText(cover_mode)
+        mode_index = self._cover_mode_combo.findData(cover_mode)
+        if mode_index >= 0:
+            self._cover_mode_combo.setCurrentIndex(mode_index)
         source_path = str(replay.get("source_audio_path", "") or "")
         self._cover_source_path = source_path
         self._cover_source_label.setText(
-            Path(source_path).name if source_path else "No file selected"
+            Path(source_path).name
+            if source_path
+            else tr("song_forge.canvas.no_file_selected")
         )
         self._repaint_start_spin.setValue(float(replay.get("repaint_start", 0.0) or 0.0))
         self._repaint_end_spin.setValue(float(replay.get("repaint_end", 30.0) or 30.0))
@@ -879,7 +924,7 @@ class SongForgeView(QWidget):
         if self._generation_active():
             if self._toast:
                 self._toast.show_toast(
-                    "Wait for the current generation to finish", "warning"
+                    tr("song_forge.messages.wait_for_generation"), "warning"
                 )
             return
 
@@ -888,11 +933,12 @@ class SongForgeView(QWidget):
 
         if not lyrics and not tags:
             if self._toast:
-                self._toast.show_toast("Add lyrics or style tags first", "warning")
+                self._toast.show_toast(tr("song_forge.messages.add_prompt"), "warning")
             return
 
         advanced = self._mode_tabs.currentIndex() == 1
-        cover_mode = self._cover_mode_combo.currentText() if advanced else "Normal"
+        cover_mode = self._cover_mode_combo.currentData() if advanced else "Normal"
+        cover_mode = cover_mode or "Normal"
         if cover_mode != "Normal":
             if (
                 not self._cover_source_path
@@ -900,7 +946,10 @@ class SongForgeView(QWidget):
             ):
                 if self._toast:
                     self._toast.show_toast(
-                        f"Select a source audio file for {cover_mode.lower()}",
+                        tr(
+                            "song_forge.messages.select_source_for_mode",
+                            mode=tr(_COVER_MODE_KEYS[cover_mode]).lower(),
+                        ),
                         "warning",
                     )
                 return
@@ -911,7 +960,7 @@ class SongForgeView(QWidget):
             ):
                 if self._toast:
                     self._toast.show_toast(
-                        "Repaint end must be later than its start",
+                        tr("song_forge.messages.repaint_end_invalid"),
                         "warning",
                     )
                 return
@@ -921,8 +970,8 @@ class SongForgeView(QWidget):
         self._cancel_btn.show()
         self._progress.setValue(0)
         self._progress.show()
-        self._status.setText("Starting generation...")
-        self._set_session_state("Rendering locally", Palette.BLUE)
+        self._status.setText(tr("song_forge.status.starting_generation"))
+        self._set_session_state(tr("song_forge.session.rendering_locally"), Palette.BLUE)
 
         # Determine batch count
         batch_count = 1
@@ -1001,7 +1050,7 @@ class SongForgeView(QWidget):
                 infer_steps=steps,
                 shift=shift,
                 job_kind="song_generation",
-                job_label="Song Forge cover",
+                job_label=tr("song_forge.jobs.cover"),
                 job_inputs=job_inputs,
                 job_metadata=job_metadata,
                 resume_job_id=resume_job_id,
@@ -1021,7 +1070,7 @@ class SongForgeView(QWidget):
                 infer_steps=steps,
                 shift=shift,
                 job_kind="song_generation",
-                job_label="Song Forge extension",
+                job_label=tr("song_forge.jobs.extension"),
                 job_inputs=job_inputs,
                 job_metadata=job_metadata,
                 resume_job_id=resume_job_id,
@@ -1043,7 +1092,7 @@ class SongForgeView(QWidget):
                 infer_steps=steps,
                 shift=shift,
                 job_kind="song_generation",
-                job_label="Song Forge repaint",
+                job_label=tr("song_forge.jobs.repaint"),
                 job_inputs=job_inputs,
                 job_metadata=job_metadata,
                 resume_job_id=resume_job_id,
@@ -1060,7 +1109,7 @@ class SongForgeView(QWidget):
                 shift=shift,
                 long_form=long_form,
                 job_kind="song_generation",
-                job_label=f"Song Forge batch ({batch_count})",
+                job_label=tr("song_forge.jobs.batch", count=batch_count),
                 job_inputs=job_inputs,
                 job_metadata=job_metadata,
                 resume_job_id=resume_job_id,
@@ -1077,7 +1126,7 @@ class SongForgeView(QWidget):
                 shift=shift,
                 long_form=long_form,
                 job_kind="song_generation",
-                job_label="Song Forge generation",
+                job_label=tr("song_forge.jobs.generation"),
                 job_inputs=job_inputs,
                 job_metadata=job_metadata,
                 resume_job_id=resume_job_id,
@@ -1098,8 +1147,8 @@ class SongForgeView(QWidget):
             return
         worker.cancel()
         self._cancel_btn.setEnabled(False)
-        self._status.setText("Cancellation requested; finishing current step...")
-        self._set_session_state("Cancellation requested", Palette.YELLOW)
+        self._status.setText(tr("song_forge.status.cancellation_requested"))
+        self._set_session_state(tr("song_forge.session.cancellation_requested"), Palette.YELLOW)
 
     def _on_progress(self, pct: int):
         if not self._is_current_worker_signal():
@@ -1109,6 +1158,7 @@ class SongForgeView(QWidget):
     def _on_step(self, msg: str):
         if not self._is_current_worker_signal():
             return
+        # Adapter-provided progress text is runtime data, not static UI copy.
         self._status.setText(msg)
 
     def _on_finished(self, result: dict):
@@ -1118,7 +1168,7 @@ class SongForgeView(QWidget):
         self._refresh_persistent_jobs()
 
         if result.get("cancelled"):
-            self._status.setText("Cancelled")
+            self._status.setText(tr("song_forge.status.cancelled"))
             return
 
         # Batch result
@@ -1126,9 +1176,11 @@ class SongForgeView(QWidget):
             self._batch_view.set_results(result["results"])
             self._sub_tabs.setCurrentWidget(self._batch_view)
             count = result.get("count", 0)
-            self._status.setText(f"Generated {count} variations")
+            self._status.setText(tr("song_forge.status.batch_generated", count=count))
             if self._toast:
-                self._toast.show_toast(f"Batch complete: {count} variations", "success")
+                self._toast.show_toast(
+                    tr("song_forge.messages.batch_complete", count=count), "success"
+                )
 
             # Load first result into main waveform
             if result["results"]:
@@ -1141,7 +1193,13 @@ class SongForgeView(QWidget):
                 )
                 recovered = sum(1 for item in result["results"] if item.get("vocal_stem_path"))
                 if recovered:
-                    self._status.setText(f"Generated {count} variations; recovered {recovered} vocal stems")
+                    self._status.setText(
+                        tr(
+                            "song_forge.status.batch_recovered",
+                            count=count,
+                            recovered=recovered,
+                        )
+                    )
         else:
             # Single result
             self._load_output(
@@ -1155,23 +1213,39 @@ class SongForgeView(QWidget):
             if result.get("mode") == "long_form":
                 sections = len(result.get("sections", []))
                 self._status.setText(
-                    f"Generated stitched long-form song ({sections} sections) in {gen_time:.1f}s{stem_status}"
+                    tr(
+                        "song_forge.status.long_form_generated",
+                        sections=sections,
+                        seconds=gen_time,
+                        stem_status=stem_status,
+                    )
                 )
             else:
-                self._status.setText(f"Generated in {gen_time:.1f}s (seed: {result.get('seed', '?')}){stem_status}")
+                self._status.setText(
+                    tr(
+                        "song_forge.status.generated",
+                        seconds=gen_time,
+                        seed=result.get("seed", "?"),
+                        stem_status=stem_status,
+                    )
+                )
             if self._toast:
-                self._toast.show_toast(f"Song generated in {gen_time:.1f}s", "success")
+                self._toast.show_toast(
+                    tr("song_forge.messages.song_generated", seconds=gen_time), "success"
+                )
 
     def _on_error(self, error_msg: str):
         if not self._is_current_worker_signal():
             return
         self._reset_ui()
         self._refresh_persistent_jobs()
-        self._status.setText(f"Error: {error_msg[:100]}")
+        self._status.setText(tr("song_forge.status.generation_error", error=error_msg[:100]))
         self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 8.25pt;")
-        self._set_session_state("Generation failed", Palette.RED)
+        self._set_session_state(tr("song_forge.session.generation_failed"), Palette.RED)
         if self._toast:
-            self._toast.show_toast(f"Generation failed: {error_msg[:80]}", "error")
+            self._toast.show_toast(
+                tr("song_forge.messages.generation_failed", error=error_msg[:80]), "error"
+            )
 
     def _apply_seed_results(self, items: list[dict]):
         """Render completed seed cells and return their coordinates and counts."""
@@ -1190,7 +1264,9 @@ class SongForgeView(QWidget):
             audio_path = item.get("audio_path", "")
             if not audio_path or not Path(audio_path).is_file():
                 failures += 1
-                self._seed_explorer.set_cell_failed(row, col, "Output unavailable")
+                self._seed_explorer.set_cell_failed(
+                    row, col, tr("song_forge.status.output_unavailable")
+                )
                 continue
             seed = int(item.get("seed", 0))
             self._seed_explorer.set_cell_result(row, col, audio_path, seed)
@@ -1217,14 +1293,16 @@ class SongForgeView(QWidget):
             for cell in self._seed_explore_params:
                 key = (int(cell.get("row", 0)), int(cell.get("col", 0)))
                 if key not in completed:
-                    self._seed_explorer.set_cell_failed(*key, "Cancelled")
+                    self._seed_explorer.set_cell_failed(
+                        *key, tr("song_forge.status.cancelled")
+                    )
             self._seed_explore_params = []
             self._reset_ui()
             self._refresh_persistent_jobs()
             self._status.setText(
-                f"Seed exploration cancelled; kept {len(successes)} completed"
+                tr("song_forge.status.seed_cancelled_kept", count=len(successes))
             )
-            self._set_session_state("Generation cancelled", Palette.YELLOW)
+            self._set_session_state(tr("song_forge.session.generation_cancelled"), Palette.YELLOW)
             return
 
         if isinstance(partial, list):
@@ -1242,7 +1320,7 @@ class SongForgeView(QWidget):
                 self._batch_view.set_results(batch_results)
                 self._sub_tabs.setCurrentWidget(self._batch_view)
                 self._status.setText(
-                    f"Generation cancelled; kept {len(batch_results)} completed"
+                    tr("song_forge.status.generation_cancelled_kept", count=len(batch_results))
                 )
         self._reset_ui()
         self._refresh_persistent_jobs()
@@ -1258,9 +1336,9 @@ class SongForgeView(QWidget):
             self._worker = None
         self._status.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 8.25pt;")
         if self._current_audio_path:
-            self._set_session_state("Render ready", Palette.GREEN)
+            self._set_session_state(tr("song_forge.session.render_ready"), Palette.GREEN)
         else:
-            self._set_session_state("Ready", Palette.TEAL)
+            self._set_session_state(tr("song_forge.session.ready"), Palette.TEAL)
 
     def _load_output(
         self,
@@ -1274,7 +1352,7 @@ class SongForgeView(QWidget):
             return
         self._current_audio_path = audio_path
         self._current_vocal_stem_path = vocal_stem_path or ""
-        self._set_session_state("Render ready", Palette.GREEN)
+        self._set_session_state(tr("song_forge.session.render_ready"), Palette.GREEN)
         try:
             self._waveform.load_audio(audio_path)
         except Exception:
@@ -1288,13 +1366,16 @@ class SongForgeView(QWidget):
         import os
         try:
             size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-            info = f"seed: {seed} | {size_mb:.1f} MB"
+            info = tr("song_forge.output.info", seed=seed, size_mb=size_mb)
         except (OSError, TypeError):
-            info = f"seed: {seed} | size unavailable"
+            info = tr("song_forge.output.info_unavailable", seed=seed)
         if self._current_vocal_stem_path:
-            info += f" | vocals: {os.path.basename(self._current_vocal_stem_path)}"
+            info += tr(
+                "song_forge.output.vocals_file",
+                name=os.path.basename(self._current_vocal_stem_path),
+            )
         elif vocal_stem_error:
-            info += " | vocals: unavailable"
+            info += tr("song_forge.output.vocals_unavailable")
         self._output_info.setText(info)
 
     def _set_session_state(self, text: str, color: str):
@@ -1308,9 +1389,12 @@ class SongForgeView(QWidget):
     def _format_vocal_recovery_status(self, result: dict) -> str:
         if result.get("vocal_stem_path"):
             import os
-            return f"; vocal stem: {os.path.basename(result['vocal_stem_path'])}"
+            return tr(
+                "song_forge.status.vocal_stem_file",
+                name=os.path.basename(result["vocal_stem_path"]),
+            )
         if result.get("vocal_stem_error"):
-            return "; vocal stem unavailable"
+            return tr("song_forge.status.vocal_stem_unavailable")
         return ""
 
     # ── Playback ──────────────────────────────────────────────────────────────
@@ -1340,7 +1424,7 @@ class SongForgeView(QWidget):
         worker.cancelled.connect(
             lambda t=token, w=worker: self._on_playback_cancelled(t, w)
         )
-        self._status.setText("Loading preview... 0%")
+        self._status.setText(tr("song_forge.status.loading_preview", percent=0))
         worker.start()
 
     def _release_playback_worker_later(self, worker):
@@ -1356,7 +1440,7 @@ class SongForgeView(QWidget):
 
     def _on_playback_progress(self, token: int, percent: int):
         if token == self._playback_token:
-            self._status.setText(f"Loading preview... {percent}%")
+            self._status.setText(tr("song_forge.status.loading_preview", percent=percent))
 
     def _on_playback_ready(self, token: int, worker, payload):
         self._release_playback_worker_later(worker)
@@ -1367,9 +1451,9 @@ class SongForgeView(QWidget):
             audio, sample_rate = payload
             engine = AudioEngine()
             if not engine.load_array(audio, sample_rate):
-                raise RuntimeError("Audio playback rejected the decoded buffer")
+                raise RuntimeError(tr("song_forge.status.playback_rejected"))
             engine.play()
-            self._status.setText("Playing preview")
+            self._status.setText(tr("song_forge.status.playing_preview"))
         except Exception as exc:
             self._on_playback_error(token, worker, str(exc))
 
@@ -1379,13 +1463,15 @@ class SongForgeView(QWidget):
             return
         self._playback_worker = None
         if self._toast:
-            self._toast.show_toast(f"Playback error: {message}", "error")
+            self._toast.show_toast(
+                tr("song_forge.messages.playback_error", error=message), "error"
+            )
 
     def _on_playback_cancelled(self, token: int, worker):
         self._release_playback_worker_later(worker)
         if token == self._playback_token:
             self._playback_worker = None
-            self._status.setText("Preview loading cancelled")
+            self._status.setText(tr("song_forge.status.preview_cancelled"))
 
     def _on_send_vocal_stem(self):
         if self._current_vocal_stem_path:
@@ -1396,14 +1482,14 @@ class SongForgeView(QWidget):
     def _on_export(self):
         if self._export_worker is not None and self._export_worker.isRunning():
             self._export_worker.cancel()
-            self._output_info.setText("Cancelling export...")
+            self._output_info.setText(tr("song_forge.status.cancelling_export"))
             return
         if not self._current_audio_path:
             return
 
         path, selected_filter = save_audio_file(
             self,
-            "Export Audio",
+            tr("song_forge.dialogs.export_audio"),
             "song.wav",
             operation_kind="song_forge_audio_export",
             dialog=QFileDialog,
@@ -1420,7 +1506,9 @@ class SongForgeView(QWidget):
                 ExportSettings(format=fmt),
             )
             worker.progress.connect(
-                lambda pct: self._output_info.setText(f"Exporting... {pct}%")
+                lambda pct: self._output_info.setText(
+                    tr("song_forge.status.exporting", percent=pct)
+                )
             )
             worker.finished.connect(self._on_export_finished)
             worker.error.connect(self._on_export_error)
@@ -1428,8 +1516,8 @@ class SongForgeView(QWidget):
             self._export_workers.add(worker)
             self._export_worker = worker
             self._export_btn.setEnabled(False)
-            self._export_btn.setText("Cancel Export")
-            self._output_info.setText("Exporting... 0%")
+            self._export_btn.setText(tr("song_forge.actions.cancel_export"))
+            self._output_info.setText(tr("song_forge.status.exporting", percent=0))
             worker.start()
 
     def _release_export_worker_later(self, worker):
@@ -1446,7 +1534,7 @@ class SongForgeView(QWidget):
     def _restore_export_button(self):
         if self._current_audio_path:
             self._export_btn.setEnabled(True)
-            self._export_btn.setText("Export")
+            self._export_btn.setText(tr("song_forge.actions.export"))
 
     def _on_export_finished(self, payload: dict):
         worker = self._export_worker
@@ -1456,11 +1544,13 @@ class SongForgeView(QWidget):
         if self._toast:
             if warnings:
                 self._toast.show_toast(
-                    f"Exported with license warning: {warnings[0]}",
+                    tr("song_forge.messages.exported_license_warning", warning=warnings[0]),
                     "warning",
                 )
             else:
-                self._toast.show_toast(f"Exported to {payload['path']}", "success")
+                self._toast.show_toast(
+                    tr("song_forge.messages.exported", path=payload["path"]), "success"
+                )
         self._restore_export_button()
 
     def _on_export_error(self, message: str):
@@ -1468,14 +1558,16 @@ class SongForgeView(QWidget):
         self._release_export_worker_later(worker)
         self._export_worker = None
         if self._toast:
-            self._toast.show_toast(f"Export failed: {message}", "error")
+            self._toast.show_toast(
+                tr("song_forge.messages.export_failed", error=message), "error"
+            )
         self._restore_export_button()
 
     def _on_export_cancelled(self):
         worker = self._export_worker
         self._release_export_worker_later(worker)
         self._export_worker = None
-        self._output_info.setText("Export cancelled")
+        self._output_info.setText(tr("song_forge.status.export_cancelled"))
         self._restore_export_button()
 
     # ── Batch Result ──────────────────────────────────────────────────────────
@@ -1483,7 +1575,7 @@ class SongForgeView(QWidget):
     def _use_batch_result(self, audio_path: str):
         self._load_output(audio_path)
         if self._toast:
-            self._toast.show_toast("Result loaded as primary output", "info")
+            self._toast.show_toast(tr("song_forge.messages.result_loaded"), "info")
 
     # ── Seed Explorer ─────────────────────────────────────────────────────────
 
@@ -1491,7 +1583,9 @@ class SongForgeView(QWidget):
         """Handle seed explorer grid generation request."""
         if self._generation_active():
             if self._toast:
-                self._toast.show_toast("Wait for the current generation to finish", "warning")
+                self._toast.show_toast(
+                    tr("song_forge.messages.wait_for_generation"), "warning"
+                )
             return
 
         lyrics = self._get_lyrics()
@@ -1501,10 +1595,12 @@ class SongForgeView(QWidget):
                 self._seed_explorer.set_cell_failed(
                     int(cell.get("row", 0)),
                     int(cell.get("col", 0)),
-                    "Missing prompt",
+                    tr("song_forge.status.missing_prompt"),
                 )
             if self._toast:
-                self._toast.show_toast("Add lyrics or style tags before exploring seeds", "warning")
+                self._toast.show_toast(
+                    tr("song_forge.messages.add_prompt_for_seeds"), "warning"
+                )
             return
 
         duration = self._duration_spin.value() if self._mode_tabs.currentIndex() == 1 else 60.0
@@ -1522,8 +1618,8 @@ class SongForgeView(QWidget):
         self._progress.setValue(0)
         self._progress.show()
         self._sub_tabs.setCurrentWidget(self._seed_explorer)
-        self._status.setText("Starting seed exploration...")
-        self._set_session_state("Exploring seed grid", Palette.BLUE)
+        self._status.setText(tr("song_forge.status.starting_seed_exploration"))
+        self._set_session_state(tr("song_forge.session.exploring_seed_grid"), Palette.BLUE)
 
         generate_seed_grid = self._song_generator_operation("generate_seed_grid")
         self._worker = InferenceWorker(
@@ -1535,7 +1631,7 @@ class SongForgeView(QWidget):
             infer_steps=steps,
             long_form=long_form,
             job_kind="song_generation",
-            job_label=f"Seed Explorer grid ({len(params_list)} cells)",
+            job_label=tr("song_forge.jobs.seed_grid", count=len(params_list)),
             job_inputs={
                 "duration": duration,
                 "cell_count": len(params_list),
@@ -1555,7 +1651,7 @@ class SongForgeView(QWidget):
         if self._toast:
             count = len(params_list)
             self._toast.show_toast(
-                f"Seed exploration started: {count} cells", "info"
+                tr("song_forge.messages.seed_started", count=count), "info"
             )
 
     def _on_seed_finished(self, result: dict):
@@ -1567,18 +1663,22 @@ class SongForgeView(QWidget):
         self._seed_explore_params = []
 
         if result.get("cancelled"):
-            self._status.setText("Seed exploration cancelled")
+            self._status.setText(tr("song_forge.status.seed_cancelled"))
             return
 
         results = result.get("results", [])
         _completed, successes, failures = self._apply_seed_results(results)
 
         self._status.setText(
-            f"Seed exploration complete: {len(successes)} generated, {failures} failed"
+            tr(
+                "song_forge.status.seed_complete",
+                generated=len(successes),
+                failed=failures,
+            )
         )
         if self._toast:
             self._toast.show_toast(
-                f"Seed exploration complete: {len(successes)} generated",
+                tr("song_forge.messages.seed_complete", generated=len(successes)),
                 "success" if successes else "warning",
             )
 
@@ -1595,11 +1695,13 @@ class SongForgeView(QWidget):
                 error_msg,
             )
         self._seed_explore_params = []
-        self._status.setText(f"Seed exploration error: {error_msg[:100]}")
+        self._status.setText(tr("song_forge.status.seed_error", error=error_msg[:100]))
         self._status.setStyleSheet(f"color: {Palette.RED}; font-size: 8.25pt;")
-        self._set_session_state("Seed exploration failed", Palette.RED)
+        self._set_session_state(tr("song_forge.session.seed_failed"), Palette.RED)
         if self._toast:
-            self._toast.show_toast(f"Seed exploration failed: {error_msg[:80]}", "error")
+            self._toast.show_toast(
+                tr("song_forge.messages.seed_failed", error=error_msg[:80]), "error"
+            )
 
     # ── Reference Panel ───────────────────────────────────────────────────────
 
@@ -1624,11 +1726,13 @@ class SongForgeView(QWidget):
             self._mood_curve.set_reference_curve(energy)
 
         if self._toast:
-            self._toast.show_toast("Reference analysis applied to parameters", "success")
+            self._toast.show_toast(
+                tr("song_forge.messages.reference_analysis_applied"), "success"
+            )
 
     def _on_reference_tags(self, tag_str: str):
         """Just use the extracted tags without full match."""
         self._quick_tags.setText(tag_str)
         self._tag_browser.set_tags(tag_str)
         if self._toast:
-            self._toast.show_toast("Reference tags applied", "info")
+            self._toast.show_toast(tr("song_forge.messages.reference_tags_applied"), "info")

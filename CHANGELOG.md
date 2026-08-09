@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Song Forge labels, prompts, source-mode controls, generation/export status,
+  style-tag browser, result tabs, job labels, and accessibility descriptions to the locale
+  catalog while preserving raw engine taxonomy and mode IDs.
+
 - Migrated lyrics editor advisory feedback, editor controls, context-menu actions, and
   accessibility descriptions to the locale catalog.
 
