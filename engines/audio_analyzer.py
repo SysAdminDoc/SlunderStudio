@@ -4,6 +4,8 @@ Reference track analysis: BPM, key, energy envelope, spectral features,
 genre estimation, and song structure detection via librosa.
 """
 import hashlib
+import copy
+import math
 import threading
 from collections import OrderedDict
 
@@ -13,6 +15,9 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 from core.model_security import assert_safe_transformers_snapshot
+
+
+ANALYSIS_CONSTRAINTS_VERSION = 1
 
 
 @dataclass
@@ -25,9 +30,11 @@ class AudioAnalysis:
     bpm: float = 0.0
     bpm_confidence: float = 0.0
     beat_times: list = field(default_factory=list)
+    bpm_alternatives: list = field(default_factory=list)
     # Key
     key: str = ""  # e.g., "C major", "A minor"
     key_confidence: float = 0.0
+    key_alternatives: list = field(default_factory=list)
     # Energy
     energy_mean: float = 0.0
     energy_std: float = 0.0
@@ -46,15 +53,132 @@ class AudioAnalysis:
     clap_embedding: list = field(default_factory=list)
     clap_style_tags: list = field(default_factory=list)
     clap_similarity: dict = field(default_factory=dict)
+    # Explicit user corrections.  The fields above remain raw analyzer output
+    # so cached measurements and generated-artifact provenance are never
+    # silently overwritten by an editor action.
+    corrected_bpm: Optional[float] = None
+    corrected_key: Optional[str] = None
+    corrected_sections: Optional[list] = None
+
+    @property
+    def effective_bpm(self) -> float:
+        """Return the BPM that downstream generation should trust."""
+        return float(self.corrected_bpm if self.corrected_bpm is not None else self.bpm)
+
+    @property
+    def effective_key(self) -> str:
+        """Return the key that downstream generation should trust."""
+        return str(self.corrected_key if self.corrected_key is not None else self.key)
+
+    @property
+    def effective_sections(self) -> list:
+        """Return corrected section boundaries when present, otherwise raw."""
+        sections = self.corrected_sections if self.corrected_sections is not None else self.sections
+        return _copy_sections(sections)
+
+    @property
+    def has_corrections(self) -> bool:
+        return any(
+            value is not None
+            for value in (self.corrected_bpm, self.corrected_key, self.corrected_sections)
+        )
+
+    def apply_corrections(
+        self,
+        *,
+        bpm: Optional[float] = None,
+        key: Optional[str] = None,
+        sections: Optional[list] = None,
+    ) -> None:
+        """Apply validated user constraints without changing raw measurements.
+
+        Omitted values leave an existing correction untouched.  Call
+        ``clear_corrections`` first when a caller wants to replace the complete
+        correction set, as the reference editor does.
+        """
+        if bpm is not None:
+            try:
+                parsed_bpm = float(bpm)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("BPM must be a number") from exc
+            if not math.isfinite(parsed_bpm) or not 20.0 <= parsed_bpm <= 300.0:
+                raise ValueError("BPM must be between 20 and 300")
+            self.corrected_bpm = parsed_bpm
+
+        if key is not None:
+            parsed_key = str(key).strip()
+            if parsed_key not in _valid_key_values():
+                raise ValueError("Key must use a supported major or minor value")
+            self.corrected_key = parsed_key
+
+        if sections is not None:
+            self.corrected_sections = _normalize_sections(sections, self.duration)
+
+    def clear_corrections(self) -> None:
+        """Remove all user constraints while retaining raw analysis output."""
+        self.corrected_bpm = None
+        self.corrected_key = None
+        self.corrected_sections = None
+
+    def to_generation_constraints(self) -> dict:
+        """Serialize the effective constraints with raw and correction lineage."""
+        return {
+            "schema_version": ANALYSIS_CONSTRAINTS_VERSION,
+            "bpm": self.effective_bpm,
+            "key": self.effective_key,
+            "sections": self.effective_sections,
+            "raw": {
+                "bpm": float(self.bpm),
+                "bpm_confidence": float(self.bpm_confidence),
+                "bpm_alternatives": copy.deepcopy(self.bpm_alternatives),
+                "key": self.key,
+                "key_confidence": float(self.key_confidence),
+                "key_alternatives": copy.deepcopy(self.key_alternatives),
+                "sections": _copy_sections(self.sections),
+            },
+            "corrections": {
+                "bpm": self.corrected_bpm,
+                "key": self.corrected_key,
+                "sections": (
+                    None
+                    if self.corrected_sections is None
+                    else _copy_sections(self.corrected_sections)
+                ),
+            },
+            "confidence": {
+                "bpm": float(self.bpm_confidence),
+                "key": float(self.key_confidence),
+            },
+            "alternatives": {
+                "bpm": copy.deepcopy(self.bpm_alternatives),
+                "key": copy.deepcopy(self.key_alternatives),
+            },
+            "provenance": {
+                "source": "reference_analysis",
+                "analyzer_version": int(globals().get("ANALYZER_VERSION", 0)),
+                "heuristic_tags": True,
+            },
+        }
 
     def to_dict(self) -> dict:
+        constraints = self.to_generation_constraints()
         return {
             "file_path": self.file_path,
             "duration": self.duration,
+            "sample_rate": self.sample_rate,
             "bpm": self.bpm,
+            "bpm_confidence": self.bpm_confidence,
+            "beat_times": self.beat_times,
+            "bpm_alternatives": self.bpm_alternatives,
             "key": self.key,
+            "key_confidence": self.key_confidence,
+            "key_alternatives": self.key_alternatives,
             "energy_mean": self.energy_mean,
+            "energy_std": self.energy_std,
+            "energy_curve": self.energy_curve,
+            "energy_times": self.energy_times,
             "brightness_mean": self.brightness_mean,
+            "brightness_std": self.brightness_std,
             "onset_density": self.onset_density,
             "suggested_tags": self.suggested_tags,
             "suggested_tempo_tag": self.suggested_tempo_tag,
@@ -62,14 +186,82 @@ class AudioAnalysis:
             "clap_style_tags": self.clap_style_tags,
             "clap_similarity": self.clap_similarity,
             "sections": self.sections,
+            "raw": constraints["raw"],
+            "corrections": constraints["corrections"],
+            "effective": {
+                "bpm": constraints["bpm"],
+                "key": constraints["key"],
+                "sections": constraints["sections"],
+            },
+            "generation_constraints": constraints,
         }
 
     def to_ace_step_tags(self) -> str:
         """Convert analysis to ACE-Step compatible tag string."""
         tags = _dedupe_tags([*self.suggested_tags, *self.clap_style_tags])
-        if self.suggested_tempo_tag:
+        if self.corrected_bpm is not None and self.effective_bpm > 0:
+            tags.append(_bpm_to_tag(self.effective_bpm))
+        elif self.suggested_tempo_tag:
             tags.append(self.suggested_tempo_tag)
+        if self.corrected_key:
+            tags.append(self.effective_key)
         return ", ".join(_dedupe_tags(tags))
+
+    def clone(self) -> "AudioAnalysis":
+        """Return an independent analysis for an editable UI session."""
+        return copy.deepcopy(self)
+
+
+def _valid_key_values() -> set[str]:
+    return {f"{name} {mode}" for name in KEY_NAMES for mode in ("major", "minor")}
+
+
+def _copy_sections(sections) -> list:
+    if not sections:
+        return []
+    return [
+        {
+            "start": float(section.get("start", 0.0)),
+            "end": float(section.get("end", 0.0)),
+            "label": str(section.get("label", "Section")),
+        }
+        for section in sections
+        if isinstance(section, dict)
+    ]
+
+
+def _normalize_sections(sections, duration: float) -> list:
+    """Validate and normalize editable section boundaries."""
+    if not isinstance(sections, list) or not sections:
+        raise ValueError("At least one section is required")
+
+    normalized = []
+    for index, section in enumerate(sections):
+        if not isinstance(section, dict):
+            raise ValueError("Each section must be an object")
+        try:
+            start = float(section.get("start"))
+            end = float(section.get("end"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Section boundaries must be numbers") from exc
+        if not math.isfinite(start) or not math.isfinite(end):
+            raise ValueError("Section boundaries must be finite")
+        if start < 0 or end <= start:
+            raise ValueError("Section end must be after its start")
+        if duration > 0 and end > float(duration) + 1e-3:
+            raise ValueError("Section end cannot exceed the track duration")
+        label = str(section.get("label", "")).strip() or f"Section {index + 1}"
+        normalized.append({
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "label": label,
+        })
+
+    normalized.sort(key=lambda section: section["start"])
+    for previous, current in zip(normalized, normalized[1:]):
+        if current["start"] < previous["end"] - 1e-3:
+            raise ValueError("Sections cannot overlap")
+    return normalized
 
 
 # ── Key Detection ──────────────────────────────────────────────────────────────
@@ -77,7 +269,7 @@ class AudioAnalysis:
 KEY_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 
-def _detect_key(y, sr) -> tuple[str, float]:
+def _detect_key(y, sr, *, include_alternatives: bool = False):
     """Detect musical key using chroma features."""
     from core.deps import ensure
     ensure("librosa")
@@ -89,22 +281,47 @@ def _detect_key(y, sr) -> tuple[str, float]:
     major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
     minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
 
-    best_corr = -1.0
-    best_key = "C major"
+    candidates = []
 
     for i in range(12):
         rolled = np.roll(chroma_mean, -i)
         maj_corr = np.corrcoef(rolled, major_profile)[0, 1]
         min_corr = np.corrcoef(rolled, minor_profile)[0, 1]
+        for mode, correlation in (("major", maj_corr), ("minor", min_corr)):
+            if np.isfinite(correlation):
+                candidates.append((float(correlation), f"{KEY_NAMES[i]} {mode}"))
 
-        if maj_corr > best_corr:
-            best_corr = maj_corr
-            best_key = f"{KEY_NAMES[i]} major"
-        if min_corr > best_corr:
-            best_corr = min_corr
-            best_key = f"{KEY_NAMES[i]} minor"
+    ranked = sorted(candidates, key=lambda item: item[0], reverse=True)
+    if ranked:
+        best_corr, best_key = ranked[0]
+    else:
+        best_corr, best_key = -1.0, "C major"
+    alternatives = [
+        {
+            "value": key,
+            "confidence": round(max(0.0, correlation), 4),
+            "rank": rank,
+        }
+        for rank, (correlation, key) in enumerate(ranked[1:5], start=2)
+    ]
 
-    return best_key, max(0.0, best_corr)
+    result = (best_key, max(0.0, best_corr))
+    if include_alternatives:
+        return (*result, alternatives)
+    return result
+
+
+def _bpm_alternatives(bpm: float, confidence: float) -> list[dict]:
+    """Expose common half-time/double-time interpretations of beat tracking."""
+    alternatives = []
+    for value, reason in ((bpm / 2.0, "half-time"), (bpm * 2.0, "double-time")):
+        if 20.0 <= value <= 300.0 and abs(value - bpm) >= 1.0:
+            alternatives.append({
+                "value": round(float(value), 2),
+                "confidence": round(max(0.0, min(1.0, confidence * 0.65)), 4),
+                "reason": reason,
+            })
+    return alternatives
 
 
 # ── Tempo Tag Mapping ──────────────────────────────────────────────────────────
@@ -243,7 +460,7 @@ def infer_clap_style_tags(analysis: AudioAnalysis, limit: int = 5) -> tuple[list
 
 # Bump when the analysis changes shape or meaning; cached results keyed on an
 # older version are ignored rather than silently reused.
-ANALYZER_VERSION = 2
+ANALYZER_VERSION = 3
 _ANALYSIS_CACHE: "OrderedDict[str, AudioAnalysis]" = OrderedDict()
 _ANALYSIS_CACHE_LIMIT = 32
 _ANALYSIS_CACHE_LOCK = threading.Lock()
@@ -357,6 +574,9 @@ def analyze_track(
         analysis.bpm = float(tempo)
     analysis.beat_times = librosa.frames_to_time(beats, sr=sr).tolist()
     analysis.bpm_confidence = min(1.0, len(analysis.beat_times) / (analysis.duration / 2))
+    analysis.bpm_alternatives = _bpm_alternatives(
+        analysis.bpm, analysis.bpm_confidence
+    )
     analysis.suggested_tempo_tag = _bpm_to_tag(analysis.bpm)
 
     _raise_if_cancelled(cancel_event, file_path)
@@ -367,7 +587,11 @@ def analyze_track(
     if progress_cb:
         progress_cb(30)
 
-    analysis.key, analysis.key_confidence = _detect_key(y, sr)
+    (
+        analysis.key,
+        analysis.key_confidence,
+        analysis.key_alternatives,
+    ) = _detect_key(y, sr, include_alternatives=True)
 
     _raise_if_cancelled(cancel_event, file_path)
 

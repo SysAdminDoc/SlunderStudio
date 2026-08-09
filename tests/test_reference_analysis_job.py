@@ -121,6 +121,82 @@ class AnalysisCancellationTests(unittest.TestCase):
         self.assertIsNone(cached_analysis(key))
 
 
+class AnalysisConstraintTests(unittest.TestCase):
+    def test_corrections_preserve_raw_values_and_serialize_lineage(self):
+        analysis = AudioAnalysis(
+            duration=120.0,
+            bpm=128.0,
+            bpm_confidence=0.42,
+            bpm_alternatives=[{"value": 64.0, "reason": "half-time"}],
+            key="C major",
+            key_confidence=0.31,
+            key_alternatives=[{"value": "A minor", "confidence": 0.28}],
+            sections=[
+                {"start": 0.0, "end": 60.0, "label": "Intro"},
+                {"start": 60.0, "end": 120.0, "label": "Chorus"},
+            ],
+        )
+
+        analysis.apply_corrections(
+            bpm=96.0,
+            key="A minor",
+            sections=[
+                {"start": 0.0, "end": 48.0, "label": "Verse"},
+                {"start": 48.0, "end": 120.0, "label": "Hook"},
+            ],
+        )
+
+        self.assertEqual(analysis.bpm, 128.0)
+        self.assertEqual(analysis.key, "C major")
+        self.assertEqual(analysis.sections[0]["label"], "Intro")
+        self.assertEqual(analysis.effective_bpm, 96.0)
+        self.assertEqual(analysis.effective_key, "A minor")
+        self.assertEqual(analysis.effective_sections[0]["label"], "Verse")
+        self.assertTrue(analysis.has_corrections)
+
+        payload = analysis.to_dict()
+        self.assertEqual(payload["raw"]["bpm"], 128.0)
+        self.assertEqual(payload["raw"]["key"], "C major")
+        self.assertEqual(payload["corrections"]["bpm"], 96.0)
+        self.assertEqual(payload["corrections"]["key"], "A minor")
+        self.assertEqual(payload["effective"]["bpm"], 96.0)
+        self.assertEqual(payload["generation_constraints"]["schema_version"], 1)
+        self.assertEqual(payload["generation_constraints"]["alternatives"]["key"][0]["value"], "A minor")
+
+    def test_corrections_reject_invalid_values(self):
+        analysis = AudioAnalysis(duration=30.0, bpm=120.0, key="C major")
+
+        with self.assertRaises(ValueError):
+            analysis.apply_corrections(bpm=301)
+        with self.assertRaises(ValueError):
+            analysis.apply_corrections(key="H major")
+        with self.assertRaises(ValueError):
+            analysis.apply_corrections(
+                sections=[{"start": 0.0, "end": 40.0, "label": "Too long"}]
+            )
+        with self.assertRaises(ValueError):
+            analysis.apply_corrections(
+                sections=[
+                    {"start": 0.0, "end": 20.0, "label": "A"},
+                    {"start": 19.0, "end": 30.0, "label": "Overlap"},
+                ]
+            )
+
+    def test_corrected_tempo_and_key_reach_ace_step_tags(self):
+        analysis = AudioAnalysis(
+            bpm=128.0,
+            key="C major",
+            suggested_tags=["ambient"],
+            suggested_tempo_tag="moderate",
+        )
+        analysis.apply_corrections(bpm=80.0, key="A minor")
+
+        tags = analysis.to_ace_step_tags()
+        self.assertIn("slow", tags)
+        self.assertNotIn("moderate", tags)
+        self.assertIn("A minor", tags)
+
+
 class ReferencePanelJobTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
