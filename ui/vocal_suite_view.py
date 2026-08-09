@@ -66,6 +66,27 @@ from ui.file_dialogs import (
 )
 
 
+_RVC_F0_LABEL_KEYS = {
+    "rmvpe": "vocal.rvc.f0_rmvpe",
+    "pm": "vocal.rvc.f0_pm",
+    "harvest": "vocal.rvc.f0_harvest",
+    "crepe": "vocal.rvc.f0_crepe",
+}
+
+_CONSENT_SOURCE_KEYS = {
+    "Self-recorded / my voice": "vocal.clone.consent_self",
+    "Licensed dataset or model": "vocal.clone.consent_licensed",
+    "Third-party permission": "vocal.clone.consent_third_party",
+    "Public model with license": "vocal.clone.consent_public",
+}
+
+_CONSENT_SCOPE_KEYS = {
+    "Clone + conversion": "vocal.clone.scope_clone_conversion",
+    "Clone only": "vocal.clone.scope_clone",
+    "Research/demo only": "vocal.clone.scope_research",
+}
+
+
 def _vocal_remix_export_task(
     audio: np.ndarray,
     output_path: str,
@@ -371,30 +392,30 @@ class VocalSuiteView(QWidget):
                 (self._melody_render_diffsinger, tr("vocal.accessibility.melody_render_name"), tr("vocal.accessibility.melody_render_description")),
                 (self._melody_generate_btn, tr("vocal.accessibility.melody_generate_name"), tr("vocal.accessibility.melody_generate_description")),
                 (self._melody_lrc_btn, tr("vocal.accessibility.melody_lrc_name"), tr("vocal.accessibility.melody_lrc_description")),
-                (self._rvc_browse_btn, "Browse RVC input", "Selects input audio for voice conversion."),
-                (self._rvc_voice, "RVC voice", "Selects the target RVC voice model."),
-                (self._rvc_trust_btn, "Trust unsafe RVC checkpoint", self._rvc_trust_btn.toolTip()),
-                (self._rvc_pitch, "RVC pitch shift", "Adjusts pitch shift in semitones."),
-                (self._rvc_f0, "RVC pitch detector", "Selects the F0 pitch extraction method."),
-                (self._rvc_index, "RVC index strength", "Adjusts retrieval index blend strength."),
-                (self._rvc_demo_check, "RVC conversion unavailable", self._rvc_demo_check.toolTip()),
-                (self._rvc_convert_btn, "Convert voice", "Starts RVC voice conversion."),
-                (self._clone_voice, "Voice clone profile", "Selects a saved GPT-SoVITS voice profile."),
-                (self._clone_trust_btn, "Trust unsafe GPT-SoVITS checkpoint", self._clone_trust_btn.toolTip()),
-                (self._clone_profile_name, "Voice profile name", "Names a new voice profile."),
-                (self._clone_owner_name, "Voice owner", "Records the voice owner or rights holder for consent provenance."),
-                (self._clone_consent_source, "Voice consent source", "Records how consent or use rights were obtained."),
-                (self._clone_use_scope, "Voice permitted use", "Records the operations allowed by the voice consent."),
-                (self._clone_consent_confirm, "Voice consent confirmation", "Confirms ownership or permission before saving a voice profile."),
-                (self._clone_ref_btn, "Browse clone reference", "Selects reference audio for voice cloning."),
-                (self._clone_ref_text, "Reference transcript", "Transcript for the reference voice sample."),
-                (self._clone_save_profile_btn, "Save voice profile", "Saves a validated GPT-SoVITS reference profile."),
-                (self._clone_text, "Clone text", "Text to speak in the cloned voice."),
-                (self._clone_lang, "Clone language", "Selects the GPT-SoVITS language."),
-                (self._clone_speed, "Clone speed", "Adjusts cloned speech speed."),
-                (self._clone_temp, "Clone temperature", "Adjusts generation variation."),
-                (self._clone_demo_check, "Voice cloning unavailable", self._clone_demo_check.toolTip()),
-                (self._clone_gen_btn, "Clone voice", "Starts GPT-SoVITS voice cloning."),
+                (self._rvc_browse_btn, tr("vocal.accessibility.rvc_browse_name"), tr("vocal.accessibility.rvc_browse_description")),
+                (self._rvc_voice, tr("vocal.accessibility.rvc_voice_name"), tr("vocal.accessibility.rvc_voice_description")),
+                (self._rvc_trust_btn, tr("vocal.accessibility.rvc_trust_name"), self._rvc_trust_btn.toolTip()),
+                (self._rvc_pitch, tr("vocal.accessibility.rvc_pitch_name"), tr("vocal.accessibility.rvc_pitch_description")),
+                (self._rvc_f0, tr("vocal.accessibility.rvc_f0_name"), tr("vocal.accessibility.rvc_f0_description")),
+                (self._rvc_index, tr("vocal.accessibility.rvc_index_name"), tr("vocal.accessibility.rvc_index_description")),
+                (self._rvc_demo_check, tr("vocal.accessibility.rvc_unavailable_name"), self._rvc_demo_check.toolTip()),
+                (self._rvc_convert_btn, tr("vocal.accessibility.rvc_convert_name"), tr("vocal.accessibility.rvc_convert_description")),
+                (self._clone_voice, tr("vocal.accessibility.clone_profile_name"), tr("vocal.accessibility.clone_profile_description")),
+                (self._clone_trust_btn, tr("vocal.accessibility.clone_trust_name"), self._clone_trust_btn.toolTip()),
+                (self._clone_profile_name, tr("vocal.accessibility.profile_name"), tr("vocal.accessibility.profile_description")),
+                (self._clone_owner_name, tr("vocal.accessibility.owner_name"), tr("vocal.accessibility.owner_description")),
+                (self._clone_consent_source, tr("vocal.accessibility.consent_source_name"), tr("vocal.accessibility.consent_source_description")),
+                (self._clone_use_scope, tr("vocal.accessibility.use_scope_name"), tr("vocal.accessibility.use_scope_description")),
+                (self._clone_consent_confirm, tr("vocal.accessibility.consent_confirm_name"), tr("vocal.accessibility.consent_confirm_description")),
+                (self._clone_ref_btn, tr("vocal.accessibility.clone_browse_name"), tr("vocal.accessibility.clone_browse_description")),
+                (self._clone_ref_text, tr("vocal.accessibility.transcript_name"), tr("vocal.accessibility.transcript_description")),
+                (self._clone_save_profile_btn, tr("vocal.accessibility.save_profile_name"), tr("vocal.accessibility.save_profile_description")),
+                (self._clone_text, tr("vocal.accessibility.clone_text_name"), tr("vocal.accessibility.clone_text_description")),
+                (self._clone_lang, tr("vocal.accessibility.clone_language_name"), tr("vocal.accessibility.clone_language_description")),
+                (self._clone_speed, tr("vocal.accessibility.clone_speed_name"), tr("vocal.accessibility.clone_speed_description")),
+                (self._clone_temp, tr("vocal.accessibility.clone_temperature_name"), tr("vocal.accessibility.clone_temperature_description")),
+                (self._clone_demo_check, tr("vocal.accessibility.clone_unavailable_name"), self._clone_demo_check.toolTip()),
+                (self._clone_gen_btn, tr("vocal.accessibility.clone_name"), tr("vocal.accessibility.clone_description")),
                 (self._autotune_browse_btn, "Browse auto-tune input", "Selects vocal audio for pitch correction."),
                 (self._autotune_strength, "Auto-tune strength", "Controls how strongly pitch is pulled toward the nearest semitone."),
                 (self._autotune_apply_btn, "Apply auto-tune", "Writes a pitch-corrected vocal WAV."),
@@ -816,7 +837,7 @@ class VocalSuiteView(QWidget):
         ctrl_layout.setContentsMargins(12, 10, 12, 10)
         ctrl_layout.setSpacing(6)
 
-        title = QLabel("RVC Voice Conversion")
+        title = QLabel(tr("vocal.rvc.title"))
         title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
@@ -831,9 +852,9 @@ class VocalSuiteView(QWidget):
 
         # Input audio
         input_row = QHBoxLayout()
-        self._rvc_input_label = QLabel("No file selected")
+        self._rvc_input_label = QLabel(tr("vocal.rvc.no_file"))
         self._rvc_input_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
-        self._rvc_browse_btn = QPushButton("Browse")
+        self._rvc_browse_btn = QPushButton(tr("vocal.rvc.browse"))
         self._rvc_browse_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['background']}; color: {t['text']};
@@ -842,7 +863,7 @@ class VocalSuiteView(QWidget):
             }}
         """)
         self._rvc_browse_btn.clicked.connect(self._on_rvc_browse)
-        input_row.addWidget(QLabel("Input:"))
+        input_row.addWidget(QLabel(tr("vocal.rvc.input_label")))
         input_row.addWidget(self._rvc_input_label, 1)
         input_row.addWidget(self._rvc_browse_btn)
         for w in [input_row.itemAt(0).widget()]:
@@ -852,22 +873,21 @@ class VocalSuiteView(QWidget):
 
         # Voice model selector
         voice_row = QHBoxLayout()
-        vl = QLabel("Voice:")
+        vl = QLabel(tr("vocal.rvc.voice_label"))
         vl.setMinimumWidth(50)
         vl.setStyleSheet(param_style)
         self._rvc_voice = QComboBox()
-        self._rvc_voice.addItem("(No RVC models loaded)")
+        self._rvc_voice.addItem(tr("vocal.rvc.no_models"), "")
         self._rvc_voice.setStyleSheet(param_style)
         self._rvc_voice.currentIndexChanged.connect(self._on_rvc_profile_changed)
         voice_row.addWidget(vl)
         voice_row.addWidget(self._rvc_voice)
         ctrl_layout.addLayout(voice_row)
 
-        self._rvc_trust_btn = QPushButton("Trust unsafe checkpoint")
+        self._rvc_trust_btn = QPushButton(tr("vocal.security.trust_unsafe"))
         self._rvc_trust_btn.setEnabled(False)
         self._rvc_trust_btn.setToolTip(
-            "Trust only a checkpoint from a source you understand. "
-            "This permits pickle-backed loading, which can execute code during deserialization."
+            tr("vocal.security.rvc_trust_tooltip")
         )
         self._rvc_trust_btn.setStyleSheet(f"""
             QPushButton {{
@@ -882,7 +902,7 @@ class VocalSuiteView(QWidget):
         ctrl_layout.addWidget(self._rvc_trust_btn)
 
         self._rvc_trust_label = QLabel(
-            "Checkpoint safety: select a profile to inspect its format."
+            tr("vocal.security.select_profile")
         )
         self._rvc_trust_label.setWordWrap(True)
         self._rvc_trust_label.setStyleSheet(
@@ -890,7 +910,7 @@ class VocalSuiteView(QWidget):
         )
         ctrl_layout.addWidget(self._rvc_trust_label)
 
-        self._rvc_consent_label = QLabel("Consent guardrails: select a voice profile.")
+        self._rvc_consent_label = QLabel(tr("vocal.consent.select_profile"))
         self._rvc_consent_label.setWordWrap(True)
         self._rvc_consent_label.setStyleSheet(
             f"color: {t['text_secondary']}; background: {t['background']}; "
@@ -900,7 +920,7 @@ class VocalSuiteView(QWidget):
 
         # Pitch shift
         pitch_row = QHBoxLayout()
-        pl = QLabel("Pitch:")
+        pl = QLabel(tr("vocal.rvc.pitch_label"))
         pl.setMinimumWidth(50)
         pl.setStyleSheet(param_style)
         self._rvc_pitch = QSpinBox()
@@ -914,11 +934,13 @@ class VocalSuiteView(QWidget):
 
         # F0 method
         f0_row = QHBoxLayout()
-        fl = QLabel("F0:")
+        fl = QLabel(tr("vocal.rvc.f0_label"))
         fl.setMinimumWidth(50)
         fl.setStyleSheet(param_style)
         self._rvc_f0 = QComboBox()
-        self._rvc_f0.addItems(["rmvpe", "pm", "harvest", "crepe"])
+        # F0 method IDs are engine contract values; only their display labels are localized.
+        for method, key in _RVC_F0_LABEL_KEYS.items():
+            self._rvc_f0.addItem(tr(key), method)
         self._rvc_f0.setStyleSheet(param_style)
         f0_row.addWidget(fl)
         f0_row.addWidget(self._rvc_f0)
@@ -926,7 +948,7 @@ class VocalSuiteView(QWidget):
 
         # Index rate
         idx_row = QHBoxLayout()
-        il = QLabel("Index:")
+        il = QLabel(tr("vocal.rvc.index_label"))
         il.setMinimumWidth(50)
         il.setStyleSheet(param_style)
         self._rvc_index = QSlider(Qt.Horizontal)
@@ -943,17 +965,15 @@ class VocalSuiteView(QWidget):
         idx_row.addWidget(self._rvc_idx_val)
         ctrl_layout.addLayout(idx_row)
 
-        self._rvc_demo_check = QCheckBox(
-            "RVC conversion unavailable (verified adapter required)"
-        )
+        self._rvc_demo_check = QCheckBox(tr("vocal.rvc.unavailable"))
         self._rvc_demo_check.setToolTip(
-            "No placeholder spectral conversion is available. A verified local RVC inference adapter is required."
+            tr("vocal.rvc.unavailable_tooltip")
         )
         self._rvc_demo_check.setEnabled(False)
         ctrl_layout.addWidget(self._rvc_demo_check)
 
         # Convert button
-        self._rvc_convert_btn = QPushButton("Convert Voice")
+        self._rvc_convert_btn = QPushButton(tr("vocal.rvc.convert"))
         self._rvc_convert_btn.setMinimumHeight(34)
         self._rvc_convert_btn.setStyleSheet(f"""
             QPushButton {{
@@ -977,22 +997,22 @@ class VocalSuiteView(QWidget):
         # Right: Before/After waveforms
         right = QVBoxLayout()
         right.setSpacing(4)
-        ol = QLabel("Original")
+        ol = QLabel(tr("vocal.rvc.original"))
         ol.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._rvc_original_wf = WaveformWidget()
         self._rvc_original_wf.set_empty_state(
-            "No source vocal yet",
-            "Choose an input recording before converting its voice.",
-            "Choose input audio",
+            tr("vocal.rvc.no_source"),
+            tr("vocal.rvc.no_source_hint"),
+            tr("vocal.rvc.choose_audio"),
         )
         self._rvc_original_wf.empty_action_requested.connect(self._rvc_browse_btn.click)
-        cl = QLabel("Converted")
+        cl = QLabel(tr("vocal.rvc.converted"))
         cl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._rvc_converted_wf = WaveformWidget()
         self._rvc_converted_wf.set_empty_state(
-            "No converted vocal yet",
-            "Choose an input recording and run voice conversion to create this result.",
-            "Choose input audio",
+            tr("vocal.rvc.no_converted"),
+            tr("vocal.rvc.no_converted_hint"),
+            tr("vocal.rvc.choose_audio"),
         )
         self._rvc_converted_wf.empty_action_requested.connect(self._rvc_browse_btn.click)
         right.addWidget(ol)
@@ -1024,7 +1044,7 @@ class VocalSuiteView(QWidget):
         ctrl_layout.setContentsMargins(12, 10, 12, 10)
         ctrl_layout.setSpacing(6)
 
-        title = QLabel("GPT-SoVITS Voice Cloning")
+        title = QLabel(tr("vocal.clone.title"))
         title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         ctrl_layout.addWidget(title)
 
@@ -1039,7 +1059,7 @@ class VocalSuiteView(QWidget):
 
         # Onboarded voice profile
         profile_row = QHBoxLayout()
-        profile_label = QLabel("Profile:")
+        profile_label = QLabel(tr("vocal.clone.profile_label"))
         profile_label.setMinimumWidth(50)
         profile_label.setStyleSheet(param_style)
         self._clone_voice = QComboBox()
@@ -1049,11 +1069,10 @@ class VocalSuiteView(QWidget):
         profile_row.addWidget(self._clone_voice)
         ctrl_layout.addLayout(profile_row)
 
-        self._clone_trust_btn = QPushButton("Trust unsafe checkpoint")
+        self._clone_trust_btn = QPushButton(tr("vocal.security.trust_unsafe"))
         self._clone_trust_btn.setEnabled(False)
         self._clone_trust_btn.setToolTip(
-            "Trust only a GPT-SoVITS checkpoint from a source you understand. "
-            "This permits pickle-backed loading, which can execute code during deserialization."
+            tr("vocal.security.clone_trust_tooltip")
         )
         self._clone_trust_btn.setStyleSheet(f"""
             QPushButton {{
@@ -1068,7 +1087,7 @@ class VocalSuiteView(QWidget):
         ctrl_layout.addWidget(self._clone_trust_btn)
 
         self._clone_trust_label = QLabel(
-            "Checkpoint safety: select a profile to inspect its format."
+            tr("vocal.security.select_profile")
         )
         self._clone_trust_label.setWordWrap(True)
         self._clone_trust_label.setStyleSheet(
@@ -1077,41 +1096,35 @@ class VocalSuiteView(QWidget):
         ctrl_layout.addWidget(self._clone_trust_label)
 
         self._clone_profile_name = QLineEdit()
-        self._clone_profile_name.setPlaceholderText("New voice profile name...")
+        self._clone_profile_name.setPlaceholderText(tr("vocal.clone.profile_placeholder"))
         self._clone_profile_name.setStyleSheet(param_style)
         self._clone_profile_name.textChanged.connect(self._update_clone_profile_ready)
         ctrl_layout.addWidget(self._clone_profile_name)
 
         self._clone_owner_name = QLineEdit()
-        self._clone_owner_name.setPlaceholderText("Voice owner / rights holder...")
+        self._clone_owner_name.setPlaceholderText(tr("vocal.clone.owner_placeholder"))
         self._clone_owner_name.setStyleSheet(param_style)
         self._clone_owner_name.textChanged.connect(self._update_clone_profile_ready)
         ctrl_layout.addWidget(self._clone_owner_name)
 
         consent_row = QHBoxLayout()
         self._clone_consent_source = QComboBox()
-        self._clone_consent_source.addItems([
-            "Self-recorded / my voice",
-            "Licensed dataset or model",
-            "Third-party permission",
-            "Public model with license",
-        ])
+        # Consent values are stored as stable profile data; localize only combo display text.
+        for value, key in _CONSENT_SOURCE_KEYS.items():
+            self._clone_consent_source.addItem(tr(key), value)
         self._clone_consent_source.setStyleSheet(param_style)
         self._clone_consent_source.currentIndexChanged.connect(self._update_clone_profile_ready)
         consent_row.addWidget(self._clone_consent_source)
 
         self._clone_use_scope = QComboBox()
-        self._clone_use_scope.addItems([
-            "Clone + conversion",
-            "Clone only",
-            "Research/demo only",
-        ])
+        for value, key in _CONSENT_SCOPE_KEYS.items():
+            self._clone_use_scope.addItem(tr(key), value)
         self._clone_use_scope.setStyleSheet(param_style)
         self._clone_use_scope.currentIndexChanged.connect(self._update_clone_profile_ready)
         consent_row.addWidget(self._clone_use_scope)
         ctrl_layout.addLayout(consent_row)
 
-        self._clone_consent_confirm = QCheckBox("Consent confirmed")
+        self._clone_consent_confirm = QCheckBox(tr("vocal.clone.consent_confirmed"))
         self._clone_consent_confirm.setStyleSheet(
             f"QCheckBox {{ color: {t['text']}; font-size: 8.25pt; border: none; }}"
         )
@@ -1120,16 +1133,16 @@ class VocalSuiteView(QWidget):
 
         # Reference audio
         ref_row = QHBoxLayout()
-        self._clone_ref_label = QLabel("No reference audio")
+        self._clone_ref_label = QLabel(tr("vocal.clone.no_reference"))
         self._clone_ref_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
-        self._clone_ref_btn = QPushButton("Browse")
+        self._clone_ref_btn = QPushButton(tr("vocal.clone.browse"))
         self._clone_ref_btn.setStyleSheet(f"""
             QPushButton {{ background: {t['background']}; color: {t['text']};
                 border: 1px solid {t['border']}; border-radius: 3px;
                 padding: 4px 10px; font-size: 7.5pt; }}
         """)
         self._clone_ref_btn.clicked.connect(self._on_clone_browse_ref)
-        ref_lbl = QLabel("Ref:")
+        ref_lbl = QLabel(tr("vocal.clone.reference_label"))
         ref_lbl.setMinimumWidth(30)
         ref_lbl.setStyleSheet(param_style)
         ref_row.addWidget(ref_lbl)
@@ -1139,12 +1152,12 @@ class VocalSuiteView(QWidget):
 
         # Reference transcript
         self._clone_ref_text = QLineEdit()
-        self._clone_ref_text.setPlaceholderText("Transcript of reference audio...")
+        self._clone_ref_text.setPlaceholderText(tr("vocal.clone.transcript_placeholder"))
         self._clone_ref_text.setStyleSheet(param_style)
         self._clone_ref_text.textChanged.connect(self._update_clone_profile_ready)
         ctrl_layout.addWidget(self._clone_ref_text)
 
-        self._clone_quality_label = QLabel("Reference guardrails: select a clean 10-30s voice sample.")
+        self._clone_quality_label = QLabel(tr("vocal.clone.quality_initial"))
         self._clone_quality_label.setWordWrap(True)
         self._clone_quality_label.setStyleSheet(
             f"color: {t['text_secondary']}; background: {t['background']}; "
@@ -1152,7 +1165,7 @@ class VocalSuiteView(QWidget):
         )
         ctrl_layout.addWidget(self._clone_quality_label)
 
-        self._clone_consent_label = QLabel("Consent guardrails: owner, source, permitted use, and confirmation are required.")
+        self._clone_consent_label = QLabel(tr("vocal.clone.consent_initial"))
         self._clone_consent_label.setWordWrap(True)
         self._clone_consent_label.setStyleSheet(
             f"color: {t['text_secondary']}; background: {t['background']}; "
@@ -1160,7 +1173,7 @@ class VocalSuiteView(QWidget):
         )
         ctrl_layout.addWidget(self._clone_consent_label)
 
-        self._clone_save_profile_btn = QPushButton("Save Voice Profile")
+        self._clone_save_profile_btn = QPushButton(tr("vocal.clone.save_profile"))
         self._clone_save_profile_btn.setMinimumHeight(28)
         self._clone_save_profile_btn.setEnabled(False)
         self._clone_save_profile_btn.setStyleSheet(f"""
@@ -1177,7 +1190,7 @@ class VocalSuiteView(QWidget):
 
         # Text to generate
         self._clone_text = QTextEdit()
-        self._clone_text.setPlaceholderText("Text to speak in cloned voice...")
+        self._clone_text.setPlaceholderText(tr("vocal.clone.text_placeholder"))
         self._clone_text.setMaximumHeight(80)
         self._clone_text.setStyleSheet(param_style)
         self._clone_text.textChanged.connect(self._schedule_capability_refresh)
@@ -1198,7 +1211,7 @@ class VocalSuiteView(QWidget):
 
         # Speed + Temperature
         st_row = QHBoxLayout()
-        sl = QLabel("Speed:")
+        sl = QLabel(tr("vocal.clone.speed_label"))
         sl.setMinimumWidth(42)
         sl.setStyleSheet(param_style)
         self._clone_speed = QDoubleSpinBox()
@@ -1207,7 +1220,7 @@ class VocalSuiteView(QWidget):
         self._clone_speed.setSingleStep(0.1)
         self._clone_speed.setStyleSheet(param_style)
 
-        tl = QLabel("Temp:")
+        tl = QLabel(tr("vocal.clone.temperature_label"))
         tl.setMinimumWidth(36)
         tl.setStyleSheet(param_style)
         self._clone_temp = QDoubleSpinBox()
@@ -1222,17 +1235,15 @@ class VocalSuiteView(QWidget):
         st_row.addWidget(self._clone_temp)
         ctrl_layout.addLayout(st_row)
 
-        self._clone_demo_check = QCheckBox(
-            "GPT-SoVITS unavailable (verified adapter required)"
-        )
+        self._clone_demo_check = QCheckBox(tr("vocal.clone.unavailable"))
         self._clone_demo_check.setToolTip(
-            "No placeholder voice synthesis is available. A verified local GPT-SoVITS inference adapter is required."
+            tr("vocal.clone.unavailable_tooltip")
         )
         self._clone_demo_check.setEnabled(False)
         ctrl_layout.addWidget(self._clone_demo_check)
 
         # Clone button
-        self._clone_gen_btn = QPushButton("Clone Voice")
+        self._clone_gen_btn = QPushButton(tr("vocal.clone.clone_voice"))
         self._clone_gen_btn.setMinimumHeight(34)
         self._clone_gen_btn.setStyleSheet(f"""
             QPushButton {{
@@ -1251,9 +1262,9 @@ class VocalSuiteView(QWidget):
         # Output waveform
         self._clone_waveform = WaveformWidget()
         self._clone_waveform.set_empty_state(
-            "No cloned voice yet",
-            "Create a consent-ready voice profile and choose reference audio before cloning.",
-            "Choose reference audio",
+            tr("vocal.clone.no_output"),
+            tr("vocal.clone.no_output_hint"),
+            tr("vocal.clone.choose_reference"),
         )
         self._clone_waveform.empty_action_requested.connect(self._clone_ref_btn.click)
         layout.addWidget(self._clone_waveform, 1)
@@ -2089,7 +2100,7 @@ class VocalSuiteView(QWidget):
         )[0] + ".lrc"
         path, selected_filter = save_file(
             self,
-            "Export Enhanced LRC",
+            tr("vocal.melody.export_lrc"),
             default_name,
             "Enhanced LRC (*.lrc);;All Files (*)",
             "vocal_melody_lrc_export",
@@ -2100,9 +2111,9 @@ class VocalSuiteView(QWidget):
         try:
             written = self.export_melody_lrc_to(path)
         except (OSError, ValueError) as exc:
-            self._report_error(f"Enhanced LRC export failed: {exc}")
+            self._report_error(tr("vocal.status.lrc_export_failed", error=exc))
             return
-        message = f"Enhanced LRC exported: {os.path.basename(written)}"
+        message = tr("vocal.status.lrc_exported", name=os.path.basename(written))
         self._status.setText(message)
         if self.toast_mgr:
             self.toast_mgr.success(message)
@@ -2110,7 +2121,7 @@ class VocalSuiteView(QWidget):
     def _on_rvc_browse(self):
         path, _ = open_audio_file(
             self,
-            "Select Audio",
+            tr("vocal.rvc.select_audio"),
             operation_kind="vocal_rvc_import",
             dialog=QFileDialog,
         )
@@ -2131,16 +2142,18 @@ class VocalSuiteView(QWidget):
         profile_id = self._rvc_voice.currentData()
         profile = VoiceBank().get(profile_id) if profile_id else None
         if not profile:
-            self._status.setText("Select a consent-ready RVC voice profile before conversion")
+            self._status.setText(tr("vocal.status.rvc_profile_required"))
             return
         issues = VoiceBank().validate_profile(profile, VOICE_OPERATION_CONVERSION)
         if issues:
-            self._report_error("RVC profile blocked: " + "; ".join(issues[:2]))
+            self._report_error(
+                tr("vocal.status.profile_blocked", engine="RVC", issues="; ".join(issues[:2]))
+            )
             self._rvc_consent_label.setText(self._format_profile_consent(profile, VOICE_OPERATION_CONVERSION))
             return
         input_path = self._rvc_input_label.property("path")
         if not input_path:
-            self._status.setText("Select input audio before voice conversion")
+            self._status.setText(tr("vocal.status.rvc_input_required"))
             return
         readiness = self._model_mgr.get_capability_readiness(
             CAP_VOCAL_CONVERT,
@@ -2156,18 +2169,18 @@ class VocalSuiteView(QWidget):
         params = VoiceConvertParams(
             input_path=input_path,
             pitch_shift=self._rvc_pitch.value(),
-            f0_method=self._rvc_f0.currentText(),
+            f0_method=self._rvc_f0.currentData() or "rmvpe",
             index_rate=self._rvc_index.value() / 100,
         )
         self._reset_engine_routing()
         self._rvc_convert_btn.setEnabled(False)
-        self._status.setText("Loading consent-ready RVC voice profile...")
+        self._status.setText(tr("vocal.status.rvc_loading"))
         self._rvc_worker = InferenceWorker(
             self._run_rvc_conversion,
             params,
             profile,
             job_kind="voice_conversion",
-            job_label=f"RVC {profile.name}",
+            job_label=tr("vocal.jobs.rvc", name=profile.name),
             job_inputs={
                 "input_path": input_path,
                 "profile_id": profile.id,
@@ -2180,13 +2193,13 @@ class VocalSuiteView(QWidget):
             },
         )
         self._rvc_worker.progress.connect(
-            lambda pct: self._on_operation_progress("RVC conversion", pct)
+            lambda pct: self._on_operation_progress(tr("vocal.operations.rvc"), pct)
         )
         self._rvc_worker.step_info.connect(self._on_operation_step)
         self._rvc_worker.finished.connect(self._on_rvc_generated)
         self._rvc_worker.error.connect(self._on_rvc_error)
         self._rvc_worker.cancelled.connect(self._on_rvc_cancelled)
-        self._start_operation_progress("RVC conversion")
+        self._start_operation_progress(tr("vocal.operations.rvc"))
         self._rvc_worker.start()
         self._refresh_capability_states()
 
@@ -2202,18 +2215,18 @@ class VocalSuiteView(QWidget):
         from engines.rvc_engine import get_rvc
 
         if cancel_event and cancel_event.is_set():
-            raise CancelledJobError("RVC conversion cancelled")
+            raise CancelledJobError(tr("vocal.status.rvc_cancelled"))
         engine = get_rvc()
         active_profile = getattr(engine, "_profile", None)
         if not active_profile or active_profile.id != profile.id:
             if step_cb:
-                step_cb(f"Loading RVC profile {profile.name}...")
+                step_cb(tr("vocal.status.loading_profile", engine="RVC", name=profile.name))
             engine.load_model(
                 profile,
                 progress_callback=self._progress_bridge(progress_cb, step_cb),
             )
         if cancel_event and cancel_event.is_set():
-            raise CancelledJobError("RVC conversion cancelled")
+            raise CancelledJobError(tr("vocal.status.rvc_cancelled"))
         result = engine.convert(
             params,
             progress_callback=self._progress_bridge(progress_cb, step_cb),
@@ -2244,7 +2257,7 @@ class VocalSuiteView(QWidget):
         self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_CONVERT] = run
         if not run.is_success:
-            self._report_error(f"RVC conversion failed: {run.error}")
+            self._report_error(tr("vocal.status.rvc_failed", error=run.error))
             self._refresh_capability_states()
             return
         result = run.source_result
@@ -2253,8 +2266,11 @@ class VocalSuiteView(QWidget):
             self._rvc_converted_wf.load_audio(result.audio, result.sample_rate)
         self._current_audio_path = artifact.path if artifact else ""
         self._status.setText(
-            f"RVC conversion created: {os.path.basename(self._current_audio_path)} "
-            f"({result.duration:.1f}s)"
+            tr(
+                "vocal.status.rvc_created",
+                name=os.path.basename(self._current_audio_path),
+                seconds=result.duration,
+            )
         )
         if run.can_route and self._current_audio_path:
             self._enable_routing()
@@ -2268,7 +2284,7 @@ class VocalSuiteView(QWidget):
             error,
             model_id="rvc-v2",
         )
-        self._report_error(f"RVC conversion failed: {error}")
+        self._report_error(tr("vocal.status.rvc_failed", error=error))
         self._refresh_capability_states()
 
     def _on_rvc_cancelled(self):
@@ -2276,10 +2292,10 @@ class VocalSuiteView(QWidget):
         self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_CONVERT] = EngineRunResult.cancelled(
             CAP_VOCAL_CONVERT,
-            "RVC conversion cancelled",
+            tr("vocal.status.rvc_cancelled"),
             model_id="rvc-v2",
         )
-        self._status.setText("RVC conversion cancelled")
+        self._status.setText(tr("vocal.status.rvc_cancelled"))
         self._refresh_capability_states()
 
     def _on_rvc_profile_changed(self, _index: int):
@@ -2294,7 +2310,7 @@ class VocalSuiteView(QWidget):
             "RVC",
         )
         if not profile:
-            self._rvc_consent_label.setText("Consent guardrails: select a voice profile.")
+            self._rvc_consent_label.setText(tr("vocal.consent.select_profile"))
             self._refresh_capability_states()
             return
         self._rvc_consent_label.setText(self._format_profile_consent(profile, VOICE_OPERATION_CONVERSION))
@@ -2312,7 +2328,7 @@ class VocalSuiteView(QWidget):
     def _on_clone_browse_ref(self):
         path, _ = open_audio_file(
             self,
-            "Select Reference Audio",
+            tr("vocal.clone.select_reference"),
             operation_kind="vocal_clone_reference_import",
             dialog=QFileDialog,
         )
@@ -2333,18 +2349,24 @@ class VocalSuiteView(QWidget):
             return
         text = self._clone_text.toPlainText().strip()
         if not text:
-            self._status.setText("Enter text to synthesize before cloning")
+            self._status.setText(tr("vocal.status.clone_text_required"))
             return
 
         profile_id = self._clone_voice.currentData()
         profile = VoiceBank().get(profile_id) if profile_id else None
         if not profile:
-            self._status.setText("Save or select a validated GPT-SoVITS voice profile first")
+            self._status.setText(tr("vocal.status.clone_profile_required"))
             return
 
         issues = VoiceBank().validate_profile(profile, VOICE_OPERATION_CLONE)
         if issues:
-            self._report_error("Voice profile blocked: " + "; ".join(issues[:2]))
+            self._report_error(
+                tr(
+                    "vocal.status.profile_blocked",
+                    engine="GPT-SoVITS",
+                    issues="; ".join(issues[:2]),
+                )
+            )
             self._clone_consent_label.setText(self._format_profile_consent(profile, VOICE_OPERATION_CLONE))
             return
 
@@ -2352,7 +2374,9 @@ class VocalSuiteView(QWidget):
 
         quality = assess_clone_reference(profile.ref_audio_path)
         if not quality.can_onboard:
-            self._report_error("Reference failed guardrails: " + "; ".join(quality.issues[:2]))
+            self._report_error(
+                tr("vocal.status.reference_failed", issues="; ".join(quality.issues[:2]))
+            )
             return
 
         readiness = self._model_mgr.get_capability_readiness(
@@ -2374,13 +2398,13 @@ class VocalSuiteView(QWidget):
         )
         self._reset_engine_routing()
         self._clone_gen_btn.setEnabled(False)
-        self._status.setText("Preparing consent-ready GPT-SoVITS clone...")
+        self._status.setText(tr("vocal.status.clone_preparing"))
         self._clone_worker = InferenceWorker(
             self._run_clone_generation,
             params,
             profile,
             job_kind="voice_clone",
-            job_label=f"GPT-SoVITS {profile.name}",
+            job_label=tr("vocal.jobs.clone", name=profile.name),
             job_inputs={
                 "profile_id": profile.id,
                 "text_chars": len(text),
@@ -2392,13 +2416,13 @@ class VocalSuiteView(QWidget):
             },
         )
         self._clone_worker.progress.connect(
-            lambda pct: self._on_operation_progress("GPT-SoVITS generation", pct)
+            lambda pct: self._on_operation_progress(tr("vocal.operations.clone"), pct)
         )
         self._clone_worker.step_info.connect(self._on_operation_step)
         self._clone_worker.finished.connect(self._on_clone_generated)
         self._clone_worker.error.connect(self._on_clone_error)
         self._clone_worker.cancelled.connect(self._on_clone_cancelled)
-        self._start_operation_progress("GPT-SoVITS generation")
+        self._start_operation_progress(tr("vocal.operations.clone"))
         self._clone_worker.start()
         self._refresh_capability_states()
 
@@ -2423,7 +2447,10 @@ class VocalSuiteView(QWidget):
         self._clone_consent_confirm.setChecked(profile.consent_confirmed)
         self._set_clone_language(profile.language)
         self._clone_ref_text.setText(profile.ref_text)
-        self._clone_ref_label.setText(os.path.basename(profile.ref_audio_path) or "No reference audio")
+        self._clone_ref_label.setText(
+            os.path.basename(profile.ref_audio_path)
+            or tr("vocal.clone.no_reference")
+        )
         self._clone_ref_label.setProperty("path", profile.ref_audio_path)
         if profile.ref_audio_path:
             self._update_clone_reference_quality(profile.ref_audio_path)
@@ -2449,37 +2476,40 @@ class VocalSuiteView(QWidget):
         """Show whether a selected local checkpoint needs explicit trust."""
         if profile is None:
             button.setEnabled(False)
-            button.setText("Trust unsafe checkpoint")
-            label.setText("Checkpoint safety: select a profile to inspect its format.")
+            button.setText(tr("vocal.security.trust_unsafe"))
+            label.setText(tr("vocal.security.select_profile"))
             return
 
         path = profile.model_path or ""
-        extension = profile.checkpoint_extension or "unknown format"
+        extension = profile.checkpoint_extension or tr("vocal.security.unknown_format")
         if not path:
             button.setEnabled(False)
-            button.setText("No checkpoint configured")
+            button.setText(tr("vocal.security.no_checkpoint"))
             label.setText(
-                f"Checkpoint safety ({engine_name}): this profile has no local checkpoint configured."
+                tr("vocal.security.no_checkpoint_detail", engine=engine_name)
             )
         elif profile.uses_safer_checkpoint:
             button.setEnabled(False)
-            button.setText("Trust not required")
+            button.setText(tr("vocal.security.trust_not_required"))
             label.setText(
-                f"Checkpoint safety ({engine_name}): {extension} is loaded through the safer format path."
+                tr("vocal.security.safer_detail", engine=engine_name, extension=extension)
             )
         elif profile.trusted:
             button.setEnabled(False)
-            button.setText("Checkpoint trusted")
-            note = profile.trust_note or "explicit local trust"
+            button.setText(tr("vocal.security.trusted"))
+            note = profile.trust_note or tr("vocal.security.explicit_trust")
             label.setText(
-                f"Checkpoint safety ({engine_name}): explicitly trusted ({note})."
+                tr("vocal.security.trusted_detail", engine=engine_name, note=note)
             )
         else:
             button.setEnabled(True)
-            button.setText("Trust unsafe checkpoint")
+            button.setText(tr("vocal.security.trust_unsafe"))
             label.setText(
-                f"Checkpoint safety ({engine_name}): {extension} is unsafe or unknown. "
-                "Trusting it permits pickle-backed loading and may execute code; use only if you trust the source."
+                tr(
+                    "vocal.security.unsafe_detail",
+                    engine=engine_name,
+                    extension=extension,
+                )
             )
 
     def _trust_selected_profile(
@@ -2491,33 +2521,30 @@ class VocalSuiteView(QWidget):
     ):
         profile = self._selected_voice_profile(combo)
         if profile is None:
-            self._report_error("Select a voice profile before trusting a checkpoint")
+            self._report_error(tr("vocal.status.trust_profile_required"))
             return
         if not profile.model_path:
-            self._report_error("The selected voice profile has no local checkpoint to trust")
+            self._report_error(tr("vocal.status.trust_checkpoint_missing"))
             return
         if profile.uses_safer_checkpoint:
-            self._status.setText("Trust is not required for this safer checkpoint format")
+            self._status.setText(tr("vocal.status.trust_not_required"))
             return
         if profile.trusted:
-            self._status.setText("This checkpoint is already trusted")
+            self._status.setText(tr("vocal.status.already_trusted"))
             return
 
-        note = (
-            f"Explicitly trusted from Vocal Suite {engine_name} voice profile; "
-            "pickle-backed loading acknowledged."
-        )
+        note = tr("vocal.security.trust_note", engine=engine_name)
         if not VoiceBank().trust_profile(profile.id, note=note):
-            self._report_error("Could not persist checkpoint trust for this voice profile")
+            self._report_error(tr("vocal.status.trust_save_failed"))
             return
 
         refreshed = VoiceBank().get(profile.id)
         self._update_checkpoint_trust_ui(refreshed, button, label, engine_name)
-        message = f"Trusted {engine_name} checkpoint for {profile.name}."
+        message = tr("vocal.status.trusted_profile", engine=engine_name, name=profile.name)
         self._status.setText(message)
         if self.toast_mgr is not None:
             self.toast_mgr.warning(
-                message + " Pickle-backed loading is now permitted for this profile.",
+                tr("vocal.status.trusted_warning", message=message),
                 duration_ms=8000,
             )
 
@@ -2531,7 +2558,7 @@ class VocalSuiteView(QWidget):
 
     def _format_clone_quality(self, report) -> str:
         status = report.status.upper()
-        details = report.issues[:2] if report.issues else ["Ready for GPT-SoVITS onboarding."]
+        details = report.issues[:2] if report.issues else [tr("vocal.clone.quality_ready")]
         return (
             f"{status} {report.score}/100 - {report.metrics_summary()}\n"
             + "\n".join(details)
@@ -2554,27 +2581,31 @@ class VocalSuiteView(QWidget):
         )
         self._clone_save_profile_btn.setEnabled(can_save)
         if hasattr(self, "_clone_consent_label"):
-            status = "ready" if can_save else "owner, source, use scope, and confirmation are required"
-            self._clone_consent_label.setText(f"Consent guardrails: {status}.")
+            status = (
+                tr("vocal.consent.ready")
+                if can_save
+                else tr("vocal.consent.requirements")
+            )
+            self._clone_consent_label.setText(tr("vocal.consent.status", status=status))
         self._refresh_capability_states()
 
     def _on_clone_save_profile(self):
         path = self._clone_ref_label.property("path")
         if not path or not self._clone_quality_report:
-            self._status.setText("Select reference audio before saving a voice profile")
+            self._status.setText(tr("vocal.status.reference_required"))
             return
         if not self._clone_quality_report.can_onboard:
-            self._status.setText("Reference audio must pass guardrails before onboarding")
+            self._status.setText(tr("vocal.status.reference_guardrails"))
             return
 
         name = self._clone_profile_name.text().strip()
         owner_name = self._clone_owner_name.text().strip()
         ref_text = self._clone_ref_text.text().strip()
         if not name or not ref_text or not owner_name:
-            self._status.setText("Profile name, voice owner, and reference transcript are required")
+            self._status.setText(tr("vocal.status.profile_fields_required"))
             return
         if not self._clone_consent_confirm.isChecked():
-            self._status.setText("Confirm voice ownership or permission before saving")
+            self._status.setText(tr("vocal.status.consent_required"))
             return
 
         report = self._clone_quality_report
@@ -2585,8 +2616,8 @@ class VocalSuiteView(QWidget):
             ref_text=ref_text,
             owner_name=owner_name,
             consent_status="confirmed",
-            consent_source=self._clone_consent_source.currentText(),
-            consent_scope=self._clone_use_scope.currentText(),
+            consent_source=self._clone_consent_source.currentData() or "",
+            consent_scope=self._clone_use_scope.currentData() or "",
             language=self._clone_language_code(),
             permitted_uses=self._clone_permitted_uses(),
             consent_note="Confirmed in Vocal Suite voice profile form.",
@@ -2601,7 +2632,7 @@ class VocalSuiteView(QWidget):
         idx = self._clone_voice.findData(profile.id)
         if idx >= 0:
             self._clone_voice.setCurrentIndex(idx)
-        self._status.setText(f"GPT-SoVITS voice profile saved: {profile.name}")
+        self._status.setText(tr("vocal.status.profile_saved", name=profile.name))
 
     def _clone_language_code(self) -> str:
         code = language_code_from_label(self._clone_lang.currentText())
@@ -2616,12 +2647,14 @@ class VocalSuiteView(QWidget):
     def _set_combo_text(self, combo: QComboBox, text: str):
         if not text:
             return
-        idx = combo.findText(text)
+        idx = combo.findData(text)
+        if idx < 0:
+            idx = combo.findText(text)
         if idx >= 0:
             combo.setCurrentIndex(idx)
 
     def _clone_permitted_uses(self) -> list[str]:
-        scope = self._clone_use_scope.currentText()
+        scope = self._clone_use_scope.currentData() or ""
         if scope == "Clone + conversion":
             return [VOICE_OPERATION_CLONE, VOICE_OPERATION_CONVERSION]
         if scope == "Clone only":
@@ -2631,12 +2664,15 @@ class VocalSuiteView(QWidget):
     def _format_profile_consent(self, profile: VoiceProfile, operation: str) -> str:
         issues = VoiceBank().validate_profile(profile, operation)
         if issues:
-            return "Consent guardrails blocked: " + "; ".join(issues[:3])
+            return tr("vocal.consent.blocked", issues="; ".join(issues[:3]))
         uses = ", ".join(profile.permitted_uses)
         source = profile.consent_source or profile.source
-        return (
-            f"Consent confirmed: {profile.owner_name}; {profile.language}; "
-            f"{source}; uses: {uses}."
+        return tr(
+            "vocal.consent.confirmed",
+            owner=profile.owner_name,
+            language=profile.language,
+            source=source,
+            uses=uses,
         )
 
     def _run_clone_generation(
@@ -2651,7 +2687,7 @@ class VocalSuiteView(QWidget):
         from engines.rvc_engine import get_sovits
 
         if cancel_event and cancel_event.is_set():
-            raise CancelledJobError("GPT-SoVITS clone cancelled")
+            raise CancelledJobError(tr("vocal.status.clone_cancelled"))
         engine = get_sovits()
         engine.load_model(
             profile,
@@ -2662,7 +2698,7 @@ class VocalSuiteView(QWidget):
             self._progress_bridge(progress_cb, step_cb),
         )
         if cancel_event and cancel_event.is_set():
-            raise CancelledJobError("GPT-SoVITS clone cancelled")
+            raise CancelledJobError(tr("vocal.status.clone_cancelled"))
         path = engine.save_output(result, profile=profile) if result.is_success else None
         artifacts = []
         if result.audio is not None or path:
@@ -2701,8 +2737,8 @@ class VocalSuiteView(QWidget):
         run = payload
         self._contract_results[CAP_VOCAL_CLONE] = run
         if not run or not run.is_success:
-            error = run.error if run else "Engine returned no result"
-            self._report_error(f"GPT-SoVITS clone failed: {error}")
+            error = run.error if run else tr("vocal.status.engine_no_result")
+            self._report_error(tr("vocal.status.clone_failed", error=error))
             self._refresh_capability_states()
             return
         result = run.source_result
@@ -2712,7 +2748,11 @@ class VocalSuiteView(QWidget):
             self._clone_waveform.load_audio(result.audio, result.sample_rate)
         self._current_audio_path = path
         self._status.setText(
-            f"Voice clone created: {os.path.basename(path)} ({result.duration:.1f}s)"
+            tr(
+                "vocal.status.clone_created",
+                name=os.path.basename(path),
+                seconds=result.duration,
+            )
         )
         if run.can_route:
             self._enable_routing()
@@ -2726,7 +2766,7 @@ class VocalSuiteView(QWidget):
             error,
             model_id="gpt-sovits-v2",
         )
-        self._report_error(f"GPT-SoVITS clone failed: {error}")
+        self._report_error(tr("vocal.status.clone_failed", error=error))
         self._refresh_capability_states()
 
     def _on_clone_cancelled(self):
@@ -2734,10 +2774,10 @@ class VocalSuiteView(QWidget):
         self._finish_operation_progress()
         self._contract_results[CAP_VOCAL_CLONE] = EngineRunResult.cancelled(
             CAP_VOCAL_CLONE,
-            "GPT-SoVITS clone cancelled",
+            tr("vocal.status.clone_cancelled"),
             model_id="gpt-sovits-v2",
         )
-        self._status.setText("GPT-SoVITS clone cancelled")
+        self._status.setText(tr("vocal.status.clone_cancelled"))
         self._refresh_capability_states()
 
     def _on_autotune_browse(self):
