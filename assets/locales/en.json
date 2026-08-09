@@ -24,6 +24,31 @@
       "system": "SYSTEM"
     }
   },
+  "accessibility": {
+    "fallback": {
+      "control_name": "{context} {control}",
+      "text_input_name": "text input",
+      "numeric_control_name": "numeric control",
+      "option_selector_name": "option selector",
+      "toggle_setting_name": "toggle setting",
+      "panel_switcher_name": "panel switcher",
+      "selectable_list_name": "selectable list",
+      "progress_name": "progress indicator",
+      "keyboard_canvas_name": "keyboard canvas",
+      "action_button_name": "action button",
+      "interactive_control_name": "interactive control",
+      "text_input": "Text input",
+      "numeric_control": "Adjustable numeric control",
+      "option_selector": "Option selector",
+      "toggle_setting": "Toggle setting",
+      "panel_switcher": "Switches between related panels",
+      "selectable_list": "Selectable list",
+      "progress": "Progress indicator",
+      "keyboard_canvas": "Keyboard-operable canvas",
+      "action_button": "Action button",
+      "interactive_control": "Interactive control"
+    }
+  },
   "page": {
     "lyrics": {
       "title": "Lyrics Engine",
@@ -1879,6 +1904,7 @@
       "token_error": "Token must start with hf_ and contain at least 10 characters.",
       "review_title": "Review executable model permissions",
       "review_model": "Review permissions for {model}",
+      "executable_warning": "This model revision contains executable repository code or pickle-backed weights. Loading it can execute code with your user permissions. Review the pinned source and revision before granting consent.",
       "review_details": "Source: {source}; Revision: {revision}. This model requests remote code: {remote_code}. It permits pickle weights: {pickle_weights}. Review the model source before continuing.",
       "yes": "Yes",
       "no": "No",
@@ -1954,6 +1980,17 @@
       "no_task_guidance": "General audio generation",
       "tasks": "Tasks: {tasks}",
       "rights": "License: {license}  |  Commercial: {commercial}  |  Access: {access}",
+      "commercial_allowed": "Allowed",
+      "commercial_check_terms": "Check terms",
+      "commercial_limited": "Limited",
+      "commercial_non_commercial": "Non-commercial only",
+      "commercial_unknown": "Unknown",
+      "access_gated": "Gated / token required",
+      "access_open": "Open download",
+      "warning_non_commercial": "Outputs may not be cleared for commercial use with this model.",
+      "warning_limited": "Commercial use is limited by the model license; verify eligibility before release.",
+      "warning_check_terms": "Commercial use is governed by model-specific terms; review the license before release.",
+      "warning_unknown": "Commercial-use rights are unknown; review the model license before release.",
       "trust_reviewed": "Reviewed",
       "trust_untrusted": "Unreviewed",
       "trust_pinned": "Pinned {revision} - hashed local cache - {status}",
@@ -1983,7 +2020,15 @@
       "approved_for": "Approved for revision {revision}",
       "starting": "Starting...",
       "finishing_transfer": "Finishing transfer...",
-      "oms_unsigned": "OMS signature not recorded"
+      "oms_unsigned": "OMS signature not recorded",
+      "signature_verified": "OMS signature: verified",
+      "signature_verified_identity": "OMS signature: verified ({identity})",
+      "signature_unsigned": "OMS signature: unsigned",
+      "signature_missing": "OMS signature: missing",
+      "signature_untrusted": "OMS signature: signer policy missing",
+      "signature_unavailable": "OMS signature: verifier unavailable",
+      "signature_invalid": "OMS signature: invalid",
+      "signature_unknown": "OMS signature: {status} - {reason}"
     },
     "status": {
       "engine_missing": "Engine not installed",

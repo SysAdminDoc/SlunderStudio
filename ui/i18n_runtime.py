@@ -40,11 +40,24 @@ def apply_pseudolocale(root: QWidget) -> int:
     widgets = [root, *root.findChildren(QWidget)]
     changed = 0
     for widget in widgets:
-        if isinstance(widget, (QLabel, QAbstractButton, QGroupBox)):
+        if isinstance(widget, (QLabel, QAbstractButton)):
             text = widget.text()
             expanded = _pseudo_text(widget, text)
             if expanded != text:
                 widget.setText(expanded)
+                changed += 1
+            for getter, setter in (
+                (widget.accessibleName, widget.setAccessibleName),
+                (widget.accessibleDescription, widget.setAccessibleDescription),
+            ):
+                value = getter()
+                if value and not value.startswith("［"):
+                    setter(pseudolocalize(value))
+        if isinstance(widget, QGroupBox):
+            text = widget.title()
+            expanded = _pseudo_text(widget, text)
+            if expanded != text:
+                widget.setTitle(expanded)
                 changed += 1
             for getter, setter in (
                 (widget.accessibleName, widget.setAccessibleName),

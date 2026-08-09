@@ -24,8 +24,7 @@ from ui.widgets import OperationProgressWidget
 from core.i18n import (
     GPT_SOVITS_LANGUAGE_CODES,
     language_code_from_label,
-    language_combo_items,
-    language_label,
+    language_combo_options,
     normalize_language_code,
     tr,
     user_facing_readiness,
@@ -561,7 +560,8 @@ class VocalSuiteView(QWidget):
         kl.setMinimumWidth(24)
         kl.setStyleSheet(param_style)
         self._sing_key = QComboBox()
-        self._sing_key.addItems(["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"])
+        for key in ("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"):
+            self._sing_key.addItem(key, key)
         self._sing_key.setStyleSheet(param_style)
 
         row1.addWidget(tl)
@@ -1202,7 +1202,8 @@ class VocalSuiteView(QWidget):
         ll.setMinimumWidth(36)
         ll.setStyleSheet(param_style)
         self._clone_lang = QComboBox()
-        self._clone_lang.addItems(language_combo_items(GPT_SOVITS_LANGUAGE_CODES))
+        for label, code in language_combo_options(GPT_SOVITS_LANGUAGE_CODES):
+            self._clone_lang.addItem(label, code)
         self._set_clone_language(self._settings.get("lyrics.default_language", "en"))
         self._clone_lang.setStyleSheet(param_style)
         lang_row.addWidget(ll)
@@ -1533,7 +1534,7 @@ class VocalSuiteView(QWidget):
         params = SingParams(
             lyrics=lyrics,
             tempo=float(self._sing_tempo.value()),
-            key=self._sing_key.currentText(),
+            key=str(self._sing_key.currentData() or self._sing_key.currentText()),
             speaker_id=profile.speaker_id,
             pitch_shift=profile.pitch_shift,
             breathiness=self._sing_breathiness.value() / 100,
@@ -2661,14 +2662,21 @@ class VocalSuiteView(QWidget):
         self._status.setText(tr("vocal.status.profile_saved", name=profile.name))
 
     def _clone_language_code(self) -> str:
-        code = language_code_from_label(self._clone_lang.currentText())
+        code = str(
+            self._clone_lang.currentData()
+            or language_code_from_label(self._clone_lang.currentText())
+        )
         return code if code in GPT_SOVITS_LANGUAGE_CODES else "en"
 
     def _set_clone_language(self, language: str):
         code = normalize_language_code(language)
-        target = language_label(code if code in GPT_SOVITS_LANGUAGE_CODES else "en")
-        if target:
-            self._set_combo_text(self._clone_lang, target)
+        target = code if code in GPT_SOVITS_LANGUAGE_CODES else "en"
+        self._set_combo_data(self._clone_lang, target)
+
+    def _set_combo_data(self, combo: QComboBox, value: str):
+        idx = combo.findData(value)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
 
     def _set_combo_text(self, combo: QComboBox, text: str):
         if not text:

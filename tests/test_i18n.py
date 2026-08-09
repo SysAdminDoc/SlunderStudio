@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import ExitStack
@@ -10,7 +12,17 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QApplication,
+    QComboBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTabWidget,
+    QWidget,
+)
 
 from core.i18n import (
     DEFAULT_LOCALE,
@@ -132,6 +144,75 @@ class I18nTests(unittest.TestCase):
             self.assertEqual(0, apply_pseudolocale(window))
         finally:
             window.deleteLater()
+
+    def test_main_pages_pass_rtl_and_pseudo_locale_probes(self):
+        probe = r'''
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QAbstractButton, QApplication, QComboBox, QGroupBox, QLabel, QTabWidget, QWidget
+from core.i18n import PSEUDO_LOCALE, set_locale
+from core.lyrics_db import LyricsDB
+from ui.main_window import MainWindow
+
+app = QApplication([])
+set_locale("ar", persist=False, app=app)
+arabic = MainWindow()
+app.processEvents()
+pages = [arabic._pages.widget(i) for i in range(arabic._pages.count())]
+if len(pages) != 10 or app.layoutDirection() != Qt.LayoutDirection.RightToLeft:
+    raise SystemExit(f"arabic pages={len(pages)} direction={app.layoutDirection()}")
+if any(not page.accessibleName() or not page.accessibleDescription() for page in pages):
+    raise SystemExit("arabic page accessibility metadata is incomplete")
+arabic.close()
+arabic.deleteLater()
+LyricsDB().reopen()
+app.processEvents()
+
+set_locale(PSEUDO_LOCALE, persist=False, app=app)
+pseudo = MainWindow()
+app.processEvents()
+pages = [pseudo._pages.widget(i) for i in range(pseudo._pages.count())]
+if len(pages) != 10:
+    raise SystemExit(f"pseudo pages={len(pages)}")
+text_widgets = []
+for widget in [pseudo, *pseudo.findChildren(QWidget)]:
+    if not isinstance(widget, (QLabel, QAbstractButton, QGroupBox)):
+        continue
+    text = widget.title() if isinstance(widget, QGroupBox) else widget.text()
+    if any(char.isalpha() for char in text):
+        text_widgets.append((widget, text))
+unexpanded = [text for _widget, text in text_widgets if not text.startswith("［")]
+if unexpanded:
+    raise SystemExit("pseudo visible copy not expanded: " + repr(unexpanded[:8]))
+for combo in pseudo.findChildren(QComboBox):
+    values = [combo.itemText(i) for i in range(combo.count()) if any(char.isalpha() for char in combo.itemText(i))]
+    if any(not value.startswith("［") for value in values):
+        raise SystemExit("pseudo combo item not expanded: " + repr(values[:8]))
+for tabs in pseudo.findChildren(QTabWidget):
+    values = [tabs.tabText(i) for i in range(tabs.count()) if tabs.tabText(i)]
+    if any(not value.startswith("［") for value in values):
+        raise SystemExit("pseudo tab not expanded: " + repr(values))
+print(f"arabic pages={len(pages)} pseudo_text={len(text_widgets)}")
+pseudo.close()
+'''
+        environment = os.environ.copy()
+        environment["QT_QPA_PLATFORM"] = "offscreen"
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=Path(__file__).resolve().parents[1],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"locale page probe failed:\n{result.stdout}\n{result.stderr}",
+        )
+        self.assertIn("arabic pages=10", result.stdout)
 
     def test_language_labels_normalize_to_prompt_codes(self):
         self.assertEqual("en", language_code_from_label("English"))

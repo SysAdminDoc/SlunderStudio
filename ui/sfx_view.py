@@ -258,7 +258,7 @@ class SFXView(QWidget):
                 tr(_SFX_CATEGORY_LABEL_KEYS.get(category, "sfx.categories.custom")),
                 category,
             )
-        self._category.currentTextChanged.connect(self._on_category_changed)
+        self._category.currentIndexChanged.connect(self._on_category_changed)
         self._category.setStyleSheet(param_style)
         cat_row.addWidget(cl)
         cat_row.addWidget(self._category)
@@ -267,7 +267,7 @@ class SFXView(QWidget):
         # Preset prompts
         self._preset_combo = QComboBox()
         self._preset_combo.setStyleSheet(param_style)
-        self._preset_combo.currentTextChanged.connect(self._on_preset_selected)
+        self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
         self._preset_combo.setVisible(False)
         ctrl_layout.addWidget(self._preset_combo)
 
@@ -463,7 +463,8 @@ class SFXView(QWidget):
         category = self._category.currentData() or category
         self._preset_combo.clear()
         if category in SFX_CATEGORIES:
-            self._preset_combo.addItems(SFX_CATEGORIES[category])
+            for prompt in SFX_CATEGORIES[category]:
+                self._preset_combo.addItem(prompt, prompt)
             self._preset_combo.setVisible(True)
         else:
             self._preset_combo.setVisible(False)
@@ -479,9 +480,10 @@ class SFXView(QWidget):
             ],
         )
 
-    def _on_preset_selected(self, text: str):
-        if text:
-            self._prompt.setPlainText(text)
+    def _on_preset_selected(self, _index: int):
+        prompt = self._preset_combo.currentData()
+        if prompt:
+            self._prompt.setPlainText(str(prompt))
 
     def _on_generate(self):
         if self._generation_worker is not None:

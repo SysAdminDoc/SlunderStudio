@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QWidget,
 )
+from core.i18n import tr
 from ui.theme import Palette
 
 FOCUS_RING_COLOR = Palette.YELLOW
@@ -174,29 +175,55 @@ def _fallback_name(widget: QWidget, context: str) -> str:
     ):
         if candidate:
             return f"{context} {candidate}"
-    return f"{context} {widget.__class__.__name__}"
+    return tr(
+        "accessibility.fallback.control_name",
+        context=context,
+        control=tr(_fallback_control_key(widget)),
+    )
 
 
 def _fallback_description(widget: QWidget) -> str:
     if isinstance(widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
-        return "Text input"
+        return tr("accessibility.fallback.text_input")
     if isinstance(widget, (QSpinBox, QDoubleSpinBox, QSlider)):
-        return "Adjustable numeric control"
+        return tr("accessibility.fallback.numeric_control")
     if isinstance(widget, QComboBox):
-        return "Option selector"
+        return tr("accessibility.fallback.option_selector")
     if isinstance(widget, QCheckBox):
-        return "Toggle setting"
+        return tr("accessibility.fallback.toggle_setting")
     if isinstance(widget, QTabWidget):
-        return "Switches between related panels"
+        return tr("accessibility.fallback.panel_switcher")
     if isinstance(widget, QListWidget):
-        return "Selectable list"
+        return tr("accessibility.fallback.selectable_list")
     if isinstance(widget, QProgressBar):
-        return "Progress indicator"
+        return tr("accessibility.fallback.progress")
     if isinstance(widget, QGraphicsView):
-        return "Keyboard-operable canvas"
+        return tr("accessibility.fallback.keyboard_canvas")
     if isinstance(widget, QAbstractButton):
-        return "Action button"
-    return "Interactive control"
+        return tr("accessibility.fallback.action_button")
+    return tr("accessibility.fallback.interactive_control")
+
+
+def _fallback_control_key(widget: QWidget) -> str:
+    if isinstance(widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+        return "accessibility.fallback.text_input_name"
+    if isinstance(widget, (QSpinBox, QDoubleSpinBox, QSlider)):
+        return "accessibility.fallback.numeric_control_name"
+    if isinstance(widget, QComboBox):
+        return "accessibility.fallback.option_selector_name"
+    if isinstance(widget, QCheckBox):
+        return "accessibility.fallback.toggle_setting_name"
+    if isinstance(widget, QTabWidget):
+        return "accessibility.fallback.panel_switcher_name"
+    if isinstance(widget, QListWidget):
+        return "accessibility.fallback.selectable_list_name"
+    if isinstance(widget, QProgressBar):
+        return "accessibility.fallback.progress_name"
+    if isinstance(widget, QGraphicsView):
+        return "accessibility.fallback.keyboard_canvas_name"
+    if isinstance(widget, QAbstractButton):
+        return "accessibility.fallback.action_button_name"
+    return "accessibility.fallback.interactive_control_name"
 
 
 def _button_text(widget: QWidget) -> str:

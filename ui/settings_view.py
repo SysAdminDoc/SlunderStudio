@@ -18,8 +18,7 @@ from ui.accessibility import install_accessibility
 from ui.widgets import OperationProgressWidget
 from core.diagnostics import export_health_report
 from core.i18n import (
-    language_code_from_label,
-    language_combo_items,
+    language_combo_options,
     language_label,
     set_locale,
     tr,
@@ -268,17 +267,25 @@ class SettingsView(QWidget):
         output_layout.addLayout(dir_row)
 
         self._format_combo = QComboBox()
-        self._format_combo.addItems(["WAV", "FLAC", "MP3"])
+        for format_name in ("WAV", "FLAC", "MP3"):
+            self._format_combo.addItem(format_name, format_name.lower())
         self._format_combo.setMinimumWidth(120)
-        self._format_combo.currentTextChanged.connect(
-            lambda v: self._save("general.audio_format", v.lower()))
+        self._format_combo.currentIndexChanged.connect(
+            lambda: self._save(
+                "general.audio_format",
+                self._format_combo.currentData() or "wav",
+            ))
         output_layout.addLayout(SettingRow(tr("settings.output.format"), self._format_combo))
 
         self._sample_rate_combo = QComboBox()
-        self._sample_rate_combo.addItems(["44100", "48000"])
+        for sample_rate in (44100, 48000):
+            self._sample_rate_combo.addItem(str(sample_rate), sample_rate)
         self._sample_rate_combo.setMinimumWidth(120)
-        self._sample_rate_combo.currentTextChanged.connect(
-            lambda v: self._save("general.sample_rate", int(v)) if v else None)
+        self._sample_rate_combo.currentIndexChanged.connect(
+            lambda: self._save(
+                "general.sample_rate",
+                self._sample_rate_combo.currentData(),
+            ))
         output_layout.addLayout(SettingRow(
             tr("settings.output.sample_rate"),
             self._sample_rate_combo,
@@ -691,10 +698,14 @@ class SettingsView(QWidget):
         ))
 
         self._default_language = QComboBox()
-        self._default_language.addItems(language_combo_items())
+        for label, code in language_combo_options():
+            self._default_language.addItem(label, code)
         self._default_language.setMinimumWidth(200)
-        self._default_language.currentTextChanged.connect(
-            lambda v: self._save("lyrics.default_language", language_code_from_label(v)))
+        self._default_language.currentIndexChanged.connect(
+            lambda: self._save(
+                "lyrics.default_language",
+                self._default_language.currentData() or "en",
+            ))
         appearance_layout.addLayout(SettingRow(
             tr("settings.appearance.default_lyrics_language"),
             self._default_language,
@@ -1257,12 +1268,12 @@ class SettingsView(QWidget):
                 str(s.get("general.c2pa_timestamp_url", "") or "")
             )
             fmt = s.get("general.audio_format", "wav").upper()
-            idx = self._format_combo.findText(fmt)
+            idx = self._format_combo.findData(fmt)
             if idx >= 0:
                 self._format_combo.setCurrentIndex(idx)
 
             sr = str(s.get("general.sample_rate", 48000))
-            idx = self._sample_rate_combo.findText(sr)
+            idx = self._sample_rate_combo.findData(int(sr))
             if idx >= 0:
                 self._sample_rate_combo.setCurrentIndex(idx)
 

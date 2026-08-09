@@ -23,8 +23,7 @@ from ui.lyrics_editor import LyricsEditor
 from core.settings import Settings
 from core.i18n import (
     language_code_from_label,
-    language_combo_items,
-    language_label,
+    language_combo_options,
     tr,
 )
 from core.workers import InferenceWorker
@@ -509,13 +508,16 @@ class LyricsView(QWidget):
         guided_layout.addWidget(lang_label)
 
         self._lang_combo = QComboBox()
-        self._lang_combo.addItems(language_combo_items())
-        selected_language = language_label(self._settings.get("lyrics.default_language", "en"))
-        selected_idx = self._lang_combo.findText(selected_language)
+        for label, code in language_combo_options():
+            self._lang_combo.addItem(label, code)
+        selected_code = language_code_from_label(
+            self._settings.get("lyrics.default_language", "en")
+        )
+        selected_idx = self._lang_combo.findData(selected_code)
         if selected_idx >= 0:
             self._lang_combo.setCurrentIndex(selected_idx)
         self._lang_combo.setMinimumHeight(34)
-        self._lang_combo.currentTextChanged.connect(self._on_language_changed)
+        self._lang_combo.currentIndexChanged.connect(self._on_language_changed)
         guided_layout.addWidget(self._lang_combo)
 
         # Generate button
@@ -697,10 +699,10 @@ class LyricsView(QWidget):
         pass  # Signals connected inline in _build_ui
 
     def _selected_language_code(self) -> str:
-        return language_code_from_label(self._lang_combo.currentText())
+        return str(self._lang_combo.currentData() or language_code_from_label(self._lang_combo.currentText()))
 
-    def _on_language_changed(self, label: str):
-        self._settings.set("lyrics.default_language", language_code_from_label(label))
+    def _on_language_changed(self, _index: int):
+        self._settings.set("lyrics.default_language", self._selected_language_code())
 
     # ── Generation ─────────────────────────────────────────────────────────────
 

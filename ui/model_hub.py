@@ -17,7 +17,11 @@ from ui.accessibility import install_accessibility, set_accessible
 from ui.widgets import EmptyStateWidget
 from core.i18n import tr, user_facing_readiness
 from core.model_manager import (
-    EXECUTABLE_MODEL_WARNING,
+    COMMERCIAL_USE_ALLOWED,
+    COMMERCIAL_USE_LIMITED,
+    COMMERCIAL_USE_NON_COMMERCIAL,
+    COMMERCIAL_USE_TERMS,
+    COMMERCIAL_USE_UNKNOWN,
     ModelCategory,
     ModelInfo,
     ModelManager,
@@ -46,6 +50,70 @@ _CATEGORY_LABEL_KEYS = {
     ModelCategory.ALIGNMENT: "model_hub_ui.categories.alignment",
     ModelCategory.EXTRAS: "model_hub_ui.categories.extras",
 }
+
+_COMMERCIAL_USE_LABEL_KEYS = {
+    COMMERCIAL_USE_ALLOWED: "model_hub_ui.card.commercial_allowed",
+    COMMERCIAL_USE_TERMS: "model_hub_ui.card.commercial_check_terms",
+    COMMERCIAL_USE_LIMITED: "model_hub_ui.card.commercial_limited",
+    COMMERCIAL_USE_NON_COMMERCIAL: "model_hub_ui.card.commercial_non_commercial",
+    COMMERCIAL_USE_UNKNOWN: "model_hub_ui.card.commercial_unknown",
+}
+
+_LICENSE_WARNING_KEYS = {
+    COMMERCIAL_USE_NON_COMMERCIAL: "model_hub_ui.card.warning_non_commercial",
+    COMMERCIAL_USE_LIMITED: "model_hub_ui.card.warning_limited",
+    COMMERCIAL_USE_TERMS: "model_hub_ui.card.warning_check_terms",
+    COMMERCIAL_USE_UNKNOWN: "model_hub_ui.card.warning_unknown",
+}
+
+_SIGNATURE_STATUS_KEYS = {
+    "unsigned": "model_hub_ui.card.signature_unsigned",
+    "missing": "model_hub_ui.card.signature_missing",
+    "untrusted": "model_hub_ui.card.signature_untrusted",
+    "unavailable": "model_hub_ui.card.signature_unavailable",
+    "invalid": "model_hub_ui.card.signature_invalid",
+}
+
+
+def _localized_commercial_use(info: ModelInfo) -> str:
+    key = _COMMERCIAL_USE_LABEL_KEYS.get(
+        info.commercial_use,
+        _COMMERCIAL_USE_LABEL_KEYS[COMMERCIAL_USE_UNKNOWN],
+    )
+    return tr(key)
+
+
+def _localized_access(info: ModelInfo) -> str:
+    return tr(
+        "model_hub_ui.card.access_gated"
+        if info.gated
+        else "model_hub_ui.card.access_open"
+    )
+
+
+def _localized_license_warning(info: ModelInfo) -> str:
+    key = _LICENSE_WARNING_KEYS.get(info.commercial_use)
+    return tr(key) if key else ""
+
+
+def _localized_signature_label(metadata: dict) -> str:
+    status = str(metadata.get("signature_status", "unsigned") or "unsigned")
+    if status == "verified":
+        identity = str(metadata.get("signature_identity", "") or "")
+        return tr(
+            "model_hub_ui.card.signature_verified_identity"
+            if identity
+            else "model_hub_ui.card.signature_verified",
+            identity=identity,
+        )
+    key = _SIGNATURE_STATUS_KEYS.get(status)
+    if key:
+        return tr(key)
+    return tr(
+        "model_hub_ui.card.signature_unknown",
+        status=status,
+        reason=str(metadata.get("signature_reason", "") or ""),
+    )
 
 
 class HFTokenDialog(QDialog):
@@ -138,7 +206,7 @@ class ExecutableModelConsentDialog(QDialog):
         title.setStyleSheet(f"font-size: 12pt; font-weight: 700; color: {Palette.TEXT};")
         layout.addWidget(title)
 
-        warning = QLabel(EXECUTABLE_MODEL_WARNING)
+        warning = QLabel(tr("model_hub_ui.dialogs.executable_warning"))
         warning.setWordWrap(True)
         warning.setStyleSheet(f"color: {Palette.YELLOW};")
         layout.addWidget(warning)
@@ -315,8 +383,8 @@ class ModelCard(QFrame):
             tr(
                 "model_hub_ui.card.rights",
                 license=self.info.license,
-                commercial=self.info.commercial_use_label,
-                access=self.info.access_label,
+                commercial=_localized_commercial_use(self.info),
+                access=_localized_access(self.info),
             )
         )
         rights.setWordWrap(True)
@@ -324,7 +392,7 @@ class ModelCard(QFrame):
         layout.addWidget(rights)
         self._rights_label = rights
 
-        warning_text = self.info.license_warning
+        warning_text = _localized_license_warning(self.info)
         if warning_text:
             warning = QLabel(warning_text)
             warning.setWordWrap(True)
@@ -543,7 +611,7 @@ class ModelCard(QFrame):
     def _refresh_signature_label(self):
         """Keep the card's trust copy explicit about OMS signature state."""
         metadata = ModelManager().get_model_signature_metadata(self.model_id)
-        label = metadata.get("label", tr("model_hub_ui.card.oms_unsigned"))
+        label = _localized_signature_label(metadata)
         self._trust_label.setText(f"{self._base_trust_text} - {label}")
         self._trust_label.setToolTip(metadata.get("signature_reason", ""))
 

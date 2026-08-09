@@ -172,8 +172,9 @@ class MidiStudioView(QWidget):
         key_l.setMinimumWidth(34)
         key_l.setStyleSheet(param_style)
         self._key_combo = QComboBox()
-        self._key_combo.addItems(KEYS)
-        self._key_combo.setCurrentText("C major")
+        for key in KEYS:
+            self._key_combo.addItem(key, key)
+        self._key_combo.setCurrentIndex(self._key_combo.findData("C major"))
         self._key_combo.setStyleSheet(param_style)
 
         tempo_l = QLabel(tr("midi.tempo_label"))
@@ -205,7 +206,8 @@ class MidiStudioView(QWidget):
         ts_l.setMinimumWidth(30)
         ts_l.setStyleSheet(param_style)
         self._time_sig = QComboBox()
-        self._time_sig.addItems(["4/4", "3/4", "6/8", "2/4", "5/4", "7/8"])
+        for time_signature in ("4/4", "3/4", "6/8", "2/4", "5/4", "7/8"):
+            self._time_sig.addItem(time_signature, time_signature)
         self._time_sig.setStyleSheet(param_style)
 
         row2.addWidget(bars_l)
@@ -221,8 +223,9 @@ class MidiStudioView(QWidget):
         inst_l.setMinimumWidth(40)
         inst_l.setStyleSheet(param_style)
         self._inst_combo = QComboBox()
-        self._inst_combo.addItems(INSTRUMENT_PRESETS.keys())
-        self._inst_combo.setCurrentText("Band (4-piece)")
+        for preset_name in INSTRUMENT_PRESETS:
+            self._inst_combo.addItem(preset_name, preset_name)
+        self._inst_combo.setCurrentIndex(self._inst_combo.findData("Band (4-piece)"))
         self._inst_combo.setStyleSheet(param_style)
         row3.addWidget(inst_l)
         row3.addWidget(self._inst_combo)
@@ -235,7 +238,8 @@ class MidiStudioView(QWidget):
         prog_l.setMinimumWidth(48)
         prog_l.setStyleSheet(param_style)
         self._progression_combo = QComboBox()
-        self._progression_combo.addItems(CHORD_PROGRESSIONS)
+        for progression in CHORD_PROGRESSIONS:
+            self._progression_combo.addItem(progression, progression)
         self._progression_combo.setStyleSheet(param_style)
         row4.addWidget(prog_l)
         row4.addWidget(self._progression_combo)
@@ -248,7 +252,8 @@ class MidiStudioView(QWidget):
         groove_l.setMinimumWidth(48)
         groove_l.setStyleSheet(param_style)
         self._groove_combo = QComboBox()
-        self._groove_combo.addItems(DRUM_GROOVE_NAMES)
+        for groove in DRUM_GROOVE_NAMES:
+            self._groove_combo.addItem(groove, groove)
         self._groove_combo.setStyleSheet(param_style)
         row5.addWidget(groove_l)
         row5.addWidget(self._groove_combo)
@@ -493,23 +498,29 @@ class MidiStudioView(QWidget):
             self._status.setText(tr("midi.status.cancelling_render"))
 
     def _build_params(self) -> MidiGenParams:
-        ts_text = self._time_sig.currentText()
+        ts_text = str(self._time_sig.currentData() or self._time_sig.currentText())
         ts_parts = ts_text.split("/")
         time_sig = (int(ts_parts[0]), int(ts_parts[1]))
 
-        preset_name = self._inst_combo.currentText()
+        preset_name = str(self._inst_combo.currentData() or self._inst_combo.currentText())
         instruments = INSTRUMENT_PRESETS.get(preset_name, ["Piano"])
 
         return MidiGenParams(
             prompt=self._prompt.toPlainText().strip(),
             style=self._style_input.text().strip(),
-            key=self._key_combo.currentText(),
+            key=str(self._key_combo.currentData() or self._key_combo.currentText()),
             tempo=self._tempo_spin.value(),
             time_signature=time_sig,
             duration_bars=self._bars_spin.value(),
             instruments=instruments,
-            chord_progression=self._progression_combo.currentText(),
-            drum_groove=self._groove_combo.currentText(),
+            chord_progression=str(
+                self._progression_combo.currentData()
+                or self._progression_combo.currentText()
+            ),
+            drum_groove=str(
+                self._groove_combo.currentData()
+                or self._groove_combo.currentText()
+            ),
             allow_demo_output=self._demo_checkbox.isChecked(),
         )
 

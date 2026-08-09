@@ -497,6 +497,16 @@ def language_combo_items(codes: Iterable[str] | None = None) -> list[str]:
     return [label for code, label in LANGUAGE_OPTIONS if allowed is None or code in allowed]
 
 
+def language_combo_options(codes: Iterable[str] | None = None) -> list[tuple[str, str]]:
+    """Return localized language labels paired with stable language codes."""
+    allowed = set(codes) if codes is not None else None
+    return [
+        (label, code)
+        for code, label in LANGUAGE_OPTIONS
+        if allowed is None or code in allowed
+    ]
+
+
 def language_code_from_label(label: str | None) -> str:
     return normalize_language_code(label)
 
