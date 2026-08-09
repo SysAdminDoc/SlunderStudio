@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Model Hub dialogs, model cards, filters, update/recovery flows, hardware summaries,
+  and accessibility descriptions to the locale catalog, including Arabic coverage.
+
 - Migrated Reference Panel controls, drop-zone/status messages, metric labels, section/tag
   summaries, and accessibility descriptions to the locale catalog.
 

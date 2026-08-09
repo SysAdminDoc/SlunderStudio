@@ -15,7 +15,7 @@ from PySide6.QtCore import QUrl
 from ui.theme import Palette
 from ui.accessibility import install_accessibility, set_accessible
 from ui.widgets import EmptyStateWidget
-from core.i18n import user_facing_readiness
+from core.i18n import tr, user_facing_readiness
 from core.model_manager import (
     EXECUTABLE_MODEL_WARNING,
     ModelCategory,
@@ -36,12 +36,24 @@ from core.workers import DownloadWorker, InferenceWorker
 from core.job_state import JobStatus, JobStore
 
 
+_CATEGORY_LABEL_KEYS = {
+    ModelCategory.SONG_FORGE: "model_hub_ui.categories.song_forge",
+    ModelCategory.LYRICS: "model_hub_ui.categories.lyrics",
+    ModelCategory.MIDI: "model_hub_ui.categories.midi",
+    ModelCategory.VOCAL: "model_hub_ui.categories.vocal",
+    ModelCategory.SEPARATION: "model_hub_ui.categories.separation",
+    ModelCategory.SFX: "model_hub_ui.categories.sfx",
+    ModelCategory.ALIGNMENT: "model_hub_ui.categories.alignment",
+    ModelCategory.EXTRAS: "model_hub_ui.categories.extras",
+}
+
+
 class HFTokenDialog(QDialog):
     """Inline dialog to paste a HuggingFace token for gated model downloads."""
 
     def __init__(self, model_name: str, repo_id: str, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("HuggingFace Token")
+        self.setWindowTitle(tr("model_hub_ui.dialogs.token_title"))
         self.setMinimumSize(480, 240)
         self.token = ""
         self._build_ui(model_name, repo_id)
@@ -52,14 +64,16 @@ class HFTokenDialog(QDialog):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(12)
 
-        title = QLabel(f"<b>{model_name}</b> requires a HuggingFace access token")
+        title = QLabel(
+            tr("model_hub_ui.dialogs.token_required", model=model_name)
+        )
         title.setStyleSheet(f"font-size: 11.25pt; color: {Palette.TEXT};")
         title.setWordWrap(True)
         layout.addWidget(title)
 
         link_row = QHBoxLayout()
         link_row.setSpacing(8)
-        open_btn = QPushButton("Get Token from HuggingFace")
+        open_btn = QPushButton(tr("model_hub_ui.dialogs.get_token"))
         open_btn.setMinimumHeight(34)
         open_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/settings/tokens"))
@@ -69,7 +83,7 @@ class HFTokenDialog(QDialog):
         layout.addLayout(link_row)
 
         self._token_input = QLineEdit()
-        self._token_input.setPlaceholderText("Paste token here  (starts with hf_)")
+        self._token_input.setPlaceholderText(tr("model_hub_ui.dialogs.token_placeholder"))
         self._token_input.setEchoMode(QLineEdit.EchoMode.Password)
         self._token_input.setMinimumHeight(38)
         layout.addWidget(self._token_input)
@@ -84,12 +98,12 @@ class HFTokenDialog(QDialog):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(tr("model_hub_ui.dialogs.cancel"))
         cancel_btn.setMinimumSize(100, 36)
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(cancel_btn)
 
-        self._save_btn = QPushButton("Save and Download")
+        self._save_btn = QPushButton(tr("model_hub_ui.dialogs.save_download"))
         self._save_btn.setMinimumSize(160, 36)
         self._save_btn.setObjectName("accentBtn")
         self._save_btn.clicked.connect(self._accept)
@@ -102,7 +116,7 @@ class HFTokenDialog(QDialog):
             self.token = t
             self.accept()
         else:
-            self._error_label.setText("Token must start with hf_...")
+            self._error_label.setText(tr("model_hub_ui.dialogs.token_error"))
             self._error_label.setVisible(True)
             self._token_input.setStyleSheet(f"border: 1px solid {Palette.RED};")
             self.adjustSize()
@@ -113,14 +127,14 @@ class ExecutableModelConsentDialog(QDialog):
 
     def __init__(self, info: ModelInfo, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Review Executable Model")
+        self.setWindowTitle(tr("model_hub_ui.dialogs.review_title"))
         self.setMinimumWidth(560)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(12)
 
-        title = QLabel(f"Review {info.name} before loading")
+        title = QLabel(tr("model_hub_ui.dialogs.review_model", model=info.name))
         title.setStyleSheet(f"font-size: 12pt; font-weight: 700; color: {Palette.TEXT};")
         layout.addWidget(title)
 
@@ -130,10 +144,13 @@ class ExecutableModelConsentDialog(QDialog):
         layout.addWidget(warning)
 
         details = QLabel(
-            f"Source: {info.source}\n"
-            f"Pinned revision: {info.revision}\n"
-            f"Remote code: {'yes' if info.requires_remote_code else 'no'}\n"
-            f"Pickle-backed weights: {'yes' if info.allows_unsafe_weights else 'no'}"
+            tr(
+                "model_hub_ui.dialogs.review_details",
+                source=info.source,
+                revision=info.revision,
+                remote_code=tr("model_hub_ui.dialogs.yes" if info.requires_remote_code else "model_hub_ui.dialogs.no"),
+                pickle_weights=tr("model_hub_ui.dialogs.yes" if info.allows_unsafe_weights else "model_hub_ui.dialogs.no"),
+            )
         )
         details.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         details.setStyleSheet(f"color: {Palette.SUBTEXT0}; font-family: Consolas;")
@@ -141,16 +158,16 @@ class ExecutableModelConsentDialog(QDialog):
         self._details = details
 
         self._ack = QCheckBox(
-            "I reviewed this exact source and revision and accept the execution risk."
+            tr("model_hub_ui.dialogs.review_ack")
         )
         layout.addWidget(self._ack)
 
         buttons = QHBoxLayout()
         buttons.addStretch()
-        cancel = QPushButton("Cancel")
+        cancel = QPushButton(tr("model_hub_ui.dialogs.cancel"))
         cancel.clicked.connect(self.reject)
         buttons.addWidget(cancel)
-        self._approve = QPushButton("Allow this revision")
+        self._approve = QPushButton(tr("model_hub_ui.dialogs.allow_revision"))
         self._approve.setObjectName("danger")
         self._approve.setEnabled(False)
         self._approve.clicked.connect(self.accept)
@@ -160,17 +177,17 @@ class ExecutableModelConsentDialog(QDialog):
 
         install_accessibility(
             self,
-            f"Executable model review for {info.name}",
+            tr("model_hub_ui.accessibility.review_name", model=info.name),
             named_controls=[
                 (
                     self._ack,
-                    "Acknowledge executable model risk",
-                    "Confirms review of the exact model source and pinned revision.",
+                    tr("model_hub_ui.accessibility.ack_name"),
+                    tr("model_hub_ui.accessibility.ack_description"),
                 ),
                 (
                     self._approve,
-                    f"Allow {info.name} revision",
-                    "Stores consent for only the displayed pinned revision.",
+                    tr("model_hub_ui.accessibility.allow_name", model=info.name),
+                    tr("model_hub_ui.accessibility.allow_description"),
                 ),
             ],
             tab_order=[self._ack, cancel, self._approve],
@@ -217,16 +234,18 @@ class ModelCard(QFrame):
         self._name_label.setWordWrap(True)
         header.addWidget(self._name_label, 1)
 
-        self._core_badge = QLabel("Core" if self.info.is_core else "")
+        self._core_badge = QLabel(
+            tr("model_hub_ui.card.core") if self.info.is_core else ""
+        )
         self._core_badge.setVisible(bool(self.info.is_core))
         self._core_badge.setAccessibleName(
-            f"{self.info.name} core model badge"
+            tr("model_hub_ui.card.core_accessible_name", model=self.info.name)
         )
         self._core_badge.setAccessibleDescription(
-            "This is a built-in core model." if self.info.is_core else ""
+            tr("model_hub_ui.card.core_description") if self.info.is_core else ""
         )
         self._core_badge.setToolTip(
-            "Built-in core model" if self.info.is_core else ""
+            tr("model_hub_ui.card.core_tooltip") if self.info.is_core else ""
         )
         self._core_badge.setStyleSheet(
             f"font-size: 8pt; font-weight: 700; color: {Palette.CRUST}; "
@@ -243,7 +262,9 @@ class ModelCard(QFrame):
         desc = QLabel(self.info.description)
         desc.setWordWrap(True)
         desc.setToolTip(self.info.description)
-        desc.setAccessibleName(f"{self.info.name} description")
+        desc.setAccessibleName(
+            tr("model_hub_ui.accessibility.description_name", model=self.info.name)
+        )
         desc.setAccessibleDescription(self.info.description)
         desc.setStyleSheet(f"font-size: 9pt; color: {Palette.SUBTEXT0};")
         layout.addWidget(desc)
@@ -253,32 +274,37 @@ class ModelCard(QFrame):
         stats = QHBoxLayout()
         stats.setSpacing(12)
         stat_texts = [
-            f"{self.info.vram_gb:.1f} GB VRAM",
-            f"{self.info.advertised_vram_tier} tier",
-            f"{self.info.disk_gb:.1f} GB disk",
+            tr("model_hub_ui.card.vram", value=self.info.vram_gb),
+            tr("model_hub_ui.card.vram_tier", tier=self.info.advertised_vram_tier),
+            tr("model_hub_ui.card.disk", value=self.info.disk_gb),
             self.info.license,
         ]
         if self.info.quantization:
             stat_texts.insert(0, self.info.variant_label)
         if self.info.quality_label:
-            stat_texts.append(f"Quality: {self.info.quality_label}")
+            stat_texts.append(
+                tr("model_hub_ui.card.quality", quality=self.info.quality_label)
+            )
         if self.info.has_local_benchmark:
             stat_texts.append(
-                f"{self.info.benchmark_latency_tokens_per_second:.1f} tok/s measured"
+                tr(
+                    "model_hub_ui.card.benchmark",
+                    value=self.info.benchmark_latency_tokens_per_second,
+                )
             )
         for text in stat_texts:
             lbl = QLabel(text)
             lbl.setStyleSheet(f"font-size: 8.25pt; color: {Palette.OVERLAY0};")
             stats.addWidget(lbl)
         if getattr(self.info, "gated", False):
-            g = QLabel("Token Required")
+            g = QLabel(tr("model_hub_ui.card.token_required"))
             g.setStyleSheet(f"font-size: 8.25pt; color: {Palette.OVERLAY0};")
             stats.addWidget(g)
         stats.addStretch()
         layout.addLayout(stats)
 
-        task_text = ", ".join(self.info.task_labels) or "No task guidance recorded"
-        task_label = QLabel(f"Tasks: {task_text}")
+        task_text = ", ".join(self.info.task_labels) or tr("model_hub_ui.card.no_task_guidance")
+        task_label = QLabel(tr("model_hub_ui.card.tasks", tasks=task_text))
         task_label.setWordWrap(True)
         task_label.setToolTip(task_text)
         task_label.setStyleSheet(f"font-size: 8.25pt; color: {Palette.BLUE};")
@@ -286,8 +312,12 @@ class ModelCard(QFrame):
         self._task_label = task_label
 
         rights = QLabel(
-            f"License: {self.info.license}  |  Commercial: {self.info.commercial_use_label}  |  "
-            f"Access: {self.info.access_label}"
+            tr(
+                "model_hub_ui.card.rights",
+                license=self.info.license,
+                commercial=self.info.commercial_use_label,
+                access=self.info.access_label,
+            )
         )
         rights.setWordWrap(True)
         rights.setStyleSheet(f"font-size: 8.25pt; color: {Palette.SUBTEXT0};")
@@ -305,22 +335,24 @@ class ModelCard(QFrame):
             self._license_warning = None
 
         trust_status = (
-            "reviewed registry source"
+            tr("model_hub_ui.card.trust_reviewed")
             if self.info.trusted_source
-            else "untrusted source"
+            else tr("model_hub_ui.card.trust_untrusted")
         )
         if self.info.revision:
             trust_text = (
-                f"Pinned {self.info.revision[:12]} - hashed local cache - "
-                f"{trust_status}"
+                tr(
+                    "model_hub_ui.card.trust_pinned",
+                    revision=self.info.revision[:12],
+                    status=trust_status,
+                )
             )
         elif self.info.pip_managed:
             trust_text = (
-                f"Package-managed - no pinned revision or model cache hash - "
-                f"{trust_status}"
+                tr("model_hub_ui.card.trust_package", status=trust_status)
             )
         else:
-            trust_text = f"No pinned revision or model cache hash - {trust_status}"
+            trust_text = tr("model_hub_ui.card.trust_unpinned", status=trust_status)
         self._base_trust_text = trust_text
         trust = QLabel(trust_text)
         trust.setWordWrap(True)
@@ -339,20 +371,29 @@ class ModelCard(QFrame):
         )
         layout.addWidget(self._update_label)
 
-        measurement_text = self.info.measurement_basis or "No published measurement basis recorded."
+        measurement_text = self.info.measurement_basis or tr("model_hub_ui.card.no_measurement")
         if self.info.benchmark_method:
             measurement_text = f"{measurement_text} {self.info.benchmark_method}"
-        measurement_date = self.info.measurement_date or "undated"
-        measurement = QLabel(f"Basis ({measurement_date}): {measurement_text}")
+        measurement_date = self.info.measurement_date or tr("model_hub_ui.card.undated")
+        measurement = QLabel(
+            tr(
+                "model_hub_ui.card.measurement",
+                date=measurement_date,
+                basis=measurement_text,
+            )
+        )
         measurement.setWordWrap(True)
         measurement.setToolTip(
-            f"Source: {self.info.measurement_source or 'not recorded'}"
+            tr(
+                "model_hub_ui.card.measurement_source",
+                source=self.info.measurement_source or tr("model_hub_ui.card.not_recorded"),
+            )
         )
         measurement.setStyleSheet(f"font-size: 7.5pt; color: {Palette.SUBTEXT0};")
         layout.addWidget(measurement)
         self._measurement_label = measurement
 
-        self._hardware_label = QLabel("Hardware fit: checking detected hardware...")
+        self._hardware_label = QLabel(tr("model_hub_ui.card.hardware_checking"))
         self._hardware_label.setWordWrap(True)
         self._hardware_label.setStyleSheet(f"font-size: 7.5pt; color: {Palette.YELLOW};")
         layout.addWidget(self._hardware_label)
@@ -409,7 +450,7 @@ class ModelCard(QFrame):
         )
         info_row.addWidget(self._speed_label)
 
-        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn = QPushButton(tr("model_hub_ui.card.cancel"))
         self._cancel_btn.setMinimumSize(60, 24)
         self._cancel_btn.setStyleSheet(f"""
             QPushButton {{
@@ -428,24 +469,24 @@ class ModelCard(QFrame):
         layout.addWidget(self._dl_panel)
 
         # -- Action button --
-        self._action_btn = QPushButton("Download")
+        self._action_btn = QPushButton(tr("model_hub_ui.card.download"))
         self._action_btn.setMinimumHeight(32)
         self._action_btn.clicked.connect(self._on_action)
 
-        self._delete_btn = QPushButton("Remove")
+        self._delete_btn = QPushButton(tr("model_hub_ui.card.remove"))
         self._delete_btn.setMinimumHeight(32)
         self._delete_btn.setVisible(False)
         self._delete_btn.clicked.connect(
             lambda: self.delete_requested.emit(self.model_id)
         )
 
-        self._update_btn = QPushButton("Install update")
+        self._update_btn = QPushButton(tr("model_hub_ui.card.install_update"))
         self._update_btn.setVisible(False)
         self._update_btn.clicked.connect(
             lambda: self.update_requested.emit(self.model_id)
         )
 
-        self._rollback_btn = QPushButton("Rollback")
+        self._rollback_btn = QPushButton(tr("model_hub_ui.card.rollback"))
         self._rollback_btn.setVisible(False)
         self._rollback_btn.clicked.connect(
             lambda: self.rollback_requested.emit(self.model_id)
@@ -463,7 +504,7 @@ class ModelCard(QFrame):
         update_row.addWidget(self._rollback_btn)
         layout.addLayout(update_row)
 
-        self._consent_btn = QPushButton("Review executable model")
+        self._consent_btn = QPushButton(tr("model_hub_ui.card.review_executable"))
         self._consent_btn.setVisible(False)
         self._consent_btn.clicked.connect(
             lambda: self.consent_requested.emit(self.model_id)
@@ -471,20 +512,20 @@ class ModelCard(QFrame):
         layout.addWidget(self._consent_btn)
         install_accessibility(
             self,
-            f"Model card {self.info.name}",
+            tr("model_hub_ui.accessibility.card_name", model=self.info.name),
             named_controls=[
-                (self._status_badge, f"{self.info.name} status", "Current model installation and loading state."),
-                (self._rights_label, f"{self.info.name} license status", "Model license, access, and commercial-use status."),
-                (self._progress, f"{self.info.name} download progress", "Current download completion percentage."),
-                (self._cancel_btn, f"Cancel {self.info.name} download", "Cancels the active model download."),
-                (self._action_btn, f"{self.info.name} action", "Downloads, activates, deactivates, or cancels activation."),
-                (self._delete_btn, f"Remove {self.info.name}", "Moves the installed model cache to recoverable trash."),
-                (self._update_btn, f"Install {self.info.name} update", "Installs the checked immutable revision after health validation."),
-                (self._rollback_btn, f"Rollback {self.info.name}", "Restores the last good model revision from recoverable storage."),
+                (self._status_badge, tr("model_hub_ui.accessibility.status_name", model=self.info.name), tr("model_hub_ui.accessibility.status_description")),
+                (self._rights_label, tr("model_hub_ui.accessibility.rights_name", model=self.info.name), tr("model_hub_ui.accessibility.rights_description")),
+                (self._progress, tr("model_hub_ui.accessibility.progress_name", model=self.info.name), tr("model_hub_ui.accessibility.progress_description")),
+                (self._cancel_btn, tr("model_hub_ui.accessibility.cancel_name", model=self.info.name), tr("model_hub_ui.accessibility.cancel_description")),
+                (self._action_btn, tr("model_hub_ui.accessibility.action_name", model=self.info.name), tr("model_hub_ui.accessibility.action_description")),
+                (self._delete_btn, tr("model_hub_ui.accessibility.remove_name", model=self.info.name), tr("model_hub_ui.accessibility.remove_description")),
+                (self._update_btn, tr("model_hub_ui.accessibility.update_name", model=self.info.name), tr("model_hub_ui.accessibility.update_description")),
+                (self._rollback_btn, tr("model_hub_ui.accessibility.rollback_name", model=self.info.name), tr("model_hub_ui.accessibility.rollback_description")),
                 (
                     self._consent_btn,
-                    f"Review {self.info.name} executable model",
-                    "Reviews and approves only the displayed pinned model revision.",
+                    tr("model_hub_ui.accessibility.review_name", model=self.info.name),
+                    tr("model_hub_ui.accessibility.review_description"),
                 ),
             ],
             tab_order=[
@@ -502,7 +543,7 @@ class ModelCard(QFrame):
     def _refresh_signature_label(self):
         """Keep the card's trust copy explicit about OMS signature state."""
         metadata = ModelManager().get_model_signature_metadata(self.model_id)
-        label = metadata.get("label", "OMS signature: unsigned")
+        label = metadata.get("label", tr("model_hub_ui.card.oms_unsigned"))
         self._trust_label.setText(f"{self._base_trust_text} - {label}")
         self._trust_label.setToolTip(metadata.get("signature_reason", ""))
 
@@ -534,11 +575,11 @@ class ModelCard(QFrame):
 
         if status == ModelStatus.NOT_DOWNLOADED:
             self._set_badge(
-                "Engine not installed" if self.info.pip_managed else "Not Downloaded",
+                tr("model_hub_ui.status.engine_missing" if self.info.pip_managed else "model_hub_ui.status.not_downloaded"),
                 Palette.OVERLAY0,
             )
             btn.setText(
-                "Install + Activate" if self.info.pip_managed else "Download"
+                tr("model_hub_ui.card.install_activate" if self.info.pip_managed else "model_hub_ui.card.download")
             )
             btn.setEnabled(True)
             btn.setVisible(True)
@@ -548,32 +589,32 @@ class ModelCard(QFrame):
             )
 
         elif status == ModelStatus.PARTIAL:
-            self._set_badge("Incomplete", Palette.PEACH)
-            btn.setText("Resume Download")
+            self._set_badge(tr("model_hub_ui.status.incomplete"), Palette.PEACH)
+            btn.setText(tr("model_hub_ui.card.resume_download"))
             btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
 
         elif status == ModelStatus.DOWNLOADING:
-            self._set_badge("Downloading", Palette.BLUE)
+            self._set_badge(tr("model_hub_ui.status.downloading"), Palette.BLUE)
             btn.setVisible(False)
             self._dl_panel.setVisible(True)
-            self._cancel_btn.setText("Cancel")
+            self._cancel_btn.setText(tr("model_hub_ui.card.cancel"))
             self._cancel_btn.setEnabled(True)
             self._progress.setValue(0)
             self._pct_label.setText("0%")
-            self._size_label.setText("Starting...")
+            self._size_label.setText(tr("model_hub_ui.card.starting"))
             self._speed_label.setText("")
 
         elif status == ModelStatus.DOWNLOADED:
             self._set_badge(
-                "Runtime missing" if readiness.missing_packages else "Installed",
+                tr("model_hub_ui.status.runtime_missing" if readiness.missing_packages else "model_hub_ui.status.installed"),
                 Palette.PEACH if readiness.missing_packages else Palette.GREEN,
             )
             btn.setText(
-                "Install + Activate"
+                tr("model_hub_ui.card.install_activate")
                 if readiness.missing_packages
-                else "Activate"
+                else tr("model_hub_ui.card.activate")
             )
             btn.setEnabled(True)
             btn.setVisible(True)
@@ -581,32 +622,32 @@ class ModelCard(QFrame):
             btn.setToolTip(
                 user_facing_readiness(readiness, model_name=self.info.name)
                 if readiness.missing_packages
-                else f"Verify and activate {self.info.name} from local storage."
+                else tr("model_hub_ui.card.verify_activate", model=self.info.name)
             )
             self._delete_btn.setVisible(not self.info.pip_managed)
             self._delete_btn.setEnabled(not self.info.pip_managed)
 
         elif status == ModelStatus.LOADED:
-            self._set_badge("Active", Palette.BLUE)
-            btn.setText("Deactivate")
+            self._set_badge(tr("model_hub_ui.status.active"), Palette.BLUE)
+            btn.setText(tr("model_hub_ui.card.deactivate"))
             btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
-            btn.setToolTip(f"Release {self.info.name} and its model resources.")
+            btn.setToolTip(tr("model_hub_ui.card.release", model=self.info.name))
 
         elif status == ModelStatus.LOADING:
-            self._set_badge("Activating...", Palette.YELLOW)
-            btn.setText("Cancel Activation")
+            self._set_badge(tr("model_hub_ui.status.activating"), Palette.YELLOW)
+            btn.setText(tr("model_hub_ui.card.cancel_activation"))
             btn.setEnabled(True)
             btn.setVisible(True)
             self._dl_panel.setVisible(False)
 
         elif status == ModelStatus.ERROR:
-            self._set_badge("Error", Palette.RED)
+            self._set_badge(tr("model_hub_ui.status.error"), Palette.RED)
             btn.setText(
-                "Retry Activation"
+                tr("model_hub_ui.card.retry_activation")
                 if readiness.installed or self.info.pip_managed
-                else "Retry Download"
+                else tr("model_hub_ui.card.retry_download")
             )
             btn.setEnabled(True)
             btn.setVisible(True)
@@ -630,9 +671,9 @@ class ModelCard(QFrame):
         if consent_visible:
             approved = ModelManager().has_executable_model_consent(self.model_id)
             self._consent_btn.setText(
-                f"Approved for {self.info.revision[:12]}"
+                tr("model_hub_ui.card.approved_for", revision=self.info.revision[:12])
                 if approved
-                else "Review executable model"
+                else tr("model_hub_ui.card.review_executable")
             )
             self._consent_btn.setEnabled(not approved)
         self._refresh_update_controls(status)
@@ -643,22 +684,28 @@ class ModelCard(QFrame):
         if update is not None and update.available:
             notes = " ".join(update.release_notes[:2])
             self._update_label.setText(
-                f"Update available: {update.target_revision[:12]}\n{notes}"
+                tr(
+                    "model_hub_ui.update.available",
+                    revision=update.target_revision[:12],
+                    notes=notes,
+                )
             )
             self._update_label.setToolTip(
                 "\n".join(update.release_notes) + f"\n\n{update.source_url}"
             )
             set_accessible(
                 self._update_label,
-                f"{self.info.name} update available",
+                tr("model_hub_ui.accessibility.update_available_name", model=self.info.name),
                 self._update_label.text(),
             )
         elif update is not None and update.error:
-            self._update_label.setText(f"Update check: {update.error}")
+            self._update_label.setText(
+                tr("model_hub_ui.update.check_error", error=update.error)
+            )
             self._update_label.setToolTip(update.error)
             set_accessible(
                 self._update_label,
-                f"{self.info.name} update check status",
+                tr("model_hub_ui.accessibility.update_status_name", model=self.info.name),
                 update.error,
             )
         self._refresh_update_controls(ModelManager().get_status(self.model_id))
@@ -683,8 +730,8 @@ class ModelCard(QFrame):
         self._status_badge.setText(text)
         set_accessible(
             self._status_badge,
-            f"{self.info.name} status {text}",
-            f"Model status is {text}.",
+            tr("model_hub_ui.accessibility.status_value_name", model=self.info.name, status=text),
+            tr("model_hub_ui.accessibility.status_value_description", status=text),
         )
         self._status_badge.setStyleSheet(
             f"background: rgba({self._hex_to_rgba(color)},40); "
@@ -715,31 +762,36 @@ class ModelCard(QFrame):
 
     def set_download_stopping(self):
         """Show that cancellation was requested while the worker drains."""
-        self._set_badge("Stopping...", Palette.YELLOW)
+        self._set_badge(tr("model_hub_ui.status.stopping"), Palette.YELLOW)
         self._dl_panel.setVisible(True)
-        self._cancel_btn.setText("Stopping...")
+        self._cancel_btn.setText(tr("model_hub_ui.status.stopping"))
         self._cancel_btn.setEnabled(False)
-        self._size_label.setText("Finishing current transfer...")
+        self._size_label.setText(tr("model_hub_ui.card.finishing_transfer"))
 
     def update_hardware_status(self, hardware: dict):
         """Show whether this model fits the currently detected execution tier."""
         fit = model_hardware_fit(self.info, hardware)
         if fit.status in {"cuda", "mps", "cpu"}:
             color = Palette.GREEN
-            prefix = "Fits"
+            prefix = tr("model_hub_ui.hardware.fits")
         elif fit.status == "cpu-fallback":
             color = Palette.YELLOW
-            prefix = "CPU fallback"
+            prefix = tr("model_hub_ui.hardware.cpu_fallback")
         else:
             color = Palette.RED
-            prefix = "Unavailable"
+            prefix = tr("model_hub_ui.hardware.unavailable")
         self._hardware_label.setText(
-            f"Hardware: {prefix} — {fit.reason} Tier: {fit.tier}."
+            tr(
+                "model_hub_ui.hardware.summary",
+                prefix=prefix,
+                reason=fit.reason,
+                tier=fit.tier,
+            )
         )
         self._hardware_label.setStyleSheet(f"font-size: 7.5pt; color: {color};")
         set_accessible(
             self._hardware_label,
-            f"{self.info.name} hardware fit",
+            tr("model_hub_ui.accessibility.hardware_name", model=self.info.name),
             self._hardware_label.text(),
         )
 
@@ -760,7 +812,7 @@ class ModelHubView(QWidget):
         self._hardware_profile = {
             "available": False,
             "backend": "cpu",
-            "name": "Detecting hardware",
+            "name": tr("model_hub_ui.hardware.detecting"),
             "total_gb": 0,
         }
         self._job_store = JobStore()
@@ -778,10 +830,7 @@ class ModelHubView(QWidget):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(16)
 
-        subtitle = QLabel(
-            "Download and manage AI models. "
-            "Only one large model is loaded at a time to fit within your GPU memory."
-        )
+        subtitle = QLabel(tr("model_hub_ui.subtitle"))
         subtitle.setObjectName("caption")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
@@ -802,21 +851,21 @@ class ModelHubView(QWidget):
         gpu_layout = QHBoxLayout(self._gpu_bar)
         gpu_layout.setContentsMargins(14, 10, 14, 10)
 
-        self._gpu_label = QLabel("GPU: Detecting...")
+        self._gpu_label = QLabel(tr("model_hub_ui.gpu_detecting"))
         self._gpu_label.setStyleSheet(
             f"font-size: 9.75pt; font-weight: 600; color: {Palette.BLUE};"
         )
         gpu_layout.addWidget(self._gpu_label)
         gpu_layout.addStretch()
 
-        self._disk_label = QLabel("Disk usage: calculating...")
+        self._disk_label = QLabel(tr("model_hub_ui.disk_calculating"))
         self._disk_label.setStyleSheet(
             f"font-size: 9pt; color: {Palette.SUBTEXT0};"
         )
         gpu_layout.addWidget(self._disk_label)
         layout.addWidget(self._gpu_bar)
 
-        self._recommendation_label = QLabel("Recommendations will update after hardware detection.")
+        self._recommendation_label = QLabel(tr("model_hub_ui.recommendations_pending"))
         self._recommendation_label.setWordWrap(True)
         self._recommendation_label.setStyleSheet(
             f"background: rgba(137, 180, 250, 24); color: {Palette.BLUE}; "
@@ -830,34 +879,36 @@ class ModelHubView(QWidget):
         filter_bar.setSpacing(12)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search models...")
+        self._search.setPlaceholderText(tr("model_hub_ui.search_placeholder"))
         self._search.setMinimumHeight(36)
         self._search.textChanged.connect(self._filter_cards)
         filter_bar.addWidget(self._search, 1)
 
         self._category_filter = QComboBox()
-        self._category_filter.addItem("All Categories", "all")
+        self._category_filter.addItem(tr("model_hub_ui.filters.all_categories"), "all")
         for cat in ModelCategory:
             self._category_filter.addItem(
-                cat.value.replace("_", " ").title(), cat.value
+                tr(_CATEGORY_LABEL_KEYS.get(cat, "model_hub_ui.categories.unknown")),
+                cat.value,
             )
         self._category_filter.setMinimumHeight(36)
         self._category_filter.currentIndexChanged.connect(self._filter_cards)
         filter_bar.addWidget(self._category_filter)
 
         self._task_filter = QComboBox()
-        self._task_filter.addItem("All Tasks", "all")
+        self._task_filter.addItem(tr("model_hub_ui.filters.all_tasks"), "all")
         for task in model_tasks(self._mgr.registry):
+            # Task identifiers are registry taxonomy data; filtering keeps their raw value.
             self._task_filter.addItem(task.title().replace("Vram", "VRAM"), task)
         self._task_filter.setMinimumHeight(36)
         self._task_filter.currentIndexChanged.connect(self._filter_cards)
         filter_bar.addWidget(self._task_filter)
 
         self._sort_combo = QComboBox()
-        self._sort_combo.addItem("Name (A–Z)", "name_asc")
-        self._sort_combo.addItem("Name (Z–A)", "name_desc")
-        self._sort_combo.addItem("Measurement date (newest)", "date_desc")
-        self._sort_combo.addItem("Measurement date (oldest)", "date_asc")
+        self._sort_combo.addItem(tr("model_hub_ui.filters.name_asc"), "name_asc")
+        self._sort_combo.addItem(tr("model_hub_ui.filters.name_desc"), "name_desc")
+        self._sort_combo.addItem(tr("model_hub_ui.filters.date_newest"), "date_desc")
+        self._sort_combo.addItem(tr("model_hub_ui.filters.date_oldest"), "date_asc")
         self._sort_combo.setMinimumHeight(36)
         self._sort_combo.currentIndexChanged.connect(self._filter_cards)
         filter_bar.addWidget(self._sort_combo)
@@ -867,13 +918,13 @@ class ModelHubView(QWidget):
         hardware_filter_bar = QHBoxLayout()
         hardware_filter_bar.setSpacing(12)
         self._hardware_filter = QComboBox()
-        self._hardware_filter.addItem("Fits detected hardware", "fit")
-        self._hardware_filter.addItem("All models", "all")
+        self._hardware_filter.addItem(tr("model_hub_ui.filters.fits_hardware"), "fit")
+        self._hardware_filter.addItem(tr("model_hub_ui.filters.all_models"), "all")
         self._hardware_filter.setMinimumHeight(36)
         self._hardware_filter.currentIndexChanged.connect(self._filter_cards)
         hardware_filter_bar.addWidget(self._hardware_filter)
 
-        self._downloaded_only = QCheckBox("Downloaded only")
+        self._downloaded_only = QCheckBox(tr("model_hub_ui.filters.downloaded_only"))
         self._downloaded_only.stateChanged.connect(self._filter_cards)
         hardware_filter_bar.addWidget(self._downloaded_only)
         hardware_filter_bar.addStretch()
@@ -882,14 +933,14 @@ class ModelHubView(QWidget):
         update_bar = QHBoxLayout()
         update_bar.setSpacing(10)
         self._update_status_label = QLabel(
-            "Model updates are checked only when you request them."
+            tr("model_hub_ui.updates.manual_only")
         )
         self._update_status_label.setWordWrap(True)
         self._update_status_label.setStyleSheet(
             f"font-size: 8.5pt; color: {Palette.SUBTEXT0};"
         )
         update_bar.addWidget(self._update_status_label, 1)
-        self._check_updates_btn = QPushButton("Check for updates")
+        self._check_updates_btn = QPushButton(tr("model_hub_ui.updates.check"))
         self._check_updates_btn.setMinimumHeight(34)
         self._check_updates_btn.clicked.connect(self._start_update_check)
         update_bar.addWidget(self._check_updates_btn)
@@ -930,9 +981,9 @@ class ModelHubView(QWidget):
 
         self._grid_layout.setRowStretch(row + 1, 1)
         self._grid_empty = EmptyStateWidget(
-            "No models match these filters",
-            "Try a broader search or show all categories and hardware tiers.",
-            "Clear filters",
+            tr("model_hub_ui.empty.no_matches_title"),
+            tr("model_hub_ui.empty.no_matches_description"),
+            tr("model_hub_ui.empty.clear_filters"),
         )
         self._grid_empty.action_requested.connect(self._clear_filters)
         self._grid_stack = QStackedWidget()
@@ -942,19 +993,19 @@ class ModelHubView(QWidget):
         layout.addWidget(scroll, 1)
         install_accessibility(
             self,
-            "Model Hub",
+            tr("model_hub_ui.accessibility.name"),
             named_controls=[
-                (self._search, "Search models", "Filters models by name or description."),
-                (self._category_filter, "Model category filter", "Filters models by engine category."),
-                (self._task_filter, "Model task filter", "Filters models by measured task guidance."),
-                (self._sort_combo, "Sort models", "Sorts models by name or registry measurement date."),
-                (self._hardware_filter, "Model hardware filter", "Shows models that fit the detected execution hardware."),
-                (self._downloaded_only, "Downloaded models only", "Shows only installed or loaded models."),
-                (self._gpu_label, "Model Hub GPU status", "Shows GPU availability and active model."),
-                (self._disk_label, "Model disk usage", "Shows downloaded model storage usage."),
-                (self._recommendation_label, "Model recommendations", "Shows task recommendations ranked for the detected hardware."),
-                (self._update_status_label, "Model update status", "Reports the last requested update check and its results."),
-                (self._check_updates_btn, "Check for model updates", "Checks upstream sources for immutable model revisions and release notes."),
+                (self._search, tr("model_hub_ui.accessibility.search_name"), tr("model_hub_ui.accessibility.search_description")),
+                (self._category_filter, tr("model_hub_ui.accessibility.category_name"), tr("model_hub_ui.accessibility.category_description")),
+                (self._task_filter, tr("model_hub_ui.accessibility.task_name"), tr("model_hub_ui.accessibility.task_description")),
+                (self._sort_combo, tr("model_hub_ui.accessibility.sort_name"), tr("model_hub_ui.accessibility.sort_description")),
+                (self._hardware_filter, tr("model_hub_ui.accessibility.hardware_filter_name"), tr("model_hub_ui.accessibility.hardware_filter_description")),
+                (self._downloaded_only, tr("model_hub_ui.accessibility.downloaded_name"), tr("model_hub_ui.accessibility.downloaded_description")),
+                (self._gpu_label, tr("model_hub_ui.accessibility.gpu_name"), tr("model_hub_ui.accessibility.gpu_description")),
+                (self._disk_label, tr("model_hub_ui.accessibility.disk_name"), tr("model_hub_ui.accessibility.disk_description")),
+                (self._recommendation_label, tr("model_hub_ui.accessibility.recommendation_name"), tr("model_hub_ui.accessibility.recommendation_description")),
+                (self._update_status_label, tr("model_hub_ui.accessibility.update_status_name_generic"), tr("model_hub_ui.accessibility.update_status_description")),
+                (self._check_updates_btn, tr("model_hub_ui.accessibility.check_updates_name"), tr("model_hub_ui.accessibility.check_updates_description")),
             ],
             tab_order=[
                 self._search,
@@ -977,7 +1028,7 @@ class ModelHubView(QWidget):
         if self._update_worker is not None:
             return
         self._check_updates_btn.setEnabled(False)
-        self._update_status_label.setText("Checking model sources for immutable revisions...")
+        self._update_status_label.setText(tr("model_hub_ui.updates.checking"))
         worker = InferenceWorker(
             self._mgr.check_for_updates,
             job_kind="model_update_check",
@@ -1004,25 +1055,25 @@ class ModelHubView(QWidget):
             if getattr(update, "available", False):
                 available += 1
         self._update_status_label.setText(
-            f"Update check complete: {available} immutable model update(s) available."
+            tr("model_hub_ui.updates.complete", count=available)
         )
         if self.toast_mgr:
             if available:
                 self.toast_mgr.info(
-                    f"{available} model update(s) are available with release notes."
+                    tr("model_hub_ui.updates.available_toast", count=available)
                 )
             else:
-                self.toast_mgr.success("All checked model sources are up to date.")
+                self.toast_mgr.success(tr("model_hub_ui.updates.up_to_date"))
 
     def _on_update_check_error(self, error: str):
         self._finish_update_check()
-        self._update_status_label.setText(f"Update check failed: {error}")
+        self._update_status_label.setText(tr("model_hub_ui.updates.failed", error=error))
         if self.toast_mgr:
-            self.toast_mgr.error(f"Model update check failed: {error}")
+            self.toast_mgr.error(tr("model_hub_ui.updates.failed", error=error))
 
     def _on_update_check_cancelled(self):
         self._finish_update_check()
-        self._update_status_label.setText("Model update check cancelled.")
+        self._update_status_label.setText(tr("model_hub_ui.updates.cancelled"))
 
     def _start_model_update(self, model_id: str):
         """Install a checked revision through the persistent worker contract."""
@@ -1054,7 +1105,9 @@ class ModelHubView(QWidget):
         )
         self._update_workers[model_id] = worker
         self._cards[model_id].set_model_update(update)
-        self._update_status_label.setText(f"Installing {info.name} update...")
+        self._update_status_label.setText(
+            tr("model_hub_ui.updates.installing", model=info.name)
+        )
         worker.start()
 
     def _on_model_update_finished(self, model_id: str, result):
@@ -1064,23 +1117,26 @@ class ModelHubView(QWidget):
             self._cards[model_id].update_status(self._mgr.get_status(model_id))
         if self.toast_mgr:
             self.toast_mgr.success(
-                f"{self._mgr.get_model_info(model_id).name} update installed and health-validated."
+                tr(
+                    "model_hub_ui.updates.installed_toast",
+                    model=self._mgr.get_model_info(model_id).name,
+                )
             )
-        self._update_status_label.setText("Model update installed and health-validated.")
+        self._update_status_label.setText(tr("model_hub_ui.updates.installed"))
 
     def _on_model_update_error(self, model_id: str, error: str):
         self._update_workers.pop(model_id, None)
         if model_id in self._cards:
             self._cards[model_id].update_status(self._mgr.get_status(model_id))
-        self._update_status_label.setText(f"Model update failed: {error}")
+        self._update_status_label.setText(tr("model_hub_ui.updates.install_failed", error=error))
         if self.toast_mgr:
-            self.toast_mgr.error(f"Model update failed: {error}")
+            self.toast_mgr.error(tr("model_hub_ui.updates.install_failed", error=error))
 
     def _on_model_update_cancelled(self, model_id: str):
         self._update_workers.pop(model_id, None)
         if model_id in self._cards:
             self._cards[model_id].update_status(self._mgr.get_status(model_id))
-        self._update_status_label.setText("Model update cancelled; the last good cache was preserved.")
+        self._update_status_label.setText(tr("model_hub_ui.updates.install_cancelled"))
 
     def _start_model_rollback(self, model_id: str):
         """Restore a retained last-good revision through a cancellable job."""
@@ -1105,27 +1161,31 @@ class ModelHubView(QWidget):
             lambda error, mid=model_id: self._on_model_rollback_error(mid, error)
         )
         worker.cancelled.connect(
-            lambda mid=model_id: self._on_model_rollback_error(mid, "Rollback cancelled")
+            lambda mid=model_id: self._on_model_rollback_error(
+                mid, tr("model_hub_ui.updates.rollback_cancelled")
+            )
         )
         self._update_workers[model_id] = worker
-        self._update_status_label.setText(f"Restoring {info.name}'s last good revision...")
+        self._update_status_label.setText(
+            tr("model_hub_ui.updates.restoring", model=info.name)
+        )
         worker.start()
 
     def _on_model_rollback_finished(self, model_id: str, _result):
         self._update_workers.pop(model_id, None)
         if model_id in self._cards:
             self._cards[model_id].update_status(self._mgr.get_status(model_id))
-        self._update_status_label.setText("Last good model revision restored and health-validated.")
+        self._update_status_label.setText(tr("model_hub_ui.updates.restored"))
         if self.toast_mgr:
-            self.toast_mgr.success("Last good model revision restored.")
+            self.toast_mgr.success(tr("model_hub_ui.updates.restored_toast"))
 
     def _on_model_rollback_error(self, model_id: str, error: str):
         self._update_workers.pop(model_id, None)
         if model_id in self._cards:
             self._cards[model_id].update_status(self._mgr.get_status(model_id))
-        self._update_status_label.setText(f"Rollback failed: {error}")
+        self._update_status_label.setText(tr("model_hub_ui.updates.rollback_failed", error=error))
         if self.toast_mgr:
-            self.toast_mgr.error(f"Model rollback failed: {error}")
+            self.toast_mgr.error(tr("model_hub_ui.updates.rollback_failed", error=error))
 
     def prepare_onboarding_model(self, model_id: str, action: str = "open") -> bool:
         """Select the model handed off by onboarding and optionally start it."""
@@ -1146,7 +1206,7 @@ class ModelHubView(QWidget):
         card = self._cards[model_id]
         card.setVisible(True)
         card.setAccessibleDescription(
-            f"Selected by onboarding for setup: {card.info.name}"
+            tr("model_hub_ui.accessibility.onboarding_selected", model=card.info.name)
         )
         if action == "download":
             status = self._mgr.get_status(model_id)
@@ -1182,7 +1242,7 @@ class ModelHubView(QWidget):
                 self._mgr.get_model_info(m).name for m in partials
             )
             self.toast_mgr.warning(
-                f"Incomplete downloads detected: {names}. Click Resume to finish."
+                tr("model_hub_ui.recovery.incomplete_toast", models=names)
             )
 
     def _update_recovery_banner(self):
@@ -1198,10 +1258,14 @@ class ModelHubView(QWidget):
 
         if names:
             self._recovery_label.setText(
-                "Recoverable downloads: "
-                + ", ".join(names[:4])
-                + (f" and {len(names) - 4} more" if len(names) > 4 else "")
-                + ". Use Resume Download on the model card."
+                tr(
+                    "model_hub_ui.recovery.banner",
+                    models=", ".join(names[:4]),
+                    suffix=(
+                        tr("model_hub_ui.recovery.more", count=len(names) - 4)
+                        if len(names) > 4 else ""
+                    ),
+                )
             )
             self._recovery_label.setVisible(True)
         else:
@@ -1231,21 +1295,32 @@ class ModelHubView(QWidget):
             name = gpu_info["name"]
             total = float(gpu_info.get("total_gb", 0) or 0)
             used = float(gpu_info.get("used_gb", 0) or 0)
-            current = gpu_info.get("current_model_name", "None")
+            current = gpu_info.get(
+                "current_model_name", tr("model_hub_ui.gpu.none")
+            )
             if gpu_info.get("backend") == "mps":
-                self._gpu_label.setText(f"{name}  |  MPS  |  Active: {current or 'None'}")
+                self._gpu_label.setText(
+                    tr(
+                        "model_hub_ui.gpu.mps",
+                        name=name,
+                        active=current or tr("model_hub_ui.gpu.none"),
+                    )
+                )
             else:
                 self._gpu_label.setText(
-                    f"{name}  |  {used:.1f} / {total:.1f} GB  |  "
-                    f"Active: {current or 'None'}"
+                    tr(
+                        "model_hub_ui.gpu.standard",
+                        name=name,
+                        used=used,
+                        total=total,
+                        active=current or tr("model_hub_ui.gpu.none"),
+                    )
                 )
             self._gpu_label.setStyleSheet(
                 f"font-size: 9.75pt; font-weight: 600; color: {Palette.BLUE};"
             )
         else:
-            self._gpu_label.setText(
-                "No accelerator detected — models will run on CPU (much slower)"
-            )
+            self._gpu_label.setText(tr("model_hub_ui.gpu.cpu_only"))
             self._gpu_label.setStyleSheet(
                 f"font-size: 9.75pt; font-weight: 600; color: {Palette.YELLOW};"
             )
@@ -1259,10 +1334,13 @@ class ModelHubView(QWidget):
         if self._hardware_profile.get("available"):
             backend = self._hardware_profile.get("backend", "cuda").upper()
             total = float(self._hardware_profile.get("total_gb", 0) or 0)
-            suffix = f"{total:.1f} GB" if total else "shared memory"
-            text = f"Fits detected {backend} ({suffix})"
+            suffix = (
+                tr("model_hub_ui.hardware.memory_gb", value=total)
+                if total else tr("model_hub_ui.hardware.shared_memory")
+            )
+            text = tr("model_hub_ui.hardware.filter_fit", backend=backend, memory=suffix)
         else:
-            text = "Fits detected CPU execution"
+            text = tr("model_hub_ui.hardware.filter_cpu")
         self._hardware_filter.setItemText(0, text)
 
     def _update_recommendation_label(self):
@@ -1272,7 +1350,9 @@ class ModelHubView(QWidget):
             if selected_task and selected_task != "all"
             else ["best vocal isolation", "fastest", "lowest vram"]
         )
-        hardware_name = self._hardware_profile.get("name", "detected hardware")
+        hardware_name = self._hardware_profile.get(
+            "name", tr("model_hub_ui.hardware.detected")
+        )
         recommendations = []
         for task in tasks:
             info = recommend_model_for_task(
@@ -1283,17 +1363,28 @@ class ModelHubView(QWidget):
             if info is None:
                 continue
             fit = model_hardware_fit(info, self._hardware_profile)
-            mode = "GPU fit" if fit.fits and fit.status in {"cuda", "mps"} else (
-                "CPU fallback" if fit.status == "cpu-fallback" else fit.status
+            mode = tr("model_hub_ui.hardware.gpu_fit") if fit.fits and fit.status in {"cuda", "mps"} else (
+                tr("model_hub_ui.hardware.cpu_fallback") if fit.status == "cpu-fallback" else fit.status
             )
-            recommendations.append(f"{task.title().replace('Vram', 'VRAM')}: {info.name} ({mode})")
+            recommendations.append(
+                tr(
+                    "model_hub_ui.recommendation.item",
+                    task=task.title().replace("Vram", "VRAM"),
+                    model=info.name,
+                    mode=mode,
+                )
+            )
         if recommendations:
             self._recommendation_label.setText(
-                f"Recommendations for {hardware_name}: " + "; ".join(recommendations) + "."
+                tr(
+                    "model_hub_ui.recommendation.summary",
+                    hardware=hardware_name,
+                    recommendations="; ".join(recommendations),
+                )
             )
         else:
             self._recommendation_label.setText(
-                "No measured recommendation is registered for this task and hardware combination."
+                tr("model_hub_ui.recommendation.none")
             )
 
     def _update_disk_display(self):
@@ -1304,7 +1395,12 @@ class ModelHubView(QWidget):
         )
         total = len(self._mgr.registry)
         self._disk_label.setText(
-            f"{usage:.1f} GB on disk  |  {downloaded}/{total} models ready"
+            tr(
+                "model_hub_ui.disk_summary",
+                usage=usage,
+                downloaded=downloaded,
+                total=total,
+            )
         )
 
     @staticmethod
@@ -1395,19 +1491,19 @@ class ModelHubView(QWidget):
             if task_filter != "all":
                 filters.append(task_filter)
             if hardware_filter == "fit":
-                filters.append("the detected hardware tier")
+                filters.append(tr("model_hub_ui.filters.detected_hardware"))
             if downloaded_only:
-                filters.append("downloaded models")
+                filters.append(tr("model_hub_ui.filters.downloaded_models"))
             self._grid_empty.set_no_matches(
-                "No models match " + ", ".join(filters) + ".",
-                "Clear filters",
+                tr("model_hub_ui.empty.filtered", filters=", ".join(filters)),
+                tr("model_hub_ui.empty.clear_filters"),
             )
             self._grid_stack.setCurrentWidget(self._grid_empty)
         else:
             self._grid_empty.set_state(
-                "No models available",
-                "Model cards will appear here when the local model catalog is installed.",
-                "Refresh catalog",
+                tr("model_hub_ui.empty.no_models_title"),
+                tr("model_hub_ui.empty.no_models_description"),
+                tr("model_hub_ui.empty.refresh_catalog"),
             )
             self._grid_stack.setCurrentWidget(self._grid_empty)
         self._update_recommendation_label()
@@ -1428,16 +1524,14 @@ class ModelHubView(QWidget):
             if model_id in self._stopping_downloads and self.toast_mgr:
                 info = self._mgr.get_model_info(model_id)
                 self.toast_mgr.info(
-                    f"{info.name} download is still stopping; "
-                    "wait for cancellation to finish before resuming."
+                    tr("model_hub_ui.download.still_stopping", model=info.name)
                 )
             return
 
         if self._mgr.is_offline:
             if self.toast_mgr:
                 self.toast_mgr.error(
-                    "Downloads are disabled while Offline Mode is enabled. "
-                    "Disable it in Settings > GPU and Models."
+                    tr("model_hub_ui.download.offline_disabled")
                 )
             return
 
@@ -1454,13 +1548,13 @@ class ModelHubView(QWidget):
                     except CredentialError as exc:
                         if self.toast_mgr:
                             self.toast_mgr.error(
-                                f"Token not saved: {exc}"
+                                tr("model_hub_ui.download.token_not_saved", error=exc)
                             )
                         return
                     if self.toast_mgr:
                         store = Settings().credential_store
                         self.toast_mgr.success(
-                            f"HuggingFace token saved to {store.backend_name}."
+                            tr("model_hub_ui.download.token_saved", backend=store.backend_name)
                         )
                 else:
                     return
@@ -1490,7 +1584,7 @@ class ModelHubView(QWidget):
         worker.start()
 
         if self.toast_mgr:
-            self.toast_mgr.info(f"Downloading {info.name}...")
+            self.toast_mgr.info(tr("model_hub_ui.download.started", model=info.name))
 
     def _on_dl_progress(self, model_id: str, pct: int):
         if model_id in self._cards:
@@ -1515,7 +1609,7 @@ class ModelHubView(QWidget):
             self._cards[model_id].set_download_stopping()
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
-            self.toast_mgr.info(f"Stopping {info.name} download...")
+            self.toast_mgr.info(tr("model_hub_ui.download.stopping", model=info.name))
 
     def _on_download_cancelled(self, model_id: str):
         self._stopping_downloads.discard(model_id)
@@ -1535,7 +1629,7 @@ class ModelHubView(QWidget):
         self._update_recovery_banner()
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
-            self.toast_mgr.success(f"{info.name} downloaded successfully!")
+            self.toast_mgr.success(tr("model_hub_ui.download.success", model=info.name))
 
     def _on_download_error(self, model_id: str, error: str):
         was_stopping = model_id in self._stopping_downloads
@@ -1549,7 +1643,9 @@ class ModelHubView(QWidget):
         self._update_recovery_banner()
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
-            self.toast_mgr.error(f"Failed to download {info.name}: {error}")
+            self.toast_mgr.error(
+                tr("model_hub_ui.download.failed", model=info.name, error=error)
+            )
 
     # -- Activation Management ---------------------------------------------
 
@@ -1579,7 +1675,9 @@ class ModelHubView(QWidget):
         self._activation_workers[model_id] = worker
         worker.start()
         if self.toast_mgr:
-            self.toast_mgr.info(f"Activating {info.name} from verified local files...")
+            self.toast_mgr.info(
+                tr("model_hub_ui.activation.started", model=info.name)
+            )
 
     def _cancel_activation(self, model_id: str):
         worker = self._activation_workers.get(model_id)
@@ -1587,7 +1685,9 @@ class ModelHubView(QWidget):
             worker.cancel()
             if self.toast_mgr:
                 info = self._mgr.get_model_info(model_id)
-                self.toast_mgr.info(f"Cancelling {info.name} activation...")
+                self.toast_mgr.info(
+                    tr("model_hub_ui.activation.cancelling", model=info.name)
+                )
 
     def _on_activation_finished(self, result):
         model_id = getattr(result, "model_id", "")
@@ -1607,7 +1707,9 @@ class ModelHubView(QWidget):
             if self.toast_mgr:
                 self.toast_mgr.success(result.message)
         elif self.toast_mgr:
-            self.toast_mgr.error(result.error or "Model activation failed.")
+            self.toast_mgr.error(
+                result.error or tr("model_hub_ui.activation.failed")
+            )
         self._update_gpu_display()
 
     def _on_activation_error(self, model_id: str, error: str):
@@ -1615,7 +1717,9 @@ class ModelHubView(QWidget):
         self._mgr._set_status(model_id, ModelStatus.ERROR)
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
-            self.toast_mgr.error(f"Failed to activate {info.name}: {error}")
+            self.toast_mgr.error(
+                tr("model_hub_ui.activation.error", model=info.name, error=error)
+            )
 
     def _on_activation_cancelled(self, model_id: str):
         self._activation_workers.pop(model_id, None)
@@ -1624,7 +1728,8 @@ class ModelHubView(QWidget):
             if not result.is_success:
                 if self.toast_mgr:
                     self.toast_mgr.error(
-                        result.error or f"Could not release {model_id} after cancellation."
+                        result.error
+                        or tr("model_hub_ui.activation.release_after_cancel_failed", model=model_id)
                     )
                 self._update_gpu_display()
                 return
@@ -1636,14 +1741,18 @@ class ModelHubView(QWidget):
         self._mgr._set_status(model_id, status)
         if self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
-            self.toast_mgr.info(f"{info.name} activation cancelled.")
+            self.toast_mgr.info(
+                tr("model_hub_ui.activation.cancelled", model=info.name)
+            )
 
     def _deactivate_model(self, model_id: str):
         result = self._mgr.deactivate_model(model_id)
         if self.toast_mgr:
             if result.is_success:
                 info = self._mgr.get_model_info(model_id)
-                self.toast_mgr.success(f"{info.name} deactivated.")
+                self.toast_mgr.success(
+                    tr("model_hub_ui.activation.deactivated", model=info.name)
+                )
             else:
                 self.toast_mgr.error(result.error)
         self._update_gpu_display()
@@ -1654,7 +1763,7 @@ class ModelHubView(QWidget):
         if info and getattr(info, "pip_managed", False):
             if self.toast_mgr:
                 self.toast_mgr.info(
-                    f"{info.name} is managed by the Python environment and cannot be removed here."
+                    tr("model_hub_ui.delete.pip_managed", model=info.name)
                 )
             return
 
@@ -1663,7 +1772,7 @@ class ModelHubView(QWidget):
             if self.toast_mgr:
                 self.toast_mgr.error(
                     self._mgr.get_model_error(model_id)
-                    or f"Failed to remove {info.name} from disk."
+                    or tr("model_hub_ui.delete.failed", model=info.name)
                 )
             return
 
@@ -1671,9 +1780,9 @@ class ModelHubView(QWidget):
         self._update_disk_display()
         if self.toast_mgr:
             self.toast_mgr.info(
-                f"{info.name} moved to trash.",
+                tr("model_hub_ui.delete.moved_to_trash", model=info.name),
                 duration_ms=8000,
-                action_label="Undo",
+                action_label=tr("model_hub_ui.delete.undo"),
                 action_callback=lambda entry_id=entry.id, mid=model_id: self._restore_model(mid, entry_id),
             )
 
@@ -1683,10 +1792,14 @@ class ModelHubView(QWidget):
             self._update_disk_display()
             if self.toast_mgr:
                 info = self._mgr.get_model_info(model_id)
-                self.toast_mgr.success(f"{info.name} restored.")
+                self.toast_mgr.success(
+                    tr("model_hub_ui.delete.restored", model=info.name)
+                )
         elif self.toast_mgr:
             info = self._mgr.get_model_info(model_id)
-            self.toast_mgr.error(f"Failed to restore {info.name}.")
+            self.toast_mgr.error(
+                tr("model_hub_ui.delete.restore_failed", model=info.name)
+            )
 
     def _review_execution_consent(self, model_id: str):
         info = self._mgr.get_model_info(model_id)
@@ -1708,5 +1821,9 @@ class ModelHubView(QWidget):
         self._cards[model_id].update_status(self._mgr.get_status(model_id))
         if self.toast_mgr:
             self.toast_mgr.warning(
-                f"{info.name} execution approved only for revision {info.revision[:12]}."
+                tr(
+                    "model_hub_ui.consent.approved",
+                    model=info.name,
+                    revision=info.revision[:12],
+                )
             )
