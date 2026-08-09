@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Seed Explorer, Mood Curve, Piano Roll, CC automation, and MIDI Mixer
+  controls, status messages, combo items, empty states, and accessibility descriptions
+  to the locale catalog with Arabic coverage while preserving internal MIDI and seed data IDs.
+
 - Migrated Settings live MIDI controls, recovery cleanup/previews, health export progress,
   C2PA/OSC diagnostics, and the complete Settings accessibility map to the locale catalog;
   added Arabic coverage and fixed setting-save formatting for the reserved translation key.

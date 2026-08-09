@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 from core.midi_utils import MidiData, TrackData, GM_PROGRAMS, get_program_name
+from core.i18n import tr
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel, EmptyStateWidget
@@ -62,7 +63,9 @@ class TrackStrip(QFrame):
         header = QHBoxLayout()
         name_label = QLabel(track.name)
         name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 8.25pt;")
-        count_label = QLabel(f"{track.note_count} notes")
+        count_label = QLabel(
+            tr("midi.mixer.track_count", count=track.note_count)
+        )
         count_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         header.addWidget(name_label)
         header.addStretch()
@@ -99,7 +102,7 @@ class TrackStrip(QFrame):
         # Volume slider
         vol_row = QHBoxLayout()
         vol_row.setSpacing(4)
-        vol_label = QLabel("Vol")
+        vol_label = QLabel(tr("midi.mixer.volume_short"))
         vol_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         vol_label.setMinimumWidth(22)
         self._volume_slider = QSlider(Qt.Horizontal)
@@ -120,7 +123,7 @@ class TrackStrip(QFrame):
         # Pan slider
         pan_row = QHBoxLayout()
         pan_row.setSpacing(4)
-        pan_label = QLabel("Pan")
+        pan_label = QLabel(tr("midi.mixer.pan_short"))
         pan_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         pan_label.setMinimumWidth(22)
         self._pan_slider = QSlider(Qt.Horizontal)
@@ -129,7 +132,7 @@ class TrackStrip(QFrame):
         self._pan_slider.setMinimumHeight(16)
         self._pan_slider.valueChanged.connect(
             lambda v: self.pan_changed.emit(self.track_idx, v))
-        self._pan_value = ElidedLabel("C", minimum_width=24)
+        self._pan_value = ElidedLabel(tr("midi.mixer.pan_center"), minimum_width=24)
         self._pan_value.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         self._pan_slider.valueChanged.connect(self._update_pan_label)
 
@@ -142,13 +145,13 @@ class TrackStrip(QFrame):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(4)
 
-        self._mute_btn = QPushButton("M")
+        self._mute_btn = QPushButton(tr("midi.mixer.mute_short"))
         self._mute_btn.setMinimumSize(28, 22)
         self._mute_btn.setCheckable(True)
         self._mute_btn.setStyleSheet(self._mute_style(False))
         self._mute_btn.clicked.connect(self._on_mute)
 
-        self._solo_btn = QPushButton("S")
+        self._solo_btn = QPushButton(tr("midi.mixer.solo_short"))
         self._solo_btn.setMinimumSize(28, 22)
         self._solo_btn.setCheckable(True)
         self._solo_btn.setStyleSheet(self._solo_style(False))
@@ -164,13 +167,13 @@ class TrackStrip(QFrame):
 
         install_accessibility(
             self,
-            f"MIDI track {track_idx + 1}",
+            tr("midi.mixer.accessibility.track_name", track=track_idx + 1),
             named_controls=[
-                (self._program_combo, f"{track.name} instrument", "Selects the General MIDI instrument for this track."),
-                (self._volume_slider, f"{track.name} volume", "Adjusts this MIDI track's volume."),
-                (self._pan_slider, f"{track.name} pan", "Positions this MIDI track in the stereo field."),
-                (self._mute_btn, f"Mute {track.name}", "Mutes this MIDI track."),
-                (self._solo_btn, f"Solo {track.name}", "Solos this MIDI track."),
+                (self._program_combo, tr("midi.mixer.accessibility.instrument_name", track=track.name), tr("midi.mixer.accessibility.instrument_description")),
+                (self._volume_slider, tr("midi.mixer.accessibility.volume_name", track=track.name), tr("midi.mixer.accessibility.volume_description")),
+                (self._pan_slider, tr("midi.mixer.accessibility.pan_name", track=track.name), tr("midi.mixer.accessibility.pan_description")),
+                (self._mute_btn, tr("midi.mixer.accessibility.mute_name", track=track.name), tr("midi.mixer.accessibility.mute_description")),
+                (self._solo_btn, tr("midi.mixer.accessibility.solo_name", track=track.name), tr("midi.mixer.accessibility.solo_description")),
             ],
         )
 
@@ -180,7 +183,7 @@ class TrackStrip(QFrame):
 
     def _update_pan_label(self, val):
         if val == 0:
-            self._pan_value.setText("C")
+            self._pan_value.setText(tr("midi.mixer.pan_center"))
         elif val < 0:
             self._pan_value.setText(f"L{abs(val)}")
         else:
@@ -189,13 +192,19 @@ class TrackStrip(QFrame):
     def _on_mute(self):
         self._muted = self._mute_btn.isChecked()
         self._mute_btn.setStyleSheet(self._mute_style(self._muted))
-        install_accessibility(self, f"MIDI track {self.track_idx + 1}")
+        install_accessibility(
+            self,
+            tr("midi.mixer.accessibility.track_name", track=self.track_idx + 1),
+        )
         self.mute_changed.emit(self.track_idx, self._muted)
 
     def _on_solo(self):
         self._soloed = self._solo_btn.isChecked()
         self._solo_btn.setStyleSheet(self._solo_style(self._soloed))
-        install_accessibility(self, f"MIDI track {self.track_idx + 1}")
+        install_accessibility(
+            self,
+            tr("midi.mixer.accessibility.track_name", track=self.track_idx + 1),
+        )
         self.solo_changed.emit(self.track_idx, self._soloed)
 
     def _mute_style(self, active: bool) -> str:
@@ -252,9 +261,9 @@ class MidiMixer(QWidget):
 
         # Header
         header = QHBoxLayout()
-        title = QLabel("Mixer")
+        title = QLabel(tr("midi.mixer.title"))
         title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
-        self._add_track_btn = QPushButton("+ Track")
+        self._add_track_btn = QPushButton(tr("midi.mixer.add_track"))
         self._add_track_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']};
@@ -281,9 +290,9 @@ class MidiMixer(QWidget):
         self._strip_layout.setContentsMargins(0, 0, 0, 0)
         self._strip_layout.setSpacing(4)
         self._empty = EmptyStateWidget(
-            "No MIDI tracks yet",
-            "Generate or import a MIDI composition to edit its instruments and mix.",
-            "Generate or import MIDI",
+            tr("midi.mixer.empty_title"),
+            tr("midi.mixer.empty_description"),
+            tr("midi.mixer.empty_action"),
         )
         self._empty.action_requested.connect(self.empty_action_requested.emit)
         self._strip_layout.addWidget(self._empty)
@@ -294,9 +303,9 @@ class MidiMixer(QWidget):
 
         install_accessibility(
             self,
-            "MIDI Mixer",
+            tr("midi.mixer.accessibility.name"),
             named_controls=[
-                (self._add_track_btn, "Add MIDI track", "Adds an empty MIDI track to the mixer."),
+                (self._add_track_btn, tr("midi.mixer.accessibility.add_name"), tr("midi.mixer.accessibility.add_description")),
             ],
         )
 

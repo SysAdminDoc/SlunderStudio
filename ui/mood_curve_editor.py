@@ -15,6 +15,7 @@ import numpy as np
 
 from ui.theme import Palette
 from ui.accessibility import install_accessibility
+from core.i18n import tr
 
 # ── Preset Curves ──────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ class DraggablePoint(QGraphicsEllipseItem):
         self.setZValue(10)
         self.setCursor(Qt.SizeAllCursor)
         self.setToolTip(
-            f"Curve point {index + 1}; use Tab to select points and arrow keys to nudge."
+            tr("batch.mood_curve.point_tooltip", index=index + 1)
         )
         self._index = index
         self._callback = callback
@@ -123,11 +124,11 @@ class MoodCurveEditor(QWidget):
         self._set_preset("Classic Pop Build")
         install_accessibility(
             self,
-            "Mood curve editor",
+            tr("batch.mood_curve.accessibility.name"),
             named_controls=[
-                (self._preset_combo, "Mood curve preset", "Selects a starting energy curve."),
-                (self._reset_btn, "Reset mood curve", "Resets the curve to flat energy."),
-                (self._view, "Mood curve canvas", "Keyboard-focusable canvas for editing the song energy curve."),
+                (self._preset_combo, tr("batch.mood_curve.accessibility.preset_name"), tr("batch.mood_curve.accessibility.preset_description")),
+                (self._reset_btn, tr("batch.mood_curve.accessibility.reset_name"), tr("batch.mood_curve.accessibility.reset_description")),
+                (self._view, tr("batch.mood_curve.accessibility.canvas_name"), tr("batch.mood_curve.accessibility.canvas_description")),
             ],
         )
 
@@ -140,17 +141,26 @@ class MoodCurveEditor(QWidget):
         ctrl = QHBoxLayout()
         ctrl.setSpacing(6)
 
-        lbl = QLabel("Energy Curve")
+        lbl = QLabel(tr("batch.mood_curve.title"))
         lbl.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9pt;")
         ctrl.addWidget(lbl)
 
         self._preset_combo = QComboBox()
         self._preset_combo.setMinimumWidth(160)
-        self._preset_combo.addItems(list(PRESETS.keys()))
-        self._preset_combo.currentTextChanged.connect(self._set_preset)
+        for name in PRESETS:
+            preset_key = name.lower().replace(" ", "_").replace("-", "_")
+            self._preset_combo.addItem(
+                tr(f"batch.mood_curve.presets.{preset_key}"), name
+            )
+        self._preset_combo.currentIndexChanged.connect(
+            lambda index: self._set_preset(
+                self._preset_combo.itemData(index)
+                or self._preset_combo.itemText(index)
+            )
+        )
         ctrl.addWidget(self._preset_combo)
 
-        self._reset_btn = QPushButton("Reset")
+        self._reset_btn = QPushButton(tr("batch.mood_curve.reset"))
         self._reset_btn.setMinimumWidth(60)
         self._reset_btn.setMinimumHeight(26)
         self._reset_btn.setProperty("class", "secondary")
@@ -347,7 +357,7 @@ class MoodCurveEditor(QWidget):
         # Update label
         vals = self.get_values()
         avg = np.mean([v[1] for v in vals])
-        self._energy_label.setText(f"Avg energy: {avg:.0%}")
+        self._energy_label.setText(tr("batch.mood_curve.average", average=avg))
 
     def set_reference_curve(self, energy_values: list[float]):
         """Overlay a reference track's energy curve (semi-transparent)."""

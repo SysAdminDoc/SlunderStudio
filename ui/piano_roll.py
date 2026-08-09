@@ -18,6 +18,7 @@ from PySide6.QtGui import (
 )
 
 from core.midi_utils import CCEvent, NoteData, TrackData, get_pitch_range
+from core.i18n import tr
 from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 
@@ -378,9 +379,9 @@ class PianoRollView(QGraphicsView):
         self.centerOn(0, middle_c_y)
         install_accessibility(
             self,
-            "Piano roll canvas",
+            tr("midi.piano_roll.accessibility.canvas_name"),
             named_controls=[
-                (self, "Piano roll canvas", "Keyboard-operable canvas for selecting and editing notes."),
+                (self, tr("midi.piano_roll.accessibility.canvas_name"), tr("midi.piano_roll.accessibility.canvas_description")),
             ],
         )
 
@@ -436,14 +437,16 @@ class CCAutomationLane(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(6)
 
-        label = QLabel("CC Lane:")
+        label = QLabel(tr("midi.piano_roll.cc_lane_label"))
         label.setStyleSheet(f"color: {t['text_secondary']};")
         self._controller_combo = QComboBox()
-        for name, controller in CC_LANES.items():
-            self._controller_combo.addItem(name, controller)
+        for _name, controller in CC_LANES.items():
+            self._controller_combo.addItem(
+                tr(f"midi.piano_roll.cc_{controller}"), controller
+            )
         self._controller_combo.currentIndexChanged.connect(self._refresh)
 
-        beat_label = QLabel("Beat:")
+        beat_label = QLabel(tr("midi.piano_roll.beat_label"))
         beat_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._beat_spin = QDoubleSpinBox()
         self._beat_spin.setRange(0.0, 512.0)
@@ -452,7 +455,7 @@ class CCAutomationLane(QWidget):
         self._beat_spin.setValue(0.0)
         self._beat_spin.setMinimumWidth(72)
 
-        value_label = QLabel("Value:")
+        value_label = QLabel(tr("midi.piano_roll.value_label"))
         value_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._value_spin = QSpinBox()
         self._value_spin.setRange(0, 127)
@@ -470,10 +473,10 @@ class CCAutomationLane(QWidget):
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
-        self._add_cc_btn = QPushButton("Add CC")
+        self._add_cc_btn = QPushButton(tr("midi.piano_roll.add_cc"))
         self._add_cc_btn.setStyleSheet(btn_style)
         self._add_cc_btn.clicked.connect(self._on_add_event)
-        self._clear_lane_btn = QPushButton("Clear Lane")
+        self._clear_lane_btn = QPushButton(tr("midi.piano_roll.clear_lane"))
         self._clear_lane_btn.setStyleSheet(btn_style)
         self._clear_lane_btn.clicked.connect(self._on_clear_lane)
 
@@ -489,7 +492,11 @@ class CCAutomationLane(QWidget):
         layout.addLayout(controls)
 
         self._table = QTableWidget(0, 3)
-        self._table.setHorizontalHeaderLabels(["Beat", "CC", "Value"])
+        self._table.setHorizontalHeaderLabels([
+            tr("midi.piano_roll.beat_header"),
+            tr("midi.piano_roll.cc_header"),
+            tr("midi.piano_roll.value_header"),
+        ])
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._table.verticalHeader().setVisible(False)
         self._table.setMaximumHeight(94)
@@ -513,14 +520,14 @@ class CCAutomationLane(QWidget):
 
         install_accessibility(
             self,
-            "CC Automation",
+            tr("midi.piano_roll.cc_automation_title"),
             named_controls=[
-                (self._controller_combo, "CC controller", "Selects which MIDI CC lane to edit."),
-                (self._beat_spin, "CC beat position", "Sets the beat position for a new CC event."),
-                (self._value_spin, "CC value", "Sets the value for a new CC event (0-127)."),
-                (self._add_cc_btn, "Add CC event", "Inserts a CC event at the specified beat and value."),
-                (self._clear_lane_btn, "Clear CC lane", "Removes all events for the selected CC controller."),
-                (self._table, "CC events table", "Shows all CC events for the selected controller."),
+                (self._controller_combo, tr("midi.piano_roll.accessibility.controller_name"), tr("midi.piano_roll.accessibility.controller_description")),
+                (self._beat_spin, tr("midi.piano_roll.accessibility.beat_name"), tr("midi.piano_roll.accessibility.beat_description")),
+                (self._value_spin, tr("midi.piano_roll.accessibility.value_name"), tr("midi.piano_roll.accessibility.value_description")),
+                (self._add_cc_btn, tr("midi.piano_roll.accessibility.add_name"), tr("midi.piano_roll.accessibility.add_description")),
+                (self._clear_lane_btn, tr("midi.piano_roll.accessibility.clear_name"), tr("midi.piano_roll.accessibility.clear_description")),
+                (self._table, tr("midi.piano_roll.accessibility.table_name"), tr("midi.piano_roll.accessibility.table_description")),
             ],
             tab_order=[
                 self._controller_combo, self._beat_spin, self._value_spin,
@@ -605,16 +612,18 @@ class PianoRollWidget(QWidget):
         toolbar.setSpacing(8)
 
         # Snap selector
-        snap_label = QLabel("Snap:")
+        snap_label = QLabel(tr("midi.piano_roll.snap_label"))
         snap_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._snap_combo = QComboBox()
-        self._snap_combo.addItems(SNAP_VALUES.keys())
-        self._snap_combo.setCurrentText("1/16")
+        for snap in SNAP_VALUES:
+            snap_key = "off" if snap == "Off" else snap.replace("/", "_")
+            self._snap_combo.addItem(tr(f"midi.piano_roll.snap_{snap_key}"), snap)
+        self._snap_combo.setCurrentIndex(self._snap_combo.findData("1/16"))
         self._snap_combo.currentTextChanged.connect(self._on_snap_changed)
         self._snap_combo.setMinimumWidth(70)
 
         # Velocity
-        vel_label = QLabel("Velocity:")
+        vel_label = QLabel(tr("midi.piano_roll.velocity_label"))
         vel_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._velocity_spin = QSpinBox()
         self._velocity_spin.setRange(1, 127)
@@ -622,7 +631,7 @@ class PianoRollWidget(QWidget):
         self._velocity_spin.setMinimumWidth(60)
         self._velocity_spin.valueChanged.connect(self._on_velocity_changed)
 
-        swing_label = QLabel("Swing:")
+        swing_label = QLabel(tr("midi.piano_roll.swing_label"))
         swing_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._swing_spin = QSpinBox()
         self._swing_spin.setRange(0, 75)
@@ -630,7 +639,7 @@ class PianoRollWidget(QWidget):
         self._swing_spin.setSuffix("%")
         self._swing_spin.setMinimumWidth(64)
 
-        human_label = QLabel("Human:")
+        human_label = QLabel(tr("midi.piano_roll.humanize_label"))
         human_label.setStyleSheet(f"color: {t['text_secondary']};")
         self._humanize_spin = QSpinBox()
         self._humanize_spin.setRange(0, 32)
@@ -649,29 +658,29 @@ class PianoRollWidget(QWidget):
             }}
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
-        self._quantize_btn = QPushButton("Quantize")
+        self._quantize_btn = QPushButton(tr("midi.piano_roll.quantize"))
         self._quantize_btn.setStyleSheet(btn_style)
         self._quantize_btn.clicked.connect(self._on_quantize)
 
-        self._swing_btn = QPushButton("Swing")
+        self._swing_btn = QPushButton(tr("midi.piano_roll.swing"))
         self._swing_btn.setStyleSheet(btn_style)
         self._swing_btn.clicked.connect(self._on_apply_swing)
 
-        self._humanize_btn = QPushButton("Humanize")
+        self._humanize_btn = QPushButton(tr("midi.piano_roll.humanize"))
         self._humanize_btn.setStyleSheet(btn_style)
         self._humanize_btn.clicked.connect(self._on_humanize_velocity)
 
-        self._select_all_btn = QPushButton("Select All")
+        self._select_all_btn = QPushButton(tr("midi.piano_roll.select_all"))
         self._select_all_btn.setStyleSheet(btn_style)
         self._select_all_btn.clicked.connect(self._scene.select_all)
 
-        self._delete_btn = QPushButton("Delete")
+        self._delete_btn = QPushButton(tr("midi.piano_roll.delete"))
         self._delete_btn.setStyleSheet(btn_style)
         self._delete_btn.clicked.connect(self._scene.delete_selected)
 
-        self._undo_btn = QPushButton("Undo")
+        self._undo_btn = QPushButton(tr("midi.piano_roll.undo"))
         self._undo_btn.setStyleSheet(btn_style)
-        self._undo_btn.setToolTip("Undo the last piano-roll edit (Ctrl+Z)")
+        self._undo_btn.setToolTip(tr("midi.piano_roll.undo_tooltip"))
         self._undo_btn.setEnabled(False)
         self._undo_btn.clicked.connect(self.undo)
 
@@ -700,18 +709,18 @@ class PianoRollWidget(QWidget):
 
         install_accessibility(
             self,
-            "Piano Roll",
+            tr("midi.piano_roll.title"),
             named_controls=[
-                (self._snap_combo, "Snap grid", "Sets the note snap resolution."),
-                (self._velocity_spin, "Default velocity", "Sets the velocity for newly placed notes."),
-                (self._swing_spin, "Swing amount", "Sets the swing percentage for groove quantization."),
-                (self._humanize_spin, "Humanize range", "Sets the velocity randomization range."),
-                (self._quantize_btn, "Quantize notes", "Snaps all notes to the current grid."),
-                (self._swing_btn, "Apply swing", "Applies swing groove to note timing."),
-                (self._humanize_btn, "Humanize velocity", "Randomizes note velocities for a natural feel."),
-                (self._select_all_btn, "Select all notes", "Selects every note in the piano roll."),
-                (self._delete_btn, "Delete selected notes", "Removes all selected notes."),
-                (self._undo_btn, "Undo piano-roll edit", "Restores the most recent destructive piano-roll edit."),
+                (self._snap_combo, tr("midi.piano_roll.accessibility.snap_name"), tr("midi.piano_roll.accessibility.snap_description")),
+                (self._velocity_spin, tr("midi.piano_roll.accessibility.velocity_name"), tr("midi.piano_roll.accessibility.velocity_description")),
+                (self._swing_spin, tr("midi.piano_roll.accessibility.swing_name"), tr("midi.piano_roll.accessibility.swing_description")),
+                (self._humanize_spin, tr("midi.piano_roll.accessibility.humanize_range_name"), tr("midi.piano_roll.accessibility.humanize_range_description")),
+                (self._quantize_btn, tr("midi.piano_roll.accessibility.quantize_name"), tr("midi.piano_roll.accessibility.quantize_description")),
+                (self._swing_btn, tr("midi.piano_roll.accessibility.apply_swing_name"), tr("midi.piano_roll.accessibility.apply_swing_description")),
+                (self._humanize_btn, tr("midi.piano_roll.accessibility.humanize_name"), tr("midi.piano_roll.accessibility.humanize_description")),
+                (self._select_all_btn, tr("midi.piano_roll.accessibility.select_all_name"), tr("midi.piano_roll.accessibility.select_all_description")),
+                (self._delete_btn, tr("midi.piano_roll.accessibility.delete_name"), tr("midi.piano_roll.accessibility.delete_description")),
+                (self._undo_btn, tr("midi.piano_roll.accessibility.undo_name"), tr("midi.piano_roll.accessibility.undo_description")),
             ],
             tab_order=[
                 self._snap_combo, self._velocity_spin, self._swing_spin, self._humanize_spin,
@@ -730,7 +739,9 @@ class PianoRollWidget(QWidget):
         return self._scene.get_notes()
 
     def _on_snap_changed(self, text: str):
-        self._scene.snap_value = SNAP_VALUES.get(text, 0.25)
+        self._scene.snap_value = SNAP_VALUES.get(
+            self._snap_combo.currentData(), SNAP_VALUES.get(text, 0.25)
+        )
 
     def _on_velocity_changed(self, value: int):
         self._scene.default_velocity = value

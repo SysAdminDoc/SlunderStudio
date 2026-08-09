@@ -19,6 +19,7 @@ from ui.theme import Palette
 from ui.accessibility import FOCUS_RING_COLOR, install_accessibility, set_accessible
 from ui.widgets import EmptyStateWidget
 from ui.waveform_widget import MiniWaveform
+from core.i18n import tr
 from core.provenance import sidecar_path_for
 from ui.file_dialogs import choose_directory
 from core.workers import CancelledJobError, InferenceWorker
@@ -124,13 +125,18 @@ class SeedCell(QFrame):
         self._set_star_accessibility()
 
     def _set_star_accessibility(self):
-        action = "Unstar" if self._is_starred else "Star"
+        action = tr(
+            "batch.seed_explorer.unstar" if self._is_starred
+            else "batch.seed_explorer.star"
+        )
         set_accessible(
             self._star_btn,
-            f"{action} seed variation",
-            f"{action}s this variation in the starred export set.",
+            tr("batch.seed_explorer.accessibility.star_name", action=action),
+            tr("batch.seed_explorer.accessibility.star_description", action=action),
         )
-        self._star_btn.setToolTip(f"{action} this generated seed variation")
+        self._star_btn.setToolTip(
+            tr("batch.seed_explorer.accessibility.star_tooltip", action=action)
+        )
         style = self._star_btn.styleSheet() or ""
         if ":focus" not in style:
             self._star_btn.setStyleSheet(
@@ -140,17 +146,27 @@ class SeedCell(QFrame):
     def _update_accessibility(self):
         status = ""
         if self._is_playing:
-            status = " Playing."
+            status = " " + tr("batch.seed_explorer.accessibility.playing_detail")
         elif self._is_generating:
-            status = " Generating."
-        elif self._status_label.text() == "Failed":
-            status = " Failed."
-        seed = f" Seed {self._seed}." if self._is_generated else ""
+            status = " " + tr("batch.seed_explorer.accessibility.generating_detail")
+        elif self._status_label.text() == tr("batch.seed_explorer.status.failed"):
+            status = " " + tr("batch.seed_explorer.accessibility.failed_detail")
+        seed = (
+            " " + tr("batch.seed_explorer.accessibility.seed_detail", seed=self._seed)
+            if self._is_generated else ""
+        )
         set_accessible(
             self,
-            f"Seed variation row {self.row + 1}, column {self.col + 1}",
-            "Press Enter or Space to play this variation. Press S to toggle its "
-            f"favorite state.{seed}{status}",
+            tr(
+                "batch.seed_explorer.accessibility.cell_name",
+                row=self.row + 1,
+                col=self.col + 1,
+            ),
+            tr(
+                "batch.seed_explorer.accessibility.cell_description",
+                seed=seed,
+                status=status,
+            ),
         )
 
     def _update_style(self, state: str):
@@ -169,7 +185,7 @@ class SeedCell(QFrame):
     def set_generating(self):
         self._is_playing = False
         self._is_generating = True
-        self._status_label.setText("Generating...")
+        self._status_label.setText(tr("batch.seed_explorer.status.generating"))
         self._update_style("generating")
         self._update_accessibility()
 
@@ -179,7 +195,7 @@ class SeedCell(QFrame):
         self._is_generating = False
         self._is_generated = True
         self._is_playing = False
-        self._seed_label.setText(f"seed: {seed}")
+        self._seed_label.setText(tr("batch.seed_explorer.seed", seed=seed))
         self._status_label.setText("")
         self._status_label.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 7.5pt;")
         self._star_btn.show()
@@ -196,7 +212,7 @@ class SeedCell(QFrame):
     def set_failed(self, error: str = ""):
         self._is_playing = False
         self._is_generating = False
-        self._status_label.setText("Failed")
+        self._status_label.setText(tr("batch.seed_explorer.status.failed"))
         self._status_label.setStyleSheet(f"color: {Palette.RED}; font-size: 7.5pt;")
         self._update_style("idle")
         self._update_accessibility()
@@ -206,7 +222,7 @@ class SeedCell(QFrame):
             self.setFocus(Qt.FocusReason.OtherFocusReason)
             self.play_requested.emit(self._audio_path)
             self._is_playing = True
-            self._status_label.setText("▶ Playing")
+            self._status_label.setText(tr("batch.seed_explorer.status.playing"))
             self._update_style("playing")
             self._update_accessibility()
         self.clicked.emit(self.row, self.col)
@@ -337,11 +353,11 @@ class SeedExplorer(QWidget):
         ctrl = QHBoxLayout()
         ctrl.setSpacing(8)
 
-        lbl = QLabel("Seed Explorer")
+        lbl = QLabel(tr("batch.seed_explorer.title"))
         lbl.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9.75pt;")
         ctrl.addWidget(lbl)
 
-        ctrl.addWidget(QLabel("Grid:"))
+        ctrl.addWidget(QLabel(tr("batch.seed_explorer.grid_label")))
         self._grid_combo = QComboBox()
         self._grid_combo.addItems(["2x2", "3x3", "4x4"])
         self._grid_combo.setCurrentIndex(1)
@@ -349,14 +365,14 @@ class SeedExplorer(QWidget):
         self._grid_combo.currentIndexChanged.connect(self._rebuild_grid)
         ctrl.addWidget(self._grid_combo)
 
-        ctrl.addWidget(QLabel("Center seed:"))
+        ctrl.addWidget(QLabel(tr("batch.seed_explorer.center_seed_label")))
         self._seed_spin = QSpinBox()
         self._seed_spin.setRange(0, 2**31 - 1)
         self._seed_spin.setValue(42)
         self._seed_spin.setMinimumWidth(100)
         ctrl.addWidget(self._seed_spin)
 
-        ctrl.addWidget(QLabel("Seed range:"))
+        ctrl.addWidget(QLabel(tr("batch.seed_explorer.seed_range_label")))
         self._range_spin = QSpinBox()
         self._range_spin.setRange(1, 10000)
         self._range_spin.setValue(100)
@@ -364,16 +380,16 @@ class SeedExplorer(QWidget):
         self._range_spin.valueChanged.connect(self._on_range_spin_changed)
         ctrl.addWidget(self._range_spin)
 
-        ctrl.addWidget(QLabel("Distance:"))
+        ctrl.addWidget(QLabel(tr("batch.seed_explorer.distance_label")))
         self._distance_slider = QSlider(Qt.Horizontal)
         self._distance_slider.setRange(1, 10000)
         self._distance_slider.setValue(100)
         self._distance_slider.setMinimumWidth(110)
-        self._distance_slider.setToolTip("How far generated variants can drift from the center seed")
+        self._distance_slider.setToolTip(tr("batch.seed_explorer.distance_tooltip"))
         self._distance_slider.valueChanged.connect(self._on_distance_changed)
         ctrl.addWidget(self._distance_slider)
 
-        ctrl.addWidget(QLabel("Shift:"))
+        ctrl.addWidget(QLabel(tr("batch.seed_explorer.shift_label")))
         self._shift_min_spin = QDoubleSpinBox()
         self._shift_min_spin.setRange(1.0, 3.0)
         self._shift_min_spin.setValue(1.0)
@@ -393,12 +409,12 @@ class SeedExplorer(QWidget):
 
         ctrl.addStretch()
 
-        self._explore_btn = QPushButton("Explore")
+        self._explore_btn = QPushButton(tr("batch.seed_explorer.explore"))
         self._explore_btn.setMinimumHeight(30)
         self._explore_btn.clicked.connect(self._start_exploration)
         ctrl.addWidget(self._explore_btn)
 
-        self._export_btn = QPushButton("Export Starred")
+        self._export_btn = QPushButton(tr("batch.seed_explorer.export_starred"))
         self._export_btn.setMinimumHeight(30)
         self._export_btn.setProperty("class", "secondary")
         self._export_btn.clicked.connect(self._export_starred)
@@ -409,7 +425,7 @@ class SeedExplorer(QWidget):
         # Axis labels
         axis_layout = QHBoxLayout()
         axis_layout.addSpacing(30)
-        self._x_label = QLabel("Seed -->")
+        self._x_label = QLabel(tr("batch.seed_explorer.axis.seed"))
         self._x_label.setStyleSheet(f"color: {Palette.BLUE}; font-size: 7.5pt;")
         axis_layout.addWidget(self._x_label)
         axis_layout.addStretch()
@@ -425,15 +441,15 @@ class SeedExplorer(QWidget):
         self._grid_layout.setSpacing(6)
 
         # Y-axis label
-        y_label = QLabel("SHIFT\n||\nV")
+        y_label = QLabel(tr("batch.seed_explorer.axis.shift"))
         y_label.setStyleSheet(f"color: {Palette.YELLOW}; font-size: 7.5pt;")
         y_label.setAlignment(Qt.AlignCenter)
         self._grid_layout.addWidget(y_label, 0, 0, self._grid_size, 1)
 
         self._grid_empty = EmptyStateWidget(
-            "No seed variations yet",
-            "Adjust the seed range and timestep shift, then explore to compare generated variations.",
-            "Explore seeds",
+            tr("batch.seed_explorer.empty_title"),
+            tr("batch.seed_explorer.empty_description"),
+            tr("batch.seed_explorer.empty_action"),
         )
         self._grid_empty.action_requested.connect(self._explore_btn.click)
         self._grid_stack = QStackedWidget()
@@ -444,7 +460,7 @@ class SeedExplorer(QWidget):
         layout.addWidget(self._scroll, 1)
 
         # Info bar
-        self._info = QLabel("Configure grid parameters and click Explore to generate variations")
+        self._info = QLabel(tr("batch.seed_explorer.info.ready"))
         self._info.setStyleSheet(f"color: {Palette.OVERLAY0}; font-size: 8.25pt;")
         layout.addWidget(self._info)
 
@@ -452,22 +468,22 @@ class SeedExplorer(QWidget):
 
         install_accessibility(
             self,
-            "Seed Explorer",
+            tr("batch.seed_explorer.title"),
             named_controls=[
-                (self._grid_combo, "Grid size", "Selects the number of seed variations in each dimension."),
-                (self._seed_spin, "Center seed", "Sets the seed at the center of the exploration grid."),
-                (self._seed_spin.findChild(QLineEdit), "Center seed value", "Edits the center seed value."),
-                (self._range_spin, "Seed range", "Sets the seed distance across the exploration grid."),
-                (self._range_spin.findChild(QLineEdit), "Seed range value", "Edits the seed range value."),
-                (self._distance_slider, "Seed distance", "Adjusts how far variations can drift from the center seed."),
-                (self._shift_min_spin, "Minimum timestep shift", "Sets the lowest timestep shift for generated variations."),
-                (self._shift_min_spin.findChild(QLineEdit), "Minimum shift value", "Edits the minimum timestep shift."),
-                (self._shift_max_spin, "Maximum timestep shift", "Sets the highest timestep shift for generated variations."),
-                (self._shift_max_spin.findChild(QLineEdit), "Maximum shift value", "Edits the maximum timestep shift."),
-                (self._explore_btn, "Explore seeds", "Generates the configured seed variation grid."),
-                (self._export_btn, "Export starred seeds", "Copies starred audio variations and provenance to a selected folder."),
-                (self._info, "Seed generation status", "Reports generation, playback, and export progress."),
-                (self._grid_empty.action_button, "Explore seeds from empty state", "Starts the configured seed variation grid."),
+                (self._grid_combo, tr("batch.seed_explorer.accessibility.grid_name"), tr("batch.seed_explorer.accessibility.grid_description")),
+                (self._seed_spin, tr("batch.seed_explorer.accessibility.center_seed_name"), tr("batch.seed_explorer.accessibility.center_seed_description")),
+                (self._seed_spin.findChild(QLineEdit), tr("batch.seed_explorer.accessibility.center_seed_value_name"), tr("batch.seed_explorer.accessibility.center_seed_value_description")),
+                (self._range_spin, tr("batch.seed_explorer.accessibility.range_name"), tr("batch.seed_explorer.accessibility.range_description")),
+                (self._range_spin.findChild(QLineEdit), tr("batch.seed_explorer.accessibility.range_value_name"), tr("batch.seed_explorer.accessibility.range_value_description")),
+                (self._distance_slider, tr("batch.seed_explorer.accessibility.distance_name"), tr("batch.seed_explorer.accessibility.distance_description")),
+                (self._shift_min_spin, tr("batch.seed_explorer.accessibility.min_shift_name"), tr("batch.seed_explorer.accessibility.min_shift_description")),
+                (self._shift_min_spin.findChild(QLineEdit), tr("batch.seed_explorer.accessibility.min_shift_value_name"), tr("batch.seed_explorer.accessibility.min_shift_value_description")),
+                (self._shift_max_spin, tr("batch.seed_explorer.accessibility.max_shift_name"), tr("batch.seed_explorer.accessibility.max_shift_description")),
+                (self._shift_max_spin.findChild(QLineEdit), tr("batch.seed_explorer.accessibility.max_shift_value_name"), tr("batch.seed_explorer.accessibility.max_shift_value_description")),
+                (self._explore_btn, tr("batch.seed_explorer.accessibility.explore_name"), tr("batch.seed_explorer.accessibility.explore_description")),
+                (self._export_btn, tr("batch.seed_explorer.accessibility.export_name"), tr("batch.seed_explorer.accessibility.export_description")),
+                (self._info, tr("batch.seed_explorer.accessibility.status_name"), tr("batch.seed_explorer.accessibility.status_description")),
+                (self._grid_empty.action_button, tr("batch.seed_explorer.accessibility.empty_action_name"), tr("batch.seed_explorer.accessibility.empty_action_description")),
             ],
             tab_order=[],
             include_descendants=False,
@@ -527,7 +543,7 @@ class SeedExplorer(QWidget):
         ):
             self._last_replaced_grid_snapshot = previous
             self.toast_mgr.info(
-                "Seed grid replaced.",
+                tr("batch.seed_explorer.toast.grid_replaced"),
                 duration_ms=8000,
                 action_label="Undo",
                 action_callback=lambda item=previous: self.restore_grid(item),
@@ -609,12 +625,14 @@ class SeedExplorer(QWidget):
                     "shift": round(shift, 2),
                 })
 
-        self._set_info(f"Generating {len(params_list)} variations...")
+        self._set_info(
+            tr("batch.seed_explorer.info.generating", count=len(params_list))
+        )
         self.generate_requested.emit(params_list)
         if previous["has_content"] and self.toast_mgr:
             self._last_replaced_grid_snapshot = previous
             self.toast_mgr.info(
-                "Previous seed grid replaced.",
+                tr("batch.seed_explorer.toast.previous_grid_replaced"),
                 duration_ms=8000,
                 action_label="Undo",
                 action_callback=lambda item=previous: self.restore_grid(item),
@@ -638,7 +656,9 @@ class SeedExplorer(QWidget):
             # Count completed
             done = sum(1 for r in self._cells for c in r if c.audio_path)
             total = self._grid_size ** 2
-            self._set_info(f"Generated {done}/{total} variations")
+            self._set_info(
+                tr("batch.seed_explorer.info.generated", done=done, total=total)
+            )
 
     def set_cell_failed(self, row: int, col: int, error: str = ""):
         if self._ignore_active_generation_results:
@@ -668,7 +688,7 @@ class SeedExplorer(QWidget):
         if starred:
             destination = choose_directory(
                 self,
-                "Export Starred Variations",
+                tr("batch.seed_explorer.dialog.export_starred"),
                 operation_kind="seed_variations_export",
                 dialog=QFileDialog,
             )
@@ -679,7 +699,9 @@ class SeedExplorer(QWidget):
                 return
             worker = InferenceWorker(_export_starred_task, starred, destination)
             worker.progress.connect(
-                lambda pct: self._set_info(f"Exporting starred variations... {pct}%")
+                lambda pct: self._set_info(
+                    tr("batch.seed_explorer.info.exporting", percent=pct)
+                )
             )
             worker.finished.connect(
                 lambda result, d=destination: self._on_starred_export_finished(result, d)
@@ -689,10 +711,10 @@ class SeedExplorer(QWidget):
             self._export_workers.add(worker)
             self._export_worker = worker
             self._export_btn.setEnabled(False)
-            self._set_info("Exporting starred variations... 0%")
+            self._set_info(tr("batch.seed_explorer.info.exporting", percent=0))
             worker.start()
         else:
-            self._set_info("No starred cells to export")
+            self._set_info(tr("batch.seed_explorer.info.no_starred"))
 
     def _release_export_worker_later(self, worker):
         if worker is None:
@@ -711,22 +733,32 @@ class SeedExplorer(QWidget):
         self._export_worker = None
         copied = result["copied"]
         if copied:
-            detail = f"; skipped {result['skipped']}" if result["skipped"] else ""
             self._set_info(
-                f"Exported {copied} starred variation(s) to {destination}"
-                f" ({result['sidecars']} provenance sidecar(s){detail})"
+                tr(
+                    "batch.seed_explorer.info.exported",
+                    copied=copied,
+                    destination=destination,
+                    sidecars=result["sidecars"],
+                    skipped=(
+                        tr(
+                            "batch.seed_explorer.info.skipped",
+                            count=result["skipped"],
+                        )
+                        if result["skipped"] else ""
+                    ),
+                )
             )
         else:
-            self._set_info("No starred audio files were available to export")
+            self._set_info(tr("batch.seed_explorer.info.no_audio"))
 
     def _on_starred_export_error(self, message: str):
         worker = self._export_worker
         self._release_export_worker_later(worker)
         self._export_worker = None
-        self._set_info(f"Starred export failed: {message}")
+        self._set_info(tr("batch.seed_explorer.info.export_failed", error=message))
 
     def _on_starred_export_cancelled(self):
         worker = self._export_worker
         self._release_export_worker_later(worker)
         self._export_worker = None
-        self._set_info("Starred export cancelled")
+        self._set_info(tr("batch.seed_explorer.info.export_cancelled"))
