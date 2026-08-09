@@ -1353,27 +1353,60 @@
     }
   },
   "vocal": {
-    "tabs": {
+  "tabs": {
       "singing": "توليف الغناء",
       "lyric_melody": "لحن الكلمات",
       "conversion": "تحويل الصوت",
       "cloning": "استنساخ الصوت",
       "autotune": "الضبط التلقائي",
-      "stems": "فصل المسارات"
-    },
-    "actions": {
-      "send_to_forge": "إرسال إلى Song Forge",
-      "send_to_mixer": "إرسال إلى الخلاط",
-      "export_wav": "تصدير WAV"
-    },
-    "jobs": {
-      "rvc": "RVC {name}",
-      "clone": "GPT-SoVITS {name}"
-    },
-    "operations": {
-      "rvc": "تحويل RVC",
-      "clone": "إنشاء GPT-SoVITS"
-    },
+    "stems": "فصل المسارات"
+  },
+  "autotune": {
+    "input_short": "الإدخال:",
+    "no_file": "لم يتم تحديد ملف",
+    "browse": "استعراض",
+    "strength": "القوة:",
+    "apply": "تطبيق الضبط التلقائي",
+    "corrected": "المصحح",
+    "no_output": "لا يوجد صوت مصحح بعد",
+    "no_output_hint": "اختر صوتاً، واضبط قوة التصحيح، ثم طبّق الضبط التلقائي.",
+    "choose_audio": "اختيار الصوت",
+    "select_audio": "تحديد صوت الغناء"
+  },
+  "actions": {
+    "send_to_forge": "إرسال إلى Song Forge",
+    "send_to_mixer": "إرسال إلى الخلاط",
+    "export_wav": "تصدير WAV",
+    "cancel_export": "إلغاء التصدير",
+    "cancel": "إلغاء"
+  },
+  "dialogs": {
+    "export_audio": "تصدير صوت الغناء",
+    "export_remix": "تصدير المزيج",
+    "export_stems": "تصدير المسارات"
+  },
+  "jobs": {
+    "rvc": "RVC {name}",
+    "clone": "GPT-SoVITS {name}",
+    "singing": "DiffSinger {name}",
+    "pronunciation": "تصحيح النطق: {unit}",
+    "melody": "لحن الكلمات {name}",
+    "autotune": "الضبط التلقائي {name}",
+    "stems": "فصل المسارات {checkpoint}",
+    "stem_export": "تصدير المسارات: {project}"
+  },
+  "operations": {
+    "rvc": "تحويل RVC",
+    "clone": "إنشاء GPT-SoVITS",
+    "singing": "توليف DiffSinger",
+    "pronunciation": "تصحيح النطق",
+    "melody": "إنشاء اللحن",
+    "autotune": "معالجة الضبط التلقائي",
+    "stems": "فصل المسارات",
+    "vocal_export": "تصدير الصوت",
+    "remix_export": "تصدير المزيج",
+    "stem_export": "تصدير المسارات"
+  },
     "status": {
       "select_tab": "حدد علامة تبويب للبدء",
       "lrc_export_failed": "فشل تصدير Enhanced LRC: {error}",
@@ -1405,7 +1438,71 @@
       "clone_cancelled": "أُلغي استنساخ GPT-SoVITS",
       "engine_no_result": "لم يُرجع المحرك نتيجة",
       "clone_failed": "فشل استنساخ GPT-SoVITS: {error}",
-      "clone_created": "تم إنشاء استنساخ الصوت: {name} ({seconds:.1f}ث)"
+      "clone_created": "تم إنشاء استنساخ الصوت: {name} ({seconds:.1f}ث)",
+      "wait_pronunciation": "انتظر حتى يكتمل تصحيح النطق قبل الإنشاء مجدداً",
+      "singing_lyrics_required": "أدخل الكلمات قبل توليف الأصوات",
+      "singing_loading": "جارٍ تحميل ملف صوت DiffSinger...",
+      "singing_cancelled": "أُلغي توليف DiffSinger",
+      "singing_failed": "فشل توليف DiffSinger: {error}",
+      "singing_created": "تم إنشاء صوت DiffSinger: {name} ({seconds:.1f}ث)",
+      "pronunciation_region_required": "حدد منطقة صوت مُصيّرة قبل تصحيح النطق",
+      "pronunciation_blocked": "تم حظر تصحيح النطق: {error}",
+      "pronunciation_processing": "جارٍ إعادة توليف منطقة النطق المحددة...",
+      "pronunciation_cancelled": "أُلغي تصحيح النطق",
+      "pronunciation_no_audio": "لم تنتج منطقة النطق صوتاً",
+      "pronunciation_write_failed": "تعذر كتابة ملف صوت تصحيح النطق",
+      "pronunciation_created": "تم تصحيح النطق: {name} (تغيرت المنطقة المحددة فقط)",
+      "pronunciation_failed": "فشل تصحيح النطق: {error}",
+      "melody_input_required": "حدد صوت الهمهمة قبل إنشاء اللحن",
+      "melody_extracting": "جارٍ استخراج لحن الهمهمة...",
+      "melody_no_midi": "انتهى إنشاء لحن الكلمات دون ملف MIDI",
+      "melody_rendered": "تم تصيير لحن الكلمات: {vocal} + {midi}",
+      "melody_created": "تم إنشاء MIDI للحن: {midi}{suffix}",
+      "melody_failed": "فشل إنشاء لحن الكلمات: {error}",
+      "melody_cancelled": "أُلغي إنشاء لحن الكلمات",
+      "lrc_input_required": "أنشئ لحن الكلمات قبل تصدير Enhanced LRC",
+      "cancelling": "جارٍ إلغاء {operation}...",
+      "operation_progress": "{operation}... {percent}%",
+      "loading_checkpoint": "جارٍ تحميل {checkpoint}...",
+      "autotune_input_required": "حدد صوت الغناء قبل تطبيق الضبط التلقائي",
+      "autotune_applying": "جارٍ تطبيق الضبط التلقائي بقوة {percent}%...",
+      "autotune_no_output": "انتهى الضبط التلقائي دون ملف إخراج",
+      "autotune_created": "تم تصحيح الصوت تلقائياً: {name} (متوسط التصحيح {correction:.2f} نصف نغمة)",
+      "autotune_no_pitch": "تمت كتابة نسخة بالضبط التلقائي؛ لم يتم اكتشاف طبقة صوت مستقرة في {name}",
+      "autotune_failed": "فشل الضبط التلقائي: {error}",
+      "autotune_cancelled": "أُلغي الضبط التلقائي",
+      "stems_input_required": "حدد صوتاً قبل فصل المسارات",
+      "separating": "جارٍ فصل المسارات باستخدام {checkpoint}...",
+      "stems_cancelled": "أُلغي فصل المسارات",
+      "stems_failed": "فشل فصل المسارات: {error}",
+      "stems_created": "تم إنشاء {count} مسارات باستخدام {model} ({seconds:.1f}ث)",
+      "no_stems_remix": "افصل المسارات قبل تصدير المزيج",
+      "export_in_progress": "يوجد تصدير قيد التنفيذ بالفعل",
+      "no_stems_export": "افصل المسارات قبل تصديرها",
+      "exporting_stems": "جارٍ تصدير المسارات...",
+      "stem_audio_missing": "لا يتوفر صوت لمسار {stem}",
+      "stem_load_failed": "تعذر تحميل مسار {stem} للتشغيل",
+      "playing_stem": "تشغيل مسار {stem}",
+      "playback_error": "خطأ في التشغيل: {error}",
+      "no_vocal_audio": "لا يوجد صوت غناء لتصديره",
+      "stems_exported": "تم تصدير {count} مسارات إلى {directory}",
+      "remix_exported": "تم تصدير المزيج: {path}",
+      "export_warning": "تحذير: {warning}",
+      "vocal_exported": "تم تصدير الصوت بصيغة {format}: {path}{warning}",
+      "export_failed": "فشل التصدير: {error}",
+      "stem_export_cancelled": "أُلغي تصدير المسارات",
+      "vocal_export_cancelled": "أُلغي تصدير الصوت",
+      "audio_received": "تم استلام الصوت: {name}",
+      "save_profile": "احفظ ملف صوت جاهزاً للموافقة قبل استخدام هذه العملية",
+      "input_audio_required": "حدد صوت الإدخال للتحويل.",
+      "separate_input_required": "حدد صوتاً للفصل.",
+      "checking_readiness": "جارٍ التحقق من جاهزية النموذج...",
+      "profile_required": "حدد ملف صوت.",
+      "diffsinger_model_required": "لا يحتوي ملف DiffSinger المحدد على مسار نموذج.",
+      "diffsinger_model_missing": "مسار نموذج DiffSinger المحدد مفقود.",
+      "reference_audio_required": "لا يحتوي ملف الصوت المحدد على صوت مرجعي.",
+      "reference_audio_missing": "الصوت المرجعي المحدد مفقود.",
+      "cancel_running": "إلغاء عملية المحرك الجارية."
     },
     "melody": {
       "input_short": "همهمة:",
@@ -1419,7 +1516,8 @@
       "export_lrc": "تصدير Enhanced LRC",
       "no_preview": "لا توجد معاينة لحن بعد",
       "no_preview_hint": "اختر تسجيلاً مُهمهماً لمعاينته، ثم أنشئ MIDI محاذياً للكلمات.",
-      "choose_audio": "اختيار صوت الهمهمة"
+      "choose_audio": "اختيار صوت الهمهمة",
+      "select_audio": "تحديد صوت الهمهمة"
     },
     "singing": {
       "title": "DiffSinger",
@@ -1440,7 +1538,13 @@
       "no_region": "لم يتم تحديد منطقة نطق",
       "pronunciation_action": "إعادة تصيير النطق المحدد",
       "no_take": "لا يوجد تسجيل صوتي بعد",
-      "no_take_hint": "أدخل الكلمات وقم بتوليف صوت DiffSinger لتحرير النطق والتوقيت."
+      "no_take_hint": "أدخل الكلمات وقم بتوليف صوت DiffSinger لتحرير النطق والتوقيت.",
+      "preparing_units": "جارٍ إعداد وحدات الكلمات...",
+      "no_timing": "لا يتوفر توقيت للكلمات",
+      "syllable": "المقطع {index}",
+      "selected_region": "المنطقة المحددة: {start:.2f}ث–{end:.2f}ث ({duration:.2f}ث)",
+      "stop_pronunciation": "إيقاف تصحيح النطق",
+      "rerender_pronunciation": "إعادة تصيير النطق المحدد"
     },
     "rvc": {
       "title": "تحويل الصوت RVC",
@@ -1490,9 +1594,10 @@
       "requirements": "يلزم المالك والمصدر ونطاق الاستخدام والتأكيد",
       "status": "حواجز الموافقة: {status}.",
       "blocked": "حواجز الموافقة تمنع العملية: {issues}",
-      "confirmed": "تم تأكيد الموافقة: {owner}؛ {language}؛ {source}؛ الاستخدامات: {uses}."
+      "confirmed": "تم تأكيد الموافقة: {owner}؛ {language}؛ {source}؛ الاستخدامات: {uses}.",
+      "save_profile": "حواجز الموافقة: احفظ ملف صوت جاهزاً للموافقة."
     },
-    "clone": {
+  "clone": {
       "language_short": "اللغة:",
       "title": "استنساخ الصوت GPT-SoVITS",
       "profile_label": "الملف:",
@@ -1506,6 +1611,7 @@
       "scope_clone": "استنساخ فقط",
       "scope_research": "بحث/عرض فقط",
       "consent_confirmed": "تم تأكيد الموافقة",
+      "no_profiles": "(لم يتم تحميل ملفات GPT-SoVITS)",
       "no_reference": "لا يوجد صوت مرجعي",
       "browse": "استعراض",
       "reference_label": "المرجع:",
@@ -1523,9 +1629,16 @@
       "no_output_hint": "أنشئ ملف صوت جاهزاً للموافقة واختر صوتاً مرجعياً قبل الاستنساخ.",
       "choose_reference": "اختيار الصوت المرجعي",
       "select_reference": "تحديد الصوت المرجعي",
-      "quality_ready": "جاهز لإعداد GPT-SoVITS."
-    },
-    "accessibility": {
+    "quality_ready": "جاهز لإعداد GPT-SoVITS."
+  },
+  "stems": {
+    "input_hint": "أسقط ملفاً صوتياً أو استعرضه لفصل المسارات",
+    "browse": "استعراض الصوت",
+    "separate": "فصل المسارات",
+    "select_audio": "تحديد الصوت للفصل",
+    "default_project": "slunder-stems"
+  },
+  "accessibility": {
       "view_name": "Vocal Suite",
       "mode_name": "وضع Vocal Suite",
       "mode_description": "يبدل بين توليف الغناء وتحويل الصوت واستنساخ الصوت وفصل المسارات.",
@@ -1610,7 +1723,25 @@
       "clone_temperature_description": "يضبط تنوع الإنشاء.",
       "clone_unavailable_name": "استنساخ الصوت غير متاح",
       "clone_name": "استنساخ الصوت",
-      "clone_description": "يبدأ استنساخ الصوت GPT-SoVITS."
+      "clone_description": "يبدأ استنساخ الصوت GPT-SoVITS.",
+      "autotune_browse_name": "استعراض إدخال الضبط التلقائي",
+      "autotune_browse_description": "يحدد صوت الغناء لتصحيح الطبقة.",
+      "autotune_strength_name": "قوة الضبط التلقائي",
+      "autotune_strength_description": "تتحكم في مقدار سحب الطبقة نحو أقرب نصف نغمة.",
+      "autotune_apply_name": "تطبيق الضبط التلقائي",
+      "autotune_apply_description": "يكتب ملف WAV لصوت مصحح الطبقة.",
+      "stem_browse_name": "استعراض إدخال المسارات",
+      "stem_browse_description": "يحدد الصوت لفصل المسارات.",
+      "stem_model_name": "نقطة فحص فصل المسارات",
+      "stem_model_description": "تحدد نقطة فحص Demucs أو Audio Separator المدعومة.",
+      "stem_separate_name": "فصل المسارات",
+      "stem_separate_description": "يبدأ فصل المسارات.",
+      "send_forge_name": "إرسال الأصوات إلى Song Forge",
+      "send_forge_description": "يرسل مخرج الصوت الحالي إلى Song Forge.",
+      "send_mixer_name": "إرسال الأصوات إلى الخلاط",
+      "send_mixer_description": "يرسل مخرج الصوت الحالي إلى الخلاط.",
+      "export_name": "تصدير صوت الغناء",
+      "export_description": "يعرض مسار مخرج الصوت الحالي."
     }
   },
   "song_forge": {

@@ -489,13 +489,17 @@
       "autotune": "Auto-Tune",
       "stems": "Stem Separation"
     },
-    "autotune": {
+  "autotune": {
       "input_short": "Input:",
       "no_file": "No file selected",
       "browse": "Browse",
       "strength": "Strength:",
       "apply": "Apply Auto-Tune",
-      "corrected": "Corrected"
+    "corrected": "Corrected",
+    "no_output": "No corrected vocal yet",
+    "no_output_hint": "Choose vocal audio, set the correction strength, and apply auto-tune.",
+    "choose_audio": "Choose vocal audio",
+    "select_audio": "Select Vocal Audio"
     },
     "melody": {
       "input_short": "Hum:",
@@ -507,9 +511,10 @@
       "generate": "Generate Melody MIDI",
       "preview": "Humming Preview",
       "export_lrc": "Export Enhanced LRC",
-      "no_preview": "No melody preview yet",
-      "no_preview_hint": "Choose a humming recording to preview it, then generate lyric-aligned MIDI.",
-      "choose_audio": "Choose humming audio"
+    "no_preview": "No melody preview yet",
+    "no_preview_hint": "Choose a humming recording to preview it, then generate lyric-aligned MIDI.",
+    "choose_audio": "Choose humming audio",
+    "select_audio": "Select Humming Audio"
     },
     "singing": {
       "title": "DiffSinger",
@@ -530,7 +535,13 @@
       "no_region": "No pronunciation region selected",
       "pronunciation_action": "Re-render selected pronunciation",
       "no_take": "No vocal take yet",
-      "no_take_hint": "Enter lyrics and synthesize a DiffSinger vocal to edit pronunciation and timing."
+    "no_take_hint": "Enter lyrics and synthesize a DiffSinger vocal to edit pronunciation and timing.",
+    "preparing_units": "Preparing lyric units...",
+    "no_timing": "No lyric timing available",
+    "syllable": "syllable {index}",
+    "selected_region": "Selected region: {start:.2f}s–{end:.2f}s ({duration:.2f}s)",
+    "stop_pronunciation": "Stop pronunciation correction",
+    "rerender_pronunciation": "Re-render selected pronunciation"
     },
     "rvc": {
       "title": "RVC Voice Conversion",
@@ -580,9 +591,10 @@
       "requirements": "owner, source, use scope, and confirmation are required",
       "status": "Consent guardrails: {status}.",
       "blocked": "Consent guardrails blocked: {issues}",
-      "confirmed": "Consent confirmed: {owner}; {language}; {source}; uses: {uses}."
+      "confirmed": "Consent confirmed: {owner}; {language}; {source}; uses: {uses}.",
+      "save_profile": "Consent guardrails: save a consent-ready voice profile."
     },
-    "clone": {
+  "clone": {
       "language_short": "Lang:",
       "title": "GPT-SoVITS Voice Cloning",
       "profile_label": "Profile:",
@@ -613,21 +625,50 @@
       "no_output_hint": "Create a consent-ready voice profile and choose reference audio before cloning.",
       "choose_reference": "Choose reference audio",
       "select_reference": "Select Reference Audio",
-      "quality_ready": "Ready for GPT-SoVITS onboarding."
-    },
-    "actions": {
-      "send_to_forge": "Send to Song Forge",
-      "send_to_mixer": "Send to Mixer",
-      "export_wav": "Export WAV"
-    },
-    "jobs": {
-      "rvc": "RVC {name}",
-      "clone": "GPT-SoVITS {name}"
-    },
-    "operations": {
-      "rvc": "RVC conversion",
-      "clone": "GPT-SoVITS generation"
-    },
+    "quality_ready": "Ready for GPT-SoVITS onboarding.",
+    "no_profiles": "(No GPT-SoVITS profiles loaded)"
+  },
+  "stems": {
+    "input_hint": "Drop or browse an audio file to separate stems",
+    "browse": "Browse Audio",
+    "separate": "Separate Stems",
+    "select_audio": "Select Audio to Separate",
+    "default_project": "slunder-stems"
+  },
+  "actions": {
+    "send_to_forge": "Send to Song Forge",
+    "send_to_mixer": "Send to Mixer",
+    "export_wav": "Export WAV",
+    "cancel_export": "Cancel Export",
+    "cancel": "Cancel"
+  },
+  "dialogs": {
+    "export_audio": "Export Vocal Audio",
+    "export_remix": "Export Remix",
+    "export_stems": "Export Stems"
+  },
+  "jobs": {
+    "rvc": "RVC {name}",
+    "clone": "GPT-SoVITS {name}",
+    "singing": "DiffSinger {name}",
+    "pronunciation": "Pronunciation correction: {unit}",
+    "melody": "Lyric melody {name}",
+    "autotune": "Auto-tune {name}",
+    "stems": "{checkpoint} stem separation",
+    "stem_export": "Stem export: {project}"
+  },
+  "operations": {
+    "rvc": "RVC conversion",
+    "clone": "GPT-SoVITS generation",
+    "singing": "DiffSinger synthesis",
+    "pronunciation": "Correcting pronunciation",
+    "melody": "Generating melody",
+    "autotune": "Auto-tune processing",
+    "stems": "Stem separation",
+    "vocal_export": "Vocal export",
+    "remix_export": "Remix export",
+    "stem_export": "Stem export"
+  },
     "status": {
       "select_tab": "Select a tab to begin",
       "lrc_export_failed": "Enhanced LRC export failed: {error}",
@@ -658,8 +699,72 @@
       "profile_saved": "GPT-SoVITS voice profile saved: {name}",
       "clone_cancelled": "GPT-SoVITS clone cancelled",
       "engine_no_result": "Engine returned no result",
-      "clone_failed": "GPT-SoVITS clone failed: {error}",
-      "clone_created": "Voice clone created: {name} ({seconds:.1f}s)"
+    "clone_failed": "GPT-SoVITS clone failed: {error}",
+    "clone_created": "Voice clone created: {name} ({seconds:.1f}s)",
+    "wait_pronunciation": "Wait for pronunciation correction to finish before generating again",
+    "singing_lyrics_required": "Enter lyrics before synthesizing vocals",
+    "singing_loading": "Loading DiffSinger voice profile...",
+    "singing_cancelled": "DiffSinger synthesis cancelled",
+    "singing_failed": "DiffSinger synthesis failed: {error}",
+    "singing_created": "DiffSinger vocal generated: {name} ({seconds:.1f}s)",
+    "pronunciation_region_required": "Select a rendered vocal region before correcting pronunciation",
+    "pronunciation_blocked": "Pronunciation correction blocked: {error}",
+    "pronunciation_processing": "Re-synthesizing selected pronunciation region...",
+    "pronunciation_cancelled": "Pronunciation correction cancelled",
+    "pronunciation_no_audio": "Pronunciation region produced no audio",
+    "pronunciation_write_failed": "Pronunciation correction could not write an audio file",
+    "pronunciation_created": "Pronunciation corrected: {name} (only the selected region changed)",
+    "pronunciation_failed": "Pronunciation correction failed: {error}",
+    "melody_input_required": "Select humming audio before generating a melody",
+    "melody_extracting": "Extracting humming melody...",
+    "melody_no_midi": "Lyric melody generation finished without a MIDI file",
+    "melody_rendered": "Lyric melody rendered: {vocal} + {midi}",
+    "melody_created": "Melody MIDI created: {midi}{suffix}",
+    "melody_failed": "Lyric melody generation failed: {error}",
+    "melody_cancelled": "Lyric melody generation cancelled",
+    "lrc_input_required": "Generate a lyric melody before exporting Enhanced LRC",
+    "cancelling": "Cancelling {operation}...",
+    "operation_progress": "{operation}... {percent}%",
+    "loading_checkpoint": "Loading {checkpoint}...",
+    "autotune_input_required": "Select vocal audio before applying auto-tune",
+    "autotune_applying": "Applying auto-tune at {percent}% strength...",
+    "autotune_no_output": "Auto-tune finished without an output file",
+    "autotune_created": "Auto-tuned vocal: {name} ({correction:.2f} st average correction)",
+    "autotune_no_pitch": "Auto-tune wrote a copy; no stable vocal pitch was detected in {name}",
+    "autotune_failed": "Auto-tune failed: {error}",
+    "autotune_cancelled": "Auto-tune cancelled",
+    "stems_input_required": "Select audio before separating stems",
+    "separating": "Separating stems with {checkpoint}...",
+    "stems_cancelled": "Stem separation cancelled",
+    "stems_failed": "Stem separation failed: {error}",
+    "stems_created": "Created {count} stems with {model} ({seconds:.1f}s)",
+    "no_stems_remix": "Separate stems before exporting a remix",
+    "export_in_progress": "An export is already in progress",
+    "no_stems_export": "Separate stems before exporting them",
+    "exporting_stems": "Exporting stems...",
+    "stem_audio_missing": "No audio is available for the {stem} stem",
+    "stem_load_failed": "Could not load the {stem} stem for playback",
+    "playing_stem": "Playing {stem} stem",
+    "playback_error": "Playback error: {error}",
+    "no_vocal_audio": "No vocal audio to export",
+    "stems_exported": "Exported {count} stems to {directory}",
+    "remix_exported": "Remix exported: {path}",
+    "export_warning": "Warning: {warning}",
+    "vocal_exported": "Vocal exported as {format}: {path}{warning}",
+    "export_failed": "Export failed: {error}",
+    "stem_export_cancelled": "Stem export cancelled",
+    "vocal_export_cancelled": "Vocal export cancelled",
+    "audio_received": "Audio received: {name}",
+    "save_profile": "Save a consent-ready voice profile before using this operation",
+    "input_audio_required": "Select input audio to convert.",
+    "separate_input_required": "Select audio to separate.",
+    "checking_readiness": "Checking model readiness...",
+    "profile_required": "Select a voice profile.",
+    "diffsinger_model_required": "The selected DiffSinger profile has no model path.",
+    "diffsinger_model_missing": "The selected DiffSinger model path is missing.",
+    "reference_audio_required": "The selected voice profile has no reference audio.",
+    "reference_audio_missing": "The selected voice reference audio is missing.",
+    "cancel_running": "Cancel this running engine action."
     },
     "accessibility": {
       "view_name": "Vocal Suite",
@@ -744,9 +849,27 @@
       "clone_speed_description": "Adjusts cloned speech speed.",
       "clone_temperature_name": "Clone temperature",
       "clone_temperature_description": "Adjusts generation variation.",
-      "clone_unavailable_name": "Voice cloning unavailable",
-      "clone_name": "Clone voice",
-      "clone_description": "Starts GPT-SoVITS voice cloning."
+    "clone_unavailable_name": "Voice cloning unavailable",
+    "clone_name": "Clone voice",
+    "clone_description": "Starts GPT-SoVITS voice cloning.",
+    "autotune_browse_name": "Browse auto-tune input",
+    "autotune_browse_description": "Selects vocal audio for pitch correction.",
+    "autotune_strength_name": "Auto-tune strength",
+    "autotune_strength_description": "Controls how strongly pitch is pulled toward the nearest semitone.",
+    "autotune_apply_name": "Apply auto-tune",
+    "autotune_apply_description": "Writes a pitch-corrected vocal WAV.",
+    "stem_browse_name": "Browse stem input",
+    "stem_browse_description": "Selects audio for stem separation.",
+    "stem_model_name": "Stem separation checkpoint",
+    "stem_model_description": "Selects a Demucs or maintained Audio Separator checkpoint.",
+    "stem_separate_name": "Separate stems",
+    "stem_separate_description": "Starts stem separation.",
+    "send_forge_name": "Send vocals to Song Forge",
+    "send_forge_description": "Sends current vocal output to Song Forge.",
+    "send_mixer_name": "Send vocals to Mixer",
+    "send_mixer_description": "Sends current vocal output to Mixer.",
+    "export_name": "Export vocal audio",
+    "export_description": "Shows the current vocal output path."
     }
   },
   "producer": {

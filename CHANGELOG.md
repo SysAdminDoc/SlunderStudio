@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Vocal Suite auto-tune, stem separation, vocal routing/export, processing
+  progress, and remaining singing/melody status copy to the locale catalog with Arabic
+  coverage and catalog-backed accessibility metadata.
+
 - Migrated Vocal Suite DiffSinger singing controls, pronunciation correction, humming-to-MIDI
   controls, enhanced-LRC action, empty states, and accessibility descriptions to the locale catalog.
 
