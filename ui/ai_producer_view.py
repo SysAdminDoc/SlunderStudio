@@ -47,16 +47,21 @@ STAGE_ICONS = {
     PipelineStage.MASTERING: "08",
 }
 
-STAGE_LABELS = {
-    PipelineStage.PLANNING: "Planning",
-    PipelineStage.LYRICS: "Lyrics",
-    PipelineStage.STYLE: "Style Tags",
-    PipelineStage.SONG_GEN: "Song Generation",
-    PipelineStage.VOCALS: "Vocals",
-    PipelineStage.SFX: "SFX Layer",
-    PipelineStage.MIXING: "Mixing",
-    PipelineStage.MASTERING: "Mastering",
+STAGE_LABEL_KEYS = {
+    PipelineStage.PLANNING: "producer.stages.planning",
+    PipelineStage.LYRICS: "producer.stages.lyrics",
+    PipelineStage.STYLE: "producer.stages.style",
+    PipelineStage.SONG_GEN: "producer.stages.song_generation",
+    PipelineStage.VOCALS: "producer.stages.vocals",
+    PipelineStage.SFX: "producer.stages.sfx",
+    PipelineStage.MIXING: "producer.stages.mixing",
+    PipelineStage.MASTERING: "producer.stages.mastering",
 }
+
+
+def _stage_label(stage: PipelineStage) -> str:
+    key = STAGE_LABEL_KEYS.get(stage)
+    return tr(key) if key else stage.value
 
 
 def _producer_export_task(
@@ -124,7 +129,7 @@ class StageIndicator(QFrame):
         layout.addWidget(self._num_label)
 
         # Stage name
-        self._name_label = QLabel(STAGE_LABELS.get(stage, stage.value))
+        self._name_label = QLabel(_stage_label(stage))
         self._name_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         layout.addWidget(self._name_label, 1)
 
@@ -168,7 +173,7 @@ class StageIndicator(QFrame):
                 font-size: 7.5pt; font-weight: bold;
             """)
             self._name_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt; font-weight: bold;")
-            self._status_label.setText("Running...")
+            self._status_label.setText(tr("producer.stage_status.running"))
             self._status_label.setStyleSheet(f"color: {t['accent']}; font-size: 7.5pt;")
 
         elif status == "complete":
@@ -185,7 +190,7 @@ class StageIndicator(QFrame):
                 font-size: 7.5pt; font-weight: bold;
             """)
             self._name_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt;")
-            dur_str = f"{duration:.1f}s" if duration > 0 else ""
+            dur_str = tr("producer.duration", seconds=duration) if duration > 0 else ""
             self._status_label.setText(dur_str)
             self._status_label.setStyleSheet(
                 f"color: {t['success']}; font-size: 7.5pt;"
@@ -193,7 +198,7 @@ class StageIndicator(QFrame):
 
         elif status == "skipped":
             self._name_label.setStyleSheet(f"color: {t['muted']}; font-size: 8.25pt;")
-            self._status_label.setText("Skipped")
+            self._status_label.setText(tr("producer.stage_status.skipped"))
             self._status_label.setStyleSheet(f"color: {t['muted']}; font-size: 7.5pt;")
 
         elif status == "failed":
@@ -209,7 +214,7 @@ class StageIndicator(QFrame):
                 color: {t['background']}; border-radius: 12px;
                 font-size: 7.5pt; font-weight: bold;
             """)
-            self._status_label.setText("Failed")
+            self._status_label.setText(tr("producer.stage_status.failed"))
             self._status_label.setStyleSheet(f"color: {t['error']}; font-size: 7.5pt;")
         elif status == "cancelled":
             self.setStyleSheet(f"""
@@ -224,7 +229,7 @@ class StageIndicator(QFrame):
                 color: {t['background']}; border-radius: 12px;
                 font-size: 7.5pt; font-weight: bold;
             """)
-            self._status_label.setText("Cancelled")
+            self._status_label.setText(tr("producer.stage_status.cancelled"))
             self._status_label.setStyleSheet(
                 f"color: {t['warning']}; font-size: 7.5pt;"
             )
@@ -270,7 +275,7 @@ class AIProducerView(QWidget):
         """)
         title_layout = QVBoxLayout(title_frame)
         title_layout.setContentsMargins(16, 12, 16, 12)
-        title_label = QLabel("Production brief")
+        title_label = QLabel(tr("producer.title"))
         title_label.setStyleSheet(f"color: {t['text']}; font-size: 12pt; font-weight: bold; border: none;")
         subtitle = QLabel(tr("runtime.production_subtitle"))
         subtitle.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
@@ -290,9 +295,7 @@ class AIProducerView(QWidget):
 
         self._prompt = QTextEdit()
         self._prompt.setPlaceholderText(
-            "Describe your song...\n"
-            "e.g. 'A dreamy lo-fi hip-hop track about rainy nights in Tokyo, "
-            "with mellow piano chords and vinyl crackle'"
+            tr("producer.prompt_placeholder")
         )
         self._prompt.setMinimumHeight(56)
         self._prompt.setMaximumHeight(80)
@@ -317,20 +320,24 @@ class AIProducerView(QWidget):
 
         # Genre + Mood
         row1 = QHBoxLayout()
-        gl = QLabel("Genre:")
+        gl = QLabel(tr("producer.genre_label"))
         gl.setMinimumWidth(42)
         gl.setStyleSheet(param_style)
         self._genre = QComboBox()
-        self._genre.addItem("Auto-detect")
-        self._genre.addItems(sorted(GENRE_DEFAULTS.keys()))
+        self._genre.addItem(tr("producer.auto_detect"), "")
+        for genre in sorted(GENRE_DEFAULTS.keys()):
+            # Genre identifiers are engine taxonomy data; keep the raw value in UserRole.
+            self._genre.addItem(genre, genre)
         self._genre.setStyleSheet(param_style)
 
-        ml = QLabel("Mood:")
+        ml = QLabel(tr("producer.mood_label"))
         ml.setMinimumWidth(36)
         ml.setStyleSheet(param_style)
         self._mood = QComboBox()
-        self._mood.addItem("Auto-detect")
-        self._mood.addItems(sorted(MOOD_TAGS.keys()))
+        self._mood.addItem(tr("producer.auto_detect"), "")
+        for mood in sorted(MOOD_TAGS.keys()):
+            # Mood identifiers are engine taxonomy data; keep the raw value in UserRole.
+            self._mood.addItem(mood, mood)
         self._mood.setStyleSheet(param_style)
 
         row1.addWidget(gl)
@@ -341,7 +348,7 @@ class AIProducerView(QWidget):
 
         # Duration + Vocals
         row2 = QHBoxLayout()
-        dl = QLabel("Length:")
+        dl = QLabel(tr("producer.length_label"))
         dl.setMinimumWidth(42)
         dl.setStyleSheet(param_style)
         self._duration = QSpinBox()
@@ -350,11 +357,16 @@ class AIProducerView(QWidget):
         self._duration.setSuffix("s")
         self._duration.setStyleSheet(param_style)
 
-        vl = QLabel("Vocals:")
+        vl = QLabel(tr("producer.vocals_label"))
         vl.setMinimumWidth(46)
         vl.setStyleSheet(param_style)
         self._vocals = QComboBox()
-        self._vocals.addItems(["None", "Male", "Female"])
+        for value, key in (
+            ("none", "producer.vocals_none"),
+            ("male", "producer.vocals_male"),
+            ("female", "producer.vocals_female"),
+        ):
+            self._vocals.addItem(tr(key), value)
         self._vocals.setStyleSheet(param_style)
 
         row2.addWidget(dl)
@@ -365,15 +377,31 @@ class AIProducerView(QWidget):
 
         # Mastering preset + SFX toggle
         row3 = QHBoxLayout()
-        mpl = QLabel("Master:")
+        mpl = QLabel(tr("producer.master_label"))
         mpl.setMinimumWidth(42)
         mpl.setStyleSheet(param_style)
         self._master_preset = QComboBox()
-        self._master_preset.addItems(PRESETS.keys())
-        self._master_preset.setCurrentText("Balanced")
+        self._preset_display_keys = {
+            "Balanced": "producer.presets.balanced",
+            "Loud / Radio": "producer.presets.loud_radio",
+            "Warm / Analog": "producer.presets.warm_analog",
+            "Bright / Crisp": "producer.presets.bright_crisp",
+            "Hip-Hop / Trap": "producer.presets.hip_hop_trap",
+            "Cinematic": "producer.presets.cinematic",
+            "Lo-Fi": "producer.presets.lo_fi",
+            "Streaming (Spotify)": "producer.presets.streaming_spotify",
+        }
+        for preset in PRESETS:
+            self._master_preset.addItem(
+                tr(self._preset_display_keys.get(preset, "producer.preset_unknown")),
+                preset,
+            )
+        self._master_preset.setCurrentIndex(
+            max(0, self._master_preset.findData("Balanced"))
+        )
         self._master_preset.setStyleSheet(param_style)
 
-        self._sfx_check = QCheckBox("Add SFX")
+        self._sfx_check = QCheckBox(tr("producer.add_sfx"))
         self._sfx_check.setChecked(True)
         self._sfx_check.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
 
@@ -383,7 +411,7 @@ class AIProducerView(QWidget):
         ctrl.addLayout(row3)
 
         row4 = QHBoxLayout()
-        self._demo_fallback_check = QCheckBox("Demo Fallback")
+        self._demo_fallback_check = QCheckBox(tr("producer.demo_fallback"))
         self._demo_fallback_check.setChecked(False)
         self._demo_fallback_check.setToolTip(
             tr("runtime.production_demo_fallback")
@@ -395,7 +423,7 @@ class AIProducerView(QWidget):
         ctrl.addLayout(row4)
 
         # PRODUCE button
-        self._produce_btn = QPushButton("PRODUCE")
+        self._produce_btn = QPushButton(tr("producer.produce"))
         self._produce_btn.setObjectName("primaryAction")
         self._produce_btn.setMinimumHeight(44)
         self._produce_btn.setStyleSheet(f"""
@@ -410,7 +438,7 @@ class AIProducerView(QWidget):
         """)
         self._produce_btn.clicked.connect(self._on_produce)
 
-        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn = QPushButton(tr("producer.cancel"))
         self._cancel_btn.setMinimumHeight(44)
         self._cancel_btn.setEnabled(False)
         self._cancel_btn.setStyleSheet(f"""
@@ -424,7 +452,7 @@ class AIProducerView(QWidget):
         """)
         self._cancel_btn.clicked.connect(self._on_cancel)
 
-        self._retry_btn = QPushButton("Retry")
+        self._retry_btn = QPushButton(tr("producer.retry"))
         self._retry_btn.setMinimumHeight(44)
         self._retry_btn.setEnabled(False)
         self._retry_btn.setStyleSheet(f"""
@@ -496,11 +524,11 @@ class AIProducerView(QWidget):
         out_layout.setContentsMargins(12, 10, 12, 10)
         out_layout.setSpacing(4)
 
-        self._output_title = QLabel("Output")
+        self._output_title = QLabel(tr("producer.output_title"))
         self._output_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 10.5pt; border: none;")
         out_layout.addWidget(self._output_title)
 
-        self._output_info = QLabel("Run the producer to generate a song")
+        self._output_info = QLabel(tr("producer.output_empty"))
         self._output_info.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._output_info.setWordWrap(True)
         out_layout.addWidget(self._output_info)
@@ -512,7 +540,7 @@ class AIProducerView(QWidget):
         right.addWidget(self._waveform, 1)
 
         # Lyrics preview
-        lyrics_label = QLabel("Generated Lyrics")
+        lyrics_label = QLabel(tr("producer.lyrics_title"))
         lyrics_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         right.addWidget(lyrics_label)
 
@@ -529,7 +557,7 @@ class AIProducerView(QWidget):
         right.addWidget(self._lyrics_preview)
 
         # Export
-        self._export_btn = QPushButton("Export Final Song")
+        self._export_btn = QPushButton(tr("producer.export_final"))
         self._export_btn.setEnabled(False)
         self._export_btn.setStyleSheet(f"""
             QPushButton {{
@@ -550,21 +578,21 @@ class AIProducerView(QWidget):
         self._refresh_capability_state()
         install_accessibility(
             self,
-            "AI Producer",
+            tr("producer.accessibility.name"),
             named_controls=[
-                (self._prompt, "Producer brief", tr("runtime.production_brief_description")),
-                (self._genre, "Producer genre", "Selects the song genre."),
-                (self._mood, "Producer mood", "Selects the song mood."),
-                (self._duration, "Producer duration", "Sets the target song duration in seconds."),
-                (self._vocals, "Producer vocals", "Selects the vocal arrangement."),
-                (self._master_preset, "Producer mastering preset", "Selects the mastering preset for the final song."),
-                (self._sfx_check, "Add producer sound effects", "Includes sound effects in the generated production."),
-                (self._demo_fallback_check, "Enable producer demo fallback", tr("runtime.production_demo_description")),
-                (self._produce_btn, "Produce song", tr("runtime.production_run_description")),
-                (self._cancel_btn, "Cancel production", tr("runtime.production_cancel_description")),
-                (self._retry_btn, "Retry production", tr("runtime.production_retry_description")),
-                (self._lyrics_preview, "Generated lyrics preview", tr("runtime.production_lyrics_description")),
-                (self._export_btn, "Export produced song", "Exports the verified producer result."),
+                (self._prompt, tr("producer.accessibility.brief_name"), tr("runtime.production_brief_description")),
+                (self._genre, tr("producer.accessibility.genre_name"), tr("producer.accessibility.genre_description")),
+                (self._mood, tr("producer.accessibility.mood_name"), tr("producer.accessibility.mood_description")),
+                (self._duration, tr("producer.accessibility.duration_name"), tr("producer.accessibility.duration_description")),
+                (self._vocals, tr("producer.accessibility.vocals_name"), tr("producer.accessibility.vocals_description")),
+                (self._master_preset, tr("producer.accessibility.master_name"), tr("producer.accessibility.master_description")),
+                (self._sfx_check, tr("producer.accessibility.sfx_name"), tr("producer.accessibility.sfx_description")),
+                (self._demo_fallback_check, tr("producer.accessibility.demo_name"), tr("runtime.production_demo_description")),
+                (self._produce_btn, tr("producer.accessibility.produce_name"), tr("runtime.production_run_description")),
+                (self._cancel_btn, tr("producer.accessibility.cancel_name"), tr("runtime.production_cancel_description")),
+                (self._retry_btn, tr("producer.accessibility.retry_name"), tr("runtime.production_retry_description")),
+                (self._lyrics_preview, tr("producer.accessibility.lyrics_name"), tr("runtime.production_lyrics_description")),
+                (self._export_btn, tr("producer.accessibility.export_name"), tr("producer.accessibility.export_description")),
             ],
         )
 
@@ -587,18 +615,18 @@ class AIProducerView(QWidget):
             return
         self._generator_model_id = readiness.model_id or self._generator_model_id
 
-        genre = self._genre.currentText()
-        mood = self._mood.currentText()
-        vocal_map = {"None": "none", "Male": "male", "Female": "female"}
+        genre = str(self._genre.currentData() or "")
+        mood = str(self._mood.currentData() or "")
+        vocal_style = str(self._vocals.currentData() or "none")
 
         brief = ProducerBrief(
             prompt=prompt,
-            genre="" if genre == "Auto-detect" else genre,
-            mood="" if mood == "Auto-detect" else mood,
+            genre=genre,
+            mood=mood,
             duration_seconds=self._duration.value(),
-            vocal_style=vocal_map.get(self._vocals.currentText(), "none"),
+            vocal_style=vocal_style,
             include_sfx=self._sfx_check.isChecked(),
-            mastering_preset=self._master_preset.currentText(),
+            mastering_preset=str(self._master_preset.currentData() or "Balanced"),
             demo_fallback=self._demo_fallback_check.isChecked(),
             song_generator_model_id=self._generator_model_id,
         )
@@ -607,8 +635,8 @@ class AIProducerView(QWidget):
         self._produce_btn.setEnabled(False)
         self._cancel_btn.setEnabled(True)
         self._retry_btn.setEnabled(False)
-        self._output_title.setText("Production in progress")
-        self._output_info.setText("Planning...")
+        self._output_title.setText(tr("producer.status.in_progress"))
+        self._output_info.setText(tr("producer.status.planning"))
 
         prior_job_id = self._last_job_id
         self._worker = InferenceWorker(
@@ -643,7 +671,7 @@ class AIProducerView(QWidget):
         self._result = None
         self._contract_result = None
         self._export_btn.setEnabled(False)
-        self._export_btn.setText("Export Final Song")
+        self._export_btn.setText(tr("producer.export_final"))
         self._waveform.clear()
         for indicator in self._stage_indicators.values():
             indicator.set_status("pending")
@@ -675,8 +703,8 @@ class AIProducerView(QWidget):
             error_msg,
             model_id=self._generator_model_id,
         )
-        message = f"Production failed: {error_msg}"
-        self._output_title.setText("Production failed")
+        message = tr("producer.status.failed", error=error_msg)
+        self._output_title.setText(tr("producer.status.failed_title"))
         self._output_info.setText(message)
         if self.toast_mgr is not None:
             self.toast_mgr.error(message)
@@ -694,7 +722,7 @@ class AIProducerView(QWidget):
         for indicator in self._stage_indicators.values():
             if indicator._status == "running":
                 indicator.set_status("cancelled")
-        self._output_title.setText("Production cancelled")
+        self._output_title.setText(tr("producer.status.cancelled_title"))
         self._output_info.setText(tr("runtime.partial_files_removed"))
         self._export_btn.setEnabled(False)
         self._retry_btn.setEnabled(True)
@@ -792,38 +820,52 @@ class AIProducerView(QWidget):
         # Output info
         if result.is_success:
             if result.is_demo:
-                self._output_title.setText("Demo production complete")
+                self._output_title.setText(tr("producer.status.demo_complete"))
             elif result.is_degraded:
-                self._output_title.setText("Production complete with limitations")
+                self._output_title.setText(tr("producer.status.complete_limited"))
             else:
-                self._output_title.setText("Production complete")
-            info_parts = [f"Total time: {result.total_time:.1f}s"]
-            info_parts.append(f"Steps: {len(result.completed_stages)}/{len(PIPELINE_ORDER)}")
-            info_parts.append(f"Output: {result.output_kind}")
+                self._output_title.setText(tr("producer.status.complete"))
+            info_parts = [tr("producer.info.total_time", seconds=result.total_time)]
+            info_parts.append(
+                tr(
+                    "producer.info.steps",
+                    completed=len(result.completed_stages),
+                    total=len(PIPELINE_ORDER),
+                )
+            )
+            info_parts.append(tr("producer.info.output", kind=result.output_kind))
             if result.style_tags:
-                info_parts.append(f"Style: {', '.join(result.style_tags[:6])}")
+                info_parts.append(
+                    tr("producer.info.style", tags=", ".join(result.style_tags[:6]))
+                )
 
             master_step = result.get_step(PipelineStage.MASTERING)
             if master_step and master_step.output_data:
                 lufs = master_step.output_data.get("output_lufs", 0)
-                info_parts.append(f"Loudness: {lufs:.1f} LUFS")
+                info_parts.append(tr("producer.info.loudness", lufs=lufs))
             if result.degraded_reasons:
                 info_parts.append(
-                    "Limitations: " + "; ".join(result.degraded_reasons[:3])
+                    tr(
+                        "producer.info.limitations",
+                        reasons="; ".join(result.degraded_reasons[:3]),
+                    )
                 )
 
-            self._output_info.setText(" | ".join(info_parts))
+            self._output_info.setText(tr("producer.info.separator").join(info_parts))
         elif result.cancelled or result.stage == PipelineStage.CANCELLED:
-            self._output_title.setText("Production cancelled")
-            self._output_info.setText("Cancellation completed; no result is exportable.")
+            self._output_title.setText(tr("producer.status.cancelled_title"))
+            self._output_info.setText(tr("producer.status.cancelled_no_export"))
         else:
-            self._output_title.setText("Production failed")
+            self._output_title.setText(tr("producer.status.failed_title"))
             stage_errors = [
-                f"{STAGE_LABELS.get(step.stage, step.stage.value)}: {step.error}"
+                tr("producer.info.stage_error", stage=_stage_label(step.stage), error=step.error)
                 for step in result.steps if step.error
             ]
             self._output_info.setText(
-                " | ".join([result.error or "The production did not complete", *stage_errors])
+                tr("producer.info.separator").join([
+                    result.error or tr("producer.status.did_not_complete"),
+                    *stage_errors,
+                ])
             )
 
         # Load waveform
@@ -831,7 +873,7 @@ class AIProducerView(QWidget):
             self._waveform.load_audio(result.final_audio_path)
             self._export_btn.setEnabled(True)
             self._export_btn.setText(
-                "Export Demo" if result.is_demo else "Export Final Song"
+                tr("producer.export_demo" if result.is_demo else "producer.export_final")
             )
         else:
             self._export_btn.setEnabled(False)
@@ -839,18 +881,18 @@ class AIProducerView(QWidget):
     def _on_export(self):
         if self._export_worker is not None and self._export_worker.isRunning():
             self._export_worker.cancel()
-            self._output_info.setText("Cancelling export...")
+            self._output_info.setText(tr("producer.status.cancelling_export"))
             return
         if not self._result or not self._result.can_export:
             self._export_btn.setEnabled(False)
             self._output_info.setText(
-                "The verified result is no longer available. Retry production before exporting."
+                tr("producer.status.result_unavailable")
             )
             return
 
         path, selected_filter = save_audio_file(
             self,
-            "Export Final Song",
+            tr("producer.export_final"),
             "song.wav",
             operation_kind="ai_producer_export",
             dialog=QFileDialog,
@@ -863,7 +905,9 @@ class AIProducerView(QWidget):
                 path,
             )
             worker.progress.connect(
-                lambda pct: self._output_info.setText(f"Exporting... {pct}%")
+                lambda pct: self._output_info.setText(
+                    tr("producer.status.exporting", percent=pct)
+                )
             )
             worker.finished.connect(self._on_export_finished)
             worker.error.connect(self._on_export_error)
@@ -871,8 +915,8 @@ class AIProducerView(QWidget):
             self._export_workers.add(worker)
             self._export_worker = worker
             self._export_btn.setEnabled(False)
-            self._export_btn.setText("Cancel Export")
-            self._output_info.setText("Exporting... 0%")
+            self._export_btn.setText(tr("producer.cancel_export"))
+            self._output_info.setText(tr("producer.status.exporting", percent=0))
             worker.start()
 
     def _release_export_worker_later(self, worker):
@@ -889,26 +933,26 @@ class AIProducerView(QWidget):
         if self._result and self._result.can_export:
             self._export_btn.setEnabled(True)
             self._export_btn.setText(
-                "Export Demo" if self._result.is_demo else "Export Final Song"
+                tr("producer.export_demo" if self._result.is_demo else "producer.export_final")
             )
 
     def _on_export_finished(self, path: str):
         worker = self._export_worker
         self._release_export_worker_later(worker)
         self._export_worker = None
-        self._output_info.setText(f"Exported: {path}")
+        self._output_info.setText(tr("producer.status.exported", path=path))
         self._restore_export_button()
 
     def _on_export_error(self, message: str):
         worker = self._export_worker
         self._release_export_worker_later(worker)
         self._export_worker = None
-        self._output_info.setText(f"Export failed: {message}")
+        self._output_info.setText(tr("producer.status.export_failed", error=message))
         self._restore_export_button()
 
     def _on_export_cancelled(self):
         worker = self._export_worker
         self._release_export_worker_later(worker)
         self._export_worker = None
-        self._output_info.setText("Export cancelled")
+        self._output_info.setText(tr("producer.status.export_cancelled"))
         self._restore_export_button()

@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated AI Producer labels, stage states, output summaries, export states, option display
+  labels, and accessibility descriptions to the locale catalog while preserving raw engine IDs.
+
 - Migrated Job Queue and Batch results copy, status messages, destructive-action toasts,
   and accessibility descriptions to the locale catalog, including Arabic coverage.
 
