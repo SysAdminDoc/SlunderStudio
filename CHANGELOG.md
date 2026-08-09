@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Settings live MIDI controls, recovery cleanup/previews, health export progress,
+  C2PA/OSC diagnostics, and the complete Settings accessibility map to the locale catalog;
+  added Arabic coverage and fixed setting-save formatting for the reserved translation key.
+
 - Migrated onboarding welcome, system checks, model readiness/setup, quick-start controls,
   navigation, remediation messages, and accessibility descriptions to the locale catalog
   with Arabic coverage while preserving model and hardware data values.

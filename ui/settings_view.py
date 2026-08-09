@@ -48,6 +48,42 @@ from core.workers import CancelledJobError, InferenceWorker
 from ui.file_dialogs import choose_directory, open_file, save_file
 
 
+_MIDI_ACTION_KEYS = {
+    "transport.toggle": "settings.midi.actions.transport_toggle",
+    "transport.stop": "settings.midi.actions.transport_stop",
+    "mixer.volume": "settings.midi.actions.mixer_volume",
+    "mixer.pan": "settings.midi.actions.mixer_pan",
+    "mixer.mute": "settings.midi.actions.mixer_mute",
+    "mixer.solo": "settings.midi.actions.mixer_solo",
+    "piano.quantize": "settings.midi.actions.piano_quantize",
+    "piano.swing": "settings.midi.actions.piano_swing",
+    "piano.humanize": "settings.midi.actions.piano_humanize",
+}
+_MIDI_MODE_KEYS = {
+    "absolute": "settings.midi_controller.mode_absolute",
+    "trigger": "settings.midi_controller.mode_trigger",
+    "toggle": "settings.midi_controller.mode_toggle",
+}
+
+
+def _localized_midi_action(action: str) -> str:
+    key = _MIDI_ACTION_KEYS.get(action)
+    return tr(key) if key else MIDI_ACTION_LABELS.get(action, action)
+
+
+def _localized_midi_mode(mode: str) -> str:
+    key = _MIDI_MODE_KEYS.get(mode)
+    return tr(key) if key else mode.capitalize()
+
+
+def _settings_accessibility(widget: QWidget, key: str, **values):
+    return (
+        widget,
+        tr(f"settings.accessibility.{key}_name", **values),
+        tr(f"settings.accessibility.{key}_description", **values),
+    )
+
+
 def _recovery_cleanup_task(
     center,
     progress_cb=None,
@@ -62,10 +98,10 @@ def _recovery_cleanup_task(
     total = len(CATEGORIES)
     for index, category in enumerate(CATEGORIES):
         if cancel_event is not None and cancel_event.is_set():
-            raise CancelledJobError("Recovery cleanup cancelled")
+            raise CancelledJobError(tr("settings.recovery.cleanup_cancelled"))
         label = CATEGORY_LABELS[category]
         if step_cb:
-            step_cb(f"Cleaning {label}...")
+            step_cb(tr("settings.recovery.clean_category", category=label))
         removed[category] = center.clean(category)
         if progress_cb:
             progress_cb(int(round((index + 1) * 100 / total)))
@@ -260,9 +296,9 @@ class SettingsView(QWidget):
             self._on_stem_export_template_changed
         )
         output_layout.addLayout(SettingRow(
-            "Stem export naming",
+            tr("settings.output.stem_export_naming"),
             self._stem_export_template_combo,
-            "Chooses the filename template used when exporting separated stems.",
+            tr("settings.output.stem_export_naming_help"),
         ))
 
         self._audio_device_combo = QComboBox()
@@ -469,17 +505,17 @@ class SettingsView(QWidget):
         layout.addWidget(osc_group)
 
         # ── MIDI Controller ──
-        midi_controller_group = QGroupBox("MIDI Controller")
+        midi_controller_group = QGroupBox(tr("settings.midi_controller.group"))
         midi_controller_layout = QVBoxLayout(midi_controller_group)
 
-        self._midi_enabled = QCheckBox("Enable live MIDI controller input")
+        self._midi_enabled = QCheckBox(tr("settings.midi_controller.enabled"))
         self._midi_enabled.toggled.connect(
             lambda enabled: self._save("midi_controller.enabled", bool(enabled))
         )
         midi_controller_layout.addLayout(SettingRow(
-            "MIDI input",
+            tr("settings.midi_controller.input"),
             self._midi_enabled,
-            "Opt in to one local MIDI input port. Input stays off until enabled.",
+            tr("settings.midi_controller.input_help"),
         ))
 
         self._midi_port_combo = QComboBox()
@@ -496,9 +532,9 @@ class SettingsView(QWidget):
         midi_port_layout.addWidget(self._midi_port_combo, 1)
         midi_port_layout.addWidget(self._midi_refresh_btn)
         midi_controller_layout.addLayout(SettingRow(
-            "Input port",
+            tr("settings.midi_controller.port"),
             midi_port_controls,
-            "Select a port supplied by the optional mido backend; System default uses the backend default.",
+            tr("settings.midi_controller.port_help"),
         ))
 
         self._midi_status = QLabel("")
@@ -509,8 +545,7 @@ class SettingsView(QWidget):
         midi_controller_layout.addWidget(self._midi_status)
 
         mapping_note = QLabel(
-            "Bindings target the selected Mixer track. CC values use normalized faders; "
-            "trigger and toggle controls fire once per press."
+            tr("settings.midi_controller.mapping_note")
         )
         mapping_note.setWordWrap(True)
         mapping_note.setStyleSheet(
@@ -523,8 +558,8 @@ class SettingsView(QWidget):
         mapping_grid.setContentsMargins(0, 4, 0, 0)
         mapping_grid.setHorizontalSpacing(8)
         mapping_grid.setVerticalSpacing(4)
-        for column, label in enumerate(("Action", "Type", "Channel", "Number", "Mode")):
-            heading = QLabel(label)
+        for column, key in enumerate(("action", "type", "channel", "number", "mode")):
+            heading = QLabel(tr(f"settings.midi_controller.column_{key}"))
             heading.setStyleSheet(
                 f"color: {Palette.SUBTEXT0}; font-size: 7.5pt; font-weight: bold;"
             )
@@ -532,19 +567,19 @@ class SettingsView(QWidget):
 
         for row_index, raw_binding in enumerate(DEFAULT_MIDI_BINDINGS, start=1):
             binding = MidiBinding.from_dict(raw_binding)
-            action_label = QLabel(MIDI_ACTION_LABELS.get(binding.action, binding.action))
+            action_label = QLabel(_localized_midi_action(binding.action))
             action_label.setToolTip(binding.action)
             mapping_grid.addWidget(action_label, row_index, 0)
 
             type_combo = QComboBox()
             type_combo.setObjectName(f"midiBindingType{row_index}")
-            type_combo.addItem("CC", "cc")
-            type_combo.addItem("Note", "note")
+            type_combo.addItem(tr("settings.midi_controller.type_cc"), "cc")
+            type_combo.addItem(tr("settings.midi_controller.type_note"), "note")
             type_combo.setCurrentIndex(type_combo.findData(binding.message_type))
 
             channel_combo = QComboBox()
             channel_combo.setObjectName(f"midiBindingChannel{row_index}")
-            channel_combo.addItem("All", MIDI_CHANNEL_OMNI)
+            channel_combo.addItem(tr("settings.midi_controller.channel_all"), MIDI_CHANNEL_OMNI)
             for channel in range(16):
                 channel_combo.addItem(str(channel + 1), channel)
             channel_combo.setCurrentIndex(channel_combo.findData(binding.channel))
@@ -558,7 +593,7 @@ class SettingsView(QWidget):
             mode_combo = QComboBox()
             mode_combo.setObjectName(f"midiBindingMode{row_index}")
             for mode in MIDI_BINDING_MODES:
-                mode_combo.addItem(mode.capitalize(), mode)
+                mode_combo.addItem(_localized_midi_mode(mode), mode)
             mode_combo.setCurrentIndex(mode_combo.findData(binding.mode))
 
             row_controls = {
@@ -972,12 +1007,31 @@ class SettingsView(QWidget):
         self._recovery_clean_btn.setEnabled(False)
 
     def _preview_recovery_cleanup(self):
+        from core.retention import CATEGORY_LABELS
+
         center = self._recovery_center()
         self._recovery_list.clear()
         removable = 0
         freed = 0
         for category, plan in center.preview_all().items():
-            self._recovery_list.addItem(plan.summary())
+            category_label = CATEGORY_LABELS.get(category, category)
+            self._recovery_list.addItem(
+                tr(
+                    "settings.recovery.plan_summary",
+                    category=category_label,
+                    remove=len(plan.remove),
+                    size=f"{plan.removed_bytes / 1e6:.1f}",
+                    keep=len(plan.keep),
+                    protected=len(plan.protected),
+                )
+                if plan.remove
+                else tr(
+                    "settings.recovery.plan_empty",
+                    category=category_label,
+                    keep=len(plan.keep),
+                    protected=len(plan.protected),
+                )
+            )
             removable += len(plan.remove)
             freed += plan.removed_bytes
         self._recovery_status.setText(
@@ -1005,7 +1059,7 @@ class SettingsView(QWidget):
             _recovery_cleanup_task,
             center,
             job_kind="recovery_cleanup",
-            job_label="Recovery file cleanup",
+            job_label=tr("settings.recovery.cleanup_job"),
             job_metadata={"module": "settings"},
         )
         worker.progress.connect(self._on_recovery_cleanup_progress)
@@ -1031,7 +1085,11 @@ class SettingsView(QWidget):
         self._recovery_worker = None
         self._operation_progress.finish()
         lines = [
-            f"{CATEGORY_LABELS[category]}: removed {len(items)}"
+            tr(
+                "settings.recovery.cleanup_detail",
+                category=CATEGORY_LABELS[category],
+                count=len(items),
+            )
             for category, items in removed.items() if items
         ]
         total = sum(len(items) for items in removed.values())
@@ -1053,16 +1111,18 @@ class SettingsView(QWidget):
         self._recovery_worker = None
         self._operation_progress.finish()
         self._set_recovery_operation_controls(enabled=True)
-        self._recovery_status.setText(f"Recovery cleanup failed: {message}")
+        self._recovery_status.setText(
+            tr("settings.recovery.cleanup_failed", error=message)
+        )
         if self.toast_mgr:
-            self.toast_mgr.error(f"Recovery cleanup failed: {message}")
+            self.toast_mgr.error(tr("settings.recovery.cleanup_failed", error=message))
 
     def _on_recovery_cleanup_cancelled(self):
         self._recovery_worker = None
         self._operation_progress.finish()
         self._set_recovery_operation_controls(enabled=True)
         self._refresh_recovery_center()
-        self._recovery_status.setText("Recovery cleanup cancelled")
+        self._recovery_status.setText(tr("settings.recovery.cleanup_cancelled"))
 
     def _set_recovery_operation_controls(self, *, enabled: bool):
         self._recovery_refresh_btn.setEnabled(enabled)
@@ -1081,7 +1141,7 @@ class SettingsView(QWidget):
         if worker is self._health_report_worker:
             self._export_health_btn.setEnabled(False)
         else:
-            self._recovery_status.setText("Cancelling recovery cleanup...")
+            self._recovery_status.setText(tr("settings.recovery.cancelling"))
 
     def _set_audio_device_status(self, message: str):
         """Show an audio-device warning without hiding the selected setting."""
@@ -1318,7 +1378,7 @@ class SettingsView(QWidget):
         except CredentialError as exc:
             if self.toast_mgr:
                 self.toast_mgr.error(
-                    tr("settings.messages.setting_save_failed", key=key, error=exc)
+                    tr("settings.messages.setting_save_failed", setting=key, error=exc)
                 )
             self._update_repair_status()
             self._refresh_credential_status()
@@ -1365,26 +1425,42 @@ class SettingsView(QWidget):
         self._midi_port_combo.blockSignals(True)
         try:
             self._midi_port_combo.clear()
-            self._midi_port_combo.addItem("System default", "")
+            self._midi_port_combo.addItem(tr("settings.midi_controller.system_default"), "")
             for name in names:
                 self._midi_port_combo.addItem(name, name)
             if saved and self._midi_port_combo.findData(saved) < 0:
-                self._midi_port_combo.addItem(f"Missing: {saved}", saved)
+                self._midi_port_combo.addItem(
+                    tr("settings.midi_controller.missing_port", name=saved),
+                    saved,
+                )
             selected = self._midi_port_combo.findData(saved)
             self._midi_port_combo.setCurrentIndex(max(0, selected))
         finally:
             self._midi_port_combo.blockSignals(False)
 
         if status:
-            self._midi_status.setText(status)
+            self._midi_status.setText(self._localize_midi_status(status))
         elif not names:
             self._midi_status.setText(
-                "No MIDI input ports detected. Connect a device, then refresh."
+                tr("settings.midi_controller.no_ports")
             )
         else:
             self._midi_status.setText(
-                "MIDI input is optional and remains disabled until enabled above."
+                tr("settings.midi_controller.optional_disabled")
             )
+
+    @staticmethod
+    def _localize_midi_status(status: str) -> str:
+        if status == "Install optional mido and python-rtmidi packages.":
+            return tr("settings.midi_controller.backend_install")
+        if status.startswith("MIDI backend unavailable:"):
+            return tr(
+                "settings.midi_controller.backend_unavailable",
+                error=status.partition(":")[2].strip(),
+            )
+        if status == "MIDI backend returned an invalid input-port list.":
+            return tr("settings.midi_controller.invalid_ports")
+        return status
 
     def _on_midi_mapping_changed(self, *_args):
         """Persist the complete validated mapping after one row changes."""
@@ -1491,7 +1567,7 @@ class SettingsView(QWidget):
             self._settings.reset_all()
         except Exception as exc:
             if self.toast_mgr:
-                self.toast_mgr.error(f"Settings reset failed: {exc}")
+                self.toast_mgr.error(tr("settings.messages.reset_failed", error=exc))
             return
         self._load_values()
         self._update_repair_status()
@@ -1499,7 +1575,7 @@ class SettingsView(QWidget):
             self.toast_mgr.info(
                 tr("settings.messages.reset"),
                 duration_ms=8000,
-                action_label="Undo",
+                action_label=tr("settings.actions.undo"),
                 action_callback=lambda item=snapshot: self._restore_settings_snapshot(item),
             )
 
@@ -1511,7 +1587,7 @@ class SettingsView(QWidget):
             self._update_repair_status()
         except Exception as exc:
             if self.toast_mgr:
-                self.toast_mgr.error(f"Settings restore failed: {exc}")
+                self.toast_mgr.error(tr("settings.messages.restore_failed", error=exc))
             return
         if self.toast_mgr:
             self.toast_mgr.success(tr("settings.messages.restored"))
@@ -1573,64 +1649,68 @@ class SettingsView(QWidget):
     def _install_accessibility(self):
         install_accessibility(
             self,
-            "Settings",
+            tr("settings.accessibility.view_name"),
             named_controls=[
-                (self._tabs, "Settings sections", "Switches between simple and advanced settings."),
-                (self._output_dir, "Output directory", "Current default render output directory."),
-                (self._browse_output_btn, "Browse output directory", "Chooses the default render output directory."),
-                (self._format_combo, "Default audio format", "Selects the default export format."),
-                (self._sample_rate_combo, "Sample rate", "Selects the default audio sample rate."),
-                (self._stem_export_template_combo, "Stem export naming", "Selects the filename template used for separated stem exports."),
-                (self._audio_device_combo, "Audio output device", "Selects the PortAudio output device and shows its host API."),
-                (self._refresh_audio_devices_btn, "Refresh audio output devices", "Refreshes the PortAudio output-device list without restarting."),
-                (self._c2pa_enabled, "C2PA Content Credentials", "Opt-in embedding of a signed C2PA manifest on supported audio exports."),
-                (self._c2pa_certificate_path, "C2PA certificate path", "Selects the user-managed PEM claim-signing certificate chain."),
-                (self._c2pa_certificate_browse, "Browse C2PA certificate", "Selects the C2PA claim-signing certificate chain."),
-                (self._c2pa_private_key_path, "C2PA private key path", "Selects the user-managed PEM private key; the key contents are never copied into settings."),
-                (self._c2pa_private_key_browse, "Browse C2PA private key", "Selects the C2PA claim-signing private key."),
-                (self._c2pa_timestamp_url, "C2PA timestamp URL", "Optional RFC 3161 timestamp authority. A configured URL makes signing a network operation and is blocked by Offline Mode."),
-                (self._osc_enabled, "OSC control", "Enables the versioned OSC transport for local control."),
-                (self._osc_port, "OSC port", "Selects the UDP port used by OSC control."),
-                (self._osc_allow_lan, "Allow OSC LAN access", "Explicitly enables non-loopback OSC sources."),
-                (self._osc_allowed_hosts, "OSC allowed hosts", "Limits LAN OSC to the listed IPv4 hosts or CIDR networks."),
-                (self._osc_packet_bytes, "OSC packet size limit", "Rejects OSC datagrams larger than this many bytes."),
-                (self._osc_rate, "OSC rate limit", "Limits accepted OSC datagrams per source per second."),
-                (self._midi_enabled, "MIDI controller input", "Enables the optional local MIDI input service."),
-                (self._midi_port_combo, "MIDI input port", "Selects the local MIDI input port."),
-                (self._midi_refresh_btn, "Refresh MIDI input ports", "Refreshes the available MIDI input ports."),
+                _settings_accessibility(self._tabs, "tabs"),
+                _settings_accessibility(self._output_dir, "output_dir"),
+                _settings_accessibility(self._browse_output_btn, "browse_output"),
+                _settings_accessibility(self._format_combo, "audio_format"),
+                _settings_accessibility(self._sample_rate_combo, "sample_rate"),
+                _settings_accessibility(self._stem_export_template_combo, "stem_export"),
+                _settings_accessibility(self._audio_device_combo, "audio_device"),
+                _settings_accessibility(self._refresh_audio_devices_btn, "refresh_audio"),
+                _settings_accessibility(self._c2pa_enabled, "c2pa_enabled"),
+                _settings_accessibility(self._c2pa_certificate_path, "c2pa_certificate"),
+                _settings_accessibility(self._c2pa_certificate_browse, "browse_c2pa_certificate"),
+                _settings_accessibility(self._c2pa_private_key_path, "c2pa_private_key"),
+                _settings_accessibility(self._c2pa_private_key_browse, "browse_c2pa_private_key"),
+                _settings_accessibility(self._c2pa_timestamp_url, "c2pa_timestamp"),
+                _settings_accessibility(self._osc_enabled, "osc_enabled"),
+                _settings_accessibility(self._osc_port, "osc_port"),
+                _settings_accessibility(self._osc_allow_lan, "osc_allow_lan"),
+                _settings_accessibility(self._osc_allowed_hosts, "osc_allowed_hosts"),
+                _settings_accessibility(self._osc_packet_bytes, "osc_packet"),
+                _settings_accessibility(self._osc_rate, "osc_rate"),
+                _settings_accessibility(self._midi_enabled, "midi_enabled"),
+                _settings_accessibility(self._midi_port_combo, "midi_port"),
+                _settings_accessibility(self._midi_refresh_btn, "midi_refresh"),
                 *[
-                    (control, f"MIDI binding {row['action']}", "Edits the MIDI message mapped to this action.")
+                    _settings_accessibility(
+                        control,
+                        "midi_binding",
+                        action=_localized_midi_action(row["action"]),
+                    )
                     for row in self._midi_mapping_rows
                     for control in (row["type"], row["channel"], row["number"], row["mode"])
                 ],
-                (self._gpu_device, "GPU device index", "Selects the GPU device index."),
-                (self._offline_mode, "Offline mode", "Disables internet access for Model Hub."),
-                (self._hf_token, "HuggingFace token", "Stores a token for gated model downloads."),
-                (self._experience_combo, "Experience level", "Controls default UI complexity."),
-                (self._ui_locale_combo, "Interface language", "Selects the interface language and layout direction."),
-                (self._default_language, "Default lyrics language", "Sets the default language metadata for lyrics and new voice profiles."),
-                (self._reduced_motion, "Reduced motion", "Disables sliding and repositioning animations for notifications."),
-                (self._lyrics_model, "Lyrics model", "Selects the local lyrics model."),
-                (self._temperature, "Lyrics temperature", "Controls creative variation."),
-                (self._top_p, "Lyrics top-p", "Controls nucleus sampling."),
-                (self._max_tokens, "Max lyrics tokens", "Controls maximum lyrics generation length."),
-                (self._timestep_shift, "Song Forge timestep shift", "Controls the ACE-Step XL Turbo timestep schedule."),
-                (self._inference_steps, "Song Forge inference steps", "Controls generation quality and speed."),
-                (self._batch_count, "Song Forge batch count", "Controls number of variations."),
-                (self._default_duration, "Default song duration", "Controls default generation duration."),
-                (self._default_bpm, "Default MIDI tempo", "Controls default MIDI BPM."),
-                (self._mastering_target, "Mastering target", "Selects the loudness target."),
-                (self._auto_eq, "Automatic mastering EQ", "Toggles automatic EQ during mastering."),
-                (self._auto_compress, "Automatic mastering compression", "Toggles automatic bus compression."),
-                (self._max_cache, "Maximum cache size", "Controls cache cleanup threshold."),
-                (self._autosave_interval, "Auto-save interval", "Controls project auto-save frequency."),
-                (self._autosave_enabled, "Autosave enabled", "Enables interval autosave for the open project."),
-                (self._max_versions, "Kept project versions", "Limits how many project versions are retained."),
-                (self._reset_btn, "Reset settings", "Resets all settings to defaults."),
-                (self._health_private_inputs, "Include private task inputs", "Includes task prompts and input fields in the health report."),
-                (self._export_health_btn, "Export health report", "Saves a redacted diagnostics bundle."),
-                (self._open_dir_btn, "Open config folder", "Opens the settings folder in the file manager."),
-                (self._onboarding_btn, "Open onboarding", "Reopens the first-run setup wizard."),
+                _settings_accessibility(self._gpu_device, "gpu_device"),
+                _settings_accessibility(self._offline_mode, "offline_mode"),
+                _settings_accessibility(self._hf_token, "hf_token"),
+                _settings_accessibility(self._experience_combo, "experience"),
+                _settings_accessibility(self._ui_locale_combo, "ui_locale"),
+                _settings_accessibility(self._default_language, "default_language"),
+                _settings_accessibility(self._reduced_motion, "reduced_motion"),
+                _settings_accessibility(self._lyrics_model, "lyrics_model"),
+                _settings_accessibility(self._temperature, "lyrics_temperature"),
+                _settings_accessibility(self._top_p, "lyrics_top_p"),
+                _settings_accessibility(self._max_tokens, "lyrics_max_tokens"),
+                _settings_accessibility(self._timestep_shift, "song_shift"),
+                _settings_accessibility(self._inference_steps, "song_steps"),
+                _settings_accessibility(self._batch_count, "song_batch"),
+                _settings_accessibility(self._default_duration, "song_duration"),
+                _settings_accessibility(self._default_bpm, "midi_bpm"),
+                _settings_accessibility(self._mastering_target, "mastering_target"),
+                _settings_accessibility(self._auto_eq, "auto_eq"),
+                _settings_accessibility(self._auto_compress, "auto_compress"),
+                _settings_accessibility(self._max_cache, "cache_size"),
+                _settings_accessibility(self._autosave_interval, "autosave_interval"),
+                _settings_accessibility(self._autosave_enabled, "autosave_enabled"),
+                _settings_accessibility(self._max_versions, "max_versions"),
+                _settings_accessibility(self._reset_btn, "reset"),
+                _settings_accessibility(self._health_private_inputs, "private_inputs"),
+                _settings_accessibility(self._export_health_btn, "export_health"),
+                _settings_accessibility(self._open_dir_btn, "open_config"),
+                _settings_accessibility(self._onboarding_btn, "onboarding"),
             ],
             tab_order=[
                 self._tabs,
@@ -1704,13 +1784,15 @@ class SettingsView(QWidget):
         if not path:
             return
         self._export_health_btn.setEnabled(False)
-        self._operation_progress.start("Exporting health report", determinate=True)
+        self._operation_progress.start(
+            tr("settings.health.exporting"), determinate=True
+        )
         worker = InferenceWorker(
             export_health_report,
             path,
             include_private=self._health_private_inputs.isChecked(),
             job_kind="health_report_export",
-            job_label="Health report export",
+            job_label=tr("settings.health.job"),
             job_metadata={"module": "settings"},
         )
         worker.progress.connect(self._on_health_report_progress)
@@ -1722,7 +1804,7 @@ class SettingsView(QWidget):
         worker.start()
 
     def _on_health_report_progress(self, percent: int):
-        self._operation_progress.set_progress(percent, "Exporting health report")
+        self._operation_progress.set_progress(percent, tr("settings.health.exporting"))
 
     def _on_health_report_step(self, message: str):
         self._operation_progress.set_step(message)
@@ -1750,7 +1832,7 @@ class SettingsView(QWidget):
         self._operation_progress.finish()
         self._export_health_btn.setEnabled(True)
         if self.toast_mgr and hasattr(self.toast_mgr, "info"):
-            self.toast_mgr.info("Health report export cancelled")
+            self.toast_mgr.info(tr("settings.health.cancelled"))
 
     def _open_config_dir(self):
         import subprocess, sys
