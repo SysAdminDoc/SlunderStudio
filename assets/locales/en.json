@@ -1282,7 +1282,13 @@
     "browse": "Browse Audio",
     "separate": "Separate Stems",
     "select_audio": "Select Audio to Separate",
-    "default_project": "slunder-stems"
+    "default_project": "slunder-stems",
+    "model_details": "Checkpoint license: {license} | Commercial use: {commercial} | Memory: {memory} | Quality basis: {quality} | Chunking: {chunking} | Long-file threshold: {threshold} | Limitations: {limitations} | Credit: {credit}",
+    "commercial_allowed": "Allowed by registry",
+    "commercial_unknown": "Unknown — verify checkpoint terms",
+    "no_limitations": "No additional limitations recorded",
+    "no_credit_note": "No credit note recorded",
+    "long_file_warning": "Long-file policy: output rate and duration were restored to the source; internal chunk seams are not crossfaded."
   },
   "actions": {
     "send_to_forge": "Send to Song Forge",
@@ -1384,9 +1390,12 @@
     "autotune_cancelled": "Auto-tune cancelled",
     "stems_input_required": "Select audio before separating stems",
     "separating": "Separating stems with {checkpoint}...",
+    "separating_long": "Preparing {checkpoint}; this file exceeds the {threshold:.0f}s long-file threshold. Output will be restored to source rate/duration; no crossfade is applied.",
+    "long_file_preflight": "Long-file preflight: source rate/duration will be preserved; internal chunk seams are not crossfaded.",
     "stems_cancelled": "Stem separation cancelled",
     "stems_failed": "Stem separation failed: {error}",
     "stems_created": "Created {count} stems with {model} ({seconds:.1f}s)",
+    "stems_created_warning": "Created {count} stems with {model} ({seconds:.1f}s). Warning: {warning}",
     "no_stems_remix": "Separate stems before exporting a remix",
     "export_in_progress": "An export is already in progress",
     "no_stems_export": "Separate stems before exporting them",

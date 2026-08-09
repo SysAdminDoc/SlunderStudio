@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 COMMERCIAL_USE_ALLOWED = "allowed"
 COMMERCIAL_USE_UNKNOWN = "unknown"
+LONG_FILE_THRESHOLD_SECONDS = 180.0
+LONG_FILE_POLICY_WARNING = "warn_no_crossfade"
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,8 @@ class SeparatorCheckpoint:
     speed: str
     limitations: tuple[str, ...] = ()
     credit_required: str = ""
+    long_file_threshold_seconds: float = LONG_FILE_THRESHOLD_SECONDS
+    long_file_policy: str = LONG_FILE_POLICY_WARNING
 
     def metadata(self) -> dict:
         """Return the run-stable metadata stamped into provenance."""
@@ -56,6 +60,8 @@ class SeparatorCheckpoint:
             "speed": self.speed,
             "limitations": list(self.limitations),
             "credit_required": self.credit_required,
+            "long_file_threshold_seconds": self.long_file_threshold_seconds,
+            "long_file_policy": self.long_file_policy,
         }
 
 
@@ -161,6 +167,34 @@ def separator_checkpoints(*, backend_id: str | None = None) -> tuple[SeparatorCh
     if backend_id is None:
         return values
     return tuple(item for item in values if item.backend_id == backend_id)
+
+
+def separator_artifact_policy(
+    checkpoint: SeparatorCheckpoint,
+    duration_seconds: float,
+) -> dict:
+    """Describe the output contract for one source/checkpoint combination.
+
+    The adapters normalize every returned stem back to the source rate and
+    frame count. Long inputs still receive an explicit warning because the
+    configured backends may concatenate internal chunks without an
+    application-level crossfade.
+    """
+    duration = max(0.0, float(duration_seconds or 0.0))
+    is_long = duration > checkpoint.long_file_threshold_seconds
+    return {
+        "mode": "preserve_input_rate_duration",
+        "source_duration_seconds": duration,
+        "long_file": is_long,
+        "threshold_seconds": checkpoint.long_file_threshold_seconds,
+        "crossfade": False,
+        "policy": checkpoint.long_file_policy if is_long else "native_rate_duration",
+        "warning": (
+            "long_file_no_crossfade"
+            if is_long and checkpoint.long_file_policy == LONG_FILE_POLICY_WARNING
+            else ""
+        ),
+    }
 
 
 def checkpoint_id_for_demucs_model(model_name: str) -> str:

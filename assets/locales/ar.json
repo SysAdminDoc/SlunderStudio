@@ -2501,9 +2501,12 @@
       "autotune_cancelled": "أُلغي الضبط التلقائي",
       "stems_input_required": "حدد صوتاً قبل فصل المسارات",
       "separating": "جارٍ فصل المسارات باستخدام {checkpoint}...",
+      "separating_long": "جارٍ إعداد {checkpoint}؛ يتجاوز هذا الملف حد الملفات الطويلة البالغ {threshold:.0f}ث. ستتم استعادة معدل الإخراج والمدة إلى المصدر؛ لا يُطبق تلاشي متقاطع.",
+      "long_file_preflight": "فحص الملف الطويل: سيُحافظ على معدل المصدر والمدة؛ لا تُطبق تلاقيات متقاطعة بين المقاطع الداخلية.",
       "stems_cancelled": "أُلغي فصل المسارات",
       "stems_failed": "فشل فصل المسارات: {error}",
       "stems_created": "تم إنشاء {count} مسارات باستخدام {model} ({seconds:.1f}ث)",
+      "stems_created_warning": "تم إنشاء {count} مسارات باستخدام {model} ({seconds:.1f}ث). تحذير: {warning}",
       "no_stems_remix": "افصل المسارات قبل تصدير المزيج",
       "export_in_progress": "يوجد تصدير قيد التنفيذ بالفعل",
       "no_stems_export": "افصل المسارات قبل تصديرها",
@@ -2664,7 +2667,13 @@
     "browse": "استعراض الصوت",
     "separate": "فصل المسارات",
     "select_audio": "تحديد الصوت للفصل",
-    "default_project": "slunder-stems"
+    "default_project": "slunder-stems",
+    "model_details": "ترخيص نقطة الفحص: {license} | الاستخدام التجاري: {commercial} | الذاكرة: {memory} | أساس الجودة: {quality} | تقسيم المقاطع: {chunking} | حد الملف الطويل: {threshold} | القيود: {limitations} | النَسب: {credit}",
+    "commercial_allowed": "مسموح وفق السجل",
+    "commercial_unknown": "غير معروف — تحقق من شروط نقطة الفحص",
+    "no_limitations": "لا توجد قيود إضافية مسجلة",
+    "no_credit_note": "لا توجد ملاحظة نسب مسجلة",
+    "long_file_warning": "سياسة الملفات الطويلة: أُعيد معدل الإخراج والمدة إلى المصدر؛ لا تُطبق تلاقيات متقاطعة بين وصلات المقاطع الداخلية."
   },
   "accessibility": {
       "view_name": "Vocal Suite",

@@ -4,6 +4,11 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Vocal Suite stem separation now shows checkpoint license, commercial-use status, memory,
+  quality, chunking, credit, and limitation metadata before a run; long files receive a
+  180-second preflight/result warning, while Demucs and Audio Separator artifacts are
+  restored to the source sample rate and exact frame count with policy metadata in provenance.
+
 - Reference analysis now exposes confidence and alternate BPM/key candidates,
   supports validated BPM/key/section corrections with raw-versus-effective
   provenance, and routes trusted constraints to Song Forge and MIDI Studio.

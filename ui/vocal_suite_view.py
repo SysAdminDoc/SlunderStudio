@@ -32,9 +32,12 @@ from core.i18n import (
 from core.settings import Settings
 from core.audio_engine import AudioEngine
 from core.separator_registry import (
+    COMMERCIAL_USE_ALLOWED,
+    COMMERCIAL_USE_UNKNOWN,
     SEPARATOR_CHECKPOINTS,
     checkpoint_id_for_demucs_model,
     get_separator_checkpoint,
+    separator_artifact_policy,
     separator_checkpoints,
 )
 from core.voice_bank import VOICE_OPERATION_CLONE, VOICE_OPERATION_CONVERSION, VoiceBank, VoiceProfile
@@ -254,6 +257,7 @@ class VocalSuiteView(QWidget):
         self._autotune_worker: Optional[InferenceWorker] = None
         self._stem_worker: Optional[InferenceWorker] = None
         self._stem_model_id = "demucs-v4"
+        self._stem_preflight: dict = {}
         self._export_worker: Optional[InferenceWorker] = None
         self._export_workers = set()
         self._stem_export_active = False
@@ -1421,6 +1425,7 @@ class VocalSuiteView(QWidget):
         # Checkpoint names are registry-provided taxonomy; the selected checkpoint ID remains raw data.
         for checkpoint in separator_checkpoints():
             self._stem_model.addItem(checkpoint.name, checkpoint.id)
+        self._stem_model.currentIndexChanged.connect(self._on_stem_model_changed)
         self._stem_model.setStyleSheet(f"""
             QComboBox {{
                 background: {t['surface']}; color: {t['text']};
@@ -1439,6 +1444,16 @@ class VocalSuiteView(QWidget):
         top.addWidget(self._stem_model)
         top.addWidget(self._stem_separate_btn)
         layout.addLayout(top)
+
+        self._stem_model_details = QLabel("")
+        self._stem_model_details.setWordWrap(True)
+        self._stem_model_details.setStyleSheet(
+            f"color: {t['text_secondary']}; font-size: 7.5pt; padding: 4px 8px; "
+            f"background: {t['surface']}; border: 1px solid {t['border']}; "
+            "border-radius: 4px;"
+        )
+        layout.addWidget(self._stem_model_details)
+        self._on_stem_model_changed()
 
         # Stem mixer
         self._stem_mixer = StemMixer()
@@ -2929,6 +2944,36 @@ class VocalSuiteView(QWidget):
         self._autotune_apply_btn.setEnabled(True)
         self._status.setText(tr("vocal.status.autotune_cancelled"))
 
+    def _on_stem_model_changed(self, *_args):
+        """Show checkpoint policy before a separation run starts."""
+        checkpoint_id = str(
+            self._stem_model.currentData() or "demucs-htdemucs"
+        )
+        checkpoint = get_separator_checkpoint(checkpoint_id)
+        if checkpoint.commercial_use == COMMERCIAL_USE_ALLOWED:
+            commercial = tr("vocal.stems.commercial_allowed")
+        elif checkpoint.commercial_use == COMMERCIAL_USE_UNKNOWN:
+            commercial = tr("vocal.stems.commercial_unknown")
+        else:
+            commercial = str(checkpoint.commercial_use)
+        limitations = "; ".join(checkpoint.limitations) or tr(
+            "vocal.stems.no_limitations"
+        )
+        credit = checkpoint.credit_required or tr("vocal.stems.no_credit_note")
+        self._stem_model_details.setText(
+            tr(
+                "vocal.stems.model_details",
+                license=checkpoint.checkpoint_license,
+                commercial=commercial,
+                memory=f"{checkpoint.vram_gb:.1f} GB VRAM / {checkpoint.ram_gb:.1f} GB RAM",
+                quality=checkpoint.quality,
+                chunking=checkpoint.chunking,
+                limitations=limitations,
+                credit=credit,
+                threshold=f"{checkpoint.long_file_threshold_seconds:.0f}s",
+            )
+        )
+
     def _on_stems_browse(self):
         path, _ = open_audio_file(
             self,
@@ -2939,6 +2984,7 @@ class VocalSuiteView(QWidget):
         if path:
             self._stem_input_label.setText(os.path.basename(path))
             self._stem_input_label.setProperty("path", path)
+            self._stem_preflight = {}
             self._refresh_capability_states()
 
     def _on_separate(self):
@@ -2957,28 +3003,59 @@ class VocalSuiteView(QWidget):
 
         checkpoint_id = str(self._stem_model.currentData() or "demucs-htdemucs")
         checkpoint = get_separator_checkpoint(checkpoint_id)
+        source_sample_rate = 0
+        source_duration = 0.0
+        try:
+            import soundfile as sf
+
+            source_info = sf.info(path)
+            source_sample_rate = int(source_info.samplerate)
+            source_duration = float(source_info.duration)
+        except (OSError, RuntimeError, ValueError):
+            # The worker will report a detailed decoder error if metadata
+            # cannot be read; preflight remains conservative in that case.
+            pass
+        self._stem_preflight = separator_artifact_policy(
+            checkpoint,
+            source_duration,
+        )
         self._stem_model_id = (
             "demucs-v4" if checkpoint.backend_id == "demucs" else "audio-separator"
         )
         self._reset_engine_routing()
         self._stem_separate_btn.setEnabled(False)
-        self._status.setText(
-            tr("vocal.status.separating", checkpoint=checkpoint.name)
-        )
+        if self._stem_preflight.get("long_file"):
+            self._status.setText(
+                tr(
+                    "vocal.status.separating_long",
+                    checkpoint=checkpoint.name,
+                    threshold=checkpoint.long_file_threshold_seconds,
+                )
+            )
+        else:
+            self._status.setText(
+                tr("vocal.status.separating", checkpoint=checkpoint.name)
+            )
         self._stem_worker = InferenceWorker(
             self._run_stem_separation,
             path,
             checkpoint_id,
+            self._stem_preflight,
             job_kind="stem_separation",
             job_label=tr("vocal.jobs.stems", checkpoint=checkpoint.name),
             job_inputs={
                 "input_path": path,
                 "checkpoint_id": checkpoint_id,
                 "backend_id": checkpoint.backend_id,
+                "source_sample_rate": source_sample_rate,
+                "source_duration": source_duration,
+                "artifact_policy": self._stem_preflight,
             },
             job_metadata={
                 "module": "vocal_suite",
                 "capability_id": CAP_STEM_SEPARATE,
+                "checkpoint": checkpoint.metadata(),
+                "artifact_policy": self._stem_preflight,
             },
         )
         self._stem_worker.progress.connect(
@@ -2996,6 +3073,7 @@ class VocalSuiteView(QWidget):
         self,
         path: str,
         model_name: str,
+        preflight: Optional[dict] = None,
         progress_cb=None,
         step_cb=None,
         log_cb=None,
@@ -3007,6 +3085,14 @@ class VocalSuiteView(QWidget):
             else model_name
         )
         checkpoint = get_separator_checkpoint(checkpoint_id)
+
+        if preflight and preflight.get("long_file") and step_cb:
+            step_cb(
+                tr(
+                    "vocal.status.long_file_preflight",
+                    threshold=preflight.get("threshold_seconds", 0.0),
+                )
+            )
 
         if cancel_event and cancel_event.is_set():
             raise CancelledJobError(tr("vocal.status.stems_cancelled"))
@@ -3051,9 +3137,17 @@ class VocalSuiteView(QWidget):
                 routable=False,
                 metadata={
                     "sample_rate": result.sample_rate,
+                    "source_sample_rate": getattr(
+                        result, "source_sample_rate", result.sample_rate
+                    ),
+                    "source_duration": getattr(
+                        result, "source_duration", result.duration
+                    ),
                     "backend_id": getattr(result, "backend_id", "demucs"),
                     "checkpoint_id": getattr(result, "checkpoint_id", ""),
                     "checkpoint": getattr(result, "checkpoint_metadata", {}),
+                    "artifact_policy": getattr(result, "artifact_policy", {}),
+                    "long_file_warning": getattr(result, "long_file_warning", ""),
                 },
             )
         ] if result.stems else []
@@ -3067,9 +3161,17 @@ class VocalSuiteView(QWidget):
                 metadata={
                     "stem": stem.name,
                     "sample_rate": stem.sample_rate,
+                    "source_sample_rate": getattr(
+                        result, "source_sample_rate", result.sample_rate
+                    ),
+                    "source_duration": getattr(
+                        result, "source_duration", result.duration
+                    ),
                     "backend_id": getattr(result, "backend_id", "demucs"),
                     "checkpoint_id": getattr(result, "checkpoint_id", ""),
                     "checkpoint": getattr(result, "checkpoint_metadata", {}),
+                    "artifact_policy": getattr(result, "artifact_policy", {}),
+                    "long_file_warning": getattr(result, "long_file_warning", ""),
                 },
             )
             for stem in result.stems
@@ -3105,14 +3207,21 @@ class VocalSuiteView(QWidget):
         self._current_audio_path = (
             vocals.file_path if vocals and vocals.file_path else first_path
         )
-        self._status.setText(
-            tr(
-                "vocal.status.stems_created",
-                count=len(result.stems),
-                model=result.model_name,
-                seconds=result.separation_time,
-            )
+        status_key = (
+            "vocal.status.stems_created_warning"
+            if getattr(result, "long_file_warning", "")
+            else "vocal.status.stems_created"
         )
+        status_params = {
+            "count": len(result.stems),
+            "model": result.model_name,
+            "seconds": result.separation_time,
+        }
+        if getattr(result, "long_file_warning", ""):
+            status_params["warning"] = tr("vocal.stems.long_file_warning")
+        self._status.setText(tr(status_key, **status_params))
+        if getattr(result, "long_file_warning", "") and self.toast_mgr is not None:
+            self.toast_mgr.warning(tr("vocal.stems.long_file_warning"))
         if run.can_route and self._current_audio_path:
             self._enable_routing()
         self._refresh_capability_states()

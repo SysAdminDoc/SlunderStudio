@@ -62,6 +62,36 @@ class StemResult:
     provenance_path: Optional[str] = None
 
 
+def restore_native_audio(
+    audio: np.ndarray,
+    source_sample_rate: int,
+    source_frames: int,
+    rendered_sample_rate: int,
+) -> np.ndarray:
+    """Return a separator buffer at the input rate and exact input length."""
+    frames = np.asarray(audio, dtype=np.float32)
+    if frames.ndim == 1:
+        frames = frames[:, None]
+    if frames.ndim != 2:
+        raise ValueError("Separator audio must be frames-first mono or multichannel")
+    if int(rendered_sample_rate) != int(source_sample_rate):
+        frames = resample_audio(
+            frames,
+            int(rendered_sample_rate),
+            int(source_sample_rate),
+        )
+    expected_frames = max(0, int(source_frames))
+    if expected_frames and len(frames) > expected_frames:
+        frames = frames[:expected_frames]
+    elif expected_frames and len(frames) < expected_frames:
+        padding = np.zeros(
+            (expected_frames - len(frames), frames.shape[1]),
+            dtype=np.float32,
+        )
+        frames = np.concatenate((frames, padding), axis=0)
+    return np.ascontiguousarray(frames, dtype=np.float32)
+
+
 @dataclass
 class SeparationResult:
     """Complete separation result with all stems."""
@@ -74,6 +104,10 @@ class SeparationResult:
     backend_id: str = "demucs"
     checkpoint_id: str = ""
     checkpoint_metadata: dict = field(default_factory=dict)
+    source_sample_rate: int = 0
+    source_duration: float = 0.0
+    artifact_policy: dict = field(default_factory=dict)
+    long_file_warning: str = ""
 
     @property
     def is_success(self) -> bool:
@@ -240,6 +274,25 @@ class DemucsEngine:
 
             # Load audio
             wav, sr = torchaudio.load(input_path)
+            source_sample_rate = int(sr)
+            source_frames = int(wav.shape[-1])
+            source_duration = source_frames / source_sample_rate
+            checkpoint_id = (
+                "demucs-htdemucs-6s"
+                if self._model_name == "htdemucs_6s"
+                else "demucs-htdemucs"
+            )
+            from core.separator_registry import (
+                get_separator_checkpoint,
+                separator_artifact_policy,
+            )
+
+            checkpoint = get_separator_checkpoint(checkpoint_id)
+            artifact_policy = separator_artifact_policy(checkpoint, source_duration)
+            checkpoint_metadata = checkpoint.metadata()
+            checkpoint_metadata["artifact_policy"] = artifact_policy
+            checkpoint_metadata["source_sample_rate"] = source_sample_rate
+            checkpoint_metadata["source_duration"] = source_duration
 
             # Resample to model sample rate if needed
             model_sr = self._model.samplerate
@@ -278,38 +331,51 @@ class DemucsEngine:
             stems = []
 
             for i, name in enumerate(source_names):
-                stem_audio = sources[0, i].cpu().numpy().T  # (samples, channels)
+                rendered_audio = sources[0, i].cpu().numpy().T  # (samples, channels)
+                stem_audio = restore_native_audio(
+                    rendered_audio,
+                    source_sample_rate,
+                    source_frames,
+                    model_sr,
+                )
 
                 # Save to file
-                stem_path = self._save_stem(stem_audio, sr, name, input_path)
+                stem_path = self._save_stem(
+                    stem_audio,
+                    source_sample_rate,
+                    name,
+                    input_path,
+                    artifact_policy=artifact_policy,
+                    source_sample_rate=source_sample_rate,
+                    source_duration=source_duration,
+                )
 
                 stems.append(StemResult(
                     name=name,
-                    audio=stem_audio.astype(np.float32),
-                    sample_rate=sr,
+                    audio=stem_audio,
+                    sample_rate=source_sample_rate,
                     file_path=stem_path,
                     provenance_path=str(sidecar_path_for(stem_path)),
                 ))
 
             sep_time = time.time() - t0
-            duration = wav.shape[-1] / sr
 
             if progress_callback:
                 progress_callback(1.0, f"Separation complete ({sep_time:.1f}s)")
 
             return SeparationResult(
                 stems=stems,
-                sample_rate=sr,
-                duration=duration,
+                sample_rate=source_sample_rate,
+                duration=source_duration,
                 separation_time=sep_time,
                 model_name=self._model_name or "",
                 backend_id="demucs",
-                checkpoint_id=(
-                    "demucs-htdemucs-6s"
-                    if self._model_name == "htdemucs_6s"
-                    else "demucs-htdemucs"
-                ),
-                checkpoint_metadata=self._checkpoint_metadata(),
+                checkpoint_id=checkpoint_id,
+                checkpoint_metadata=checkpoint_metadata,
+                source_sample_rate=source_sample_rate,
+                source_duration=source_duration,
+                artifact_policy=artifact_policy,
+                long_file_warning=artifact_policy.get("warning", ""),
             )
 
         except Exception as e:
@@ -329,6 +395,26 @@ class DemucsEngine:
         try:
             import torch
             from demucs.apply import apply_model
+
+            source_sample_rate = int(sample_rate)
+            source_frames = int(len(audio))
+            source_duration = source_frames / source_sample_rate
+            checkpoint_id = (
+                "demucs-htdemucs-6s"
+                if self._model_name == "htdemucs_6s"
+                else "demucs-htdemucs"
+            )
+            from core.separator_registry import (
+                get_separator_checkpoint,
+                separator_artifact_policy,
+            )
+
+            checkpoint = get_separator_checkpoint(checkpoint_id)
+            artifact_policy = separator_artifact_policy(checkpoint, source_duration)
+            checkpoint_metadata = checkpoint.metadata()
+            checkpoint_metadata["artifact_policy"] = artifact_policy
+            checkpoint_metadata["source_sample_rate"] = source_sample_rate
+            checkpoint_metadata["source_duration"] = source_duration
 
             if progress_callback:
                 progress_callback(0.05, "Preparing audio...")
@@ -361,11 +447,17 @@ class DemucsEngine:
             stems = []
 
             for i, name in enumerate(source_names):
-                stem_audio = sources[0, i].cpu().numpy().T
+                rendered_audio = sources[0, i].cpu().numpy().T
+                stem_audio = restore_native_audio(
+                    rendered_audio,
+                    source_sample_rate,
+                    source_frames,
+                    model_sr,
+                )
                 stems.append(StemResult(
                     name=name,
-                    audio=stem_audio.astype(np.float32),
-                    sample_rate=model_sr,
+                    audio=stem_audio,
+                    sample_rate=source_sample_rate,
                     provenance_path=None,
                 ))
 
@@ -374,24 +466,33 @@ class DemucsEngine:
 
             return SeparationResult(
                 stems=stems,
-                sample_rate=model_sr,
-                duration=wav.shape[-1] / model_sr,
+                sample_rate=source_sample_rate,
+                duration=source_duration,
                 separation_time=time.time() - t0,
                 model_name=self._model_name or "",
                 backend_id="demucs",
-                checkpoint_id=(
-                    "demucs-htdemucs-6s"
-                    if self._model_name == "htdemucs_6s"
-                    else "demucs-htdemucs"
-                ),
-                checkpoint_metadata=self._checkpoint_metadata(),
+                checkpoint_id=checkpoint_id,
+                checkpoint_metadata=checkpoint_metadata,
+                source_sample_rate=source_sample_rate,
+                source_duration=source_duration,
+                artifact_policy=artifact_policy,
+                long_file_warning=artifact_policy.get("warning", ""),
             )
 
         except Exception as e:
             return SeparationResult(error=str(e), separation_time=time.time() - t0)
 
-    def _save_stem(self, audio: np.ndarray, sr: int, stem_name: str,
-                   input_path: str) -> str:
+    def _save_stem(
+        self,
+        audio: np.ndarray,
+        sr: int,
+        stem_name: str,
+        input_path: str,
+        *,
+        artifact_policy: Optional[dict] = None,
+        source_sample_rate: Optional[int] = None,
+        source_duration: Optional[float] = None,
+    ) -> str:
         """Save a stem to WAV file."""
         from core.separator_registry import (
             checkpoint_id_for_demucs_model,
@@ -416,6 +517,7 @@ class DemucsEngine:
             checkpoint_id_for_demucs_model(self._model_name or "htdemucs")
         )
 
+        artifact_policy = artifact_policy or {}
         write_provenance_sidecar(
             path,
             module="stem_separation",
@@ -427,15 +529,21 @@ class DemucsEngine:
             parameters={
                 "stem_name": stem_name,
                 "sample_rate": sr,
+                "source_sample_rate": source_sample_rate or sr,
+                "source_duration": source_duration or len(audio) / sr,
                 "model_name": self._model_name or "",
                 "source_file": input_path,
                 "backend_id": "demucs",
                 "checkpoint": checkpoint.metadata(),
+                "artifact_policy": artifact_policy,
             },
             source_paths=[input_path],
             export_format="wav",
             output_kind="model",
-            extra={"checkpoint_metadata": checkpoint.metadata()},
+            extra={
+                "checkpoint_metadata": checkpoint.metadata(),
+                "artifact_policy": artifact_policy,
+            },
         )
         return path
 

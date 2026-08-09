@@ -17,13 +17,15 @@ import numpy as np
 import soundfile as sf
 
 from core.deps import ensure
+from core.audio_export import write_audio_file
 from core.provenance import write_provenance_sidecar
 from core.separator_registry import (
     SeparatorCheckpoint,
     get_separator_checkpoint,
+    separator_artifact_policy,
 )
 from core.settings import get_config_dir
-from engines.demucs_engine import SeparationResult, StemResult
+from engines.demucs_engine import SeparationResult, StemResult, restore_native_audio
 
 
 def _stem_name_from_path(path: Path) -> str:
@@ -134,11 +136,23 @@ class AudioSeparatorEngine:
         assert checkpoint is not None
         run_dir = self._output_dir / f"{Path(input_path).stem}_{uuid.uuid4().hex[:12]}"
         run_dir.mkdir(parents=True, exist_ok=True)
+        previous_output_dir = getattr(self._separator, "output_dir", None)
 
         try:
+            source_info = sf.info(input_path)
+            source_sample_rate = int(source_info.samplerate)
+            source_frames = int(source_info.frames)
+            source_duration = source_frames / source_sample_rate
+            artifact_policy = separator_artifact_policy(
+                checkpoint,
+                source_duration,
+            )
+            checkpoint_metadata = checkpoint.metadata()
+            checkpoint_metadata["artifact_policy"] = artifact_policy
+            checkpoint_metadata["source_sample_rate"] = source_sample_rate
+            checkpoint_metadata["source_duration"] = source_duration
             if progress_callback:
                 progress_callback(0.1, "Preparing audio separator...")
-            previous_output_dir = getattr(self._separator, "output_dir", None)
             if previous_output_dir is not None:
                 self._separator.output_dir = str(run_dir)
             output_files = self._separator.separate(input_path)
@@ -152,7 +166,35 @@ class AudioSeparatorEngine:
                     output_path = run_dir / output_path
                 if not output_path.is_file():
                     continue
-                audio, sample_rate = sf.read(output_path, dtype="float32", always_2d=True)
+                output_info = sf.info(output_path)
+                audio, sample_rate = sf.read(
+                    output_path,
+                    dtype="float32",
+                    always_2d=True,
+                )
+                native_audio = restore_native_audio(
+                    audio,
+                    source_sample_rate,
+                    source_frames,
+                    int(sample_rate),
+                )
+                if (
+                    int(sample_rate) != source_sample_rate
+                    or len(audio) != source_frames
+                ):
+                    bit_depth = {
+                        "PCM_16": 16,
+                        "PCM_24": 24,
+                        "PCM_32": 32,
+                        "FLOAT": 32,
+                    }.get(output_info.subtype, 16)
+                    write_audio_file(
+                        output_path,
+                        native_audio,
+                        source_sample_rate,
+                        file_format="wav",
+                        bit_depth=bit_depth,
+                    )
                 stem_name = _stem_name_from_path(output_path)
                 provenance = write_provenance_sidecar(
                     output_path,
@@ -167,24 +209,28 @@ class AudioSeparatorEngine:
                         "backend_id": self.backend_id,
                         "checkpoint": checkpoint.metadata(),
                         "device": self._device,
+                        "source_sample_rate": source_sample_rate,
+                        "source_duration": source_duration,
+                        "artifact_policy": artifact_policy,
                     },
                     source_paths=[str(input_path)],
                     export_format="wav",
                     output_kind="model",
-                    extra={"checkpoint_metadata": checkpoint.metadata()},
+                    extra={
+                        "checkpoint_metadata": checkpoint.metadata(),
+                        "artifact_policy": artifact_policy,
+                    },
                 )
                 stems.append(
                     StemResult(
                         name=stem_name,
-                        audio=np.asarray(audio, dtype=np.float32),
-                        sample_rate=int(sample_rate),
+                        audio=native_audio,
+                        sample_rate=source_sample_rate,
                         file_path=str(output_path),
                         provenance_path=str(provenance),
                     )
                 )
 
-            if previous_output_dir is not None:
-                self._separator.output_dir = previous_output_dir
             if progress_callback:
                 progress_callback(1.0, f"Separation complete ({time.time() - started:.1f}s)")
             if not stems:
@@ -194,17 +240,25 @@ class AudioSeparatorEngine:
                     model_name=checkpoint.name,
                     backend_id=self.backend_id,
                     checkpoint_id=checkpoint.id,
-                    checkpoint_metadata=checkpoint.metadata(),
+                    checkpoint_metadata=checkpoint_metadata,
+                    source_sample_rate=source_sample_rate,
+                    source_duration=source_duration,
+                    artifact_policy=artifact_policy,
+                    long_file_warning=artifact_policy.get("warning", ""),
                 )
             return SeparationResult(
                 stems=stems,
-                sample_rate=stems[0].sample_rate,
-                duration=len(stems[0].audio) / stems[0].sample_rate,
+                sample_rate=source_sample_rate,
+                duration=source_duration,
                 separation_time=time.time() - started,
                 model_name=checkpoint.name,
                 backend_id=self.backend_id,
                 checkpoint_id=checkpoint.id,
-                checkpoint_metadata=checkpoint.metadata(),
+                checkpoint_metadata=checkpoint_metadata,
+                source_sample_rate=source_sample_rate,
+                source_duration=source_duration,
+                artifact_policy=artifact_policy,
+                long_file_warning=artifact_policy.get("warning", ""),
             )
         except Exception as exc:
             return SeparationResult(
@@ -215,6 +269,9 @@ class AudioSeparatorEngine:
                 checkpoint_id=checkpoint.id,
                 checkpoint_metadata=checkpoint.metadata(),
             )
+        finally:
+            if previous_output_dir is not None:
+                self._separator.output_dir = previous_output_dir
 
 
 _engine: AudioSeparatorEngine | None = None
