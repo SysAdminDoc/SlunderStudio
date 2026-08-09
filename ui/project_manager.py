@@ -1095,7 +1095,7 @@ class ProjectDetailPanel(QWidget):
             self,
             tr("project_manager.dialogs.export_dawproject_title"),
             f"{project.name or tr('project_manager.data.slunder_project')}.dawproject",
-            "DAWproject (*.dawproject);;All Files (*)",
+            tr("shell.dialogs.dawproject_filter"),
             "project_dawproject_export",
             dialog=QFileDialog,
             fallback_dir=fallback_dir,

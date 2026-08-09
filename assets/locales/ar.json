@@ -212,7 +212,13 @@
       "all_files": "كل الملفات (*)",
       "audio_files": "ملفات صوتية",
       "midi_files": "ملفات MIDI",
-      "delivery_format": "{format} (*.{extension})"
+      "delivery_format": "{format} (*.{extension})",
+      "midi_save_filter": "ملفات MIDI (*.mid *.midi)",
+      "chordpro_filter": "ChordPro (*.chordpro);;ورقة تآلفات (*.crd)",
+      "dawproject_filter": "DAWproject (*.dawproject);;كل الملفات (*)",
+      "pem_certificates_filter": "شهادات PEM (*.pem *.crt *.cer);;كل الملفات (*)",
+      "pem_private_keys_filter": "مفاتيح PEM الخاصة (*.pem *.key);;كل الملفات (*)",
+      "enhanced_lrc_filter": "Enhanced LRC (*.lrc);;كل الملفات (*)"
     },
     "drop": {
       "midi_detected": "تم اكتشاف ملف MIDI — جارٍ تحميله في استوديو MIDI",

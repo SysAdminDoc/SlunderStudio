@@ -242,7 +242,13 @@
       "all_files": "All Files (*)",
       "audio_files": "Audio Files",
       "midi_files": "MIDI Files",
-      "delivery_format": "{format} (*.{extension})"
+      "delivery_format": "{format} (*.{extension})",
+      "midi_save_filter": "MIDI Files (*.mid *.midi)",
+      "chordpro_filter": "ChordPro (*.chordpro);;Chord sheet (*.crd)",
+      "dawproject_filter": "DAWproject (*.dawproject);;All Files (*)",
+      "pem_certificates_filter": "PEM Certificates (*.pem *.crt *.cer);;All Files (*)",
+      "pem_private_keys_filter": "PEM Private Keys (*.pem *.key);;All Files (*)",
+      "enhanced_lrc_filter": "Enhanced LRC (*.lrc);;All Files (*)"
     },
     "drop": {
       "midi_detected": "MIDI file detected — loading in MIDI Studio",

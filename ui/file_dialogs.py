@@ -318,7 +318,7 @@ def save_midi_file(
         parent,
         title,
         default_name,
-        "MIDI Files (*.mid *.midi)",
+        tr("shell.dialogs.midi_save_filter"),
         operation_kind,
         dialog=dialog,
         fallback_dir=fallback_dir,

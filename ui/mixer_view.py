@@ -1633,7 +1633,7 @@ class MixerView(QWidget):
             self,
             tr("mixer.dialogs.export_dawproject"),
             "slunder-mix.dawproject",
-            "DAWproject (*.dawproject);;All Files (*)",
+            tr("shell.dialogs.dawproject_filter"),
             "mixer_dawproject_export",
             dialog=QFileDialog,
         )

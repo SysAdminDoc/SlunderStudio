@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Localized direct MIDI, ChordPro, DAWproject, PEM credential, and Enhanced LRC
+  file-picker filters with Arabic coverage.
+
 - Localized queued job labels for AI Producer, MIDI Studio, and Model Hub, notification
   history formatting, and onboarding recommendation badges with Arabic coverage.
 

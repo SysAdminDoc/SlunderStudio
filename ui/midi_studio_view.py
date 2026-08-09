@@ -813,7 +813,7 @@ class MidiStudioView(QWidget):
             self,
             tr("midi.dialog_chart"),
             "chord_chart.chordpro",
-            "ChordPro (*.chordpro);;Chord sheet (*.crd)",
+            tr("shell.dialogs.chordpro_filter"),
             "midi_chart_export",
             dialog=QFileDialog,
         )

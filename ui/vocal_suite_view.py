@@ -2128,7 +2128,7 @@ class VocalSuiteView(QWidget):
             self,
             tr("vocal.melody.export_lrc"),
             default_name,
-            "Enhanced LRC (*.lrc);;All Files (*)",
+            tr("shell.dialogs.enhanced_lrc_filter"),
             "vocal_melody_lrc_export",
         )
         if not path:

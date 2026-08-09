@@ -355,7 +355,7 @@ class SettingsView(QWidget):
                 "general.c2pa_certificate_path",
                 "c2pa_certificate",
                 tr("settings.dialogs.select_c2pa_certificate"),
-                "PEM Certificates (*.pem *.crt *.cer);;All Files (*)",
+                tr("shell.dialogs.pem_certificates_filter"),
                 self._c2pa_certificate_path,
             )
         )
@@ -384,7 +384,7 @@ class SettingsView(QWidget):
                 "general.c2pa_private_key_path",
                 "c2pa_private_key",
                 tr("settings.dialogs.select_c2pa_private_key"),
-                "PEM Private Keys (*.pem *.key);;All Files (*)",
+                tr("shell.dialogs.pem_private_keys_filter"),
                 self._c2pa_private_key_path,
             )
         )
