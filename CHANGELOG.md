@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated onboarding welcome, system checks, model readiness/setup, quick-start controls,
+  navigation, remediation messages, and accessibility descriptions to the locale catalog
+  with Arabic coverage while preserving model and hardware data values.
+
 - Migrated Lyrics workspace genre browsing, history filters/empty states, generation job
   labels, section status, and accessibility descriptions to the locale catalog with Arabic
   coverage while retaining genre IDs and generated content as data.

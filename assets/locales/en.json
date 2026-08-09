@@ -348,6 +348,156 @@
       "backup_saved": "A recovery copy was saved."
     }
   },
+  "onboarding": {
+    "window_title": "Welcome to Slunder Studio",
+    "welcome": {
+      "tagline": "Offline AI Music Generation Suite",
+      "description": "Generate songs, compose MIDI, synthesize vocals, separate stems,\ncreate SFX, and master tracks — all locally on your machine.\nNo cloud, no subscriptions, no limits."
+    },
+    "system": {
+      "title": "System Check",
+      "subtitle": "Checking your system compatibility...",
+      "checking": "Checking Python, dependencies, hardware, and disk...",
+      "check_failed": "System check failed: {error}",
+      "installing": "Installing runtime dependencies...",
+      "setup_complete": "Runtime dependencies installed. Re-running the system check.",
+      "setup_failed": "Dependency setup failed: {error}",
+      "python_remediation": "Install Python 3.10+ and restart Slunder Studio. The current interpreter is {version}.",
+      "gpu_available": "GPU acceleration available. {name} with {vram} GB VRAM will be used for AI inference.",
+      "cpu_summary": "No CUDA GPU detected. Models will run on CPU (slower). Install PyTorch with CUDA support for GPU acceleration.",
+      "unknown": "Unknown",
+      "ram_error": "Unable to inspect RAM: {error}",
+      "dependencies_error_detail": "Unable to inspect dependencies ({error})",
+      "dependencies_error": "Dependency inspection failed; run setup and retry.",
+      "gpu_none": "None detected",
+      "gpu_error": "GPU probe unavailable: {error}",
+      "disk_error": "Unable to inspect disk space: {error}"
+    },
+    "readiness": {
+      "loaded": "loaded",
+      "error": "error",
+      "offline": "offline",
+      "downloaded": "downloaded / loadable",
+      "installed_unloadable": "installed / not loadable",
+      "not_downloaded": "not downloaded"
+    },
+    "checks": {
+      "python": "Python",
+      "python_required": "3.10+ required",
+      "dependencies": "Dependencies",
+      "ready": "Ready",
+      "run_setup": "Run: {command}",
+      "operating_system": "Operating System",
+      "gpu": "GPU / CUDA",
+      "vram": "{vram} GB VRAM",
+      "cpu_only": "CPU-only mode",
+      "ram": "RAM",
+      "ram_recommended": "8 GB+ recommended",
+      "disk": "Disk Space",
+      "disk_recommended": "10 GB+ recommended for models",
+      "ok": "OK",
+      "warning": "!!"
+    },
+    "remediation": {
+      "setup": "Run setup",
+      "model": "Choose a model",
+      "output": "Choose output",
+      "instructions": "Show instructions",
+      "details": "Details"
+    },
+    "models": {
+      "title": "AI Models",
+      "info": "Slunder Studio uses AI models that run locally on your machine. Models are downloaded from HuggingFace and stored in your config directory. You can manage models anytime from the Model Hub.",
+      "detected_hardware": "detected hardware",
+      "hardware_note": "Recommendations are ranked for {hardware}. A CPU fallback is called out when the detected GPU is below a model's declared tier.",
+      "gpu_fit": "GPU fit",
+      "cpu_fallback": "CPU fallback",
+      "readiness_title": "Runtime readiness",
+      "readiness_probe_failed": "Readiness probe failed: {error}",
+      "estimate": "{disk:.1f} GB disk / {vram:.1f} GB VRAM",
+      "setup_title": "Choose first model setup",
+      "selector_item": "{name} — {disk:.1f} GB disk / {vram:.1f} GB VRAM",
+      "no_core_models": "No core models are registered",
+      "action_open": "Open Model Hub and choose the action",
+      "action_download": "Start this download in Model Hub",
+      "action_offline": "Start download (offline mode unavailable)",
+      "action_note": "The selected model and action will be carried into Model Hub after Launch Studio.",
+      "token_label": "HuggingFace token (optional; saved before gated downloads)",
+      "token_placeholder": "Paste a token beginning with hf_...",
+      "token_saved": "A saved HuggingFace token will be reused",
+      "token_invalid": "HuggingFace tokens must begin with hf_...",
+      "token_save_failed": "Token could not be saved securely: {error}",
+      "note": "You can skip model downloads now and install them later from Model Hub. Without a verified active model, generation is unavailable or explicitly labeled DEMO. Open Model Hub from the sidebar to download, activate, or repair a model.",
+      "tasks": {
+        "song": "Song generation and source editing",
+        "lyrics": "Lyrics generation and producer planning",
+        "singing": "Singing voice synthesis",
+        "conversion": "Voice conversion",
+        "isolation": "Vocal isolation",
+        "sfx": "SFX generation"
+      }
+    },
+    "quickstart": {
+      "title": "Quick Start",
+      "preferences": "First-run preferences",
+      "output_label": "Default output folder",
+      "output_default": "Default: {path}",
+      "browse": "Browse",
+      "experience": "Experience level",
+      "beginner": "Beginner — guided controls",
+      "intermediate": "Intermediate — balanced controls",
+      "advanced": "Advanced — expose more controls",
+      "select_output": "Select output directory",
+      "steps": {
+        "song_forge": "Song Forge",
+        "song_forge_desc": "Generate full songs from lyrics and style tags with ACE-Step",
+        "lyrics": "Lyrics Engine",
+        "lyrics_desc": "Write lyrics using AI templates, rhyme tools, and LLM generation",
+        "midi": "MIDI Studio",
+        "midi_desc": "Compose MIDI with piano roll editor or text-to-MIDI AI",
+        "vocal": "Vocal Suite",
+        "vocal_desc": "Add singing voices, convert vocals, or separate stems",
+        "sfx": "SFX Generator",
+        "sfx_desc": "Create sound effects from text descriptions",
+        "mixer": "Mixer",
+        "mixer_desc": "Combine all tracks, apply mastering, and export your final song",
+        "producer": "AI Producer",
+        "producer_desc": "Describe your vision in one prompt and let AI build the full song"
+      }
+    },
+    "steps": {
+      "welcome": "Welcome",
+      "system": "System",
+      "models": "Models",
+      "quickstart": "Quick Start",
+      "separator": " > "
+    },
+    "actions": {
+      "back": "Back",
+      "skip": "Skip for now",
+      "get_started": "Get Started",
+      "next": "Next",
+      "launch": "Launch Studio"
+    },
+    "jobs": {
+      "dependency_setup": "Install runtime dependencies"
+    },
+    "accessibility": {
+      "welcome_name": "Onboarding welcome",
+      "system_name": "Onboarding system check",
+      "models_name": "Onboarding model guide",
+      "quickstart_name": "Onboarding quick start",
+      "wizard_name": "Onboarding wizard",
+      "pages_name": "Onboarding pages",
+      "pages_description": "Switches between onboarding steps.",
+      "back_name": "Back in onboarding",
+      "back_description": "Returns to the previous onboarding step.",
+      "skip_name": "Skip onboarding",
+      "skip_description": "Leaves onboarding incomplete so it can be reopened later.",
+      "next_name": "Continue onboarding",
+      "next_description": "Advances to the next onboarding step."
+    }
+  },
   "lyrics": {
     "title": "Lyrics Engine",
     "quick": {

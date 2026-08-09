@@ -1302,6 +1302,156 @@
       "cancel_description": "يلغي عملية الاستيراد أو EQ أو المرجع أو الإتقان أو التصدير الجارية."
     }
   },
+  "onboarding": {
+    "window_title": "مرحباً بك في Slunder Studio",
+    "welcome": {
+      "tagline": "حزمة إنشاء الموسيقى بالذكاء الاصطناعي دون اتصال",
+      "description": "أنشئ الأغاني، وألف MIDI، وولّف الأصوات، وافصل المسارات،\nوأنشئ المؤثرات الصوتية وأتقن المسارات — كل ذلك محلياً على جهازك.\nلا سحابة، ولا اشتراكات، ولا حدود."
+    },
+    "system": {
+      "title": "فحص النظام",
+      "subtitle": "جارٍ التحقق من توافق نظامك...",
+      "checking": "جارٍ فحص Python والاعتماديات والعتاد والقرص...",
+      "check_failed": "فشل فحص النظام: {error}",
+      "installing": "جارٍ تثبيت اعتماديات التشغيل...",
+      "setup_complete": "تم تثبيت اعتماديات التشغيل. جارٍ إعادة فحص النظام.",
+      "setup_failed": "فشل إعداد الاعتماديات: {error}",
+      "python_remediation": "ثبّت Python 3.10+ وأعد تشغيل Slunder Studio. المفسر الحالي هو {version}.",
+      "gpu_available": "تسريع GPU متاح. سيُستخدم {name} بذاكرة VRAM قدرها {vram} GB لاستدلال الذكاء الاصطناعي.",
+      "cpu_summary": "لم يتم اكتشاف GPU يدعم CUDA. ستعمل النماذج على CPU (ببطء أكبر). ثبّت PyTorch مع دعم CUDA لتسريع GPU.",
+      "unknown": "غير معروف",
+      "ram_error": "تعذر فحص RAM: {error}",
+      "dependencies_error_detail": "تعذر فحص الاعتماديات ({error})",
+      "dependencies_error": "فشل فحص الاعتماديات؛ شغّل الإعداد وأعد المحاولة.",
+      "gpu_none": "لم يتم اكتشافه",
+      "gpu_error": "تعذر فحص GPU: {error}",
+      "disk_error": "تعذر فحص مساحة القرص: {error}"
+    },
+    "readiness": {
+      "loaded": "محمّل",
+      "error": "خطأ",
+      "offline": "دون اتصال",
+      "downloaded": "مُنزّل / قابل للتحميل",
+      "installed_unloadable": "مثبّت / غير قابل للتحميل",
+      "not_downloaded": "غير مُنزّل"
+    },
+    "checks": {
+      "python": "Python",
+      "python_required": "يتطلب 3.10+",
+      "dependencies": "الاعتماديات",
+      "ready": "جاهز",
+      "run_setup": "تشغيل: {command}",
+      "operating_system": "نظام التشغيل",
+      "gpu": "GPU / CUDA",
+      "vram": "{vram} GB VRAM",
+      "cpu_only": "وضع CPU فقط",
+      "ram": "RAM",
+      "ram_recommended": "يوصى بـ 8 GB أو أكثر",
+      "disk": "مساحة القرص",
+      "disk_recommended": "يوصى بـ 10 GB أو أكثر للنماذج",
+      "ok": "موافق",
+      "warning": "!!"
+    },
+    "remediation": {
+      "setup": "تشغيل الإعداد",
+      "model": "اختيار نموذج",
+      "output": "اختيار المخرج",
+      "instructions": "عرض التعليمات",
+      "details": "التفاصيل"
+    },
+    "models": {
+      "title": "نماذج الذكاء الاصطناعي",
+      "info": "يستخدم Slunder Studio نماذج ذكاء اصطناعي تعمل محلياً على جهازك. تُنزّل النماذج من HuggingFace وتُخزّن في مجلد الإعدادات. يمكنك إدارة النماذج في أي وقت من مركز النماذج.",
+      "detected_hardware": "العتاد المكتشف",
+      "hardware_note": "تُرتب التوصيات لجهاز {hardware}. يظهر بديل CPU عندما تكون GPU المكتشفة دون المستوى المعلن للنموذج.",
+      "gpu_fit": "ملاءمة GPU",
+      "cpu_fallback": "بديل CPU",
+      "readiness_title": "جاهزية التشغيل",
+      "readiness_probe_failed": "فشل فحص الجاهزية: {error}",
+      "estimate": "{disk:.1f} GB قرص / {vram:.1f} GB VRAM",
+      "setup_title": "اختيار إعداد النموذج الأول",
+      "selector_item": "{name} — {disk:.1f} GB قرص / {vram:.1f} GB VRAM",
+      "no_core_models": "لا توجد نماذج أساسية مسجلة",
+      "action_open": "فتح مركز النماذج واختيار الإجراء",
+      "action_download": "بدء هذا التنزيل في مركز النماذج",
+      "action_offline": "بدء التنزيل (الوضع دون اتصال غير متاح)",
+      "action_note": "سيُنقل النموذج والإجراء المحددان إلى مركز النماذج بعد تشغيل الاستوديو.",
+      "token_label": "رمز HuggingFace (اختياري؛ يُحفظ قبل التنزيلات المقيدة)",
+      "token_placeholder": "ألصق رمزاً يبدأ بـ hf_...",
+      "token_saved": "سيُعاد استخدام رمز HuggingFace المحفوظ",
+      "token_invalid": "يجب أن تبدأ رموز HuggingFace بـ hf_...",
+      "token_save_failed": "تعذر حفظ الرمز بأمان: {error}",
+      "note": "يمكنك تخطي تنزيل النماذج الآن وتثبيتها لاحقاً من مركز النماذج. دون نموذج نشط تم التحقق منه، لا يتوفر الإنشاء أو سيُوسم صراحة DEMO. افتح مركز النماذج من الشريط الجانبي لتنزيل نموذج أو تفعيله أو إصلاحه.",
+      "tasks": {
+        "song": "إنشاء الأغاني وتحرير المصدر",
+        "lyrics": "إنشاء الكلمات وتخطيط المنتج",
+        "singing": "توليف صوت الغناء",
+        "conversion": "تحويل الصوت",
+        "isolation": "عزل الصوت",
+        "sfx": "إنشاء المؤثرات الصوتية"
+      }
+    },
+    "quickstart": {
+      "title": "بدء سريع",
+      "preferences": "تفضيلات التشغيل الأول",
+      "output_label": "مجلد المخرج الافتراضي",
+      "output_default": "الافتراضي: {path}",
+      "browse": "استعراض",
+      "experience": "مستوى الخبرة",
+      "beginner": "مبتدئ — عناصر تحكم موجّهة",
+      "intermediate": "متوسط — عناصر تحكم متوازنة",
+      "advanced": "متقدم — إظهار عناصر تحكم إضافية",
+      "select_output": "تحديد مجلد المخرج",
+      "steps": {
+        "song_forge": "Song Forge",
+        "song_forge_desc": "أنشئ أغانٍ كاملة من الكلمات وأوسمة الأسلوب باستخدام ACE-Step",
+        "lyrics": "محرك الكلمات",
+        "lyrics_desc": "اكتب الكلمات باستخدام قوالب الذكاء الاصطناعي وأدوات القافية وإنشاء LLM",
+        "midi": "استوديو MIDI",
+        "midi_desc": "ألّف MIDI بمحرر البيانو أو ذكاء اصطناعي يحول النص إلى MIDI",
+        "vocal": "Vocal Suite",
+        "vocal_desc": "أضف أصوات الغناء أو حوّل الأصوات أو افصل المسارات",
+        "sfx": "مولد المؤثرات الصوتية",
+        "sfx_desc": "أنشئ مؤثرات صوتية من أوصاف نصية",
+        "mixer": "الخلاط",
+        "mixer_desc": "اجمع كل المسارات وأتقنها وصدّر أغنيتك النهائية",
+        "producer": "المنتج بالذكاء الاصطناعي",
+        "producer_desc": "صف رؤيتك في موجّه واحد ودع الذكاء الاصطناعي يبني الأغنية كاملة"
+      }
+    },
+    "steps": {
+      "welcome": "الترحيب",
+      "system": "النظام",
+      "models": "النماذج",
+      "quickstart": "بدء سريع",
+      "separator": " > "
+    },
+    "actions": {
+      "back": "رجوع",
+      "skip": "تخطي الآن",
+      "get_started": "البدء",
+      "next": "التالي",
+      "launch": "تشغيل الاستوديو"
+    },
+    "jobs": {
+      "dependency_setup": "تثبيت اعتماديات التشغيل"
+    },
+    "accessibility": {
+      "welcome_name": "ترحيب الإعداد الأولي",
+      "system_name": "فحص نظام الإعداد الأولي",
+      "models_name": "دليل نماذج الإعداد الأولي",
+      "quickstart_name": "بدء الإعداد الأولي السريع",
+      "wizard_name": "معالج الإعداد الأولي",
+      "pages_name": "صفحات الإعداد الأولي",
+      "pages_description": "يبدل بين خطوات الإعداد الأولي.",
+      "back_name": "الرجوع في الإعداد الأولي",
+      "back_description": "يعود إلى خطوة الإعداد الأولي السابقة.",
+      "skip_name": "تخطي الإعداد الأولي",
+      "skip_description": "يترك الإعداد الأولي غير مكتمل كي يمكن فتحه لاحقاً.",
+      "next_name": "متابعة الإعداد الأولي",
+      "next_description": "ينتقل إلى خطوة الإعداد الأولي التالية."
+    }
+  },
   "lyrics": {
     "title": "محرك الكلمات",
     "quick": {

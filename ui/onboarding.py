@@ -29,6 +29,7 @@ from ui.accessibility import install_accessibility
 from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
 from core.workers import InferenceWorker
+from core.i18n import tr
 from ui.file_dialogs import choose_directory
 
 
@@ -53,7 +54,7 @@ def run_dependency_setup(progress_cb=None, **_kwargs) -> str:
         raise RuntimeError(detail[-1200:])
     if progress_cb:
         progress_cb(100)
-    return "Runtime dependencies installed. Re-running the system check."
+    return tr("onboarding.system.setup_complete")
 
 def check_system() -> dict:
     """Run system compatibility checks."""
@@ -63,7 +64,7 @@ def check_system() -> dict:
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         "python_ok": sys.version_info >= (3, 10),
         "arch": platform.machine(),
-        "cpu": platform.processor() or "Unknown",
+        "cpu": platform.processor() or tr("onboarding.system.unknown"),
         "setup_command": f'"{sys.executable}" -m pip install -r requirements.txt',
     }
 
@@ -76,7 +77,7 @@ def check_system() -> dict:
     except Exception as exc:
         checks["ram_gb"] = 0
         checks["ram_ok"] = False
-        checks["ram_error"] = f"Unable to inspect RAM: {type(exc).__name__}"
+        checks["ram_error"] = tr("onboarding.system.ram_error", error=type(exc).__name__)
 
     # Core Python dependencies
     try:
@@ -86,14 +87,14 @@ def check_system() -> dict:
         checks["deps_ok"] = not missing_deps
     except Exception as exc:
         checks["deps_missing"] = [
-            f"Unable to inspect dependencies ({type(exc).__name__})"
+            tr("onboarding.system.dependencies_error_detail", error=type(exc).__name__)
         ]
         checks["deps_ok"] = False
-        checks["deps_error"] = "Dependency inspection failed; run setup and retry."
+        checks["deps_error"] = tr("onboarding.system.dependencies_error")
 
     # GPU / CUDA
     checks["cuda"] = False
-    checks["gpu_name"] = "None detected"
+    checks["gpu_name"] = tr("onboarding.system.gpu_none")
     checks["vram_gb"] = 0
     try:
         import torch
@@ -106,7 +107,7 @@ def check_system() -> dict:
                 torch.cuda.get_device_properties(gpu_index).total_memory / (1024**3), 1
             )
     except (ImportError, RuntimeError, AttributeError) as exc:
-        checks["gpu_error"] = f"GPU probe unavailable: {type(exc).__name__}"
+        checks["gpu_error"] = tr("onboarding.system.gpu_error", error=type(exc).__name__)
 
     # Disk space
     try:
@@ -118,7 +119,7 @@ def check_system() -> dict:
     except Exception as exc:
         checks["disk_free_gb"] = 0
         checks["disk_ok"] = False
-        checks["disk_error"] = f"Unable to inspect disk space: {type(exc).__name__}"
+        checks["disk_error"] = tr("onboarding.system.disk_error", error=type(exc).__name__)
 
     return checks
 
@@ -129,16 +130,16 @@ def check_system() -> dict:
 def model_readiness_label(readiness: ModelReadiness, offline: bool = False) -> str:
     """Map lifecycle evidence to the state shown during onboarding."""
     if readiness.active:
-        return "loaded"
+        return tr("onboarding.readiness.loaded")
     if readiness.status == "error":
-        return "error"
+        return tr("onboarding.readiness.error")
     if offline and not readiness.installed:
-        return "offline"
+        return tr("onboarding.readiness.offline")
     if readiness.installed and readiness.loadable:
-        return "downloaded / loadable"
+        return tr("onboarding.readiness.downloaded")
     if readiness.installed:
-        return "installed / not loadable"
-    return "not downloaded"
+        return tr("onboarding.readiness.installed_unloadable")
+    return tr("onboarding.readiness.not_downloaded")
 
 class WelcomePage(QWidget):
     def __init__(self, parent=None):
@@ -159,21 +160,19 @@ class WelcomePage(QWidget):
         version.setStyleSheet(f"color: {t['text_secondary']}; font-size: 10.5pt;")
         layout.addWidget(version)
 
-        tagline = QLabel("Offline AI Music Generation Suite")
+        tagline = QLabel(tr("onboarding.welcome.tagline"))
         tagline.setAlignment(Qt.AlignCenter)
         tagline.setStyleSheet(f"color: {t['text']}; font-size: 12pt;")
         layout.addWidget(tagline)
 
         desc = QLabel(
-            "Generate songs, compose MIDI, synthesize vocals, separate stems,\n"
-            "create SFX, and master tracks — all locally on your machine.\n"
-            "No cloud, no subscriptions, no limits."
+            tr("onboarding.welcome.description")
         )
         desc.setAlignment(Qt.AlignCenter)
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9pt; line-height: 1.6;")
         layout.addWidget(desc)
-        install_accessibility(self, "Onboarding welcome")
+        install_accessibility(self, tr("onboarding.accessibility.welcome_name"))
 
 
 class SystemCheckPage(QWidget):
@@ -185,11 +184,11 @@ class SystemCheckPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        title = QLabel("System Check")
+        title = QLabel(tr("onboarding.system.title"))
         title.setStyleSheet(f"color: {t['text']}; font-size: 13.5pt; font-weight: bold;")
         layout.addWidget(title)
 
-        subtitle = QLabel("Checking your system compatibility...")
+        subtitle = QLabel(tr("onboarding.system.subtitle"))
         subtitle.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9pt;")
         layout.addWidget(subtitle)
 
@@ -212,13 +211,13 @@ class SystemCheckPage(QWidget):
         self._check_workers = set()
         self._setup_worker = None
         self._setup_workers = set()
-        install_accessibility(self, "Onboarding system check")
+        install_accessibility(self, tr("onboarding.accessibility.system_name"))
 
     def run_checks(self):
         if self._check_worker is not None and self._check_worker.isRunning():
             return
         self._clear_check_rows()
-        self._summary.setText("Checking Python, dependencies, hardware, and disk...")
+        self._summary.setText(tr("onboarding.system.checking"))
         worker = InferenceWorker(check_system)
         self._check_workers.add(worker)
         self._check_worker = worker
@@ -260,16 +259,16 @@ class SystemCheckPage(QWidget):
         worker = self._check_worker
         self._release_check_worker_later(worker)
         self._check_worker = None
-        self._summary.setText(f"System check failed: {message}")
+        self._summary.setText(tr("onboarding.system.check_failed", error=message))
 
     def _start_dependency_setup(self):
         if self._setup_worker is not None and self._setup_worker.isRunning():
             return
-        self._summary.setText("Installing runtime dependencies...")
+        self._summary.setText(tr("onboarding.system.installing"))
         worker = InferenceWorker(
             run_dependency_setup,
             job_kind="onboarding_dependency_setup",
-            job_label="Install runtime dependencies",
+            job_label=tr("onboarding.jobs.dependency_setup"),
         )
         self._setup_workers.add(worker)
         self._setup_worker = worker
@@ -295,27 +294,26 @@ class SystemCheckPage(QWidget):
         self.run_checks()
 
     def _on_setup_error(self, message: str):
-        self._summary.setText(f"Dependency setup failed: {message}")
+        self._summary.setText(tr("onboarding.system.setup_failed", error=message))
         worker = self._setup_worker
         self._release_setup_worker_later(worker)
 
     @staticmethod
     def _remediation_label(key: str) -> str:
         return {
-            "dependencies": "Run setup",
-            "gpu": "Choose a model",
-            "ram": "Choose a model",
-            "disk": "Choose output",
-            "python": "Show instructions",
-        }.get(key, "Details")
+            "dependencies": tr("onboarding.remediation.setup"),
+            "gpu": tr("onboarding.remediation.model"),
+            "ram": tr("onboarding.remediation.model"),
+            "disk": tr("onboarding.remediation.output"),
+            "python": tr("onboarding.remediation.instructions"),
+        }.get(key, tr("onboarding.remediation.details"))
 
     def _request_remediation(self, key: str, checks: dict):
         if key == "dependencies":
             self._start_dependency_setup()
         elif key == "python":
             self._summary.setText(
-                f"Install Python 3.10+ and restart Slunder Studio. "
-                f"The current interpreter is {checks['python']}."
+                tr("onboarding.system.python_remediation", version=checks["python"])
             )
         else:
             self.remediation_requested.emit(key)
@@ -324,27 +322,27 @@ class SystemCheckPage(QWidget):
         t = ThemeEngine.get_colors()
 
         items = [
-            ("python", "Python", checks["python"], checks["python_ok"],
-             "3.10+ required"),
-            ("dependencies", "Dependencies",
-             "Ready" if checks["deps_ok"] else ", ".join(checks["deps_missing"]),
+            ("python", tr("onboarding.checks.python"), checks["python"], checks["python_ok"],
+             tr("onboarding.checks.python_required")),
+            ("dependencies", tr("onboarding.checks.dependencies"),
+             tr("onboarding.checks.ready") if checks["deps_ok"] else ", ".join(checks["deps_missing"]),
              checks["deps_ok"],
              checks.get("deps_error")
-             or ("" if checks["deps_ok"] else f"Run: {checks['setup_command']}")),
-            ("os", "Operating System", f"{checks['os']} {checks['arch']}", True, ""),
-            ("gpu", "GPU / CUDA", checks["gpu_name"],
+             or ("" if checks["deps_ok"] else tr("onboarding.checks.run_setup", command=checks["setup_command"]))),
+            ("os", tr("onboarding.checks.operating_system"), f"{checks['os']} {checks['arch']}", True, ""),
+            ("gpu", tr("onboarding.checks.gpu"), checks["gpu_name"],
              checks["cuda"],
              checks.get("gpu_error")
-             or (f"{checks['vram_gb']} GB VRAM" if checks["cuda"] else "CPU-only mode")),
-            ("ram", "RAM", f"{checks['ram_gb']} GB",
-             checks.get("ram_ok", True), checks.get("ram_error", "8 GB+ recommended")),
-            ("disk", "Disk Space", f"{checks['disk_free_gb']} GB free",
-             checks.get("disk_ok", True), checks.get("disk_error", "10 GB+ recommended for models")),
+             or (tr("onboarding.checks.vram", vram=checks["vram_gb"]) if checks["cuda"] else tr("onboarding.checks.cpu_only"))),
+            ("ram", tr("onboarding.checks.ram"), f"{checks['ram_gb']} GB",
+             checks.get("ram_ok", True), checks.get("ram_error", tr("onboarding.checks.ram_recommended"))),
+            ("disk", tr("onboarding.checks.disk"), f"{checks['disk_free_gb']} GB free",
+             checks.get("disk_ok", True), checks.get("disk_error", tr("onboarding.checks.disk_recommended"))),
         ]
 
         for key, label, value, ok, note in items:
             row = QHBoxLayout()
-            icon = QLabel("OK" if ok else "!!")
+            icon = QLabel(tr("onboarding.checks.ok") if ok else tr("onboarding.checks.warning"))
             icon.setMinimumWidth(24)
             icon.setAlignment(Qt.AlignCenter)
             icon.setStyleSheet(
@@ -375,13 +373,15 @@ class SystemCheckPage(QWidget):
 
         if checks["cuda"]:
             self._summary.setText(
-                f"GPU acceleration available. {checks['gpu_name']} with "
-                f"{checks['vram_gb']} GB VRAM will be used for AI inference."
+                tr(
+                    "onboarding.system.gpu_available",
+                    name=checks["gpu_name"],
+                    vram=checks["vram_gb"],
+                )
             )
         else:
             self._summary.setText(
-                "No CUDA GPU detected. Models will run on CPU (slower). "
-                "Install PyTorch with CUDA support for GPU acceleration."
+                tr("onboarding.system.cpu_summary")
             )
 
 
@@ -399,23 +399,20 @@ class ModelGuidePage(QWidget):
         )
         registry = getattr(manager, "registry", {})
 
-        title = QLabel("AI Models")
+        title = QLabel(tr("onboarding.models.title"))
         title.setStyleSheet(f"color: {t['text']}; font-size: 13.5pt; font-weight: bold;")
         layout.addWidget(title)
 
         info = QLabel(
-            "Slunder Studio uses AI models that run locally on your machine. "
-            "Models are downloaded from HuggingFace and stored in your config directory. "
-            "You can manage models anytime from the Model Hub."
+            tr("onboarding.models.info")
         )
         info.setWordWrap(True)
         info.setStyleSheet(f"color: {t['text_secondary']}; font-size: 9pt;")
         layout.addWidget(info)
 
-        hardware_name = hardware.get("name", "detected hardware")
+        hardware_name = hardware.get("name", tr("onboarding.models.detected_hardware"))
         hardware_note = QLabel(
-            f"Recommendations are ranked for {hardware_name}. "
-            "A CPU fallback is called out when the detected GPU is below a model's declared tier."
+            tr("onboarding.models.hardware_note", hardware=hardware_name)
         )
         hardware_note.setWordWrap(True)
         hardware_note.setStyleSheet(f"color: {Palette.BLUE}; font-size: 8.25pt;")
@@ -432,12 +429,12 @@ class ModelGuidePage(QWidget):
         ml.setSpacing(10)
 
         recommendation_specs = [
-            ("best song generation", "Song generation and source editing"),
-            ("best lyrics", "Lyrics generation and producer planning"),
-            ("singing voice synthesis", "Singing voice synthesis"),
-            ("voice conversion", "Voice conversion"),
-            ("best vocal isolation", "Vocal isolation"),
-            ("sfx generation", "SFX generation"),
+            ("best song generation", "onboarding.models.tasks.song"),
+            ("best lyrics", "onboarding.models.tasks.lyrics"),
+            ("singing voice synthesis", "onboarding.models.tasks.singing"),
+            ("voice conversion", "onboarding.models.tasks.conversion"),
+            ("best vocal isolation", "onboarding.models.tasks.isolation"),
+            ("sfx generation", "onboarding.models.tasks.sfx"),
         ]
         models = []
         for task, description in recommendation_specs:
@@ -455,7 +452,7 @@ class ModelGuidePage(QWidget):
             models.append(
                 (
                     info_item.name,
-                    f"{description} · {mode} · {info_item.advertised_vram_tier}",
+                    f"{tr(description)} · {tr('onboarding.models.gpu_fit') if mode == 'GPU fit' else tr('onboarding.models.cpu_fallback') if mode == 'CPU fallback' else mode} · {info_item.advertised_vram_tier}",
                     f"{info_item.disk_gb:.1f} GB",
                     True,
                 )
@@ -496,7 +493,7 @@ class ModelGuidePage(QWidget):
         """)
         readiness_layout = QVBoxLayout(readiness_frame)
         readiness_layout.setContentsMargins(12, 8, 12, 8)
-        readiness_title = QLabel("Runtime readiness")
+        readiness_title = QLabel(tr("onboarding.models.readiness_title"))
         readiness_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         readiness_layout.addWidget(readiness_title)
         self._manager = manager
@@ -512,7 +509,7 @@ class ModelGuidePage(QWidget):
                     loadable=False,
                     active=False,
                     status="error",
-                    remedy=f"Readiness probe failed: {type(exc).__name__}",
+                    remedy=tr("onboarding.models.readiness_probe_failed", error=type(exc).__name__),
                 )
             row = QHBoxLayout()
             state = QLabel(model_readiness_label(readiness, manager.is_offline))
@@ -520,7 +517,13 @@ class ModelGuidePage(QWidget):
             state.setStyleSheet(f"color: {Palette.YELLOW if readiness.status == 'error' else t['text']}; font-size: 7.5pt;")
             name = QLabel(info_item.name)
             name.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt; font-weight: bold;")
-            estimate = QLabel(f"{info_item.disk_gb:.1f} GB disk / {info_item.vram_gb:.1f} GB VRAM")
+            estimate = QLabel(
+                tr(
+                    "onboarding.models.estimate",
+                    disk=info_item.disk_gb,
+                    vram=info_item.vram_gb,
+                )
+            )
             estimate.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
             row.addWidget(state)
             row.addWidget(name, 1)
@@ -536,7 +539,7 @@ class ModelGuidePage(QWidget):
         setup_layout = QVBoxLayout(setup_frame)
         setup_layout.setContentsMargins(12, 10, 12, 10)
         setup_layout.setSpacing(8)
-        setup_title = QLabel("Choose first model setup")
+        setup_title = QLabel(tr("onboarding.models.setup_title"))
         setup_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         setup_layout.addWidget(setup_title)
 
@@ -544,40 +547,45 @@ class ModelGuidePage(QWidget):
         self._model_selector.setObjectName("onboardingModelSelector")
         for info_item in self._core_models:
             self._model_selector.addItem(
-                f"{info_item.name} — {info_item.disk_gb:.1f} GB disk / {info_item.vram_gb:.1f} GB VRAM",
+                tr(
+                    "onboarding.models.selector_item",
+                    name=info_item.name,
+                    disk=info_item.disk_gb,
+                    vram=info_item.vram_gb,
+                ),
                 info_item.model_id,
             )
         if not self._core_models:
-            self._model_selector.addItem("No core models are registered", "")
+            self._model_selector.addItem(tr("onboarding.models.no_core_models"), "")
             self._model_selector.setEnabled(False)
         setup_layout.addWidget(self._model_selector)
 
         self._model_action = QComboBox()
         self._model_action.setObjectName("onboardingModelAction")
-        self._model_action.addItem("Open Model Hub and choose the action", "open")
-        self._model_action.addItem("Start this download in Model Hub", "download")
+        self._model_action.addItem(tr("onboarding.models.action_open"), "open")
+        self._model_action.addItem(tr("onboarding.models.action_download"), "download")
         if manager.is_offline:
-            self._model_action.setItemText(1, "Start download (offline mode unavailable)")
+            self._model_action.setItemText(1, tr("onboarding.models.action_offline"))
             self._model_action.model().item(1).setEnabled(False)
         setup_layout.addWidget(self._model_action)
 
         action_note = QLabel(
-            "The selected model and action will be carried into Model Hub after Launch Studio."
+            tr("onboarding.models.action_note")
         )
         action_note.setWordWrap(True)
         action_note.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         setup_layout.addWidget(action_note)
 
-        token_label = QLabel("HuggingFace token (optional; saved before gated downloads)")
+        token_label = QLabel(tr("onboarding.models.token_label"))
         token_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt;")
         setup_layout.addWidget(token_label)
         self._hf_token = QLineEdit()
         self._hf_token.setObjectName("onboardingHfToken")
         self._hf_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self._hf_token.setPlaceholderText("Paste a token beginning with hf_...")
+        self._hf_token.setPlaceholderText(tr("onboarding.models.token_placeholder"))
         token_lookup = getattr(manager, "_get_hf_token", lambda: None)
         if token_lookup():
-            self._hf_token.setPlaceholderText("A saved HuggingFace token will be reused")
+            self._hf_token.setPlaceholderText(tr("onboarding.models.token_saved"))
         setup_layout.addWidget(self._hf_token)
         self._token_error = QLabel("")
         self._token_error.setVisible(False)
@@ -587,15 +595,13 @@ class ModelGuidePage(QWidget):
         layout.addWidget(setup_frame)
 
         note = QLabel(
-            "You can skip model downloads now and install them later from Model Hub. "
-            "Without a verified active model, generation is unavailable or explicitly labeled DEMO. "
-            "Open Model Hub from the sidebar to download, activate, or repair a model."
+            tr("onboarding.models.note")
         )
         note.setWordWrap(True)
         note.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         layout.addWidget(note)
         layout.addStretch()
-        install_accessibility(self, "Onboarding model guide")
+        install_accessibility(self, tr("onboarding.accessibility.models_name"))
 
     def selected_model_id(self) -> str:
         return str(self._model_selector.currentData() or "")
@@ -626,7 +632,7 @@ class QuickStartPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        title = QLabel("Quick Start")
+        title = QLabel(tr("onboarding.quickstart.title"))
         title.setStyleSheet(f"color: {t['text']}; font-size: 13.5pt; font-weight: bold;")
         layout.addWidget(title)
 
@@ -638,12 +644,12 @@ class QuickStartPage(QWidget):
         preferences_layout = QVBoxLayout(preferences)
         preferences_layout.setContentsMargins(12, 10, 12, 10)
         preferences_layout.setSpacing(8)
-        preferences_title = QLabel("First-run preferences")
+        preferences_title = QLabel(tr("onboarding.quickstart.preferences"))
         preferences_title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         preferences_layout.addWidget(preferences_title)
 
         output_row = QHBoxLayout()
-        output_label = QLabel("Default output folder")
+        output_label = QLabel(tr("onboarding.quickstart.output_label"))
         output_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt;")
         output_row.addWidget(output_label)
         from core.settings import Settings, get_default_output_dir
@@ -651,24 +657,26 @@ class QuickStartPage(QWidget):
         self._output_dir = QLineEdit(str(settings.get("general.output_dir", "") or ""))
         self._output_dir.setObjectName("onboardingOutputDirectory")
         self._output_dir.setReadOnly(True)
-        self._output_dir.setPlaceholderText(f"Default: {get_default_output_dir()}")
+        self._output_dir.setPlaceholderText(
+            tr("onboarding.quickstart.output_default", path=get_default_output_dir())
+        )
         output_row.addWidget(self._output_dir, 1)
-        browse = QPushButton("Browse")
+        browse = QPushButton(tr("onboarding.quickstart.browse"))
         browse.setObjectName("onboardingBrowseOutput")
         browse.clicked.connect(self._browse_output_dir)
         output_row.addWidget(browse)
         preferences_layout.addLayout(output_row)
 
         experience_row = QHBoxLayout()
-        experience_label = QLabel("Experience level")
+        experience_label = QLabel(tr("onboarding.quickstart.experience"))
         experience_label.setStyleSheet(f"color: {t['text']}; font-size: 8.25pt;")
         experience_row.addWidget(experience_label)
         self._experience = QComboBox()
         self._experience.setObjectName("onboardingExperience")
         for code, label in (
-            ("beginner", "Beginner — guided controls"),
-            ("intermediate", "Intermediate — balanced controls"),
-            ("advanced", "Advanced — expose more controls"),
+            ("beginner", tr("onboarding.quickstart.beginner")),
+            ("intermediate", tr("onboarding.quickstart.intermediate")),
+            ("advanced", tr("onboarding.quickstart.advanced")),
         ):
             self._experience.addItem(label, code)
         current_experience = settings.get("general.experience_level", "beginner")
@@ -681,13 +689,13 @@ class QuickStartPage(QWidget):
         layout.addWidget(preferences)
 
         steps = [
-            ("Song Forge", "Generate full songs from lyrics and style tags with ACE-Step"),
-            ("Lyrics Engine", "Write lyrics using AI templates, rhyme tools, and LLM generation"),
-            ("MIDI Studio", "Compose MIDI with piano roll editor or text-to-MIDI AI"),
-            ("Vocal Suite", "Add singing voices, convert vocals, or separate stems"),
-            ("SFX Generator", "Create sound effects from text descriptions"),
-            ("Mixer", "Combine all tracks, apply mastering, and export your final song"),
-            ("AI Producer", "Describe your vision in one prompt and let AI build the full song"),
+            ("onboarding.quickstart.steps.song_forge", "onboarding.quickstart.steps.song_forge_desc"),
+            ("onboarding.quickstart.steps.lyrics", "onboarding.quickstart.steps.lyrics_desc"),
+            ("onboarding.quickstart.steps.midi", "onboarding.quickstart.steps.midi_desc"),
+            ("onboarding.quickstart.steps.vocal", "onboarding.quickstart.steps.vocal_desc"),
+            ("onboarding.quickstart.steps.sfx", "onboarding.quickstart.steps.sfx_desc"),
+            ("onboarding.quickstart.steps.mixer", "onboarding.quickstart.steps.mixer_desc"),
+            ("onboarding.quickstart.steps.producer", "onboarding.quickstart.steps.producer_desc"),
         ]
 
         for i, (name, desc) in enumerate(steps, 1):
@@ -707,9 +715,9 @@ class QuickStartPage(QWidget):
                 background: {t['accent']}; color: white; border-radius: 12px;
                 font-size: 8.25pt; font-weight: bold;
             """)
-            n = ElidedLabel(name, minimum_width=110)
+            n = ElidedLabel(tr(name), minimum_width=110)
             n.setStyleSheet(f"color: {t['text']}; font-size: 9pt; font-weight: bold; border: none;")
-            d = QLabel(desc)
+            d = QLabel(tr(desc))
             d.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
 
             row_layout.addWidget(num)
@@ -719,7 +727,7 @@ class QuickStartPage(QWidget):
             layout.addWidget(row_frame)
 
         layout.addStretch()
-        install_accessibility(self, "Onboarding quick start")
+        install_accessibility(self, tr("onboarding.accessibility.quickstart_name"))
 
     def output_dir(self) -> str:
         return self._output_dir.text().strip()
@@ -730,7 +738,7 @@ class QuickStartPage(QWidget):
     def _browse_output_dir(self):
         path = choose_directory(
             self,
-            "Select output directory",
+            tr("onboarding.quickstart.select_output"),
             operation_kind="onboarding_output_directory",
             dialog=QFileDialog,
         )
@@ -750,7 +758,7 @@ class OnboardingWizard(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Welcome to Slunder Studio")
+        self.setWindowTitle(tr("onboarding.window_title"))
         self.setMinimumSize(700, 520)
         self.setModal(True)
         self._model_handoff = None
@@ -787,19 +795,19 @@ class OnboardingWizard(QDialog):
 
         # Step indicators
         self._step_labels = []
-        for i, name in enumerate(["Welcome", "System", "Models", "Quick Start"]):
-            lbl = QLabel(name)
+        for i, key in enumerate(("welcome", "system", "models", "quickstart")):
+            lbl = QLabel(tr(f"onboarding.steps.{key}"))
             lbl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
             self._step_labels.append(lbl)
             nav_layout.addWidget(lbl)
             if i < 3:
-                sep = QLabel(" > ")
+                sep = QLabel(tr("onboarding.steps.separator"))
                 sep.setStyleSheet(f"color: {t['border']}; font-size: 8.25pt;")
                 nav_layout.addWidget(sep)
 
         nav_layout.addStretch()
 
-        self._back_btn = QPushButton("Back")
+        self._back_btn = QPushButton(tr("onboarding.actions.back"))
         self._back_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['surface']}; color: {t['text']};
@@ -811,11 +819,11 @@ class OnboardingWizard(QDialog):
         self._back_btn.clicked.connect(self._prev_page)
         self._back_btn.setVisible(False)
 
-        self._skip_btn = QPushButton("Skip for now")
+        self._skip_btn = QPushButton(tr("onboarding.actions.skip"))
         self._skip_btn.setStyleSheet(f"color: {t['text_secondary']}; border: none; padding: 6px 10px;")
         self._skip_btn.clicked.connect(self._skip)
 
-        self._next_btn = QPushButton("Get Started")
+        self._next_btn = QPushButton(tr("onboarding.actions.get_started"))
         self._next_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']}; color: white; border: none;
@@ -834,12 +842,12 @@ class OnboardingWizard(QDialog):
         self._update_nav()
         install_accessibility(
             self,
-            "Onboarding wizard",
+            tr("onboarding.accessibility.wizard_name"),
             named_controls=[
-                (self._pages, "Onboarding pages", "Switches between onboarding steps."),
-                (self._back_btn, "Back in onboarding", "Returns to the previous onboarding step."),
-                (self._skip_btn, "Skip onboarding", "Leaves onboarding incomplete so it can be reopened later."),
-                (self._next_btn, "Continue onboarding", "Advances to the next onboarding step."),
+                (self._pages, tr("onboarding.accessibility.pages_name"), tr("onboarding.accessibility.pages_description")),
+                (self._back_btn, tr("onboarding.accessibility.back_name"), tr("onboarding.accessibility.back_description")),
+                (self._skip_btn, tr("onboarding.accessibility.skip_name"), tr("onboarding.accessibility.skip_description")),
+                (self._next_btn, tr("onboarding.accessibility.next_name"), tr("onboarding.accessibility.next_description")),
             ],
         )
 
@@ -876,7 +884,9 @@ class OnboardingWizard(QDialog):
         self._back_btn.setVisible(idx > 0)
 
         is_last = idx == self._pages.count() - 1
-        self._next_btn.setText("Launch Studio" if is_last else "Next")
+        self._next_btn.setText(
+            tr("onboarding.actions.launch") if is_last else tr("onboarding.actions.next")
+        )
 
         for i, lbl in enumerate(self._step_labels):
             if i == idx:
@@ -887,11 +897,11 @@ class OnboardingWizard(QDialog):
                 lbl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         install_accessibility(
             self,
-            "Onboarding wizard",
+            tr("onboarding.accessibility.wizard_name"),
             named_controls=[
-                (self._back_btn, "Back in onboarding", "Returns to the previous onboarding step."),
-                (self._skip_btn, "Skip onboarding", "Leaves onboarding incomplete so it can be reopened later."),
-                (self._next_btn, "Continue onboarding", "Advances to the next onboarding step."),
+                (self._back_btn, tr("onboarding.accessibility.back_name"), tr("onboarding.accessibility.back_description")),
+                (self._skip_btn, tr("onboarding.accessibility.skip_name"), tr("onboarding.accessibility.skip_description")),
+                (self._next_btn, tr("onboarding.accessibility.next_name"), tr("onboarding.accessibility.next_description")),
             ],
         )
 
@@ -902,7 +912,7 @@ class OnboardingWizard(QDialog):
         token = self._models.hf_token()
         if token and not token.startswith("hf_"):
             self._pages.setCurrentWidget(self._models)
-            self._models.show_token_error("HuggingFace tokens must begin with hf_...")
+            self._models.show_token_error(tr("onboarding.models.token_invalid"))
             self._update_nav()
             return
         if token:
@@ -910,7 +920,7 @@ class OnboardingWizard(QDialog):
                 settings.set("model_hub.hf_token", token)
             except Exception as exc:
                 self._pages.setCurrentWidget(self._models)
-                self._models.show_token_error(f"Token could not be saved securely: {exc}")
+                self._models.show_token_error(tr("onboarding.models.token_save_failed", error=exc))
                 self._update_nav()
                 return
         self._models.clear_token_error()
