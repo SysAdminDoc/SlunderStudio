@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Mixer track strips, mastering presets/targets, dynamic-EQ controls,
+  loudness-reference flows, export status, recoverable deletes, and accessibility descriptions
+  to the locale catalog while preserving raw preset and target IDs.
+
 - Migrated SFX controls, category labels, generation/playback status, result cards,
   recoverable-delete messages, and accessibility descriptions to the locale catalog.
 

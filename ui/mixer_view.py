@@ -22,6 +22,7 @@ from ui.theme import Palette, ThemeEngine
 from ui.widgets import ElidedLabel
 from ui.waveform_widget import WaveformWidget, MiniWaveform
 from core.workers import CancelledJobError, InferenceWorker
+from core.i18n import tr
 from core.dawproject import (
     DAWProjectSpec,
     DAWTrack,
@@ -66,6 +67,29 @@ from ui.file_dialogs import (
     save_audio_file,
     save_file,
 )
+
+
+_MIXER_PRESET_LABEL_KEYS = {
+    "Balanced": "mixer.presets.balanced",
+    "Loud / Radio": "mixer.presets.loud_radio",
+    "Warm / Analog": "mixer.presets.warm_analog",
+    "Bright / Crisp": "mixer.presets.bright_crisp",
+    "Hip-Hop / Trap": "mixer.presets.hip_hop_trap",
+    "Cinematic": "mixer.presets.cinematic",
+    "Lo-Fi": "mixer.presets.lo_fi",
+    "Streaming (Spotify)": "mixer.presets.streaming_spotify",
+}
+
+_MIXER_TARGET_LABEL_KEYS = {
+    "streaming": "mixer.targets.streaming",
+    "youtube": "mixer.targets.youtube",
+    "apple": "mixer.targets.apple",
+    "podcast": "mixer.targets.podcast",
+    "ebu_r128": "mixer.targets.ebu_r128",
+    "broadcast": "mixer.targets.broadcast",
+    "cinema": "mixer.targets.cinema",
+    "cd": "mixer.targets.cd",
+}
 
 
 def _mix_track_snapshots(
@@ -423,7 +447,7 @@ class MixerTrackStrip(QFrame):
         # Volume
         vol_col = QVBoxLayout()
         vol_col.setSpacing(1)
-        vl = QLabel("Vol")
+        vl = QLabel(tr("mixer.track.volume_label"))
         vl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         vl.setAlignment(Qt.AlignCenter)
         self._vol_slider = QSlider(Qt.Horizontal)
@@ -431,7 +455,7 @@ class MixerTrackStrip(QFrame):
         self._vol_slider.setValue(100)
         self._vol_slider.setMinimumWidth(80)
         self._vol_slider.setMinimumHeight(14)
-        self._vol_val = QLabel("100%")
+        self._vol_val = QLabel(tr("mixer.track.volume_value", value=100))
         self._vol_val.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         self._vol_val.setAlignment(Qt.AlignCenter)
         self._vol_slider.valueChanged.connect(self._on_vol)
@@ -443,7 +467,7 @@ class MixerTrackStrip(QFrame):
         # Pan
         pan_col = QVBoxLayout()
         pan_col.setSpacing(1)
-        pl = QLabel("Pan")
+        pl = QLabel(tr("mixer.track.pan_label"))
         pl.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         pl.setAlignment(Qt.AlignCenter)
         self._pan_slider = QSlider(Qt.Horizontal)
@@ -451,7 +475,7 @@ class MixerTrackStrip(QFrame):
         self._pan_slider.setValue(0)
         self._pan_slider.setMinimumWidth(80)
         self._pan_slider.setMinimumHeight(14)
-        self._pan_val = QLabel("C")
+        self._pan_val = QLabel(tr("mixer.track.pan_center"))
         self._pan_val.setStyleSheet(f"color: {t['text_secondary']}; font-size: 6.75pt;")
         self._pan_val.setAlignment(Qt.AlignCenter)
         self._pan_slider.valueChanged.connect(self._on_pan)
@@ -470,7 +494,7 @@ class MixerTrackStrip(QFrame):
             QPushButton:hover {{ background: {t['surface_hover']}; }}
                 QPushButton:checked {{ color: {Palette.CRUST}; border: none; }}
         """
-        self._mute_btn = QPushButton("M")
+        self._mute_btn = QPushButton(tr("mixer.track.mute_short"))
         self._mute_btn.setMinimumSize(24, 20)
         self._mute_btn.setCheckable(True)
         self._mute_btn.setStyleSheet(
@@ -479,7 +503,7 @@ class MixerTrackStrip(QFrame):
         )
         self._mute_btn.clicked.connect(self._on_mute)
 
-        self._solo_btn = QPushButton("S")
+        self._solo_btn = QPushButton(tr("mixer.track.solo_short"))
         self._solo_btn.setMinimumSize(24, 20)
         self._solo_btn.setCheckable(True)
         self._solo_btn.setStyleSheet(
@@ -488,7 +512,7 @@ class MixerTrackStrip(QFrame):
         )
         self._solo_btn.clicked.connect(self._on_solo)
 
-        self._remove_btn = QPushButton("X")
+        self._remove_btn = QPushButton(tr("mixer.track.remove_short"))
         self._remove_btn.setMinimumSize(24, 20)
         self._remove_btn.setStyleSheet(btn_style)
         self._remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.track_idx))
@@ -499,26 +523,54 @@ class MixerTrackStrip(QFrame):
 
         install_accessibility(
             self,
-            f"Track {name}",
+            tr("mixer.accessibility.track_name", track=name),
             named_controls=[
-                (self._vol_slider, f"Track {name} volume", "Adjusts track volume from 0% to 150%."),
-                (self._pan_slider, f"Track {name} pan", "Adjusts stereo pan from full left to full right."),
-                (self._mute_btn, f"Mute track {name}", "Toggles muting of this track."),
-                (self._solo_btn, f"Solo track {name}", "Solos this track, silencing all others."),
-                (self._remove_btn, f"Remove track {name}", "Removes this track from the mixer."),
+                (
+                    self._vol_slider,
+                    tr("mixer.accessibility.volume_name", track=name),
+                    tr("mixer.accessibility.volume_description"),
+                ),
+                (
+                    self._pan_slider,
+                    tr("mixer.accessibility.pan_name", track=name),
+                    tr("mixer.accessibility.pan_description"),
+                ),
+                (
+                    self._mute_btn,
+                    tr("mixer.accessibility.mute_name", track=name),
+                    tr("mixer.accessibility.mute_description"),
+                ),
+                (
+                    self._solo_btn,
+                    tr("mixer.accessibility.solo_name", track=name),
+                    tr("mixer.accessibility.solo_description"),
+                ),
+                (
+                    self._remove_btn,
+                    tr("mixer.accessibility.remove_name", track=name),
+                    tr("mixer.accessibility.remove_description"),
+                ),
             ],
             tab_order=[self._vol_slider, self._pan_slider, self._mute_btn, self._solo_btn, self._remove_btn],
         )
 
     def _on_vol(self, val):
         self._volume = val / 100.0
-        self._vol_val.setText(f"{val}%")
+        self._vol_val.setText(tr("mixer.track.volume_value", value=val))
         self.volume_changed.emit(self.track_idx, self._volume)
 
     def _on_pan(self, val):
         self._pan = val / 100.0
-        self._pan_val.setText("C" if val == 0 else f"L{abs(val)}" if val < 0 else f"R{val}")
+        self._pan_val.setText(self._pan_text(val))
         self.pan_changed.emit(self.track_idx, self._pan)
+
+    @staticmethod
+    def _pan_text(value: int) -> str:
+        if value == 0:
+            return tr("mixer.track.pan_center")
+        if value < 0:
+            return tr("mixer.track.pan_left", value=abs(value))
+        return tr("mixer.track.pan_right", value=value)
 
     def _on_mute(self):
         self._muted = self._mute_btn.isChecked()
@@ -557,12 +609,8 @@ class MixerTrackStrip(QFrame):
             self._solo_btn.blockSignals(False)
         vol_value = round(self._volume * 100)
         pan_value = round(self._pan * 100)
-        self._vol_val.setText(f"{vol_value}%")
-        self._pan_val.setText(
-            "C" if pan_value == 0
-            else f"L{abs(pan_value)}" if pan_value < 0
-            else f"R{pan_value}"
-        )
+        self._vol_val.setText(tr("mixer.track.volume_value", value=vol_value))
+        self._pan_val.setText(self._pan_text(pan_value))
 
     @property
     def volume(self): return self._volume
@@ -630,16 +678,19 @@ class MixerView(QWidget):
 
         # ── Top: Track list ────────────────────────────────────────────────
         tracks_header = QHBoxLayout()
-        tl = QLabel("Tracks")
+        tl = QLabel(tr("mixer.tracks.title"))
         tl.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9.75pt;")
         self._project_rate_label = QLabel(
-            f"Project: {self._project_sample_rate / 1000:g} kHz stereo"
+            tr(
+                "mixer.tracks.project_rate",
+                rate=self._project_sample_rate / 1000,
+            )
         )
         self._project_rate_label.setStyleSheet(
             f"color: {t['text_secondary']}; font-size: 7.5pt;"
         )
 
-        self._add_btn = QPushButton("+ Import Track")
+        self._add_btn = QPushButton(tr("mixer.actions.import_track"))
         self._add_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']}; color: {t['background']}; border: none;
@@ -663,23 +714,23 @@ class MixerView(QWidget):
         # Analyze, Preview, Apply and Revert are separate: analysis never
         # mutates a track, preview is gain-matched and reversible, and the
         # originals are always recoverable.
-        self._dynamic_eq_btn = QPushButton("Analyze Dynamic EQ")
+        self._dynamic_eq_btn = QPushButton(tr("mixer.actions.analyze_eq"))
         self._dynamic_eq_btn.setStyleSheet(eq_btn_style)
         self._dynamic_eq_btn.setEnabled(False)
         self._dynamic_eq_btn.clicked.connect(self._on_suggest_dynamic_eq)
 
-        self._dynamic_eq_preview_btn = QPushButton("Preview EQ")
+        self._dynamic_eq_preview_btn = QPushButton(tr("mixer.actions.preview_eq"))
         self._dynamic_eq_preview_btn.setStyleSheet(eq_btn_style)
         self._dynamic_eq_preview_btn.setCheckable(True)
         self._dynamic_eq_preview_btn.setEnabled(False)
         self._dynamic_eq_preview_btn.toggled.connect(self._on_preview_dynamic_eq)
 
-        self._dynamic_eq_apply_btn = QPushButton("Apply EQ")
+        self._dynamic_eq_apply_btn = QPushButton(tr("mixer.actions.apply_eq"))
         self._dynamic_eq_apply_btn.setStyleSheet(eq_btn_style)
         self._dynamic_eq_apply_btn.setEnabled(False)
         self._dynamic_eq_apply_btn.clicked.connect(self._on_apply_dynamic_eq)
 
-        self._dynamic_eq_revert_btn = QPushButton("Revert EQ")
+        self._dynamic_eq_revert_btn = QPushButton(tr("mixer.actions.revert_eq"))
         self._dynamic_eq_revert_btn.setStyleSheet(eq_btn_style)
         self._dynamic_eq_revert_btn.setEnabled(False)
         self._dynamic_eq_revert_btn.clicked.connect(self._on_revert_dynamic_eq)
@@ -705,9 +756,9 @@ class MixerView(QWidget):
         self._strips_layout.setContentsMargins(0, 0, 0, 0)
         self._strips_layout.setSpacing(4)
         self._tracks_empty = EmptyStateWidget(
-            "No mixer tracks yet",
-            "Import an audio track to start balancing levels, pan, and mastering.",
-            "Import track",
+            tr("mixer.empty.tracks_title"),
+            tr("mixer.empty.tracks_description"),
+            tr("mixer.actions.import_track_short"),
         )
         self._tracks_empty.action_requested.connect(self._add_btn.click)
         self._strips_layout.addWidget(self._tracks_empty)
@@ -726,13 +777,17 @@ class MixerView(QWidget):
         master_layout.setContentsMargins(12, 8, 12, 8)
         master_layout.setSpacing(12)
 
-        ml = QLabel("Mastering:")
+        ml = QLabel(tr("mixer.mastering.label"))
         ml.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt; border: none;")
         master_layout.addWidget(ml)
 
         self._preset_combo = QComboBox()
-        self._preset_combo.addItems(PRESETS.keys())
-        self._preset_combo.setCurrentText("Balanced")
+        for preset_name in PRESETS:
+            self._preset_combo.addItem(
+                tr(_MIXER_PRESET_LABEL_KEYS.get(preset_name, "mixer.presets.balanced")),
+                preset_name,
+            )
+        self._preset_combo.setCurrentIndex(self._preset_combo.findData("Balanced"))
         self._preset_combo.setStyleSheet(f"""
             QComboBox {{
                 background: {t['background']}; color: {t['text']};
@@ -743,12 +798,15 @@ class MixerView(QWidget):
         master_layout.addWidget(self._preset_combo)
 
         # Target LUFS
-        tlufs = QLabel("Target:")
+        tlufs = QLabel(tr("mixer.mastering.target_label"))
         tlufs.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._target_combo = QComboBox()
         for target in LUFS_TARGETS.values():
-            self._target_combo.addItem(target.label, target.key)
-        self._target_combo.addItem("Custom", "custom")
+            self._target_combo.addItem(
+                tr(_MIXER_TARGET_LABEL_KEYS.get(target.key, "mixer.targets.streaming")),
+                target.key,
+            )
+        self._target_combo.addItem(tr("mixer.targets.custom"), "custom")
         self._target_combo.setCurrentIndex(0)
         self._target_combo.setStyleSheet(f"""
             QComboBox {{
@@ -766,12 +824,12 @@ class MixerView(QWidget):
             self._target_combo.setCurrentIndex(target_index)
             self._target_combo.blockSignals(False)
 
-        ll = QLabel("LUFS:")
+        ll = QLabel(tr("mixer.mastering.lufs_label"))
         ll.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._lufs_spin = QDoubleSpinBox()
         self._lufs_spin.setRange(-30.0, -6.0)
         self._lufs_spin.setValue(-14.0)
-        self._lufs_spin.setSuffix(" LUFS")
+        self._lufs_spin.setSuffix(tr("mixer.mastering.lufs_suffix"))
         self._lufs_spin.setStyleSheet(f"""
             QDoubleSpinBox {{
                 background: {t['background']}; color: {t['text']};
@@ -792,21 +850,21 @@ class MixerView(QWidget):
                 padding: 3px 6px; font-size: 8.25pt;
             }}
         """
-        mid_label = QLabel("Mid:")
+        mid_label = QLabel(tr("mixer.mastering.mid_label"))
         mid_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._mid_gain_spin = QDoubleSpinBox()
         self._mid_gain_spin.setRange(-6.0, 6.0)
         self._mid_gain_spin.setSingleStep(0.5)
-        self._mid_gain_spin.setSuffix(" dB")
+        self._mid_gain_spin.setSuffix(tr("mixer.mastering.db_suffix"))
         self._mid_gain_spin.setMinimumWidth(78)
         self._mid_gain_spin.setStyleSheet(ms_style)
 
-        side_label = QLabel("Side:")
+        side_label = QLabel(tr("mixer.mastering.side_label"))
         side_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border: none;")
         self._side_gain_spin = QDoubleSpinBox()
         self._side_gain_spin.setRange(-6.0, 6.0)
         self._side_gain_spin.setSingleStep(0.5)
-        self._side_gain_spin.setSuffix(" dB")
+        self._side_gain_spin.setSuffix(tr("mixer.mastering.db_suffix"))
         self._side_gain_spin.setMinimumWidth(78)
         self._side_gain_spin.setStyleSheet(ms_style)
 
@@ -815,7 +873,7 @@ class MixerView(QWidget):
         master_layout.addWidget(side_label)
         master_layout.addWidget(self._side_gain_spin)
 
-        self._ref_btn = QPushButton("Load Ref")
+        self._ref_btn = QPushButton(tr("mixer.actions.load_reference_short"))
         self._ref_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['background']}; color: {t['text']};
@@ -827,13 +885,13 @@ class MixerView(QWidget):
         self._ref_btn.clicked.connect(self._on_load_reference)
         master_layout.addWidget(self._ref_btn)
 
-        self._master_btn = QPushButton("Master + Export")
+        self._master_btn = QPushButton(tr("mixer.actions.master_export"))
         self._master_btn.setProperty("class", "success")
         self._master_btn.setEnabled(False)
         self._master_btn.clicked.connect(self._on_master_export)
         master_layout.addWidget(self._master_btn)
 
-        self._dawproject_btn = QPushButton("Export DAWproject")
+        self._dawproject_btn = QPushButton(tr("mixer.actions.export_dawproject"))
         self._dawproject_btn.setEnabled(False)
         self._dawproject_btn.setStyleSheet(eq_btn_style)
         self._dawproject_btn.clicked.connect(self._on_export_dawproject)
@@ -842,7 +900,7 @@ class MixerView(QWidget):
         master_layout.addStretch()
 
         # LUFS meter display
-        self._reference_label = QLabel("Ref: none")
+        self._reference_label = QLabel(tr("mixer.reference.none"))
         self._reference_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt; border: none;")
         master_layout.addWidget(self._reference_label)
 
@@ -858,7 +916,7 @@ class MixerView(QWidget):
         layout.addWidget(self._master_waveform, 1)
 
         # Status
-        self._status = QLabel("Import audio tracks to begin mixing")
+        self._status = QLabel(tr("mixer.status.import_tracks"))
         self._status.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         layout.addWidget(self._status)
 
@@ -872,22 +930,22 @@ class MixerView(QWidget):
 
         install_accessibility(
             self,
-            "Mixer",
+            tr("mixer.accessibility.view_name"),
             named_controls=[
-                (self._add_btn, "Import track", "Opens file dialog to import an audio track."),
-                (self._dynamic_eq_btn, "Analyze dynamic EQ", "Analyzes tracks and suggests per-band dynamic EQ curves without changing them."),
-                (self._dynamic_eq_preview_btn, "Preview dynamic EQ", "Toggles a gain-matched preview of the suggested curves."),
-                (self._dynamic_eq_apply_btn, "Apply dynamic EQ", "Commits the suggested curves; originals stay recoverable."),
-                (self._dynamic_eq_revert_btn, "Revert dynamic EQ", "Restores the original audio for every affected track."),
-                (self._preset_combo, "Mastering preset", "Selects a mastering preset profile."),
-                (self._target_combo, "LUFS delivery target", "Selects a loudness target standard."),
-                (self._lufs_spin, "Target LUFS", "Sets the target loudness in LUFS."),
-                (self._mid_gain_spin, "Mid gain trim", "Adjusts mid-channel gain in dB."),
-                (self._side_gain_spin, "Side gain trim", "Adjusts side-channel gain in dB."),
-                (self._ref_btn, "Load reference track", "Loads a loudness reference track for mastering comparison."),
-                (self._master_btn, "Master and export", "Masters the mix and opens export dialog."),
-                (self._dawproject_btn, "Export DAWproject", "Exports the current mixer tracks as a validated DAWproject archive."),
-                (self._operation_progress.cancel_button, "Cancel mixer operation", "Cancels the running import, EQ, reference, mastering, or export operation."),
+                (self._add_btn, tr("mixer.accessibility.import_name"), tr("mixer.accessibility.import_description")),
+                (self._dynamic_eq_btn, tr("mixer.accessibility.analyze_name"), tr("mixer.accessibility.analyze_description")),
+                (self._dynamic_eq_preview_btn, tr("mixer.accessibility.preview_name"), tr("mixer.accessibility.preview_description")),
+                (self._dynamic_eq_apply_btn, tr("mixer.accessibility.apply_name"), tr("mixer.accessibility.apply_description")),
+                (self._dynamic_eq_revert_btn, tr("mixer.accessibility.revert_name"), tr("mixer.accessibility.revert_description")),
+                (self._preset_combo, tr("mixer.accessibility.preset_name"), tr("mixer.accessibility.preset_description")),
+                (self._target_combo, tr("mixer.accessibility.target_name"), tr("mixer.accessibility.target_description")),
+                (self._lufs_spin, tr("mixer.accessibility.lufs_name"), tr("mixer.accessibility.lufs_description")),
+                (self._mid_gain_spin, tr("mixer.accessibility.mid_name"), tr("mixer.accessibility.mid_description")),
+                (self._side_gain_spin, tr("mixer.accessibility.side_name"), tr("mixer.accessibility.side_description")),
+                (self._ref_btn, tr("mixer.accessibility.reference_name"), tr("mixer.accessibility.reference_description")),
+                (self._master_btn, tr("mixer.accessibility.master_name"), tr("mixer.accessibility.master_description")),
+                (self._dawproject_btn, tr("mixer.accessibility.dawproject_name"), tr("mixer.accessibility.dawproject_description")),
+                (self._operation_progress.cancel_button, tr("mixer.accessibility.cancel_name"), tr("mixer.accessibility.cancel_description")),
             ],
             tab_order=[
                 self._add_btn, self._dynamic_eq_btn,
@@ -919,13 +977,13 @@ class MixerView(QWidget):
     def _active_operation(self):
         """Return the current worker, label, and related action button."""
         operations = (
-            (self._master_worker, "Mastering", self._master_btn),
-            (self._export_worker, "Master export", self._master_btn),
-            (self._dawproject_worker, "DAWproject export", self._dawproject_btn),
-            (self._dynamic_eq_operation_worker, "Dynamic EQ", self._dynamic_eq_apply_btn),
-            (self._dynamic_eq_worker, "Dynamic EQ analysis", self._dynamic_eq_btn),
-            (self._import_worker, "Audio import", self._add_btn),
-            (self._reference_worker, "Reference load", self._ref_btn),
+            (self._master_worker, tr("mixer.operations.mastering"), self._master_btn),
+            (self._export_worker, tr("mixer.operations.master_export"), self._master_btn),
+            (self._dawproject_worker, tr("mixer.operations.dawproject_export"), self._dawproject_btn),
+            (self._dynamic_eq_operation_worker, tr("mixer.operations.dynamic_eq"), self._dynamic_eq_apply_btn),
+            (self._dynamic_eq_worker, tr("mixer.operations.dynamic_eq_analysis"), self._dynamic_eq_btn),
+            (self._import_worker, tr("mixer.operations.audio_import"), self._add_btn),
+            (self._reference_worker, tr("mixer.operations.reference_load"), self._ref_btn),
         )
         return next((item for item in operations if item[0] is not None), None)
 
@@ -941,14 +999,14 @@ class MixerView(QWidget):
         self._operation_progress.mark_cancelling()
         worker.cancel()
         button.setEnabled(False)
-        self._status.setText(f"Cancelling {label.lower()}...")
+        self._status.setText(tr("mixer.status.cancelling", operation=label))
 
     def _start_operation_progress(self, label: str):
         self._operation_progress.start(label, determinate=True)
 
     def _on_operation_progress(self, label: str, percent: int):
         self._operation_progress.set_progress(percent, label)
-        self._status.setText(f"{label}... {percent}%")
+        self._status.setText(tr("mixer.status.operation_progress", operation=label, percent=percent))
 
     def _on_operation_step(self, message: str):
         self._operation_progress.set_step(message)
@@ -1115,7 +1173,7 @@ class MixerView(QWidget):
     ):
         """Import and prepare an audio file on an inference worker."""
         if self._import_worker is not None and self._import_worker.isRunning():
-            self._status.setText("An audio import is already in progress")
+            self._status.setText(tr("mixer.status.import_already_running"))
             if on_complete:
                 on_complete(False, -1)
             return None
@@ -1127,11 +1185,13 @@ class MixerView(QWidget):
             path,
             self._project_sample_rate,
             job_kind="mixer_import",
-            job_label=f"Mixer import: {name}",
+            job_label=tr("mixer.jobs.import", name=name),
             job_inputs={"path": path, "project_sample_rate": self._project_sample_rate},
         )
         worker.progress.connect(
-            lambda pct, n=name: self._on_operation_progress(f"Importing {n}", pct)
+            lambda pct, n=name: self._on_operation_progress(
+                tr("mixer.operations.importing", name=n), pct
+            )
         )
         worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(
@@ -1147,8 +1207,9 @@ class MixerView(QWidget):
         )
         self._import_worker = worker
         self._add_btn.setEnabled(False)
-        self._status.setText(f"Importing {name}...")
-        self._start_operation_progress(f"Importing {name}")
+        operation = tr("mixer.operations.importing", name=name)
+        self._status.setText(tr("mixer.status.importing", name=name))
+        self._start_operation_progress(operation)
         worker.start()
         return worker
 
@@ -1171,13 +1232,18 @@ class MixerView(QWidget):
             )
             source_sr = int(payload["source_sample_rate"])
             self._status.setText(
-                f"Added track: {name} ({len(payload['audio']) / self._project_sample_rate:.1f}s, "
-                f"{source_sr / 1000:g}->{self._project_sample_rate / 1000:g} kHz)"
+                tr(
+                    "mixer.status.track_added",
+                    name=name,
+                    duration=len(payload["audio"]) / self._project_sample_rate,
+                    source_rate=source_sr / 1000,
+                    project_rate=self._project_sample_rate / 1000,
+                )
             )
             if on_complete:
                 on_complete(True, index)
         except Exception as exc:
-            self._report_error(f"Import error: {exc}")
+            self._report_error(tr("mixer.status.import_error", error=exc))
             if on_complete:
                 on_complete(False, -1)
         finally:
@@ -1192,7 +1258,7 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._import_worker = None
         self._finish_operation_progress()
-        self._report_error(f"Import error: {message}")
+        self._report_error(tr("mixer.status.import_error", error=message))
         if on_complete:
             on_complete(False, -1)
         self._update_mix_state()
@@ -1202,7 +1268,7 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._import_worker = None
         self._finish_operation_progress()
-        self._status.setText("Audio import cancelled")
+        self._status.setText(tr("mixer.status.import_cancelled"))
         if on_complete:
             on_complete(False, -1)
         self._update_mix_state()
@@ -1216,7 +1282,7 @@ class MixerView(QWidget):
             target_channels=2,
         )
         self._apply_reference_analysis(
-            name or os.path.basename(path) or "Reference",
+            name or os.path.basename(path) or tr("mixer.reference.default_name"),
             reference_audio,
             reference_sr,
             measure_lufs(reference_audio, reference_sr),
@@ -1237,7 +1303,7 @@ class MixerView(QWidget):
             audio,
             target_channels=2,
         )
-        self._reference_name = name or "Reference"
+        self._reference_name = name or tr("mixer.reference.default_name")
         if ref_lufs > -60:
             self._lufs_spin.setValue(max(self._lufs_spin.minimum(), min(self._lufs_spin.maximum(), ref_lufs)))
             self._set_target_combo_key("custom")
@@ -1246,15 +1312,27 @@ class MixerView(QWidget):
             low = min(point.lufs for point in profile)
             high = max(point.lufs for point in profile)
             self._reference_label.setText(
-                f"Ref: {self._reference_name} {ref_lufs:.1f} LUFS | ST {low:.1f}..{high:.1f}"
+                tr(
+                    "mixer.reference.with_profile",
+                    name=self._reference_name,
+                    lufs=ref_lufs,
+                    low=low,
+                    high=high,
+                )
             )
         else:
-            self._reference_label.setText(f"Ref: {self._reference_name} {ref_lufs:.1f} LUFS")
+            self._reference_label.setText(
+                tr(
+                    "mixer.reference.loaded",
+                    name=self._reference_name,
+                    lufs=ref_lufs,
+                )
+            )
 
     def _on_load_reference(self):
         path, _ = open_audio_file(
             self,
-            "Load Loudness Reference",
+            tr("mixer.dialogs.load_reference"),
             operation_kind="mixer_reference",
             dialog=QFileDialog,
         )
@@ -1263,19 +1341,19 @@ class MixerView(QWidget):
 
         name = os.path.splitext(os.path.basename(path))[0]
         if self._reference_worker is not None and self._reference_worker.isRunning():
-            self._status.setText("A reference load is already in progress")
+            self._status.setText(tr("mixer.status.reference_already_running"))
             return
         worker = InferenceWorker(
             _reference_track_task,
             str(path),
             name,
             job_kind="mixer_reference_import",
-            job_label=f"Mixer reference: {name}",
+            job_label=tr("mixer.jobs.reference", name=name),
             job_inputs={"path": str(path)},
         )
         worker.progress.connect(
             lambda pct, n=name: self._on_operation_progress(
-                f"Loading reference {n}", pct
+                tr("mixer.operations.loading_reference", name=n), pct
             )
         )
         worker.step_info.connect(self._on_operation_step)
@@ -1286,8 +1364,8 @@ class MixerView(QWidget):
         worker.cancelled.connect(self._on_reference_cancelled)
         self._reference_worker = worker
         self._ref_btn.setEnabled(False)
-        self._status.setText(f"Loading loudness reference: {name}...")
-        self._start_operation_progress(f"Loading reference {name}")
+        self._status.setText(tr("mixer.status.loading_reference", name=name))
+        self._start_operation_progress(tr("mixer.operations.loading_reference", name=name))
         worker.start()
 
     def _on_reference_finished(self, name: str, payload: dict):
@@ -1303,9 +1381,9 @@ class MixerView(QWidget):
                 payload["lufs"],
                 payload["profile"],
             )
-            self._status.setText(f"Loaded loudness reference: {name}")
+            self._status.setText(tr("mixer.status.reference_loaded", name=name))
         except Exception as exc:
-            self._report_error(f"Reference load error: {exc}")
+            self._report_error(tr("mixer.status.reference_error", error=exc))
         finally:
             self._ref_btn.setEnabled(True)
 
@@ -1315,7 +1393,7 @@ class MixerView(QWidget):
         self._reference_worker = None
         self._finish_operation_progress()
         self._ref_btn.setEnabled(True)
-        self._report_error(f"Reference load error: {message}")
+        self._report_error(tr("mixer.status.reference_error", error=message))
 
     def _on_reference_cancelled(self):
         worker = self._reference_worker
@@ -1323,12 +1401,12 @@ class MixerView(QWidget):
         self._reference_worker = None
         self._finish_operation_progress()
         self._ref_btn.setEnabled(True)
-        self._status.setText("Reference load cancelled")
+        self._status.setText(tr("mixer.status.reference_cancelled"))
 
     def _on_import_track(self):
         paths, _ = open_audio_files(
             self,
-            "Import Audio Tracks",
+            tr("mixer.dialogs.import_tracks"),
             operation_kind="mixer_audio_import",
             dialog=QFileDialog,
         )
@@ -1402,9 +1480,9 @@ class MixerView(QWidget):
             self._update_mix_state()
             if self.toast_mgr:
                 self.toast_mgr.info(
-                    "Mixer track removed.",
+                    tr("mixer.messages.track_removed"),
                     duration_ms=8000,
-                    action_label="Undo",
+                    action_label=tr("mixer.actions.undo"),
                     action_callback=lambda item=snapshot: self._restore_removed_track(item),
                 )
 
@@ -1433,7 +1511,7 @@ class MixerView(QWidget):
         }
         self._update_mix_state()
         if self.toast_mgr:
-            self.toast_mgr.success("Mixer track restored.")
+            self.toast_mgr.success(tr("mixer.messages.track_restored"))
 
     def _update_mix_state(self):
         """Update master button state."""
@@ -1453,10 +1531,10 @@ class MixerView(QWidget):
         import_busy = self._import_worker is not None and self._import_worker.isRunning()
         if master_busy:
             self._master_btn.setEnabled(True)
-            self._master_btn.setText("Cancel Mastering")
+            self._master_btn.setText(tr("mixer.actions.cancel_mastering"))
         elif export_busy:
             self._master_btn.setEnabled(True)
-            self._master_btn.setText("Cancel Export")
+            self._master_btn.setText(tr("mixer.actions.cancel_export"))
         else:
             self._master_btn.setEnabled(
                 has_tracks
@@ -1464,7 +1542,7 @@ class MixerView(QWidget):
                 and not operation_busy
                 and not import_busy
             )
-            self._master_btn.setText("Master + Export")
+            self._master_btn.setText(tr("mixer.actions.master_export"))
         self._dynamic_eq_btn.setEnabled(
             has_tracks
             and not dawproject_busy
@@ -1499,7 +1577,8 @@ class MixerView(QWidget):
             and not import_busy
         )
         self._dawproject_btn.setText(
-            "Cancel DAWproject export" if dawproject_busy else "Export DAWproject"
+            tr("mixer.actions.cancel_dawproject")
+            if dawproject_busy else tr("mixer.actions.export_dawproject")
         )
 
     def _settle_worker(self, worker: Optional[InferenceWorker]):
@@ -1526,7 +1605,9 @@ class MixerView(QWidget):
         self._syncing_lufs_target = True
         self._lufs_spin.setValue(target.lufs)
         self._syncing_lufs_target = False
-        self._status.setText(f"Target loudness: {target.label}")
+        self._status.setText(
+            tr("mixer.status.target_loudness", target=self._target_combo.currentText())
+        )
 
     def _on_lufs_spin_changed(self, value: float):
         if self._syncing_lufs_target:
@@ -1545,12 +1626,12 @@ class MixerView(QWidget):
             self._cancel_active_operation()
             return
         if not self._tracks:
-            self._status.setText("Import audio tracks before exporting a DAWproject")
+            self._status.setText(tr("mixer.status.import_before_dawproject"))
             return
 
         path, selected_filter = save_file(
             self,
-            "Export DAWproject",
+            tr("mixer.dialogs.export_dawproject"),
             "slunder-mix.dawproject",
             "DAWproject (*.dawproject);;All Files (*)",
             "mixer_dawproject_export",
@@ -1576,19 +1657,21 @@ class MixerView(QWidget):
             snapshots,
             path,
             job_kind="mixer_dawproject_export",
-            job_label="Mixer DAWproject export",
+            job_label=tr("mixer.jobs.dawproject_export"),
             job_inputs={"track_count": len(snapshots), "output_path": path},
         )
         worker.progress.connect(
-            lambda percent: self._on_operation_progress("Exporting DAWproject", percent)
+            lambda percent: self._on_operation_progress(
+                tr("mixer.operations.exporting_dawproject"), percent
+            )
         )
         worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(self._on_export_dawproject_finished)
         worker.error.connect(self._on_export_dawproject_error)
         worker.cancelled.connect(self._on_export_dawproject_cancelled)
         self._dawproject_worker = worker
-        self._start_operation_progress("Exporting DAWproject")
-        self._status.setText("Exporting DAWproject...")
+        self._start_operation_progress(tr("mixer.operations.exporting_dawproject"))
+        self._status.setText(tr("mixer.status.exporting_dawproject"))
         self._update_mix_state()
         worker.start()
 
@@ -1598,10 +1681,15 @@ class MixerView(QWidget):
         self._dawproject_worker = None
         self._finish_operation_progress()
         self._status.setText(
-            f"DAWproject validated: {result.get('track_count', 0)} audio tracks"
+            tr(
+                "mixer.status.dawproject_validated",
+                count=result.get("track_count", 0),
+            )
         )
         if self.toast_mgr:
-            self.toast_mgr.success(f"DAWproject exported: {result.get('path', '')}")
+            self.toast_mgr.success(
+                tr("mixer.messages.dawproject_exported", path=result.get("path", ""))
+            )
         self._update_mix_state()
 
     def _on_export_dawproject_error(self, message: str):
@@ -1609,7 +1697,7 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._dawproject_worker = None
         self._finish_operation_progress()
-        self._report_error(f"DAWproject export error: {message}")
+        self._report_error(tr("mixer.status.dawproject_error", error=message))
         self._update_mix_state()
 
     def _on_export_dawproject_cancelled(self):
@@ -1617,13 +1705,13 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._dawproject_worker = None
         self._finish_operation_progress()
-        self._status.setText("DAWproject export cancelled")
+        self._status.setText(tr("mixer.status.dawproject_cancelled"))
         self._update_mix_state()
 
     def _on_suggest_dynamic_eq(self):
         """Analyze only. Never mutates a track."""
         if not self._tracks:
-            self._status.setText("Import audio tracks before dynamic EQ")
+            self._status.setText(tr("mixer.status.import_before_eq"))
             return
 
         if self._dynamic_eq_worker is not None and self._dynamic_eq_worker.isRunning():
@@ -1636,13 +1724,13 @@ class MixerView(QWidget):
             for idx, track in enumerate(self._tracks)
         ]
         self._dynamic_eq_suggestions = {}
-        self._status.setText("Analyzing dynamic EQ curves...")
+        self._status.setText(tr("mixer.status.analyzing_eq"))
 
         worker = InferenceWorker(
             _dynamic_eq_analysis_task,
             snapshots,
             job_kind="mixer_dynamic_eq_analysis",
-            job_label="Mixer dynamic EQ analysis",
+            job_label=tr("mixer.jobs.dynamic_eq_analysis"),
             job_inputs={"track_count": len(snapshots)},
         )
         worker.progress.connect(
@@ -1660,13 +1748,13 @@ class MixerView(QWidget):
             lambda t=token: self._on_dynamic_eq_analysis_cancelled(t)
         )
         self._dynamic_eq_worker = worker
-        self._start_operation_progress("Dynamic EQ analysis")
+        self._start_operation_progress(tr("mixer.operations.dynamic_eq_analysis"))
         self._update_mix_state()
         worker.start()
 
     def _on_dynamic_eq_analysis_progress(self, token: int, percent: int):
         if token == self._dynamic_eq_analysis_token:
-            self._on_operation_progress("Dynamic EQ analysis", percent)
+            self._on_operation_progress(tr("mixer.operations.dynamic_eq_analysis"), percent)
 
     def _on_dynamic_eq_analysis_finished(self, token: int, suggestions: dict):
         worker = self._dynamic_eq_worker
@@ -1684,14 +1772,32 @@ class MixerView(QWidget):
                 continue
             if suggestion.bands:
                 moves = ", ".join(
-                    f"{band.frequency_hz:.0f}Hz {band.gain_db:+.1f}dB"
+                    tr(
+                        "mixer.eq.band_move",
+                        frequency=band.frequency_hz,
+                        gain=band.gain_db,
+                    )
                     for band in suggestion.bands[:3]
                 )
-                summaries.append(f"{self._tracks[idx]['name']}: {moves}")
+                summaries.append(
+                    tr(
+                        "mixer.eq.track_summary",
+                        name=self._tracks[idx]["name"],
+                        moves=moves,
+                    )
+                )
             else:
-                summaries.append(f"{self._tracks[idx]['name']}: balanced")
+                summaries.append(
+                    tr(
+                        "mixer.eq.track_balanced",
+                        name=self._tracks[idx]["name"],
+                    )
+                )
         self._status.setText(
-            "Dynamic EQ suggested (not applied) - " + " | ".join(summaries[:3])
+            tr(
+                "mixer.eq.suggested",
+                summaries=" | ".join(summaries[:3]),
+            )
         )
         self._update_mix_state()
 
@@ -1702,7 +1808,7 @@ class MixerView(QWidget):
         self._finish_operation_progress()
         if token == self._dynamic_eq_analysis_token:
             self._dynamic_eq_suggestions = {}
-            self._report_error(f"Dynamic EQ analysis error: {message}")
+            self._report_error(tr("mixer.status.eq_analysis_error", error=message))
         self._update_mix_state()
 
     def _on_dynamic_eq_analysis_cancelled(self, token: int):
@@ -1711,7 +1817,7 @@ class MixerView(QWidget):
         self._dynamic_eq_worker = None
         self._finish_operation_progress()
         if token == self._dynamic_eq_analysis_token:
-            self._status.setText("Dynamic EQ analysis cancelled")
+            self._status.setText(tr("mixer.status.eq_analysis_cancelled"))
         self._update_mix_state()
 
     def _dynamic_eq_processed(self, idx: int) -> Optional[np.ndarray]:
@@ -1741,20 +1847,20 @@ class MixerView(QWidget):
         if enabled:
             if not self._dynamic_eq_suggestions:
                 self._dynamic_eq_preview_btn.setChecked(False)
-                self._status.setText("Analyze dynamic EQ before previewing")
+                self._status.setText(tr("mixer.status.eq_analyze_before_preview"))
                 return
             self._start_dynamic_eq_operation("preview")
         else:
             self._invalidate_dynamic_eq_operation()
             self._restore_dynamic_eq_originals()
             self._dynamic_eq_previewing = False
-            self._status.setText("Preview off - original audio restored")
+            self._status.setText(tr("mixer.status.eq_preview_off"))
         self._update_mix_state()
 
     def _on_apply_dynamic_eq(self):
         """Commit the suggested curves. Originals stay recoverable via Revert."""
         if not self._dynamic_eq_suggestions:
-            self._status.setText("Analyze dynamic EQ before applying")
+            self._status.setText(tr("mixer.status.eq_analyze_before_apply"))
             return
         self._start_dynamic_eq_operation("apply")
         self._update_mix_state()
@@ -1779,14 +1885,14 @@ class MixerView(QWidget):
         self._dynamic_eq_operation_token += 1
         token = self._dynamic_eq_operation_token
         self._dynamic_eq_operation_mode = mode
-        label = "preview" if mode == "preview" else "apply"
-        self._status.setText(f"Dynamic EQ {label} in progress...")
+        label = tr("mixer.eq.preview") if mode == "preview" else tr("mixer.eq.apply")
+        self._status.setText(tr("mixer.status.eq_in_progress", mode=label))
         worker = InferenceWorker(
             _dynamic_eq_operation_task,
             snapshots,
             self.DYNAMIC_EQ_STRENGTH,
             job_kind="mixer_dynamic_eq",
-            job_label=f"Mixer dynamic EQ {label}",
+            job_label=tr("mixer.jobs.dynamic_eq", mode=label),
             job_inputs={"track_count": len(snapshots), "mode": mode},
         )
         worker.progress.connect(
@@ -1804,7 +1910,7 @@ class MixerView(QWidget):
         )
         self._dynamic_eq_operation_worker = worker
         self._start_operation_progress(
-            f"Dynamic EQ {'preview' if mode == 'preview' else 'apply'}"
+            tr("mixer.operations.dynamic_eq_mode", mode=label)
         )
         self._update_mix_state()
         worker.start()
@@ -1812,7 +1918,10 @@ class MixerView(QWidget):
     def _on_dynamic_eq_operation_progress(self, token: int, mode: str, percent: int):
         if token == self._dynamic_eq_operation_token:
             self._on_operation_progress(
-                f"Dynamic EQ {'preview' if mode == 'preview' else 'apply'}",
+                tr(
+                    "mixer.operations.dynamic_eq_mode",
+                    mode=tr("mixer.eq.preview") if mode == "preview" else tr("mixer.eq.apply"),
+                ),
                 percent,
             )
 
@@ -1839,8 +1948,8 @@ class MixerView(QWidget):
                 self._dynamic_eq_preview_btn.setChecked(False)
                 self._dynamic_eq_preview_btn.blockSignals(False)
             self._status.setText(
-                f"Previewing gain-matched dynamic EQ on {applied} track(s)"
-                if applied else "No EQ moves were suggested"
+                tr("mixer.status.eq_previewing", count=applied)
+                if applied else tr("mixer.status.eq_no_moves")
             )
         else:
             self._dynamic_eq_applied = applied > 0
@@ -1849,8 +1958,8 @@ class MixerView(QWidget):
             self._dynamic_eq_preview_btn.setChecked(False)
             self._dynamic_eq_preview_btn.blockSignals(False)
             self._status.setText(
-                f"Dynamic EQ applied to {applied} track(s) - Revert restores the originals"
-                if applied else "No EQ moves were suggested"
+                tr("mixer.status.eq_applied", count=applied)
+                if applied else tr("mixer.status.eq_no_moves")
             )
         self._update_mix_state()
 
@@ -1860,7 +1969,7 @@ class MixerView(QWidget):
         self._dynamic_eq_operation_worker = None
         self._finish_operation_progress()
         if token == self._dynamic_eq_operation_token:
-            self._report_error(f"Dynamic EQ error: {message}")
+            self._report_error(tr("mixer.status.eq_error", error=message))
         self._update_mix_state()
 
     def _on_dynamic_eq_operation_cancelled(self, token: int):
@@ -1869,7 +1978,7 @@ class MixerView(QWidget):
         self._dynamic_eq_operation_worker = None
         self._finish_operation_progress()
         if token == self._dynamic_eq_operation_token:
-            self._status.setText("Dynamic EQ cancelled")
+            self._status.setText(tr("mixer.status.eq_cancelled"))
         self._update_mix_state()
 
     def _invalidate_dynamic_eq_operation(self):
@@ -1888,8 +1997,8 @@ class MixerView(QWidget):
         self._dynamic_eq_preview_btn.setChecked(False)
         self._dynamic_eq_preview_btn.blockSignals(False)
         self._status.setText(
-            f"Reverted dynamic EQ on {restored} track(s)" if restored
-            else "Nothing to revert"
+            tr("mixer.status.eq_reverted", count=restored) if restored
+            else tr("mixer.status.eq_nothing_to_revert")
         )
         self._update_mix_state()
 
@@ -1949,7 +2058,7 @@ class MixerView(QWidget):
             self._cancel_active_operation()
             return
         if not self._tracks:
-            self._status.setText("No audio to master")
+            self._status.setText(tr("mixer.status.no_audio_to_master"))
             return
 
         track_snapshots = [
@@ -1967,7 +2076,7 @@ class MixerView(QWidget):
         sr = self._project_sample_rate
 
         # Get preset
-        preset_name = self._preset_combo.currentText()
+        preset_name = self._preset_combo.currentData() or "Balanced"
         preset = replace(PRESETS.get(preset_name, PRESETS["Balanced"]))
         preset.auto_eq = bool(self._settings.get("production.mastering_auto_eq", True))
         preset.auto_compress = bool(
@@ -1998,7 +2107,7 @@ class MixerView(QWidget):
             reference_audio,
             reference_sr,
             job_kind="mixer_mastering",
-            job_label="Mixer mastering",
+            job_label=tr("mixer.jobs.mastering"),
             job_inputs={
                 "preset": preset_name,
                 "sample_rate": sr,
@@ -2014,17 +2123,18 @@ class MixerView(QWidget):
         worker.error.connect(self._on_master_error)
         worker.cancelled.connect(self._on_master_cancelled)
         self._master_worker = worker
-        self._status.setText("Mastering...")
-        self._start_operation_progress("Mastering")
+        self._status.setText(tr("mixer.status.mastering"))
+        self._start_operation_progress(tr("mixer.operations.mastering"))
         self._update_mix_state()
         worker.start()
 
     def _on_master_progress(self, percent: int):
-        self._on_operation_progress("Mastering", percent)
+        self._on_operation_progress(tr("mixer.operations.mastering"), percent)
 
     def _on_master_step(self, message: str):
-        self._operation_progress.set_step(f"Mastering: {message}")
-        self._status.setText(f"Mastering: {message}")
+        step = tr("mixer.status.mastering_step", message=message)
+        self._operation_progress.set_step(step)
+        self._status.setText(step)
 
     def _on_master_finished(self, payload):
         worker = self._master_worker
@@ -2039,12 +2149,18 @@ class MixerView(QWidget):
 
             if result.error:
                 self._last_loudness_match = None
-                self._report_error(f"Mastering error: {result.error}")
+                self._report_error(tr("mixer.status.mastering_error", error=result.error))
                 return
 
             self._last_loudness_match = match
             sr = self._master_sample_rate
             preset_name = self._master_preset_name
+            preset_display = tr(
+                _MIXER_PRESET_LABEL_KEYS.get(
+                    preset_name,
+                    "mixer.presets.balanced",
+                )
+            )
 
             # Show in waveform
             if result.audio is not None:
@@ -2053,24 +2169,30 @@ class MixerView(QWidget):
 
             if self._last_loudness_match:
                 self._lufs_label.setText(
-                    f"EBU Mode — Integrated: {result.output_lufs:.1f} LUFS | "
-                    f"Ref: {match.reference_lufs:.1f} | "
-                    f"Short-term (3 s) avg delta {match.average_short_term_delta_db:.1f} dB | "
-                    f"Momentary (400 ms) max {result.momentary_max_lufs:.1f} LUFS | "
-                    f"True peak {result.true_peak_dbtp:.2f} dBTP"
+                    tr(
+                        "mixer.loudness.matched",
+                        integrated=result.output_lufs,
+                        reference=match.reference_lufs,
+                        delta=match.average_short_term_delta_db,
+                        momentary=result.momentary_max_lufs,
+                        true_peak=result.true_peak_dbtp,
+                    )
                 )
             else:
                 self._lufs_label.setText(
-                    f"EBU Mode — Integrated: {result.output_lufs:.1f} LUFS | "
-                    f"Short-term (3 s) max: {result.short_term_max_lufs:.1f} LUFS | "
-                    f"Momentary (400 ms) max: {result.momentary_max_lufs:.1f} LUFS | "
-                    f"LRA: {result.output_lra_lu:.1f} LU | "
-                    f"True peak: {result.true_peak_dbtp:.2f} dBTP"
+                    tr(
+                        "mixer.loudness.standard",
+                        integrated=result.output_lufs,
+                        short_term=result.short_term_max_lufs,
+                        momentary=result.momentary_max_lufs,
+                        lra=result.output_lra_lu,
+                        true_peak=result.true_peak_dbtp,
+                    )
                 )
 
             path, selected_filter = save_audio_file(
                 self,
-                "Export Mastered Audio",
+                tr("mixer.dialogs.export_mastered_audio"),
                 "master.wav",
                 operation_kind="mixer_master_export",
                 dialog=QFileDialog,
@@ -2100,19 +2222,26 @@ class MixerView(QWidget):
                 return
             elif self._last_loudness_match:
                 self._status.setText(
-                    f"Mastered ({preset_name}) matched to {self._reference_name} | "
-                    f"{result.output_lufs:.1f} LUFS | "
-                    f"ST avg delta {match.average_short_term_delta_db:.1f} dB | "
-                    f"{result.processing_time:.1f}s"
+                    tr(
+                        "mixer.status.mastered_matched",
+                        preset=preset_display,
+                        reference=self._reference_name,
+                        output_lufs=result.output_lufs,
+                        delta=match.average_short_term_delta_db,
+                        seconds=result.processing_time,
+                    )
                 )
             else:
                 self._status.setText(
-                    f"Mastered ({preset_name}) | "
-                    f"{result.output_lufs:.1f} LUFS | "
-                    f"{result.processing_time:.1f}s"
+                    tr(
+                        "mixer.status.mastered",
+                        preset=preset_display,
+                        output_lufs=result.output_lufs,
+                        seconds=result.processing_time,
+                    )
                 )
         except Exception as exc:
-            self._report_error(f"Error: {exc}")
+            self._report_error(tr("mixer.status.error", error=exc))
         finally:
             self._update_mix_state()
 
@@ -2137,14 +2266,16 @@ class MixerView(QWidget):
             provenance_extra={"mastering": mastering_metadata},
         )
         worker.progress.connect(
-            lambda pct: self._on_operation_progress("Exporting master", pct)
+            lambda pct: self._on_operation_progress(
+                tr("mixer.operations.exporting_master"), pct
+            )
         )
         worker.step_info.connect(self._on_operation_step)
         worker.finished.connect(self._on_master_export_finished)
         worker.error.connect(self._on_master_export_error)
         worker.cancelled.connect(self._on_master_export_cancelled)
         self._export_worker = worker
-        self._start_operation_progress("Exporting master")
+        self._start_operation_progress(tr("mixer.operations.exporting_master"))
         self._update_mix_state()
         worker.start()
 
@@ -2153,7 +2284,7 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._export_worker = None
         self._finish_operation_progress()
-        self._status.setText(f"Exported master: {written}")
+        self._status.setText(tr("mixer.status.master_exported", path=written))
         self._update_mix_state()
 
     def _on_master_export_error(self, message: str):
@@ -2161,7 +2292,7 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._export_worker = None
         self._finish_operation_progress()
-        self._report_error(f"Master export error: {message}")
+        self._report_error(tr("mixer.status.master_export_error", error=message))
         self._update_mix_state()
 
     def _on_master_export_cancelled(self):
@@ -2169,7 +2300,7 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._export_worker = None
         self._finish_operation_progress()
-        self._status.setText("Master export cancelled")
+        self._status.setText(tr("mixer.status.master_export_cancelled"))
         self._update_mix_state()
 
     def _on_master_error(self, message: str):
@@ -2177,7 +2308,7 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._master_worker = None
         self._finish_operation_progress()
-        self._report_error(f"Mastering error: {message}")
+        self._report_error(tr("mixer.status.mastering_error", error=message))
         self._update_mix_state()
 
     def _on_master_cancelled(self):
@@ -2185,5 +2316,5 @@ class MixerView(QWidget):
         self._settle_worker(worker)
         self._master_worker = None
         self._finish_operation_progress()
-        self._status.setText("Mastering cancelled")
+        self._status.setText(tr("mixer.status.mastering_cancelled"))
         self._update_mix_state()
