@@ -76,6 +76,48 @@
     "rerender_import_failed": "تعذر استيراد الملف المعاد إنشاؤه: {error}",
     "rerender_project_failed": "تعذر إضافة الملف المعاد إنشاؤه إلى المشروع.",
     "lyrics_cancel_description": "يلغي مهمة الكلمات الحالية.",
+    "waveform": {
+      "accessibility_name": "موجة الصوت",
+      "accessibility_description": "عرض الموجة والمخطط الطيفي. يحرك Left وRight ثانية واحدة، وتحرك Page Up وPage Down عشر ثوانٍ، وينتقل Home وEnd إلى البداية أو النهاية، ويبدل M بين الموجة والمخطط الطيفي.",
+      "unavailable": "عرض الموجة غير متاح — أعد التشغيل للمحاولة",
+      "waveform": "موجة",
+      "spectrogram": "مخطط طيفي",
+      "empty_title": "لم يتم تحميل صوت",
+      "empty_description": "ولّد صوتًا أو حمّله لمعاينة الموجة والمخطط الطيفي.",
+      "empty_action": "تحميل أو توليد صوت",
+      "error": "خطأ: {error}",
+      "loading_file": "جارٍ تحميل {name}... 0%",
+      "loading": "جارٍ تحميل الصوت... {percent}%",
+      "computing": "جارٍ حساب المخطط الطيفي... {percent}%",
+      "computing_start": "جارٍ حساب المخطط الطيفي... 0%",
+      "spectrogram_unavailable": "المخطط الطيفي غير متاح: {error}",
+      "spectrogram_cancelled": "أُلغي حساب المخطط الطيفي",
+      "audio_cancelled": "أُلغي تحميل الصوت",
+      "selected": "تم تحديد {start:.2f}ث–{end:.2f}ث",
+      "accessible_no_audio": "الموجة، لم يتم تحميل صوت",
+      "accessible_state": "عرض {mode}، الموضع {position:.1f} من {duration:.1f} ثانية ({percent}%)",
+      "accessible_selection": "، المنطقة المحددة من {start:.1f} إلى {end:.1f} ثانية"
+    },
+    "empty": {
+      "no_matches": "لا توجد مطابقات",
+      "clear_filters": "مسح عوامل التصفية"
+    },
+    "operation": {
+      "cancel": "إلغاء",
+      "cancelling": "جارٍ الإلغاء...",
+      "accessibility": {
+        "name": "تقدم العملية",
+        "description": "يعرض تقدم العملية الحالية ويمكنه طلب الإلغاء.",
+        "status_name": "حالة العملية",
+        "progress_name": "نسبة تقدم العملية",
+        "progress_description": "نسبة التقدم أو مؤشر متحرك عندما تكون المدة الكلية غير معروفة.",
+        "cancel_name": "إلغاء العملية",
+        "cancel_description": "يطلب إلغاء العملية الجارية."
+      }
+    },
+    "accessibility": {
+      "empty_state_action": "إجراء الحالة الفارغة"
+    },
     "readiness": {
       "install_packages": "ثبّت {packages} ثم فعّل {model} من مركز النماذج.",
       "wait": "انتظر حتى يصبح {model} جاهزاً.",
@@ -97,6 +139,96 @@
     "gpu_accessible_description": "التوافر الحالي للـ GPU واسم الجهاز.",
     "vram_accessible_name": "استخدام VRAM",
     "vram_accessible_description": "استخدام ذاكرة GPU الحالية."
+  },
+  "shell": {
+    "transport": {
+      "global_output": "المخرج العام",
+      "no_audio": "لم يتم تحميل صوت",
+      "volume": "الصوت",
+      "accessibility": {
+        "name": "النقل العام",
+        "play_name": "تشغيل الصوت أو إيقافه مؤقتًا",
+        "play_description": "يبدل تشغيل الصوت المحمل.",
+        "stop_name": "إيقاف الصوت",
+        "stop_description": "يوقف التشغيل ويعيده إلى البداية.",
+        "position_name": "موضع الصوت",
+        "position_description": "يتنقل عبر الصوت المحمل.",
+        "loop_name": "تكرار التشغيل",
+        "loop_description": "يبدل تكرار الصوت الحالي.",
+        "volume_name": "مستوى تشغيل الصوت",
+        "volume_description": "يضبط مستوى تشغيل الصوت العام."
+      }
+    },
+    "command": {
+      "active_project": "المشروع النشط",
+      "no_project": "لا يوجد مشروع مفتوح",
+      "autosave_interval": "الفاصل التلقائي · {seconds}ث",
+      "notifications": "الإشعارات",
+      "checking_compute": "جارٍ فحص الحوسبة",
+      "offline_mode": "●  الوضع غير المتصل",
+      "local_processing": "●  المعالجة المحلية",
+      "notification_count": "الإشعارات ({count})",
+      "autosave_enabled": "الفاصل التلقائي  ·  {seconds}ث",
+      "autosave_disabled": "الحفظ التلقائي  ·  متوقف"
+    },
+    "sidebar": {
+      "brand": "استوديو سلندر",
+      "local_engine": "●  المحرك المحلي",
+      "private_by_default": "خاص افتراضيًا"
+    },
+    "accessibility": {
+      "status_name": "حالة التطبيق",
+      "status_description": "تعرض حالة GPU وVRAM والنموذج النشط ومخرج الصوت.",
+      "command_bar_name": "شريط أوامر مساحة العمل",
+      "command_bar_description": "يعرض المشروع النشط وفاصل الحفظ التلقائي وحالة الحوسبة والخصوصية.",
+      "compute_name": "حالة الحوسبة",
+      "compute_description": "توضح ما إذا كان التوليد يستخدم GPU أو CPU.",
+      "privacy_name": "حالة خصوصية المعالجة",
+      "privacy_description": "تعرض المعالجة المحلية أو الوضع غير المتصل الصارم.",
+      "last_notification_name": "آخر إشعار",
+      "last_notification_description": "تحافظ على قابلية قراءة آخر إشعار بعد اختفاء التنبيه.",
+      "notification_history_name": "سجل الإشعارات",
+      "notification_history_description": "تفتح الإشعارات والأخطاء المحفوظة للتطبيق."
+    },
+    "status": {
+      "gpu_unavailable": "⚠ حالة GPU غير متاحة",
+      "hardware_unavailable": "●  حالة العتاد غير متاحة",
+      "vram": "VRAM: ‏{used:.1f} / ‏{total:.1f} جيجابايت ({percent:.0f}%)",
+      "compute_gpu": "●  {name}  ·  ‏{used:.1f}/{total:.1f} جيجابايت",
+      "active_model": "النموذج النشط: {name}",
+      "no_model": "لم يتم تحميل نموذج",
+      "no_gpu": "⚠ لا يوجد GPU",
+      "cpu_mode": "●  وضع CPU",
+      "cuda_cpu": "CUDA غير متاح — التشغيل على CPU",
+      "notification_prefix": "{type}: {message}",
+      "notification_types": {
+        "info": "معلومة",
+        "warning": "تحذير",
+        "error": "خطأ"
+      }
+    },
+    "dialogs": {
+      "all_files": "كل الملفات (*)",
+      "audio_files": "ملفات صوتية",
+      "midi_files": "ملفات MIDI",
+      "delivery_format": "{format} (*.{extension})"
+    },
+    "drop": {
+      "midi_detected": "تم اكتشاف ملف MIDI — جارٍ تحميله في استوديو MIDI",
+      "midi_failed": "فشل تحميل ملف MIDI",
+      "unsupported": "نوع ملف غير مدعوم: .{extension}"
+    },
+    "osc": {
+      "listen_error": "تعذر على تحكم OSC الاستماع إلى UDP ‏{port}: {error}",
+      "listening": "تحكم OSC يستمع على {host}:{port}",
+      "stopped": "توقف تحكم OSC: {message}",
+      "ping": "تم استلام اختبار اتصال تحكم OSC"
+    },
+    "autosave": {
+      "failed": "فشل الحفظ التلقائي: {reason}",
+      "saved": "تم الحفظ التلقائي v{version} — {description}",
+      "close_failed": "تعذر حفظ المشروع المفتوح؛ ما زال متسخًا. أصلح مشكلة التخزين قبل الإغلاق."
+    }
   },
   "settings": {
     "title": "الإعدادات",
@@ -1536,6 +1668,53 @@
     }
   },
   "mixer": {
+    "stem": {
+      "title": "خلاط المسارات المنفصلة",
+      "naming_label": "الأسماء",
+      "naming_tooltip": "اختر صيغة اسم الملف المستخدمة لتصدير المسارات المنفصلة.",
+      "mute_short": "كتم",
+      "solo_short": "منفرد",
+      "play": "تشغيل",
+      "volume_short": "الصوت",
+      "pan_short": "التوزيع",
+      "pan_center": "وسط",
+      "export_stems": "تصدير المسارات",
+      "cancel_export": "إلغاء تصدير المسارات",
+      "export_remix": "تصدير الريمكس",
+      "empty_title": "لم يتم فصل مسارات بعد",
+      "empty_description": "اختر ملفًا صوتيًا أعلاه وافصله لمزج مسارات الغناء والطبول والباس وغيرها.",
+      "empty_action": "اختيار صوت",
+      "templates": {
+        "generic": "عام",
+        "ableton_live": "Ableton Live",
+        "bitwig": "Bitwig Studio",
+        "cubase": "Cubase",
+        "logic_pro": "Logic Pro",
+        "pro_tools": "Pro Tools",
+        "studio_one": "Studio One",
+        "fl_studio": "FL Studio"
+      },
+      "accessibility": {
+        "name": "خلاط المسارات المنفصلة",
+        "stem_name": "مسار {stem}",
+        "mute_name": "كتم {stem}",
+        "mute_description": "يكتم هذا المسار في الريمكس.",
+        "solo_name": "عزل {stem}",
+        "solo_description": "يعزل هذا المسار في الريمكس.",
+        "play_name": "تشغيل {stem}",
+        "play_description": "يشغل معاينة هذا المسار.",
+        "volume_name": "صوت {stem}",
+        "volume_description": "يضبط صوت هذا المسار.",
+        "pan_name": "توزيع {stem}",
+        "pan_description": "يضع هذا المسار في المجال المجسم.",
+        "template_name": "قالب تسمية تصدير المسارات",
+        "template_description": "يحدد صيغة اسم ملف DAW للمسارات المنفصلة.",
+        "export_name": "تصدير المسارات المنفصلة",
+        "export_description": "يصدر كل مسار محمل باستخدام قالب التسمية المحدد.",
+        "remix_name": "تصدير ريمكس المسارات",
+        "remix_description": "يصدر مزيجًا من المسارات المحملة."
+      }
+    },
     "tracks": {
       "title": "المسارات",
       "project_rate": "المشروع: ‏{rate:g} كيلوهرتز ستيريو"

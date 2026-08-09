@@ -106,6 +106,48 @@
     "rerender_import_failed": "The re-rendered file could not be imported: {error}",
     "rerender_project_failed": "The re-rendered file could not be added to the project.",
     "lyrics_cancel_description": "Cancels the current lyrics task.",
+    "waveform": {
+      "accessibility_name": "Audio waveform",
+      "accessibility_description": "Waveform and spectrogram view. Left and Right seek one second, Page Up and Page Down seek ten seconds, Home and End jump to the start or end, M switches between waveform and spectrogram.",
+      "unavailable": "Waveform display unavailable — restart to retry",
+      "waveform": "Waveform",
+      "spectrogram": "Spectrogram",
+      "empty_title": "No audio loaded",
+      "empty_description": "Generate or load audio to preview the waveform and spectrogram.",
+      "empty_action": "Load or generate audio",
+      "error": "Error: {error}",
+      "loading_file": "Loading {name}... 0%",
+      "loading": "Loading audio... {percent}%",
+      "computing": "Computing spectrogram... {percent}%",
+      "computing_start": "Computing spectrogram... 0%",
+      "spectrogram_unavailable": "Spectrogram unavailable: {error}",
+      "spectrogram_cancelled": "Spectrogram computation cancelled",
+      "audio_cancelled": "Audio loading cancelled",
+      "selected": "Selected {start:.2f}s–{end:.2f}s",
+      "accessible_no_audio": "Waveform, no audio loaded",
+      "accessible_state": "{mode} view, position {position:.1f} of {duration:.1f} seconds ({percent}%)",
+      "accessible_selection": ", selected region {start:.1f} to {end:.1f} seconds"
+    },
+    "empty": {
+      "no_matches": "No matches",
+      "clear_filters": "Clear filters"
+    },
+    "operation": {
+      "cancel": "Cancel",
+      "cancelling": "Cancelling...",
+      "accessibility": {
+        "name": "Operation progress",
+        "description": "Shows progress for the current operation and can request cancellation.",
+        "status_name": "Operation status",
+        "progress_name": "Operation progress percentage",
+        "progress_description": "Progress percentage, or an animated indicator while the total is unknown.",
+        "cancel_name": "Cancel operation",
+        "cancel_description": "Requests cancellation of the running operation."
+      }
+    },
+    "accessibility": {
+      "empty_state_action": "Empty state action"
+    },
     "readiness": {
       "install_packages": "Install {packages}, then activate {model} in Model Hub.",
       "wait": "Wait for {model} to finish becoming ready.",
@@ -132,7 +174,20 @@
     "transport": {
       "global_output": "GLOBAL OUTPUT",
       "no_audio": "No audio loaded",
-      "volume": "VOL"
+      "volume": "VOL",
+      "accessibility": {
+        "name": "Global transport",
+        "play_name": "Play or pause audio",
+        "play_description": "Toggles playback for the loaded audio.",
+        "stop_name": "Stop audio",
+        "stop_description": "Stops playback and returns to the start.",
+        "position_name": "Audio position",
+        "position_description": "Scrubs through the loaded audio.",
+        "loop_name": "Loop playback",
+        "loop_description": "Toggles repeat playback for the current audio.",
+        "volume_name": "Playback volume",
+        "volume_description": "Adjusts global playback volume."
+      }
     },
     "command": {
       "active_project": "ACTIVE PROJECT",
@@ -141,7 +196,10 @@
       "notifications": "Notifications",
       "checking_compute": "Checking compute",
       "offline_mode": "●  Offline mode",
-      "local_processing": "●  Local processing"
+      "local_processing": "●  Local processing",
+      "notification_count": "Notifications ({count})",
+      "autosave_enabled": "Autosave interval  ·  {seconds}s",
+      "autosave_disabled": "Autosave  ·  off"
     },
     "sidebar": {
       "brand": "SLUNDER STUDIO",
@@ -161,6 +219,45 @@
       "last_notification_description": "Keeps the most recent notification readable after its toast closes.",
       "notification_history_name": "Notification history",
       "notification_history_description": "Opens the retained application notifications and errors."
+    },
+    "status": {
+      "gpu_unavailable": "⚠ GPU status unavailable",
+      "hardware_unavailable": "●  Hardware status unavailable",
+      "vram": "VRAM: {used:.1f} / {total:.1f} GB ({percent:.0f}%)",
+      "compute_gpu": "●  {name}  ·  {used:.1f}/{total:.1f} GB",
+      "active_model": "Active model: {name}",
+      "no_model": "No model loaded",
+      "no_gpu": "⚠ No GPU",
+      "cpu_mode": "●  CPU mode",
+      "cuda_cpu": "CUDA not available — running on CPU",
+      "notification_prefix": "{type}: {message}",
+      "notification_types": {
+        "info": "Info",
+        "warning": "Warning",
+        "error": "Error"
+      }
+    },
+    "dialogs": {
+      "all_files": "All Files (*)",
+      "audio_files": "Audio Files",
+      "midi_files": "MIDI Files",
+      "delivery_format": "{format} (*.{extension})"
+    },
+    "drop": {
+      "midi_detected": "MIDI file detected — loading in MIDI Studio",
+      "midi_failed": "Failed to load MIDI file",
+      "unsupported": "Unsupported file type: .{extension}"
+    },
+    "osc": {
+      "listen_error": "OSC control could not listen on UDP {port}: {error}",
+      "listening": "OSC control listening on {host}:{port}",
+      "stopped": "OSC control stopped: {message}",
+      "ping": "OSC control ping received"
+    },
+    "autosave": {
+      "failed": "Autosave failed: {reason}",
+      "saved": "Autosaved v{version} — {description}",
+      "close_failed": "Could not save the open project; it remains dirty. Fix the storage issue before closing."
     }
   },
   "settings": {
@@ -2288,6 +2385,53 @@
     }
   },
   "mixer": {
+    "stem": {
+      "title": "Stem Mixer",
+      "naming_label": "Names",
+      "naming_tooltip": "Choose the filename convention used for stem delivery exports.",
+      "mute_short": "M",
+      "solo_short": "S",
+      "play": "Play",
+      "volume_short": "Vol",
+      "pan_short": "Pan",
+      "pan_center": "C",
+      "export_stems": "Export Stems",
+      "cancel_export": "Cancel Stem Export",
+      "export_remix": "Export Remix",
+      "empty_title": "No stems separated yet",
+      "empty_description": "Choose an audio file above and separate it to mix vocals, drums, bass, and other stems.",
+      "empty_action": "Choose audio",
+      "templates": {
+        "generic": "Generic",
+        "ableton_live": "Ableton Live",
+        "bitwig": "Bitwig Studio",
+        "cubase": "Cubase",
+        "logic_pro": "Logic Pro",
+        "pro_tools": "Pro Tools",
+        "studio_one": "Studio One",
+        "fl_studio": "FL Studio"
+      },
+      "accessibility": {
+        "name": "Stem Mixer",
+        "stem_name": "{stem} stem",
+        "mute_name": "Mute {stem}",
+        "mute_description": "Mutes this stem in the remix.",
+        "solo_name": "Solo {stem}",
+        "solo_description": "Solos this stem in the remix.",
+        "play_name": "Play {stem}",
+        "play_description": "Plays this stem preview.",
+        "volume_name": "{stem} volume",
+        "volume_description": "Adjusts the volume of this stem.",
+        "pan_name": "{stem} pan",
+        "pan_description": "Positions this stem in the stereo field.",
+        "template_name": "Stem export naming template",
+        "template_description": "Selects the target DAW filename convention for separated stem exports.",
+        "export_name": "Export separated stems",
+        "export_description": "Exports each loaded stem using the selected naming template.",
+        "remix_name": "Export stem remix",
+        "remix_description": "Exports a mix of the loaded stems."
+      }
+    },
     "tracks": {
       "title": "Tracks",
       "project_rate": "Project: {rate:g} kHz stereo"

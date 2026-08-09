@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated shared empty/progress widgets, waveform and spectrogram states, file-dialog
+  filters, stem mixer controls/templates, and Main Window transport, status, OSC,
+  drag-and-drop, notification, and autosave copy to the locale catalog with Arabic coverage.
+
 - Migrated Seed Explorer, Mood Curve, Piano Roll, CC automation, and MIDI Mixer
   controls, status messages, combo items, empty states, and accessibility descriptions
   to the locale catalog with Arabic coverage while preserving internal MIDI and seed data IDs.

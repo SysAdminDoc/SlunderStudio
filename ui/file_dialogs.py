@@ -15,11 +15,13 @@ from typing import Iterable, Sequence
 from PySide6.QtWidgets import QFileDialog
 
 from core.audio_export import DELIVERY_FORMATS, probe_codecs
+from core.i18n import tr
 from core.routing import AUDIO_EXTENSIONS, MIDI_EXTENSIONS
 from core.settings import Settings
 
 
-_ALL_FILES_FILTER = "All Files (*)"
+def _all_files_filter() -> str:
+    return tr("shell.dialogs.all_files")
 
 
 def _extension_globs(extensions: Iterable[str]) -> str:
@@ -28,26 +30,30 @@ def _extension_globs(extensions: Iterable[str]) -> str:
 
 def _filter(label: str, extensions: Iterable[str], *, include_all: bool = True) -> str:
     result = f"{label} ({_extension_globs(extensions)})"
-    return f"{result};;{_ALL_FILES_FILTER}" if include_all else result
+    return f"{result};;{_all_files_filter()}" if include_all else result
 
 
 def audio_import_filter(*, include_all: bool = True) -> str:
     """Return the canonical audio input filter."""
-    return _filter("Audio Files", AUDIO_EXTENSIONS, include_all=include_all)
+    return _filter(
+        tr("shell.dialogs.audio_files"), AUDIO_EXTENSIONS, include_all=include_all
+    )
 
 
 def midi_import_filter(*, include_all: bool = True) -> str:
     """Return the canonical MIDI input filter."""
-    return _filter("MIDI Files", MIDI_EXTENSIONS, include_all=include_all)
+    return _filter(
+        tr("shell.dialogs.midi_files"), MIDI_EXTENSIONS, include_all=include_all
+    )
 
 
 def project_asset_filter() -> str:
     """Return the combined filter used when importing project assets."""
     return ";;".join(
         (
-            _filter("Audio Files", AUDIO_EXTENSIONS, include_all=False),
-            _filter("MIDI Files", MIDI_EXTENSIONS, include_all=False),
-            _ALL_FILES_FILTER,
+            _filter(tr("shell.dialogs.audio_files"), AUDIO_EXTENSIONS, include_all=False),
+            _filter(tr("shell.dialogs.midi_files"), MIDI_EXTENSIONS, include_all=False),
+            _all_files_filter(),
         )
     )
 
@@ -83,9 +89,12 @@ def delivery_filter(
     selected = tuple(fmt for fmt in selected if fmt in DELIVERY_FORMATS)
     if not selected:
         selected = ("wav",)
-    parts = [f"{fmt.upper()} (*.{fmt})" for fmt in selected]
+    parts = [
+        tr("shell.dialogs.delivery_format", format=fmt.upper(), extension=fmt)
+        for fmt in selected
+    ]
     if include_all:
-        parts.append(_ALL_FILES_FILTER)
+        parts.append(_all_files_filter())
     return ";;".join(parts)
 
 

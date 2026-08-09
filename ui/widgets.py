@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from core.i18n import tr
 from ui.theme import Palette
 
 
@@ -94,7 +95,9 @@ class EmptyStateWidget(QFrame):
         self.setProperty("emptyStateKind", kind)
         self.setAccessibleName(str(title))
         self.setAccessibleDescription(str(message))
-        self._action_button.setAccessibleName(str(action_text) or "Empty state action")
+        self._action_button.setAccessibleName(
+            str(action_text) or tr("runtime.accessibility.empty_state_action")
+        )
         self._action_button.setAccessibleDescription(str(message))
         self.style().unpolish(self)
         self.style().polish(self)
@@ -102,10 +105,15 @@ class EmptyStateWidget(QFrame):
     def set_no_matches(
         self,
         message: str,
-        action_text: str = "Clear filters",
+        action_text: str | None = None,
     ) -> None:
         """Show a distinct no-results state for a filtered collection."""
-        self.set_state("No matches", message, action_text, kind="no_matches")
+        self.set_state(
+            tr("runtime.empty.no_matches"),
+            message,
+            tr("runtime.empty.clear_filters") if action_text is None else action_text,
+            kind="no_matches",
+        )
 
 
 class OperationProgressWidget(QFrame):
@@ -116,9 +124,9 @@ class OperationProgressWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("operationProgress")
-        self.setAccessibleName("Operation progress")
+        self.setAccessibleName(tr("runtime.operation.accessibility.name"))
         self.setAccessibleDescription(
-            "Shows progress for the current operation and can request cancellation."
+            tr("runtime.operation.accessibility.description")
         )
 
         layout = QHBoxLayout(self)
@@ -130,7 +138,9 @@ class OperationProgressWidget(QFrame):
         self._message_label.setStyleSheet(
             f"color: {Palette.SUBTEXT0}; font-size: 8.25pt;"
         )
-        self._message_label.setAccessibleName("Operation status")
+        self._message_label.setAccessibleName(
+            tr("runtime.operation.accessibility.status_name")
+        )
         layout.addWidget(self._message_label)
 
         self._progress_bar = QProgressBar()
@@ -139,18 +149,22 @@ class OperationProgressWidget(QFrame):
         self._progress_bar.setValue(0)
         self._progress_bar.setTextVisible(True)
         self._progress_bar.setMinimumWidth(140)
-        self._progress_bar.setAccessibleName("Operation progress percentage")
+        self._progress_bar.setAccessibleName(
+            tr("runtime.operation.accessibility.progress_name")
+        )
         self._progress_bar.setAccessibleDescription(
-            "Progress percentage, or an animated indicator while the total is unknown."
+            tr("runtime.operation.accessibility.progress_description")
         )
         layout.addWidget(self._progress_bar, 1)
 
-        self._cancel_button = QPushButton("Cancel")
+        self._cancel_button = QPushButton(tr("runtime.operation.cancel"))
         self._cancel_button.setObjectName("operationCancelButton")
         self._cancel_button.setMinimumHeight(28)
-        self._cancel_button.setAccessibleName("Cancel operation")
+        self._cancel_button.setAccessibleName(
+            tr("runtime.operation.accessibility.cancel_name")
+        )
         self._cancel_button.setAccessibleDescription(
-            "Requests cancellation of the running operation."
+            tr("runtime.operation.accessibility.cancel_description")
         )
         self._cancel_button.clicked.connect(self._on_cancel_clicked)
         layout.addWidget(self._cancel_button)
@@ -202,7 +216,7 @@ class OperationProgressWidget(QFrame):
     def mark_cancelling(self) -> None:
         """Prevent duplicate requests while the worker unwinds."""
         self._cancel_button.setEnabled(False)
-        self._message_label.setText("Cancelling...")
+        self._message_label.setText(tr("runtime.operation.cancelling"))
         self._progress_bar.setRange(0, 0)
 
     def _on_cancel_clicked(self) -> None:

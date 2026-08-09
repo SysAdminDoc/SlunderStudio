@@ -16,6 +16,7 @@ from pathlib import Path
 
 from ui.theme import Palette
 from ui.widgets import EmptyStateWidget
+from core.i18n import tr
 from core.workers import CancelledJobError, InferenceWorker
 
 
@@ -168,11 +169,9 @@ class WaveformWidget(QWidget):
         # Operable by keyboard: Left/Right seek, PageUp/Down scrub, Home/End
         # jump, M switches waveform and spectrogram.
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setAccessibleName("Audio waveform")
+        self.setAccessibleName(tr("runtime.waveform.accessibility_name"))
         self.setAccessibleDescription(
-            "Waveform and spectrogram view. Left and Right seek one second, "
-            "Page Up and Page Down seek ten seconds, Home and End jump to the "
-            "start or end, M switches between waveform and spectrogram."
+            tr("runtime.waveform.accessibility_description")
         )
 
         self._setup_ui()
@@ -183,7 +182,7 @@ class WaveformWidget(QWidget):
         layout.setSpacing(2)
 
         if not HAS_PYQTGRAPH:
-            lbl = QLabel("Waveform display unavailable — restart to retry")
+            lbl = QLabel(tr("runtime.waveform.unavailable"))
             lbl.setStyleSheet(f"color: {Palette.RED}; padding: 20px;")
             lbl.setAlignment(Qt.AlignCenter)
             layout.addWidget(lbl)
@@ -196,12 +195,12 @@ class WaveformWidget(QWidget):
             ctrl = QHBoxLayout()
             ctrl.setSpacing(4)
 
-            self._waveform_btn = QPushButton("Waveform")
+            self._waveform_btn = QPushButton(tr("runtime.waveform.waveform"))
             self._waveform_btn.setMinimumHeight(24)
             self._waveform_btn.setProperty("class", "secondary")
             self._waveform_btn.clicked.connect(lambda: self._set_mode("waveform"))
 
-            self._spectro_btn = QPushButton("Spectrogram")
+            self._spectro_btn = QPushButton(tr("runtime.waveform.spectrogram"))
             self._spectro_btn.setMinimumHeight(24)
             self._spectro_btn.setProperty("class", "secondary")
             self._spectro_btn.clicked.connect(lambda: self._set_mode("spectrogram"))
@@ -275,9 +274,9 @@ class WaveformWidget(QWidget):
         # Keep the empty page at index 2 so the waveform/spectrogram indexes
         # remain stable for existing callers.
         self._empty_state = EmptyStateWidget(
-            "No audio loaded",
-            "Generate or load audio to preview the waveform and spectrogram.",
-            "Load or generate audio" if self._show_controls else "",
+            tr("runtime.waveform.empty_title"),
+            tr("runtime.waveform.empty_description"),
+            tr("runtime.waveform.empty_action") if self._show_controls else "",
         )
         self._empty_state.action_requested.connect(self.empty_action_requested.emit)
         self._stack.addWidget(self._empty_state)
@@ -338,7 +337,7 @@ class WaveformWidget(QWidget):
             return True
         except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
             self._last_error = str(exc)
-            self._set_info(f"Error: {exc}")
+            self._set_info(tr("runtime.waveform.error", error=exc))
             return False
 
     def _start_audio_load(self, path: Path) -> None:
@@ -348,7 +347,7 @@ class WaveformWidget(QWidget):
         worker = InferenceWorker(_decode_waveform_file, str(path))
         self._audio_load_workers.add(worker)
         self._audio_load_worker = worker
-        self._set_info(f"Loading {path.name}... 0%")
+        self._set_info(tr("runtime.waveform.loading_file", name=path.name))
         self.audio_load_started.emit(str(path))
         worker.progress.connect(
             lambda percent, t=token: self._on_audio_load_progress(t, percent)
@@ -396,7 +395,7 @@ class WaveformWidget(QWidget):
         if not _qt_object_alive(self) or self._closed or token != self._audio_load_token:
             return
         self.audio_load_progress.emit(percent)
-        self._set_info(f"Loading audio... {percent}%")
+        self._set_info(tr("runtime.waveform.loading", percent=percent))
 
     def _on_audio_load_finished(self, token: int, worker, payload) -> None:
         self._pending_audio_load_events[worker] = ("finished", token, payload)
@@ -428,14 +427,14 @@ class WaveformWidget(QWidget):
                 self.audio_load_finished.emit(True)
             except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
                 self._last_error = str(exc)
-                self._set_info(f"Error: {exc}")
+                self._set_info(tr("runtime.waveform.error", error=exc))
                 self.audio_load_finished.emit(False)
         elif kind == "error":
             self._last_error = str(payload[0])
-            self._set_info(f"Error: {payload[0]}")
+            self._set_info(tr("runtime.waveform.error", error=payload[0]))
             self.audio_load_finished.emit(False)
         elif kind == "cancelled":
-            self._last_error = "Audio loading cancelled"
+            self._last_error = tr("runtime.waveform.audio_cancelled")
             self._set_info(self._last_error)
             self.audio_load_finished.emit(False)
 
@@ -448,7 +447,7 @@ class WaveformWidget(QWidget):
         self._audio_load_worker = None
         worker.cancel()
         if notify:
-            self._last_error = "Audio loading cancelled"
+            self._last_error = tr("runtime.waveform.audio_cancelled")
             self._set_info(self._last_error)
             self.audio_load_finished.emit(False)
 
@@ -581,7 +580,7 @@ class WaveformWidget(QWidget):
         worker = InferenceWorker(_compute_spectrogram, mono.copy(), self._sample_rate)
         self._spectrogram_workers.add(worker)
         self._spectrogram_worker = worker
-        self._set_info("Computing spectrogram... 0%")
+        self._set_info(tr("runtime.waveform.computing_start"))
         worker.progress.connect(
             lambda percent, t=token: self._on_spectrogram_progress(t, percent)
         )
@@ -603,7 +602,7 @@ class WaveformWidget(QWidget):
         if not _qt_object_alive(self) or self._closed or token != self._spectrogram_token:
             return
         self.spectrogram_progress.emit(percent)
-        self._set_info(f"Computing spectrogram... {percent}%")
+        self._set_info(tr("runtime.waveform.computing", percent=percent))
 
     def _on_spectrogram_finished(self, token: int, worker, data: np.ndarray) -> None:
         self._forget_worker_later(worker, self._spectrogram_workers)
@@ -620,14 +619,14 @@ class WaveformWidget(QWidget):
             return
         self._spectrogram_worker = None
         self._spectro_item.clear()
-        self._set_info(f"Spectrogram unavailable: {message}")
+        self._set_info(tr("runtime.waveform.spectrogram_unavailable", error=message))
 
     def _on_spectrogram_cancelled(self, token: int, worker) -> None:
         self._forget_worker_later(worker, self._spectrogram_workers)
         if not _qt_object_alive(self) or self._closed or token != self._spectrogram_token:
             return
         self._spectrogram_worker = None
-        self._set_info("Spectrogram computation cancelled")
+        self._set_info(tr("runtime.waveform.spectrogram_cancelled"))
 
     def _cancel_spectrogram(self) -> None:
         worker = self._spectrogram_worker
@@ -719,7 +718,7 @@ class WaveformWidget(QWidget):
             return
         start, end = self._selection_region.getRegion()
         self.set_selection(start, end)
-        self._set_info(f"Selected {start:.2f}s–{end:.2f}s")
+        self._set_info(tr("runtime.waveform.selected", start=start, end=end))
 
     # ── Keyboard operation and screen-reader state ─────────────────────────────
 
@@ -733,15 +732,22 @@ class WaveformWidget(QWidget):
     def accessible_state(self) -> str:
         """One sentence a screen reader can read for the current view."""
         if not self.has_audio or self._duration <= 0:
-            return "Waveform, no audio loaded"
+            return tr("runtime.waveform.accessible_no_audio")
         percent = int(round(100 * self._playback_pos / self._duration))
-        state = (
-            f"{self._mode.capitalize()} view, position "
-            f"{self._playback_pos:.1f} of {self._duration:.1f} seconds ({percent}%)"
+        state = tr(
+            "runtime.waveform.accessible_state",
+            mode=tr(f"runtime.waveform.{self._mode}"),
+            position=self._playback_pos,
+            duration=self._duration,
+            percent=percent,
         )
         if self.selected_region:
             start, end = self.selected_region
-            state += f", selected region {start:.1f} to {end:.1f} seconds"
+            state += tr(
+                "runtime.waveform.accessible_selection",
+                start=start,
+                end=end,
+            )
         return state
 
     def _announce_position(self):

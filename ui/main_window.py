@@ -269,13 +269,13 @@ class TransportBar(QWidget):
         self._duration = 0.0
         install_accessibility(
             self,
-            "Global transport",
+            tr("shell.transport.accessibility.name"),
             named_controls=[
-                (self._play_btn, "Play or pause audio", "Toggles playback for the loaded audio."),
-                (self._stop_btn, "Stop audio", "Stops playback and returns to the start."),
-                (self._seek_slider, "Audio position", "Scrubs through the loaded audio."),
-                (self._loop_btn, "Loop playback", "Toggles repeat playback for the current audio."),
-                (self._vol_slider, "Playback volume", "Adjusts global playback volume."),
+                (self._play_btn, tr("shell.transport.accessibility.play_name"), tr("shell.transport.accessibility.play_description")),
+                (self._stop_btn, tr("shell.transport.accessibility.stop_name"), tr("shell.transport.accessibility.stop_description")),
+                (self._seek_slider, tr("shell.transport.accessibility.position_name"), tr("shell.transport.accessibility.position_description")),
+                (self._loop_btn, tr("shell.transport.accessibility.loop_name"), tr("shell.transport.accessibility.loop_description")),
+                (self._vol_slider, tr("shell.transport.accessibility.volume_name"), tr("shell.transport.accessibility.volume_description")),
             ],
             tab_order=[
                 self._play_btn,
@@ -558,13 +558,26 @@ class MainWindow(QMainWindow):
 
     def _on_toast_message(self, entry: dict):
         """Mirror a timed toast into the persistent status line."""
-        text = f"{entry['type'].capitalize()}: {entry['message']}"
+        notification_type = str(entry.get("type", "info")).lower()
+        type_key = {
+            "info": "info",
+            "warning": "warning",
+            "error": "error",
+        }.get(notification_type, "info")
+        text = tr(
+            "shell.status.notification_prefix",
+            type=tr(f"shell.status.notification_types.{type_key}"),
+            message=entry["message"],
+        )
         self._last_message_label.setText(text)
         self._last_message_label.setToolTip(text)
         self._last_message_label.setAccessibleDescription(text)
         if hasattr(self, "_notification_button"):
             self._notification_button.setText(
-                f"Notifications ({len(self.toast_mgr.history)})"
+                tr(
+                    "shell.command.notification_count",
+                    count=len(self.toast_mgr.history),
+                )
             )
 
     def _show_notification_log(self):
@@ -666,7 +679,9 @@ class MainWindow(QMainWindow):
         from core.project import get_project_manager
 
         project = get_project_manager().current
-        self._project_label.setText(project.name if project else "No project open")
+        self._project_label.setText(
+            project.name if project else tr("shell.command.no_project")
+        )
 
     # ── GPU Monitoring ─────────────────────────────────────────────────────────
 
@@ -714,9 +729,9 @@ class MainWindow(QMainWindow):
         worker = self._gpu_worker
         self._release_gpu_worker_later(worker)
         self._gpu_worker = None
-        self._gpu_status_label.setText("⚠ GPU status unavailable")
+        self._gpu_status_label.setText(tr("shell.status.gpu_unavailable"))
         self._vram_label.setText("")
-        self._compute_status_label.setText("●  Hardware status unavailable")
+        self._compute_status_label.setText(tr("shell.status.hardware_unavailable"))
         self._status_bar.showMessage(message, 5000)
 
     def _on_audio_output_status(self, message: str):
@@ -829,13 +844,17 @@ class MainWindow(QMainWindow):
         try:
             server.start()
         except OSError as exc:
-            message = f"OSC control could not listen on UDP {config.port}: {exc}"
+            message = tr(
+                "shell.osc.listen_error",
+                port=config.port,
+                error=exc,
+            )
             self._on_osc_server_error(message)
             return
         self._osc_server = server
         bound = server.bound_address or (config.bind_host, config.port)
         self._status_bar.showMessage(
-            f"OSC control listening on {bound[0]}:{bound[1]}",
+            tr("shell.osc.listening", host=bound[0], port=bound[1]),
             5000,
         )
 
@@ -846,12 +865,10 @@ class MainWindow(QMainWindow):
 
     def _on_osc_server_error(self, message: str):
         """Surface an unexpected listener failure without touching Qt off-thread."""
-        self._status_bar.showMessage(f"OSC control stopped: {message}", 10000)
+        stopped = tr("shell.osc.stopped", message=message)
+        self._status_bar.showMessage(stopped, 10000)
         if self.toast_mgr:
-            self.toast_mgr.warning(
-                f"OSC control stopped: {message}",
-                duration_ms=10000,
-            )
+            self.toast_mgr.warning(stopped, duration_ms=10000)
 
     @staticmethod
     def _osc_number(arguments: tuple[object, ...]) -> float | None:
@@ -876,7 +893,7 @@ class MainWindow(QMainWindow):
         if address == f"{OSC_NAMESPACE}/ping":
             if arguments:
                 return False
-            self._status_bar.showMessage("OSC control ping received", 1500)
+            self._status_bar.showMessage(tr("shell.osc.ping"), 1500)
             return True
 
         transport_commands = {
@@ -925,24 +942,38 @@ class MainWindow(QMainWindow):
             total = gpu["total_gb"]
             pct = (used / total * 100) if total > 0 else 0
             color = Palette.GREEN if pct < 60 else (Palette.YELLOW if pct < 85 else Palette.RED)
-            self._vram_label.setText(f"VRAM: {used:.1f} / {total:.1f} GB ({pct:.0f}%)")
+            self._vram_label.setText(
+                tr(
+                    "shell.status.vram",
+                    used=used,
+                    total=total,
+                    percent=pct,
+                )
+            )
             self._vram_label.setStyleSheet(f"font-size: 8.25pt; color: {color};")
             self._compute_status_label.setText(
-                f"\u25cf  {gpu['name']}  \u00b7  {used:.1f}/{total:.1f} GB"
+                tr(
+                    "shell.status.compute_gpu",
+                    name=gpu["name"],
+                    used=used,
+                    total=total,
+                )
             )
             self._compute_status_label.setStyleSheet(f"color: {color};")
 
             current = gpu.get("current_model_name")
             if current:
-                self._status_bar.showMessage(f"Active model: {current}", 0)
+                self._status_bar.showMessage(
+                    tr("shell.status.active_model", name=current), 0
+                )
             else:
-                self._status_bar.showMessage("No model loaded", 0)
+                self._status_bar.showMessage(tr("shell.status.no_model"), 0)
         else:
-            self._gpu_status_label.setText("\u26a0 No GPU")
+            self._gpu_status_label.setText(tr("shell.status.no_gpu"))
             self._vram_label.setText("")
-            self._compute_status_label.setText("\u25cf  CPU mode")
+            self._compute_status_label.setText(tr("shell.status.cpu_mode"))
             self._compute_status_label.setStyleSheet(f"color: {Palette.TEAL};")
-            self._status_bar.showMessage("CUDA not available — running on CPU", 0)
+            self._status_bar.showMessage(tr("shell.status.cuda_cpu"), 0)
 
     # ── Drag and Drop ──────────────────────────────────────────────────────────
 
@@ -960,17 +991,19 @@ class MainWindow(QMainWindow):
                 if is_audio_path(path):
                     self._load_dropped_audio(path)
                 elif is_midi_path(path):
-                    self.toast_mgr.info("MIDI file detected — loading in MIDI Studio")
+                    self.toast_mgr.info(tr("shell.drop.midi_detected"))
                     self._sidebar.select_page(2)
                     from core.midi_utils import load_midi as load_midi_file
                     try:
                         midi_data = load_midi_file(path)
                         self._midi_studio_view.set_midi_data(midi_data)
                     except Exception:
-                        self.toast_mgr.warning("Failed to load MIDI file")
+                        self.toast_mgr.warning(tr("shell.drop.midi_failed"))
                 else:
                     suffix = path.rsplit(".", 1)[-1] if "." in path else "unknown"
-                    self.toast_mgr.warning(f"Unsupported file type: .{suffix}")
+                    self.toast_mgr.warning(
+                        tr("shell.drop.unsupported", extension=suffix)
+                    )
         event.acceptProposedAction()
 
     def _load_dropped_audio(self, path: str):
@@ -1120,13 +1153,17 @@ class MainWindow(QMainWindow):
         self._autosave = AutosaveCoordinator(settings=self._settings, parent=self)
         self._autosave.autosaved.connect(self._on_autosaved)
         self._autosave.autosave_failed.connect(
-            lambda reason: self.toast_mgr.error(f"Autosave failed: {reason}")
+            lambda reason: self.toast_mgr.error(
+                tr("shell.autosave.failed", reason=reason)
+            )
         )
         self._autosave.start()
         self._refresh_autosave_label()
 
     def _on_autosaved(self, version: int, description: str):
-        self.toast_mgr.info(f"Autosaved v{version} — {description}")
+        self.toast_mgr.info(
+            tr("shell.autosave.saved", version=version, description=description)
+        )
         if hasattr(self, "_project_mgr_view"):
             from core.project import get_project_manager
             project = get_project_manager().current
@@ -1138,10 +1175,13 @@ class MainWindow(QMainWindow):
             return
         if self._autosave.enabled:
             self._autosave_label.setText(
-                f"Autosave interval  ·  {self._autosave.interval_seconds}s"
+                tr(
+                    "shell.command.autosave_enabled",
+                    seconds=self._autosave.interval_seconds,
+                )
             )
         else:
-            self._autosave_label.setText("Autosave  ·  off")
+            self._autosave_label.setText(tr("shell.command.autosave_disabled"))
 
     def _flush_project_before_close(self) -> bool:
         """Flush dirty editor state and keep the window open on failure."""
@@ -1161,7 +1201,7 @@ class MainWindow(QMainWindow):
             return True
 
         self.toast_mgr.error(
-            "Could not save the open project; it remains dirty. Fix the storage issue before closing."
+            tr("shell.autosave.close_failed")
         )
         if self._autosave.enabled:
             self._autosave.start()
