@@ -58,9 +58,9 @@ class GenrePicker(QWidget):
         self._list.setAlternatingRowColors(True)
         self._list.currentItemChanged.connect(self._on_selection)
         self._list_empty = EmptyStateWidget(
-            "No genres found",
-            "Choose a genre to guide the next lyrics draft.",
-            "Clear search",
+            tr("lyrics.genre_picker.no_matches"),
+            tr("lyrics.genre_picker.no_matches_hint"),
+            tr("lyrics.genre_picker.clear_search"),
         )
         self._list_empty.action_requested.connect(self._search.clear)
         self._list_stack = QStackedWidget()
@@ -71,10 +71,18 @@ class GenrePicker(QWidget):
         self._populate()
         install_accessibility(
             self,
-            "Genre picker",
+            tr("lyrics.accessibility.genre_picker_name"),
             named_controls=[
-                (self._search, "Search genres", "Filters the available genres."),
-                (self._list, "Genre list", "Selects a genre for guided lyrics generation."),
+                (
+                    self._search,
+                    tr("lyrics.accessibility.genre_search_name"),
+                    tr("lyrics.accessibility.genre_search_description"),
+                ),
+                (
+                    self._list,
+                    tr("lyrics.accessibility.genre_list_name"),
+                    tr("lyrics.accessibility.genre_list_description"),
+                ),
             ],
         )
 
@@ -96,15 +104,15 @@ class GenrePicker(QWidget):
             self._list_stack.setCurrentWidget(self._list)
         elif text:
             self._list_empty.set_no_matches(
-                f'No genres match “{text}”. Try a broader search.',
-                "Clear search",
+                tr("lyrics.genre_picker.search_no_match", query=text),
+                tr("lyrics.genre_picker.clear_search"),
             )
             self._list_stack.setCurrentWidget(self._list_empty)
         else:
             self._list_empty.set_state(
-                "No genres available",
-                "Genre guidance will appear here when the genre catalog is available.",
-                "Retry search",
+                tr("lyrics.genre_picker.no_genres"),
+                tr("lyrics.genre_picker.no_genres_hint"),
+                tr("lyrics.genre_picker.retry"),
             )
             self._list_stack.setCurrentWidget(self._list_empty)
 
@@ -170,10 +178,10 @@ class HistoryPanel(QWidget):
         filter_row.addWidget(self._fav_btn)
 
         self._sort_combo = QComboBox()
-        self._sort_combo.addItem("Newest first", "date_desc")
-        self._sort_combo.addItem("Oldest first", "date_asc")
-        self._sort_combo.addItem("Genre (A–Z)", "genre_asc")
-        self._sort_combo.addItem("Prompt (A–Z)", "prompt_asc")
+        self._sort_combo.addItem(tr("lyrics.history.sort_newest"), "date_desc")
+        self._sort_combo.addItem(tr("lyrics.history.sort_oldest"), "date_asc")
+        self._sort_combo.addItem(tr("lyrics.history.sort_genre"), "genre_asc")
+        self._sort_combo.addItem(tr("lyrics.history.sort_prompt"), "prompt_asc")
         self._sort_combo.setMinimumHeight(26)
         self._sort_combo.currentIndexChanged.connect(self._refresh)
         filter_row.addWidget(self._sort_combo)
@@ -186,11 +194,11 @@ class HistoryPanel(QWidget):
         self._list.setAlternatingRowColors(True)
         self._list.currentItemChanged.connect(self._on_selection)
         self._list.itemDoubleClicked.connect(self._toggle_favorite)
-        self._list.setToolTip("Double-click an entry to toggle its favorite status.")
+        self._list.setToolTip(tr("lyrics.history.list_tooltip"))
         self._empty = EmptyStateWidget(
-            "No lyrics saved yet",
-            "Generated drafts will stay here so you can revisit, favorite, and edit them.",
-            "Generate lyrics",
+            tr("lyrics.history.no_saved"),
+            tr("lyrics.history.no_saved_hint"),
+            tr("lyrics.history.generate"),
         )
         self._empty.action_requested.connect(self._on_empty_action)
         self._list_stack = QStackedWidget()
@@ -207,16 +215,32 @@ class HistoryPanel(QWidget):
         self._refresh()
         install_accessibility(
             self,
-            "Lyrics history",
+            tr("lyrics.accessibility.history_name"),
             named_controls=[
-                (self._search, "Search lyrics history", "Filters saved lyrics entries."),
-                (self._all_btn, "Show all lyrics history", "Shows all saved lyrics entries."),
-                (self._fav_btn, "Show favorite lyrics", "Shows only favorite lyrics entries."),
-                (self._sort_combo, "Sort lyrics history", "Sorts saved lyrics by date, genre, or prompt."),
+                (
+                    self._search,
+                    tr("lyrics.accessibility.history_search_name"),
+                    tr("lyrics.accessibility.history_search_description"),
+                ),
+                (
+                    self._all_btn,
+                    tr("lyrics.accessibility.history_all_name"),
+                    tr("lyrics.accessibility.history_all_description"),
+                ),
+                (
+                    self._fav_btn,
+                    tr("lyrics.accessibility.history_favorites_name"),
+                    tr("lyrics.accessibility.history_favorites_description"),
+                ),
+                (
+                    self._sort_combo,
+                    tr("lyrics.accessibility.history_sort_name"),
+                    tr("lyrics.accessibility.history_sort_description"),
+                ),
                 (
                     self._list,
-                    "Lyrics history list",
-                    "Selects a saved lyrics entry; double-click an entry to toggle its favorite status.",
+                    tr("lyrics.accessibility.history_list_name"),
+                    tr("lyrics.accessibility.history_list_description"),
                 ),
             ],
         )
@@ -283,22 +307,22 @@ class HistoryPanel(QWidget):
             self._list_stack.setCurrentWidget(self._list)
         elif query:
             self._empty.set_no_matches(
-                f'No saved lyrics match “{query}”. Clear the search to browse your history.',
-                "Clear search",
+                tr("lyrics.history.search_no_match", query=query),
+                tr("lyrics.history.clear_search"),
             )
             self._list_stack.setCurrentWidget(self._empty)
         elif self._current_filter == "favorites":
             self._empty.set_state(
-                "No favorite lyrics yet",
-                "Double-click a saved draft to favorite it for quick access.",
-                "Generate lyrics",
+                tr("lyrics.history.no_favorites"),
+                tr("lyrics.history.no_favorites_hint"),
+                tr("lyrics.history.generate"),
             )
             self._list_stack.setCurrentWidget(self._empty)
         else:
             self._empty.set_state(
-                "No lyrics saved yet",
-                "Generated drafts will stay here so you can revisit, favorite, and edit them.",
-                "Generate lyrics",
+                tr("lyrics.history.no_saved"),
+                tr("lyrics.history.no_saved_hint"),
+                tr("lyrics.history.generate"),
             )
             self._list_stack.setCurrentWidget(self._empty)
 
@@ -357,26 +381,26 @@ class LyricsView(QWidget):
     def _install_accessibility(self):
         install_accessibility(
             self,
-            "Lyrics workspace",
+            tr("lyrics.accessibility.workspace_name"),
             named_controls=[
-                (self._mode_tabs, "Lyrics mode tabs", "Switches between quick, guided, and pro lyrics generation."),
-                (self._quick_input, "Quick lyrics prompt", "Describes the lyrics to generate in quick mode."),
-                (self._quick_generate, "Generate quick lyrics", "Generates lyrics from the quick prompt."),
-                (self._theme_input, "Guided lyrics theme", "Sets the theme for guided lyrics generation."),
-                (self._mood_combo, "Lyrics mood", "Selects the mood for guided lyrics generation."),
-                (self._structure_combo, "Lyrics structure", "Selects the structure for guided lyrics generation."),
-                (self._lang_combo, "Lyrics language", "Selects the language for generated lyrics."),
-                (self._guided_generate, "Generate guided lyrics", "Generates lyrics from guided settings."),
-                (self._system_prompt, "Lyrics system prompt", "Sets the system instructions for pro lyrics generation."),
-                (self._user_prompt, "Pro lyrics prompt", "Sets the user prompt for pro lyrics generation."),
-                (self._pro_temp, "Lyrics temperature", "Adjusts pro lyrics sampling temperature."),
-                (self._pro_top_p, "Lyrics top p", "Adjusts pro lyrics nucleus sampling."),
-                (self._pro_top_k, "Lyrics top k", "Adjusts pro lyrics top-k sampling."),
-                (self._pro_repeat, "Lyrics repeat penalty", "Adjusts repetition control for pro lyrics."),
-                (self._pro_max_tokens, "Lyrics maximum tokens", "Sets the maximum pro lyrics length."),
-                (self._pro_generate, "Generate pro lyrics", "Generates lyrics from the pro settings."),
-                (self._cancel_btn, "Cancel lyrics generation", tr("runtime.lyrics_cancel_description")),
-                (self._regen_btn, "Regenerate lyrics", "Runs the current lyrics workflow again."),
+                (self._mode_tabs, tr("lyrics.accessibility.mode_name"), tr("lyrics.accessibility.mode_description")),
+                (self._quick_input, tr("lyrics.accessibility.quick_prompt_name"), tr("lyrics.accessibility.quick_prompt_description")),
+                (self._quick_generate, tr("lyrics.accessibility.quick_generate_name"), tr("lyrics.accessibility.quick_generate_description")),
+                (self._theme_input, tr("lyrics.accessibility.theme_name"), tr("lyrics.accessibility.theme_description")),
+                (self._mood_combo, tr("lyrics.accessibility.mood_name"), tr("lyrics.accessibility.mood_description")),
+                (self._structure_combo, tr("lyrics.accessibility.structure_name"), tr("lyrics.accessibility.structure_description")),
+                (self._lang_combo, tr("lyrics.accessibility.language_name"), tr("lyrics.accessibility.language_description")),
+                (self._guided_generate, tr("lyrics.accessibility.guided_generate_name"), tr("lyrics.accessibility.guided_generate_description")),
+                (self._system_prompt, tr("lyrics.accessibility.system_prompt_name"), tr("lyrics.accessibility.system_prompt_description")),
+                (self._user_prompt, tr("lyrics.accessibility.user_prompt_name"), tr("lyrics.accessibility.user_prompt_description")),
+                (self._pro_temp, tr("lyrics.accessibility.temperature_name"), tr("lyrics.accessibility.temperature_description")),
+                (self._pro_top_p, tr("lyrics.accessibility.top_p_name"), tr("lyrics.accessibility.top_p_description")),
+                (self._pro_top_k, tr("lyrics.accessibility.top_k_name"), tr("lyrics.accessibility.top_k_description")),
+                (self._pro_repeat, tr("lyrics.accessibility.repeat_name"), tr("lyrics.accessibility.repeat_description")),
+                (self._pro_max_tokens, tr("lyrics.accessibility.max_tokens_name"), tr("lyrics.accessibility.max_tokens_description")),
+                (self._pro_generate, tr("lyrics.accessibility.pro_generate_name"), tr("lyrics.accessibility.pro_generate_description")),
+                (self._cancel_btn, tr("lyrics.accessibility.cancel_name"), tr("runtime.lyrics_cancel_description")),
+                (self._regen_btn, tr("lyrics.accessibility.regenerate_name"), tr("lyrics.accessibility.regenerate_description")),
             ],
         )
         self._mode_tabs.currentChanged.connect(lambda _index: self._install_accessibility())
@@ -785,7 +809,7 @@ class LyricsView(QWidget):
         self._worker = InferenceWorker(
             _task,
             job_kind="lyrics_generation",
-            job_label="Regenerate lyrics section",
+            job_label=tr("lyrics.jobs.regenerate_section"),
         )
         self._worker.progress.connect(self._progress.setValue)
         self._worker.finished.connect(self._on_section_regenerated)
@@ -817,7 +841,7 @@ class LyricsView(QWidget):
         self._worker = InferenceWorker(
             _task,
             job_kind="lyrics_generation",
-            job_label="Lyrics generation",
+            job_label=tr("lyrics.jobs.generation"),
         )
         self._worker.token.connect(
             self._editor.append_token,
@@ -883,7 +907,10 @@ class LyricsView(QWidget):
 
         if tag and new_content:
             self._editor.replace_section(f"[{tag}]", new_content)
-            self._editor.set_status(f"Regenerated [{tag}]", Palette.GREEN)
+            self._editor.set_status(
+                tr("lyrics.messages.section_status", tag=tag),
+                Palette.GREEN,
+            )
             if self.toast_mgr:
                 self.toast_mgr.success(tr("lyrics.messages.section_regenerated", tag=tag))
 

@@ -4,6 +4,10 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Lyrics workspace genre browsing, history filters/empty states, generation job
+  labels, section status, and accessibility descriptions to the locale catalog with Arabic
+  coverage while retaining genre IDs and generated content as data.
+
 - Migrated Vocal Suite auto-tune, stem separation, vocal routing/export, processing
   progress, and remaining singing/melody status copy to the locale catalog with Arabic
   coverage and catalog-backed accessibility metadata.
