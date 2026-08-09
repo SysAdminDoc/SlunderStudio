@@ -733,5 +733,52 @@
       "tabs_name": "MIDI workspace tabs",
       "tabs_description": "Switches between the piano roll and rendered audio."
     }
+  },
+  "reference": {
+    "title": "Reference Track",
+    "browse": "Browse...",
+    "drop_zone": "Drop an audio file here\nor click Browse",
+    "analysis_group": "Analysis",
+    "metrics": {
+      "bpm": "BPM",
+      "key": "Key",
+      "energy": "Energy",
+      "brightness": "Brightness",
+      "density": "Onset Density",
+      "duration": "Duration",
+      "brightness_value": "{value:.0f} Hz",
+      "density_value": "{value:.1f}/s",
+      "duration_value": "{value:.1f}s"
+    },
+    "match": "Match This",
+    "use_tags": "Use Tags",
+    "cancel": "Cancel",
+    "dialog_select": "Select Reference Track",
+    "suggested_tags": "Suggested tags: {tags}",
+    "clap_tags": "Audio-CLAP conditioning ({backend}): {tags}",
+    "structure": "Structure: {sections}",
+    "section": "{label} ({start:.0f}s-{end:.0f}s)",
+    "status": {
+      "analyzing": "Analyzing: {name}...",
+      "cancelling": "Cancelling...",
+      "unavailable": "Audio analysis unavailable - install librosa",
+      "failed": "Analysis failed: {error}",
+      "cancelled": "Analysis cancelled"
+    },
+    "accessibility": {
+      "name": "Reference track",
+      "browse_name": "Browse reference track",
+      "browse_description": "Selects an audio reference track for analysis.",
+      "match_name": "Match reference track",
+      "match_description": "Uses the analysis to configure matching generation.",
+      "tags_name": "Use reference tags",
+      "tags_description": "Sends extracted reference tags to the generation form.",
+      "cancel_name": "Cancel reference analysis",
+      "cancel_description": "Cancels the running reference analysis.",
+      "library_name": "Reference library",
+      "library_description": "Selects a saved reference track.",
+      "progress_name": "Reference analysis progress",
+      "progress_description": "Shows the percentage completed for reference track analysis."
+    }
   }
 }

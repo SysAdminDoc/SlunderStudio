@@ -16,6 +16,7 @@ from ui.accessibility import install_accessibility
 from ui.waveform_widget import WaveformWidget
 from ui.file_dialogs import open_audio_file
 from core.routing import is_audio_path
+from core.i18n import tr
 
 
 class AnalysisCard(QFrame):
@@ -67,13 +68,13 @@ class ReferencePanel(QWidget):
         self._setup_ui()
         install_accessibility(
             self,
-            "Reference track",
+            tr("reference.accessibility.name"),
             named_controls=[
-                (self._browse_btn, "Browse reference track", "Selects an audio reference track for analysis."),
-                (self._match_btn, "Match reference track", "Uses the analysis to configure matching generation."),
-                (self._use_tags_btn, "Use reference tags", "Sends extracted reference tags to the generation form."),
-                (self._cancel_btn, "Cancel reference analysis", "Cancels the running reference analysis."),
-                (self._asset_list if hasattr(self, "_asset_list") else None, "Reference library", "Selects a saved reference track."),
+                (self._browse_btn, tr("reference.accessibility.browse_name"), tr("reference.accessibility.browse_description")),
+                (self._match_btn, tr("reference.accessibility.match_name"), tr("reference.accessibility.match_description")),
+                (self._use_tags_btn, tr("reference.accessibility.tags_name"), tr("reference.accessibility.tags_description")),
+                (self._cancel_btn, tr("reference.accessibility.cancel_name"), tr("reference.accessibility.cancel_description")),
+                (self._asset_list if hasattr(self, "_asset_list") else None, tr("reference.accessibility.library_name"), tr("reference.accessibility.library_description")),
             ],
         )
 
@@ -84,12 +85,12 @@ class ReferencePanel(QWidget):
 
         # Header
         header = QHBoxLayout()
-        title = QLabel("Reference Track")
+        title = QLabel(tr("reference.title"))
         title.setStyleSheet(f"color: {Palette.TEXT}; font-weight: bold; font-size: 9.75pt;")
         header.addWidget(title)
         header.addStretch()
 
-        self._browse_btn = QPushButton("Browse...")
+        self._browse_btn = QPushButton(tr("reference.browse"))
         self._browse_btn.setMinimumHeight(26)
         self._browse_btn.setProperty("class", "secondary")
         self._browse_btn.clicked.connect(self._browse_file)
@@ -98,7 +99,7 @@ class ReferencePanel(QWidget):
         layout.addLayout(header)
 
         # Drop zone / file info
-        self._drop_zone = QLabel("Drop an audio file here\nor click Browse")
+        self._drop_zone = QLabel(tr("reference.drop_zone"))
         self._drop_zone.setAlignment(Qt.AlignCenter)
         self._drop_zone.setMinimumHeight(60)
         self._drop_zone.setStyleSheet(
@@ -127,7 +128,7 @@ class ReferencePanel(QWidget):
         self._results_layout.setSpacing(6)
 
         # Metrics grid
-        self._metrics_group = QGroupBox("Analysis")
+        self._metrics_group = QGroupBox(tr("reference.analysis_group"))
         self._metrics_group.setStyleSheet(
             f"QGroupBox {{ color: {Palette.SUBTEXT0}; border: 1px solid {Palette.SURFACE0}; border-radius: 6px; "
             f"margin-top: 8px; padding-top: 14px; font-size: 8.25pt; }}"
@@ -136,12 +137,12 @@ class ReferencePanel(QWidget):
         metrics_grid = QGridLayout(self._metrics_group)
         metrics_grid.setSpacing(6)
 
-        self._bpm_card = AnalysisCard("BPM")
-        self._key_card = AnalysisCard("Key")
-        self._energy_card = AnalysisCard("Energy")
-        self._brightness_card = AnalysisCard("Brightness")
-        self._density_card = AnalysisCard("Onset Density")
-        self._duration_card = AnalysisCard("Duration")
+        self._bpm_card = AnalysisCard(tr("reference.metrics.bpm"))
+        self._key_card = AnalysisCard(tr("reference.metrics.key"))
+        self._energy_card = AnalysisCard(tr("reference.metrics.energy"))
+        self._brightness_card = AnalysisCard(tr("reference.metrics.brightness"))
+        self._density_card = AnalysisCard(tr("reference.metrics.density"))
+        self._duration_card = AnalysisCard(tr("reference.metrics.duration"))
 
         metrics_grid.addWidget(self._bpm_card, 0, 0)
         metrics_grid.addWidget(self._key_card, 0, 1)
@@ -182,20 +183,20 @@ class ReferencePanel(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(6)
 
-        self._match_btn = QPushButton("Match This")
+        self._match_btn = QPushButton(tr("reference.match"))
         self._match_btn.setMinimumHeight(32)
         self._match_btn.setEnabled(False)
         self._match_btn.clicked.connect(self._on_match)
         btn_row.addWidget(self._match_btn)
 
-        self._use_tags_btn = QPushButton("Use Tags")
+        self._use_tags_btn = QPushButton(tr("reference.use_tags"))
         self._use_tags_btn.setMinimumHeight(32)
         self._use_tags_btn.setProperty("class", "secondary")
         self._use_tags_btn.setEnabled(False)
         self._use_tags_btn.clicked.connect(self._on_use_tags)
         btn_row.addWidget(self._use_tags_btn)
 
-        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn = QPushButton(tr("reference.cancel"))
         self._cancel_btn.setMinimumHeight(32)
         self._cancel_btn.setProperty("class", "secondary")
         self._cancel_btn.setVisible(False)
@@ -215,9 +216,9 @@ class ReferencePanel(QWidget):
         self._progress_bar.setRange(0, 100)
         self._progress_bar.setValue(0)
         self._progress_bar.setTextVisible(True)
-        self._progress_bar.setAccessibleName("Reference analysis progress")
+        self._progress_bar.setAccessibleName(tr("reference.accessibility.progress_name"))
         self._progress_bar.setAccessibleDescription(
-            "Shows the percentage completed for reference track analysis."
+            tr("reference.accessibility.progress_description")
         )
         self._progress_bar.hide()
         layout.addWidget(self._progress_bar)
@@ -225,7 +226,7 @@ class ReferencePanel(QWidget):
     def _browse_file(self):
         path, _ = open_audio_file(
             self,
-            "Select Reference Track",
+            tr("reference.dialog_select"),
             operation_kind="reference_track_import",
             dialog=QFileDialog,
         )
@@ -263,7 +264,9 @@ class ReferencePanel(QWidget):
         self._analysis_token += 1
         token = self._analysis_token
 
-        self._drop_zone.setText(f"Analyzing: {Path(file_path).name}...")
+        self._drop_zone.setText(
+            tr("reference.status.analyzing", name=Path(file_path).name)
+        )
         self._drop_zone.setStyleSheet(
             f"QLabel {{ background: {Palette.MANTLE}; border: 2px solid {Palette.BLUE}; border-radius: 8px; "
             f"color: {Palette.BLUE}; font-size: 9pt; }}"
@@ -322,7 +325,7 @@ class ReferencePanel(QWidget):
             self._release_worker_later(worker)
         if current in running_workers:
             self._cancel_btn.setEnabled(False)
-            self._progress_label.setText("Cancelling...")
+            self._progress_label.setText(tr("reference.status.cancelling"))
             return
 
     def _release_worker_later(self, worker):
@@ -386,9 +389,11 @@ class ReferencePanel(QWidget):
         self._progress_label.setText("")
         self._progress_bar.hide()
         if "librosa" in message.lower() or "import" in message.lower():
-            self._drop_zone.setText("Audio analysis unavailable - install librosa")
+            self._drop_zone.setText(tr("reference.status.unavailable"))
         else:
-            self._drop_zone.setText(f"Analysis failed: {message[:60]}")
+            self._drop_zone.setText(
+                tr("reference.status.failed", error=message[:60])
+            )
 
     def _on_analysis_cancelled(self, token: int, worker=None):
         if worker is None:
@@ -402,7 +407,7 @@ class ReferencePanel(QWidget):
             self._cancel_btn.setVisible(False)
             self._progress_label.setText("")
             self._progress_bar.hide()
-            self._drop_zone.setText("Analysis cancelled")
+            self._drop_zone.setText(tr("reference.status.cancelled"))
 
     def _finalize_analysis_event(self, event):
         """Apply a terminal event only after the worker's native thread stops."""
@@ -451,9 +456,15 @@ class ReferencePanel(QWidget):
         self._bpm_card.set_value(f"{analysis.bpm:.0f}")
         self._key_card.set_value(analysis.key)
         self._energy_card.set_value(f"{analysis.energy_mean:.2f}")
-        self._brightness_card.set_value(f"{analysis.brightness_mean:.0f} Hz")
-        self._density_card.set_value(f"{analysis.onset_density:.1f}/s")
-        self._duration_card.set_value(f"{analysis.duration:.1f}s")
+        self._brightness_card.set_value(
+            tr("reference.metrics.brightness_value", value=analysis.brightness_mean)
+        )
+        self._density_card.set_value(
+            tr("reference.metrics.density_value", value=analysis.onset_density)
+        )
+        self._duration_card.set_value(
+            tr("reference.metrics.duration_value", value=analysis.duration)
+        )
         self._metrics_group.show()
 
         # Suggested tags
@@ -461,21 +472,35 @@ class ReferencePanel(QWidget):
             tag_str = ", ".join(analysis.suggested_tags)
             if analysis.suggested_tempo_tag:
                 tag_str += f", {analysis.suggested_tempo_tag}"
-            self._tags_label.setText(f"Suggested tags: {tag_str}")
+            self._tags_label.setText(tr("reference.suggested_tags", tags=tag_str))
             self._tags_label.show()
 
         clap_tags = getattr(analysis, "clap_style_tags", [])
         if clap_tags:
             backend = getattr(analysis, "clap_backend", "audio-clap")
             self._clap_label.setText(
-                f"Audio-CLAP conditioning ({backend}): {', '.join(clap_tags)}"
+                tr(
+                    "reference.clap_tags",
+                    backend=backend,
+                    tags=", ".join(clap_tags),
+                )
             )
             self._clap_label.show()
 
         # Sections
         if analysis.sections:
-            parts = [f"{s['label']} ({s['start']:.0f}s-{s['end']:.0f}s)" for s in analysis.sections[:6]]
-            self._sections_label.setText("Structure: " + " | ".join(parts))
+            parts = [
+                tr(
+                    "reference.section",
+                    label=s["label"],
+                    start=s["start"],
+                    end=s["end"],
+                )
+                for s in analysis.sections[:6]
+            ]
+            self._sections_label.setText(
+                tr("reference.structure", sections=" | ".join(parts))
+            )
             self._sections_label.show()
 
         # Enable buttons
@@ -501,7 +526,7 @@ class ReferencePanel(QWidget):
     def clear(self):
         self._analysis = None
         self._pending_waveform_analysis = None
-        self._drop_zone.setText("Drop an audio file here\nor click Browse")
+        self._drop_zone.setText(tr("reference.drop_zone"))
         self._drop_zone.setStyleSheet(
             f"QLabel {{ background: {Palette.MANTLE}; border: 2px dashed {Palette.SURFACE1}; border-radius: 8px; "
             f"color: {Palette.OVERLAY0}; font-size: 9pt; }}"

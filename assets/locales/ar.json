@@ -499,5 +499,52 @@
       "tabs_name": "تبويبات مساحة عمل MIDI",
       "tabs_description": "يبدل بين لوحة البيانو والصوت المُصيّر."
     }
+  },
+  "reference": {
+    "title": "المسار المرجعي",
+    "browse": "استعراض...",
+    "drop_zone": "أفلت ملفاً صوتياً هنا\nأو انقر على استعراض",
+    "analysis_group": "التحليل",
+    "metrics": {
+      "bpm": "BPM",
+      "key": "المقام",
+      "energy": "الطاقة",
+      "brightness": "السطوع",
+      "density": "كثافة البدايات",
+      "duration": "المدة",
+      "brightness_value": "{value:.0f} هرتز",
+      "density_value": "{value:.1f}/ث",
+      "duration_value": "{value:.1f}ث"
+    },
+    "match": "مطابقة هذا",
+    "use_tags": "استخدام الوسوم",
+    "cancel": "إلغاء",
+    "dialog_select": "اختيار مسار مرجعي",
+    "suggested_tags": "الوسوم المقترحة: {tags}",
+    "clap_tags": "تكييف Audio-CLAP ({backend}): {tags}",
+    "structure": "البنية: {sections}",
+    "section": "{label} ({start:.0f}ث-{end:.0f}ث)",
+    "status": {
+      "analyzing": "جارٍ تحليل: {name}...",
+      "cancelling": "جارٍ الإلغاء...",
+      "unavailable": "تحليل الصوت غير متاح - ثبّت librosa",
+      "failed": "فشل التحليل: {error}",
+      "cancelled": "أُلغي التحليل"
+    },
+    "accessibility": {
+      "name": "المسار المرجعي",
+      "browse_name": "استعراض المسار المرجعي",
+      "browse_description": "يحدد مساراً صوتياً مرجعياً للتحليل.",
+      "match_name": "مطابقة المسار المرجعي",
+      "match_description": "يستخدم التحليل لإعداد التوليد المطابق.",
+      "tags_name": "استخدام وسوم المرجع",
+      "tags_description": "يرسل وسوم المرجع المستخرجة إلى نموذج التوليد.",
+      "cancel_name": "إلغاء تحليل المرجع",
+      "cancel_description": "يلغي تحليل المرجع الجاري.",
+      "library_name": "مكتبة المراجع",
+      "library_description": "يحدد مساراً مرجعياً محفوظاً.",
+      "progress_name": "تقدم تحليل المرجع",
+      "progress_description": "يعرض النسبة المئوية المكتملة لتحليل المسار المرجعي."
+    }
   }
 }

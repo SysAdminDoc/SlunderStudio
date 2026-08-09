@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Reference Panel controls, drop-zone/status messages, metric labels, section/tag
+  summaries, and accessibility descriptions to the locale catalog.
+
 - Migrated MIDI Studio controls, tabs, empty states, import/export/render status copy, and
   accessibility descriptions to the locale catalog while retaining musical values as data.
 
