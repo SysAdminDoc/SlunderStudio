@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated MIDI Studio controls, tabs, empty states, import/export/render status copy, and
+  accessibility descriptions to the locale catalog while retaining musical values as data.
+
 - Migrated AI Producer labels, stage states, output summaries, export states, option display
   labels, and accessibility descriptions to the locale catalog while preserving raw engine IDs.
 

@@ -114,13 +114,13 @@ class MidiStudioView(QWidget):
         gen_layout.setContentsMargins(12, 10, 12, 10)
         gen_layout.setSpacing(6)
 
-        gen_title = QLabel("Text-to-MIDI")
+        gen_title = QLabel(tr("midi.title"))
         gen_title.setStyleSheet(f"color: {t['accent']}; font-weight: bold; font-size: 9.75pt; border: none;")
         gen_layout.addWidget(gen_title)
 
         # Prompt
         self._prompt = QTextEdit()
-        self._prompt.setPlaceholderText("Describe the composition...\ne.g. 'A melancholy jazz ballad with walking bass and soft piano chords'")
+        self._prompt.setPlaceholderText(tr("midi.prompt_placeholder"))
         self._prompt.setMaximumHeight(70)
         self._prompt.setStyleSheet(f"""
             QTextEdit {{
@@ -137,11 +137,11 @@ class MidiStudioView(QWidget):
 
         # Style
         style_row = QHBoxLayout()
-        style_label = QLabel("Style:")
+        style_label = QLabel(tr("midi.style_label"))
         style_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt; border:none;")
         style_label.setMinimumWidth(40)
         self._style_input = QLineEdit()
-        self._style_input.setPlaceholderText("jazz piano ballad, soft, legato")
+        self._style_input.setPlaceholderText(tr("midi.style_placeholder"))
         self._style_input.setStyleSheet(f"""
             QLineEdit {{
                 background: {t['background']};
@@ -168,7 +168,7 @@ class MidiStudioView(QWidget):
         # Row 1: Key + Tempo
         row1 = QHBoxLayout()
         row1.setSpacing(6)
-        key_l = QLabel("Key:")
+        key_l = QLabel(tr("midi.key_label"))
         key_l.setMinimumWidth(34)
         key_l.setStyleSheet(param_style)
         self._key_combo = QComboBox()
@@ -176,7 +176,7 @@ class MidiStudioView(QWidget):
         self._key_combo.setCurrentText("C major")
         self._key_combo.setStyleSheet(param_style)
 
-        tempo_l = QLabel("BPM:")
+        tempo_l = QLabel(tr("midi.tempo_label"))
         tempo_l.setMinimumWidth(30)
         tempo_l.setStyleSheet(param_style)
         self._tempo_spin = QSpinBox()
@@ -193,7 +193,7 @@ class MidiStudioView(QWidget):
         # Row 2: Bars + Time Sig
         row2 = QHBoxLayout()
         row2.setSpacing(6)
-        bars_l = QLabel("Bars:")
+        bars_l = QLabel(tr("midi.bars_label"))
         bars_l.setMinimumWidth(34)
         bars_l.setStyleSheet(param_style)
         self._bars_spin = QSpinBox()
@@ -201,7 +201,7 @@ class MidiStudioView(QWidget):
         self._bars_spin.setValue(16)
         self._bars_spin.setStyleSheet(param_style)
 
-        ts_l = QLabel("Time:")
+        ts_l = QLabel(tr("midi.time_label"))
         ts_l.setMinimumWidth(30)
         ts_l.setStyleSheet(param_style)
         self._time_sig = QComboBox()
@@ -217,7 +217,7 @@ class MidiStudioView(QWidget):
         # Row 3: Instruments preset
         row3 = QHBoxLayout()
         row3.setSpacing(6)
-        inst_l = QLabel("Preset:")
+        inst_l = QLabel(tr("midi.preset_label"))
         inst_l.setMinimumWidth(40)
         inst_l.setStyleSheet(param_style)
         self._inst_combo = QComboBox()
@@ -231,7 +231,7 @@ class MidiStudioView(QWidget):
         # Row 4: Chord progression prior
         row4 = QHBoxLayout()
         row4.setSpacing(6)
-        prog_l = QLabel("Chords:")
+        prog_l = QLabel(tr("midi.chords_label"))
         prog_l.setMinimumWidth(48)
         prog_l.setStyleSheet(param_style)
         self._progression_combo = QComboBox()
@@ -244,7 +244,7 @@ class MidiStudioView(QWidget):
         # Row 5: Drum groove template
         row5 = QHBoxLayout()
         row5.setSpacing(6)
-        groove_l = QLabel("Groove:")
+        groove_l = QLabel(tr("midi.groove_label"))
         groove_l.setMinimumWidth(48)
         groove_l.setStyleSheet(param_style)
         self._groove_combo = QComboBox()
@@ -255,7 +255,7 @@ class MidiStudioView(QWidget):
         gen_layout.addLayout(row5)
 
         self._chart_lyrics = QTextEdit()
-        self._chart_lyrics.setPlaceholderText("Optional lyrics for chord chart export...")
+        self._chart_lyrics.setPlaceholderText(tr("midi.chart_lyrics_placeholder"))
         self._chart_lyrics.setMaximumHeight(54)
         self._chart_lyrics.setStyleSheet(f"""
             QTextEdit {{
@@ -269,17 +269,15 @@ class MidiStudioView(QWidget):
         """)
         gen_layout.addWidget(self._chart_lyrics)
 
-        self._demo_checkbox = QCheckBox(
-            "Enable algorithmic demo (no AI model)"
-        )
+        self._demo_checkbox = QCheckBox(tr("midi.demo_checkbox"))
         self._demo_checkbox.setToolTip(
-            "Demo output is rule-based MIDI and is labeled separately from model output."
+            tr("midi.demo_tooltip")
         )
         self._demo_checkbox.toggled.connect(self._refresh_capability_state)
         gen_layout.addWidget(self._demo_checkbox)
 
         # Generate button
-        self._gen_btn = QPushButton("Generate MIDI")
+        self._gen_btn = QPushButton(tr("midi.generate"))
         self._gen_btn.setMinimumHeight(36)
         self._gen_btn.setStyleSheet(f"""
             QPushButton {{
@@ -330,19 +328,19 @@ class MidiStudioView(QWidget):
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
 
-        self._import_btn = QPushButton("Import .mid")
+        self._import_btn = QPushButton(tr("midi.import"))
         self._import_btn.setStyleSheet(btn_style)
         self._import_btn.clicked.connect(self._on_import)
 
-        self._export_btn = QPushButton("Export .mid")
+        self._export_btn = QPushButton(tr("midi.export"))
         self._export_btn.setStyleSheet(btn_style)
         self._export_btn.clicked.connect(self._on_export)
 
-        self._chart_btn = QPushButton("Export Chart")
+        self._chart_btn = QPushButton(tr("midi.export_chart"))
         self._chart_btn.setStyleSheet(btn_style)
         self._chart_btn.clicked.connect(self._on_export_chart)
 
-        self._render_btn = QPushButton("Render Audio")
+        self._render_btn = QPushButton(tr("midi.render_audio"))
         self._render_btn.setProperty("class", "success")
         self._render_btn.clicked.connect(self._on_render)
 
@@ -356,12 +354,12 @@ class MidiStudioView(QWidget):
         route_row = QHBoxLayout()
         route_row.setSpacing(6)
 
-        self._to_forge_btn = QPushButton("Send to Song Forge")
+        self._to_forge_btn = QPushButton(tr("midi.send_to_forge"))
         self._to_forge_btn.setStyleSheet(btn_style)
         self._to_forge_btn.setEnabled(False)
         self._to_forge_btn.clicked.connect(self._on_send_to_forge)
 
-        self._to_vocals_btn = QPushButton("Add Vocals")
+        self._to_vocals_btn = QPushButton(tr("midi.add_vocals"))
         self._to_vocals_btn.setStyleSheet(btn_style)
         self._to_vocals_btn.setEnabled(False)
         self._to_vocals_btn.clicked.connect(self._on_send_to_vocals)
@@ -401,17 +399,17 @@ class MidiStudioView(QWidget):
         # Piano roll tab
         self._piano_roll = PianoRollWidget()
         self._piano_roll.notes_changed.connect(self._on_notes_changed)
-        self._tabs.addTab(self._piano_roll, "Piano Roll")
+        self._tabs.addTab(self._piano_roll, tr("midi.tab_piano_roll"))
 
         # Rendered audio tab
         self._waveform = WaveformWidget()
         self._waveform.empty_action_requested.connect(self._import_btn.click)
-        self._tabs.addTab(self._waveform, "Rendered Audio")
+        self._tabs.addTab(self._waveform, tr("midi.tab_rendered_audio"))
 
         self._workspace_empty = EmptyStateWidget(
-            "No MIDI composition yet",
-            "Generate or import a MIDI file to edit notes, mix tracks, and render audio.",
-            "Generate MIDI",
+            tr("midi.empty_title"),
+            tr("midi.empty_description"),
+            tr("midi.generate"),
         )
         self._workspace_empty.action_requested.connect(self._gen_btn.click)
         self._workspace_stack = QStackedWidget()
@@ -421,7 +419,7 @@ class MidiStudioView(QWidget):
         right.addWidget(self._workspace_stack, 1)
 
         # Info bar
-        self._info = QLabel("No MIDI loaded. Generate or import a file.")
+        self._info = QLabel(tr("midi.info_empty"))
         self._info.setStyleSheet(f"""
             color: {t['text_secondary']};
             font-size: 8.25pt;
@@ -446,28 +444,28 @@ class MidiStudioView(QWidget):
         self._refresh_capability_state()
         install_accessibility(
             self,
-            "MIDI Studio",
+            tr("midi.accessibility.name"),
             named_controls=[
-                (self._prompt, "MIDI composition prompt", "Describes the composition to generate."),
-                (self._style_input, "MIDI style", "Adds style guidance for MIDI generation."),
-                (self._key_combo, "MIDI key", "Selects the generated composition key."),
-                (self._tempo_spin, "MIDI tempo", "Sets the generated tempo in beats per minute."),
-                (self._bars_spin, "MIDI bars", "Sets the number of generated bars."),
-                (self._time_sig, "MIDI time signature", "Selects the generated time signature."),
-                (self._inst_combo, "MIDI instrument preset", "Selects a starting instrument arrangement."),
-                (self._progression_combo, "Chord progression", "Selects the generated chord progression."),
-                (self._groove_combo, "Drum groove", "Selects the generated drum groove."),
-                (self._chart_lyrics, "Chord chart lyrics", "Adds optional lyrics to the exported chord chart."),
-                (self._demo_checkbox, "Enable MIDI demo", "Allows algorithmic MIDI generation without an AI model."),
-                (self._gen_btn, "Generate MIDI", "Generates a MIDI composition from the current settings."),
-                (self._import_btn, "Import MIDI", "Loads a MIDI file into the studio."),
-                (self._export_btn, "Export MIDI", "Saves the current MIDI composition."),
-                (self._chart_btn, "Export chord chart", "Saves a chord chart for the current composition."),
-                (self._render_btn, "Render MIDI audio", "Renders the current MIDI composition to audio."),
-                (self._operation_progress.cancel_button, "Cancel MIDI operation", "Cancels the running MIDI generation or render operation."),
-                (self._to_forge_btn, "Send MIDI audio to Song Forge", "Routes rendered audio to Song Forge."),
-                (self._to_vocals_btn, "Send MIDI audio to Vocal Suite", "Routes rendered audio to Vocal Suite."),
-                (self._tabs, "MIDI workspace tabs", "Switches between the piano roll and rendered audio."),
+                (self._prompt, tr("midi.accessibility.prompt_name"), tr("midi.accessibility.prompt_description")),
+                (self._style_input, tr("midi.accessibility.style_name"), tr("midi.accessibility.style_description")),
+                (self._key_combo, tr("midi.accessibility.key_name"), tr("midi.accessibility.key_description")),
+                (self._tempo_spin, tr("midi.accessibility.tempo_name"), tr("midi.accessibility.tempo_description")),
+                (self._bars_spin, tr("midi.accessibility.bars_name"), tr("midi.accessibility.bars_description")),
+                (self._time_sig, tr("midi.accessibility.time_name"), tr("midi.accessibility.time_description")),
+                (self._inst_combo, tr("midi.accessibility.preset_name"), tr("midi.accessibility.preset_description")),
+                (self._progression_combo, tr("midi.accessibility.chords_name"), tr("midi.accessibility.chords_description")),
+                (self._groove_combo, tr("midi.accessibility.groove_name"), tr("midi.accessibility.groove_description")),
+                (self._chart_lyrics, tr("midi.accessibility.chart_lyrics_name"), tr("midi.accessibility.chart_lyrics_description")),
+                (self._demo_checkbox, tr("midi.accessibility.demo_name"), tr("midi.accessibility.demo_description")),
+                (self._gen_btn, tr("midi.accessibility.generate_name"), tr("midi.accessibility.generate_description")),
+                (self._import_btn, tr("midi.accessibility.import_name"), tr("midi.accessibility.import_description")),
+                (self._export_btn, tr("midi.accessibility.export_name"), tr("midi.accessibility.export_description")),
+                (self._chart_btn, tr("midi.accessibility.chart_name"), tr("midi.accessibility.chart_description")),
+                (self._render_btn, tr("midi.accessibility.render_name"), tr("midi.accessibility.render_description")),
+                (self._operation_progress.cancel_button, tr("midi.accessibility.cancel_name"), tr("midi.accessibility.cancel_description")),
+                (self._to_forge_btn, tr("midi.accessibility.forge_name"), tr("midi.accessibility.forge_description")),
+                (self._to_vocals_btn, tr("midi.accessibility.vocals_name"), tr("midi.accessibility.vocals_description")),
+                (self._tabs, tr("midi.accessibility.tabs_name"), tr("midi.accessibility.tabs_description")),
             ],
         )
         self._settings.on_change(self._on_settings_change)
@@ -489,10 +487,10 @@ class MidiStudioView(QWidget):
         worker.cancel()
         if worker is self._generation_worker:
             self._gen_btn.setEnabled(False)
-            self._status.setText("Cancelling MIDI generation...")
+            self._status.setText(tr("midi.status.cancelling_generation"))
         else:
             self._render_btn.setEnabled(False)
-            self._status.setText("Cancelling MIDI render...")
+            self._status.setText(tr("midi.status.cancelling_render"))
 
     def _build_params(self) -> MidiGenParams:
         ts_text = self._time_sig.currentText()
@@ -532,9 +530,9 @@ class MidiStudioView(QWidget):
 
         params = self._build_params()
         self._status.setText(
-            "Generating algorithmic demo..."
+            tr("midi.status.generating_demo")
             if readiness.mode == RunMode.DEMO
-            else "Generating with MIDI-LLM..."
+            else tr("midi.status.generating_model")
         )
         self._generation_worker = InferenceWorker(
             self._run_generation,
@@ -560,13 +558,13 @@ class MidiStudioView(QWidget):
         self._generation_worker.finished.connect(self._on_generation_finished)
         self._generation_worker.error.connect(self._on_generation_error)
         self._generation_worker.cancelled.connect(self._on_generation_cancelled)
-        self._operation_progress.start("MIDI generation", determinate=True)
+        self._operation_progress.start(tr("midi.operation_generation"), determinate=True)
         self._generation_worker.start()
         self._refresh_capability_state()
 
     def _on_generation_progress(self, percent: int):
-        self._operation_progress.set_progress(percent, "MIDI generation")
-        self._status.setText(f"MIDI generation... {percent}%")
+        self._operation_progress.set_progress(percent, tr("midi.operation_generation"))
+        self._status.setText(tr("midi.status.generation_progress", percent=percent))
 
     def _on_generation_step(self, message: str):
         self._operation_progress.set_step(message)
@@ -618,17 +616,21 @@ class MidiStudioView(QWidget):
         self._operation_progress.finish()
         self._contract_result = run
         if not run.is_success:
-            self._report_error(f"MIDI generation failed: {run.error}")
+            self._report_error(tr("midi.status.generation_failed", error=run.error))
             self._refresh_capability_state()
             return
         result = run.source_result
         midi_data = result.midi_data
         self._load_midi_data(midi_data)
-        prefix = "Demo generated" if run.is_demo else "MIDI-LLM generated"
+        prefix = tr("midi.status.demo_generated") if run.is_demo else tr("midi.status.model_generated")
         self._status.setText(
-            f"{prefix}: {midi_data.track_count} tracks, "
-            f"{midi_data.total_notes} notes, "
-            f"{midi_data.duration:.1f}s"
+            tr(
+                "midi.status.generated_summary",
+                prefix=prefix,
+                tracks=midi_data.track_count,
+                notes=midi_data.total_notes,
+                seconds=midi_data.duration,
+            )
         )
         self._refresh_capability_state()
 
@@ -640,7 +642,7 @@ class MidiStudioView(QWidget):
             error,
             model_id="midi-llm-1b",
         )
-        self._report_error(f"MIDI generation failed: {error}")
+        self._report_error(tr("midi.status.generation_failed", error=error))
         self._refresh_capability_state()
 
     def _report_error(self, message: str):
@@ -657,7 +659,7 @@ class MidiStudioView(QWidget):
             "MIDI generation cancelled",
             model_id="midi-llm-1b",
         )
-        self._status.setText("MIDI generation cancelled")
+        self._status.setText(tr("midi.status.generation_cancelled"))
         self._refresh_capability_state()
 
     def _readiness_message(self, readiness) -> str:
@@ -679,12 +681,12 @@ class MidiStudioView(QWidget):
             allow_demo=self._demo_checkbox.isChecked(),
         )
         if self._generation_worker is not None:
-            self._gen_btn.setText("Cancel Generation")
+            self._gen_btn.setText(tr("midi.cancel_generation"))
             self._gen_btn.setEnabled(True)
             self._gen_btn.setToolTip(tr("runtime.cancel_generation"))
             return
         has_prompt = bool(self._prompt.toPlainText().strip())
-        self._gen_btn.setText("Generate MIDI")
+        self._gen_btn.setText(tr("midi.generate"))
         self._gen_btn.setEnabled(readiness.can_run and has_prompt)
         self._gen_btn.setToolTip(
             (
@@ -738,23 +740,29 @@ class MidiStudioView(QWidget):
         self._update_info()
         if self._render_worker is not None:
             self._render_worker.cancel()
-            self._status.setText("MIDI changed; cancelling audio render...")
+            self._status.setText(tr("midi.status.changed_cancelling_render"))
         elif self._rendered_audio is not None:
             self._rendered_audio = None
             self._current_audio_path = None
             self._rendered_output_kind = ""
             self._to_forge_btn.setEnabled(False)
             self._to_vocals_btn.setEnabled(False)
-            self._status.setText("MIDI changed; render MIDI audio again.")
+            self._status.setText(tr("midi.status.changed_render_again"))
 
     def _update_info(self):
         if self._midi_data:
             self._info.setText(
-                f"Tracks: {self._midi_data.track_count}  |  "
-                f"Notes: {self._midi_data.total_notes}  |  "
-                f"Tempo: {self._midi_data.tempo:.0f} BPM  |  "
-                f"Duration: {self._midi_data.duration:.1f}s  |  "
-                f"Time Sig: {self._midi_data.time_signature[0]}/{self._midi_data.time_signature[1]}"
+                tr(
+                    "midi.info_summary",
+                    tracks=self._midi_data.track_count,
+                    notes=self._midi_data.total_notes,
+                    tempo=self._midi_data.tempo,
+                    seconds=self._midi_data.duration,
+                    time_signature=(
+                        f"{self._midi_data.time_signature[0]}"
+                        f"/{self._midi_data.time_signature[1]}"
+                    ),
+                )
             )
 
     # ── Import / Export ────────────────────────────────────────────────────────
@@ -762,7 +770,7 @@ class MidiStudioView(QWidget):
     def _on_import(self):
         path, _ = open_midi_file(
             self,
-            "Import MIDI File",
+            tr("midi.dialog_import"),
             operation_kind="midi_import",
             dialog=QFileDialog,
         )
@@ -770,18 +778,18 @@ class MidiStudioView(QWidget):
             try:
                 midi_data = load_midi(path)
                 self._load_midi_data(midi_data)
-                self._status.setText(f"Imported: {path}")
+                self._status.setText(tr("midi.status.imported", path=path))
             except Exception as e:
-                self._report_error(f"Import error: {e}")
+                self._report_error(tr("midi.status.import_error", error=e))
 
     def _on_export(self):
         if not self._midi_data:
-            self._report_error("Nothing to export")
+            self._report_error(tr("midi.status.nothing_to_export"))
             return
 
         path, selected_filter = save_midi_file(
             self,
-            "Export MIDI File",
+            tr("midi.dialog_export"),
             "composition.mid",
             operation_kind="midi_export",
             dialog=QFileDialog,
@@ -790,20 +798,20 @@ class MidiStudioView(QWidget):
             path = ensure_extension(path, selected_filter, default="mid")
             try:
                 save_midi(self._midi_data, path)
-                self._status.setText(f"Exported: {path}")
+                self._status.setText(tr("midi.status.exported", path=path))
             except Exception as e:
-                self._report_error(f"Export error: {e}")
+                self._report_error(tr("midi.status.export_error", error=e))
 
     # ── Render ─────────────────────────────────────────────────────────────────
 
     def _on_export_chart(self):
         if not self._midi_data:
-            self._report_error("Nothing to export")
+            self._report_error(tr("midi.status.nothing_to_export"))
             return
 
         path, selected_filter = save_file(
             self,
-            "Export Chord Chart",
+            tr("midi.dialog_chart"),
             "chord_chart.chordpro",
             "ChordPro (*.chordpro);;Chord sheet (*.crd)",
             "midi_chart_export",
@@ -823,9 +831,9 @@ class MidiStudioView(QWidget):
                 lyrics=self._chart_lyrics.toPlainText().strip(),
                 title=target.stem,
             )
-            self._status.setText(f"Exported chart: {output}")
+            self._status.setText(tr("midi.status.chart_exported", path=output))
         except Exception as e:
-            self._report_error(f"Chart export error: {e}")
+            self._report_error(tr("midi.status.chart_export_error", error=e))
 
     def _on_render(self):
         """Render MIDI to audio via a cancellable worker job."""
@@ -834,7 +842,7 @@ class MidiStudioView(QWidget):
             self._render_btn.setEnabled(False)
             return
         if not self._midi_data:
-            self._report_error("Nothing to render")
+            self._report_error(tr("midi.status.nothing_to_render"))
             return
 
         self._rendered_audio = None
@@ -842,7 +850,7 @@ class MidiStudioView(QWidget):
         self._rendered_output_kind = ""
         self._to_forge_btn.setEnabled(False)
         self._to_vocals_btn.setEnabled(False)
-        self._status.setText("Rendering audio...")
+        self._status.setText(tr("midi.status.rendering_audio"))
 
         import os
         import time as time_mod
@@ -883,13 +891,13 @@ class MidiStudioView(QWidget):
         self._render_worker.finished.connect(self._on_render_finished)
         self._render_worker.error.connect(self._on_render_error)
         self._render_worker.cancelled.connect(self._on_render_cancelled)
-        self._operation_progress.start("MIDI render", determinate=True)
+        self._operation_progress.start(tr("midi.operation_render"), determinate=True)
         self._render_worker.start()
-        self._render_btn.setText("Cancel Render")
+        self._render_btn.setText(tr("midi.cancel_render"))
 
     def _on_render_progress(self, percent: int):
-        self._operation_progress.set_progress(percent, "MIDI render")
-        self._status.setText(f"MIDI render... {percent}%")
+        self._operation_progress.set_progress(percent, tr("midi.operation_render"))
+        self._status.setText(tr("midi.status.render_progress", percent=percent))
 
     def _on_render_step(self, message: str):
         self._operation_progress.set_step(message)
@@ -971,11 +979,11 @@ class MidiStudioView(QWidget):
     def _on_render_finished(self, run: EngineRunResult):
         self._render_worker = None
         self._operation_progress.finish()
-        self._render_btn.setText("Render Audio")
+        self._render_btn.setText(tr("midi.render_audio"))
         self._render_btn.setEnabled(True)
         self._contract_result = run
         if not run.is_success:
-            self._report_error(f"Render failed: {run.error}")
+            self._report_error(tr("midi.status.render_failed", error=run.error))
             return
 
         result = run.source_result
@@ -994,38 +1002,38 @@ class MidiStudioView(QWidget):
         self._to_forge_btn.setEnabled(not is_demo)
         self._to_vocals_btn.setEnabled(not is_demo)
         if is_demo:
-            reason = result.fallback_reason or "FluidSynth was unavailable"
+            reason = result.fallback_reason or tr("midi.status.fluidsynth_unavailable")
             self._status.setText(
-                f"Preview render (sine) — FluidSynth unavailable: {reason}"
+                tr("midi.status.preview_render", reason=reason)
             )
         else:
-            self._status.setText(f"Rendered: {output_path}")
+            self._status.setText(tr("midi.status.rendered", path=output_path))
 
     def _on_render_error(self, error: str):
         self._render_worker = None
         self._operation_progress.finish()
-        self._render_btn.setText("Render Audio")
+        self._render_btn.setText(tr("midi.render_audio"))
         self._render_btn.setEnabled(True)
         self._contract_result = EngineRunResult.failure(CAP_MIDI_RENDER, error)
-        self._report_error(f"Render error: {error}")
+        self._report_error(tr("midi.status.render_error", error=error))
 
     def _on_render_cancelled(self):
         self._render_worker = None
         self._operation_progress.finish()
-        self._render_btn.setText("Render Audio")
+        self._render_btn.setText(tr("midi.render_audio"))
         self._render_btn.setEnabled(True)
         self._contract_result = EngineRunResult.cancelled(
             CAP_MIDI_RENDER,
             "MIDI render cancelled",
         )
-        self._status.setText("MIDI render cancelled")
+        self._status.setText(tr("midi.status.render_cancelled"))
 
     def _on_mix_changed(self):
         """Invalidate stale audio when a mixer control changes."""
         if self._render_worker is not None:
             self._cancel_active_operation()
             self._render_btn.setEnabled(False)
-            self._status.setText("Mix changed; cancelling MIDI render...")
+            self._status.setText(tr("midi.status.mix_changed_cancelling"))
             return
         if self._rendered_audio is not None:
             self._rendered_audio = None
@@ -1033,7 +1041,7 @@ class MidiStudioView(QWidget):
             self._rendered_output_kind = ""
             self._to_forge_btn.setEnabled(False)
             self._to_vocals_btn.setEnabled(False)
-            self._status.setText("Mix changed; render MIDI audio again.")
+            self._status.setText(tr("midi.status.mix_changed_render_again"))
 
     # ── Cross-Module Routing ───────────────────────────────────────────────────
 
