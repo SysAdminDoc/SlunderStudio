@@ -4,6 +4,9 @@ All notable changes to SlunderStudio will be documented in this file.
 
 ## Unreleased
 
+- Migrated Project Manager library/detail labels, version/provenance/DAWproject flows,
+  recoverable-trash messages, and accessibility descriptions to the locale catalog.
+
 - Migrated Model Hub dialogs, model cards, filters, update/recovery flows, hardware summaries,
   and accessibility descriptions to the locale catalog, including Arabic coverage.
 

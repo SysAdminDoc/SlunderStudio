@@ -102,7 +102,9 @@ class ProjectCard(QFrame):
     def __init__(self, project_info: dict, parent=None):
         super().__init__(parent)
         self._project_id = project_info["id"]
-        self._project_name = str(project_info.get("name") or "Untitled")
+        self._project_name = str(
+            project_info.get("name") or tr("project_manager.data.untitled")
+        )
         self._project_notes = str(project_info.get("notes") or "")
 
         t = ThemeEngine.get_colors()
@@ -137,8 +139,10 @@ class ProjectCard(QFrame):
         if updated:
             time_str = time.strftime("%b %d, %Y %I:%M %p", time.localtime(updated))
         else:
-            time_str = "Unknown"
-        date_label = QLabel(f"Last modified: {time_str}")
+            time_str = tr("project_manager.data.unknown")
+        date_label = QLabel(
+            tr("project_manager.card.last_modified", time=time_str)
+        )
         date_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 7.5pt;")
         info.addWidget(date_label)
 
@@ -157,11 +161,11 @@ class ProjectCard(QFrame):
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
 
-        open_btn = QPushButton("Open")
+        open_btn = QPushButton(tr("project_manager.actions.open"))
         open_btn.setStyleSheet(btn_style.replace(t['background'], t['accent']).replace(t['text'] + ';', 'white;'))
         open_btn.clicked.connect(lambda: self.open_requested.emit(self._project_id))
 
-        del_btn = QPushButton("Delete")
+        del_btn = QPushButton(tr("project_manager.actions.delete"))
         del_btn.setStyleSheet(btn_style)
         del_btn.clicked.connect(lambda: self.delete_requested.emit(self._project_id))
 
@@ -172,10 +176,18 @@ class ProjectCard(QFrame):
         self._delete_btn = del_btn
         install_accessibility(
             self,
-            f"Project {self._project_name}",
+            tr("project_manager.accessibility.card_name", project=self._project_name),
             named_controls=[
-                (self._open_btn, "Open project", "Opens this project in the studio."),
-                (self._delete_btn, "Delete project", "Moves this project to recoverable trash."),
+                (
+                    self._open_btn,
+                    tr("project_manager.accessibility.open_name"),
+                    tr("project_manager.accessibility.open_description"),
+                ),
+                (
+                    self._delete_btn,
+                    tr("project_manager.accessibility.delete_name"),
+                    tr("project_manager.accessibility.delete_description"),
+                ),
             ],
         )
 
@@ -215,7 +227,7 @@ class ProjectDetailPanel(QWidget):
         layout.setSpacing(8)
 
         # Project info header
-        self._name_label = QLabel("No Project Open")
+        self._name_label = QLabel(tr("project_manager.detail.no_project"))
         self._name_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12pt;")
         layout.addWidget(self._name_label)
 
@@ -232,7 +244,7 @@ class ProjectDetailPanel(QWidget):
 
         # Notes
         self._notes = QTextEdit()
-        self._notes.setPlaceholderText("Project notes...")
+        self._notes.setPlaceholderText(tr("project_manager.detail.notes_placeholder"))
         self._notes.setMaximumHeight(80)
         self._notes.setStyleSheet(f"""
             QTextEdit {{
@@ -243,7 +255,9 @@ class ProjectDetailPanel(QWidget):
         """)
         layout.addWidget(self._notes)
 
-        contributions_label = QLabel("Human contributions (registration evidence)")
+        contributions_label = QLabel(
+            tr("project_manager.detail.contributions_label")
+        )
         contributions_label.setStyleSheet(
             f"color: {t['text']}; font-weight: bold; font-size: 9pt;"
         )
@@ -251,10 +265,7 @@ class ProjectDetailPanel(QWidget):
 
         self._contributions = QTextEdit()
         self._contributions.setPlaceholderText(
-            "One declaration per line, for example:\n"
-            "lyrics: wrote the chorus\n"
-            "midi: drew the bass notes\n"
-            "edits: chose the final vocal take"
+            tr("project_manager.detail.contributions_placeholder")
         )
         self._contributions.setMaximumHeight(92)
         self._contributions.setStyleSheet(f"""
@@ -267,7 +278,7 @@ class ProjectDetailPanel(QWidget):
         layout.addWidget(self._contributions)
 
         # Assets list
-        assets_label = QLabel("Assets")
+        assets_label = QLabel(tr("project_manager.detail.assets"))
         assets_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         layout.addWidget(assets_label)
 
@@ -290,9 +301,9 @@ class ProjectDetailPanel(QWidget):
         """)
         self._asset_list.currentItemChanged.connect(self._on_asset_selected)
         self._asset_empty = EmptyStateWidget(
-            "No project assets yet",
-            "Import audio or MIDI into the open project to see it here.",
-            "Import asset",
+            tr("project_manager.empty.assets_title"),
+            tr("project_manager.empty.assets_description"),
+            tr("project_manager.actions.import_asset"),
         )
         self._asset_empty.action_requested.connect(self._on_asset_empty_action)
         self._asset_stack = QStackedWidget()
@@ -301,7 +312,7 @@ class ProjectDetailPanel(QWidget):
         layout.addWidget(self._asset_stack, 1)
 
         # Version history
-        ver_label = QLabel("Version History")
+        ver_label = QLabel(tr("project_manager.detail.version_history"))
         ver_label.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 9pt;")
         layout.addWidget(ver_label)
 
@@ -310,9 +321,9 @@ class ProjectDetailPanel(QWidget):
         self._version_list.setStyleSheet(self._asset_list.styleSheet())
         self._version_list.currentItemChanged.connect(self._on_version_selected)
         self._version_empty = EmptyStateWidget(
-            "No saved versions yet",
-            "Save a version when you want a recoverable project checkpoint.",
-            "Save version",
+            tr("project_manager.empty.versions_title"),
+            tr("project_manager.empty.versions_description"),
+            tr("project_manager.actions.save_version"),
         )
         self._version_empty.action_requested.connect(self._on_version_empty_action)
         self._version_stack = QStackedWidget()
@@ -320,7 +331,7 @@ class ProjectDetailPanel(QWidget):
         self._version_stack.addWidget(self._version_empty)
         layout.addWidget(self._version_stack)
 
-        self._version_preview = QLabel("Select a version to preview it.")
+        self._version_preview = QLabel(tr("project_manager.version.select_preview"))
         self._version_preview.setWordWrap(True)
         self._version_preview.setStyleSheet(
             f"color: {t['text_secondary']}; font-size: 8.25pt; padding: 2px 0;"
@@ -343,44 +354,44 @@ class ProjectDetailPanel(QWidget):
             QPushButton:hover {{ background: {t['surface_hover']}; }}
         """
 
-        self._save_btn = QPushButton("Save")
+        self._save_btn = QPushButton(tr("project_manager.actions.save"))
         self._save_btn.setProperty("class", "success")
         self._save_btn.clicked.connect(self._on_save)
 
-        self._snapshot_btn = QPushButton("Save Version")
+        self._snapshot_btn = QPushButton(tr("project_manager.actions.save_version"))
         self._snapshot_btn.setStyleSheet(btn_style)
         self._snapshot_btn.clicked.connect(self._on_snapshot)
 
-        self._import_btn = QPushButton("Import Asset")
+        self._import_btn = QPushButton(tr("project_manager.actions.import_asset"))
         self._import_btn.setStyleSheet(btn_style)
         self._import_btn.clicked.connect(self._on_import_asset)
 
-        self._delete_asset_btn = QPushButton("Delete Asset")
+        self._delete_asset_btn = QPushButton(tr("project_manager.actions.delete_asset"))
         self._delete_asset_btn.setProperty("class", "dangerBtn")
         self._delete_asset_btn.setEnabled(False)
         self._delete_asset_btn.clicked.connect(self._on_delete_asset)
 
-        self._provenance_btn = QPushButton("Open Provenance")
+        self._provenance_btn = QPushButton(tr("project_manager.actions.open_provenance"))
         self._provenance_btn.setStyleSheet(btn_style)
         self._provenance_btn.setEnabled(False)
         self._provenance_btn.clicked.connect(self._on_open_provenance)
 
-        self._rerender_btn = QPushButton("Re-render from Provenance")
+        self._rerender_btn = QPushButton(tr("project_manager.actions.rerender"))
         self._rerender_btn.setStyleSheet(btn_style)
         self._rerender_btn.setEnabled(False)
         self._rerender_btn.clicked.connect(self._on_rerender_from_provenance)
 
-        self._disclosure_btn = QPushButton("Export AI Disclosure")
+        self._disclosure_btn = QPushButton(tr("project_manager.actions.export_disclosure"))
         self._disclosure_btn.setStyleSheet(btn_style)
         self._disclosure_btn.setEnabled(False)
         self._disclosure_btn.clicked.connect(self._on_export_disclosure)
 
-        self._dawproject_btn = QPushButton("Export DAWproject")
+        self._dawproject_btn = QPushButton(tr("project_manager.actions.export_dawproject"))
         self._dawproject_btn.setStyleSheet(btn_style)
         self._dawproject_btn.setEnabled(False)
         self._dawproject_btn.clicked.connect(self._on_export_dawproject)
 
-        self._restore_btn = QPushButton("Restore Version")
+        self._restore_btn = QPushButton(tr("project_manager.actions.restore_version"))
         self._restore_btn.setStyleSheet(btn_style)
         self._restore_btn.setEnabled(False)
         self._restore_btn.clicked.connect(self._on_restore_version)
@@ -401,32 +412,72 @@ class ProjectDetailPanel(QWidget):
 
         install_accessibility(
             self,
-            "Project details",
+            tr("project_manager.accessibility.detail_name"),
             named_controls=[
-                (self._notes, "Project notes", "Edits notes saved with the current project."),
+                (
+                    self._notes,
+                    tr("project_manager.accessibility.notes_name"),
+                    tr("project_manager.accessibility.notes_description"),
+                ),
                 (
                     self._contributions,
-                    "Human contributions",
-                    "Records user-declared authorship evidence for the disclosure report.",
+                    tr("project_manager.accessibility.contributions_name"),
+                    tr("project_manager.accessibility.contributions_description"),
                 ),
-                (self._asset_list, "Project assets", "Lists assets in the current project."),
-                (self._version_list, "Project versions", "Lists saved project versions."),
-                (self._save_btn, "Save project", "Saves the current project data."),
-                (self._snapshot_btn, "Save project version", "Creates a version snapshot."),
-                (self._restore_btn, "Restore project version", "Restores the selected version."),
-                (self._import_btn, "Import project asset", "Imports an asset into the project."),
-                (self._delete_asset_btn, "Delete project asset", "Moves the selected asset to recoverable trash."),
-                (self._provenance_btn, "Open asset provenance", "Opens provenance for the selected asset."),
-                (self._rerender_btn, "Re-render from provenance", tr("runtime.rerender_selected_file")),
+                (
+                    self._asset_list,
+                    tr("project_manager.accessibility.assets_name"),
+                    tr("project_manager.accessibility.assets_description"),
+                ),
+                (
+                    self._version_list,
+                    tr("project_manager.accessibility.versions_name"),
+                    tr("project_manager.accessibility.versions_description"),
+                ),
+                (
+                    self._save_btn,
+                    tr("project_manager.accessibility.save_name"),
+                    tr("project_manager.accessibility.save_description"),
+                ),
+                (
+                    self._snapshot_btn,
+                    tr("project_manager.accessibility.snapshot_name"),
+                    tr("project_manager.accessibility.snapshot_description"),
+                ),
+                (
+                    self._restore_btn,
+                    tr("project_manager.accessibility.restore_name"),
+                    tr("project_manager.accessibility.restore_description"),
+                ),
+                (
+                    self._import_btn,
+                    tr("project_manager.accessibility.import_name"),
+                    tr("project_manager.accessibility.import_description"),
+                ),
+                (
+                    self._delete_asset_btn,
+                    tr("project_manager.accessibility.delete_asset_name"),
+                    tr("project_manager.accessibility.delete_asset_description"),
+                ),
+                (
+                    self._provenance_btn,
+                    tr("project_manager.accessibility.provenance_name"),
+                    tr("project_manager.accessibility.provenance_description"),
+                ),
+                (
+                    self._rerender_btn,
+                    tr("project_manager.accessibility.rerender_name"),
+                    tr("runtime.rerender_selected_file"),
+                ),
                 (
                     self._disclosure_btn,
-                    "Export AI disclosure",
-                    "Exports a JSON and copy-pasteable TSV AI disclosure and human-authorship record.",
+                    tr("project_manager.accessibility.disclosure_name"),
+                    tr("project_manager.accessibility.disclosure_description"),
                 ),
                 (
                     self._dawproject_btn,
-                    "Export DAWproject",
-                    "Exports the open project's audio assets as a validated DAWproject archive.",
+                    tr("project_manager.accessibility.dawproject_name"),
+                    tr("project_manager.accessibility.dawproject_description"),
                 ),
             ],
         )
@@ -437,11 +488,14 @@ class ProjectDetailPanel(QWidget):
 
         created = time.strftime("%b %d, %Y", time.localtime(project.created_at))
         self._meta_label.setText(
-            f"Created: {created} | "
-            f"Tempo: {project.tempo} BPM | "
-            f"Key: {project.key} | "
-            f"Assets: {project.asset_count} | "
-            f"Versions: {project.version_count}"
+            tr(
+                "project_manager.detail.metadata",
+                created=created,
+                tempo=project.tempo,
+                musical_key=project.key,
+                assets=project.asset_count,
+                versions=project.version_count,
+            )
         )
 
         self._notes.setPlainText(project.notes)
@@ -457,7 +511,12 @@ class ProjectDetailPanel(QWidget):
         for asset in project.assets:
             self._asset_by_id[asset.id] = asset
             item = QListWidgetItem(
-                f"[{asset.asset_type}] {asset.name} ({asset.module})"
+                tr(
+                    "project_manager.detail.asset_item",
+                    asset_type=asset.asset_type,
+                    name=asset.name,
+                    module=asset.module,
+                )
             )
             item.setData(Qt.UserRole, asset.id)
             if asset.provenance_path:
@@ -473,19 +532,25 @@ class ProjectDetailPanel(QWidget):
         for ver in sorted(project.versions, key=lambda v: v.version, reverse=True):
             ts = time.strftime("%b %d %I:%M %p", time.localtime(ver.timestamp))
             item = QListWidgetItem(
-                f"v{ver.version} - {ts} ({ver.label}): {ver.description}"
+                tr(
+                    "project_manager.version.item",
+                    version=ver.version,
+                    timestamp=ts,
+                    label=ver.label,
+                    description=ver.description,
+                )
             )
             item.setData(Qt.UserRole, ver.version)
             self._version_list.addItem(item)
         self._restore_btn.setEnabled(False)
         self._version_preview.setText(
-            "Select a version to preview it." if project.versions
-            else "No saved versions yet."
+            tr("project_manager.version.select_preview") if project.versions
+            else tr("project_manager.empty.versions_title")
         )
         self._update_detail_empty_states(bool(project.assets), bool(project.versions))
 
     def clear(self):
-        self._name_label.setText("No Project Open")
+        self._name_label.setText(tr("project_manager.detail.no_project"))
         self._meta_label.setText("")
         self._rerender_capability_label.setText("")
         self._notes.clear()
@@ -511,16 +576,16 @@ class ProjectDetailPanel(QWidget):
             self._asset_stack.setCurrentWidget(self._asset_list)
         elif project_open:
             self._asset_empty.set_state(
-                "No project assets yet",
-                "Import audio or MIDI into the open project to see it here.",
-                "Import asset",
+                tr("project_manager.empty.assets_title"),
+                tr("project_manager.empty.assets_description"),
+                tr("project_manager.actions.import_asset"),
             )
             self._asset_stack.setCurrentWidget(self._asset_empty)
         else:
             self._asset_empty.set_state(
-                "Open a project to manage assets",
-                "Create or open a project, then import audio or MIDI here.",
-                "Create project",
+                tr("project_manager.empty.open_assets_title"),
+                tr("project_manager.empty.open_assets_description"),
+                tr("project_manager.actions.create_project"),
             )
             self._asset_stack.setCurrentWidget(self._asset_empty)
 
@@ -528,16 +593,16 @@ class ProjectDetailPanel(QWidget):
             self._version_stack.setCurrentWidget(self._version_list)
         elif project_open:
             self._version_empty.set_state(
-                "No saved versions yet",
-                "Save a version when you want a recoverable project checkpoint.",
-                "Save version",
+                tr("project_manager.empty.versions_title"),
+                tr("project_manager.empty.versions_description"),
+                tr("project_manager.actions.save_version"),
             )
             self._version_stack.setCurrentWidget(self._version_empty)
         else:
             self._version_empty.set_state(
-                "Open a project to save versions",
-                "Create or open a project before saving a checkpoint.",
-                "Create project",
+                tr("project_manager.empty.open_versions_title"),
+                tr("project_manager.empty.open_versions_description"),
+                tr("project_manager.actions.create_project"),
             )
             self._version_stack.setCurrentWidget(self._version_empty)
 
@@ -571,28 +636,35 @@ class ProjectDetailPanel(QWidget):
             saved = mgr.save()
             if self.toast_mgr:
                 if saved:
-                    self.toast_mgr.success("Project saved.")
+                    self.toast_mgr.success(tr("project_manager.messages.saved"))
                 else:
-                    self.toast_mgr.error("Could not save the project; your changes remain dirty.")
+                    self.toast_mgr.error(tr("project_manager.messages.save_failed"))
             if saved:
                 self.load_project(mgr.current)
             return saved
         if self.toast_mgr:
-            self.toast_mgr.error("No project is open to save.")
+            self.toast_mgr.error(tr("project_manager.messages.no_project_save"))
         return False
 
     def _on_snapshot(self):
         mgr = get_project_manager()
         if mgr.current:
-            desc, ok = QInputDialog.getText(self, "Version Description",
-                                            "Description for this version:")
+            desc, ok = QInputDialog.getText(
+                self,
+                tr("project_manager.version.dialog_title"),
+                tr("project_manager.version.dialog_prompt"),
+            )
             if ok:
                 mgr.current.notes = self._notes.toPlainText()
-                version = mgr.create_version(desc or "Manual save")
+                version = mgr.create_version(
+                    desc or tr("project_manager.version.manual_save")
+                )
                 if version is None and self.toast_mgr:
-                    self.toast_mgr.error("Could not write the version snapshot.")
+                    self.toast_mgr.error(tr("project_manager.messages.snapshot_failed"))
                 elif version is not None and self.toast_mgr:
-                    self.toast_mgr.success(f"Saved version v{version.version}.")
+                    self.toast_mgr.success(
+                        tr("project_manager.messages.version_saved", version=version.version)
+                    )
                 self.load_project(mgr.current)
 
     def _selected_version(self) -> Optional[int]:
@@ -606,24 +678,34 @@ class ProjectDetailPanel(QWidget):
         version = self._selected_version()
         if version is None:
             self._restore_btn.setEnabled(False)
-            self._version_preview.setText("Select a version to preview it.")
+            self._version_preview.setText(tr("project_manager.version.select_preview"))
             return
         preview = get_project_manager().version_preview(version)
         if preview is None:
             self._restore_btn.setEnabled(False)
             self._version_preview.setText(
-                f"v{version} snapshot file is missing; it cannot be previewed or restored."
+                tr("project_manager.version.missing", version=version)
             )
             return
         assets = preview["asset_names"][:4]
-        asset_summary = ", ".join(a for a in assets if a) or "none"
+        asset_summary = ", ".join(a for a in assets if a) or tr("project_manager.data.none")
         if preview["asset_count"] > len(assets):
-            asset_summary += f", +{preview['asset_count'] - len(assets)} more"
+            asset_summary += tr(
+                "project_manager.version.more_assets",
+                count=preview["asset_count"] - len(assets),
+            )
         self._version_preview.setText(
-            f"v{version} ({preview['kind']}) - {preview['name']} - "
-            f"{preview['tempo']:.0f} BPM, {preview['key']} - "
-            f"{preview['asset_count']} asset(s): {asset_summary} - "
-            f"{preview['mixer_track_count']} mixer track(s)"
+            tr(
+                "project_manager.version.preview",
+                version=version,
+                kind=preview["kind"],
+                name=preview["name"],
+                tempo=preview["tempo"],
+                musical_key=preview["key"],
+                asset_count=preview["asset_count"],
+                asset_summary=asset_summary,
+                mixer_track_count=preview["mixer_track_count"],
+            )
         )
         self._restore_btn.setEnabled(True)
 
@@ -634,9 +716,8 @@ class ProjectDetailPanel(QWidget):
             return
         confirm = QMessageBox.question(
             self,
-            "Restore Version",
-            f"Restore v{version}? The current state is snapshotted first so this "
-            "can be undone.",
+            tr("project_manager.version.restore_title"),
+            tr("project_manager.version.restore_prompt", version=version),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -645,13 +726,14 @@ class ProjectDetailPanel(QWidget):
         restored = mgr.restore_version(version)
         if restored is None:
             if self.toast_mgr:
-                self.toast_mgr.error(f"Could not restore v{version}.")
+                self.toast_mgr.error(
+                    tr("project_manager.messages.restore_failed", version=version)
+                )
             return
         self.load_project(restored)
         if self.toast_mgr:
             self.toast_mgr.success(
-                f"Restored v{version}. The previous state was saved as a "
-                "pre-restore version."
+                tr("project_manager.messages.restored", version=version)
             )
 
     def _on_import_asset(self):
@@ -665,7 +747,7 @@ class ProjectDetailPanel(QWidget):
         )
         paths, _ = open_project_files(
             self,
-            "Import Project Assets",
+            tr("project_manager.dialogs.import_assets_title"),
             operation_kind="project_asset_import",
             dialog=QFileDialog,
             fallback_dir=fallback_dir,
@@ -678,19 +760,22 @@ class ProjectDetailPanel(QWidget):
                     asset_id = mgr.import_asset(path, atype, "project_manager")
                 except Exception as exc:
                     if self.toast_mgr:
-                        self.toast_mgr.error(f"Asset import failed: {exc}")
+                        self.toast_mgr.error(
+                            tr("project_manager.messages.asset_import_failed", error=exc)
+                        )
                     continue
                 if asset_id:
                     imported += 1
                     continue
                 if self.toast_mgr:
-                    self.toast_mgr.error("Asset import failed: no project is open.")
+                    self.toast_mgr.error(
+                        tr("project_manager.messages.asset_import_no_project")
+                    )
             if imported:
                 self.load_project(mgr.current)
                 if self.toast_mgr:
-                    suffix = "s" if imported != 1 else ""
                     self.toast_mgr.success(
-                        f"Imported {imported} project asset{suffix}."
+                        tr("project_manager.messages.assets_imported", count=imported)
                     )
 
     def _on_delete_asset(self):
@@ -702,15 +787,15 @@ class ProjectDetailPanel(QWidget):
         entry = mgr.delete_asset(asset.id)
         if entry is None:
             if self.toast_mgr:
-                self.toast_mgr.error("Asset could not be moved to trash.")
+                self.toast_mgr.error(tr("project_manager.messages.asset_delete_failed"))
             return
 
         self.load_project(mgr.current)
         if self.toast_mgr:
             self.toast_mgr.info(
-                "Asset moved to trash.",
+                tr("project_manager.messages.asset_moved_to_trash"),
                 duration_ms=8000,
-                action_label="Undo",
+                action_label=tr("project_manager.actions.undo"),
                 action_callback=lambda entry_id=entry.id: self._restore_asset(entry_id),
             )
 
@@ -718,12 +803,12 @@ class ProjectDetailPanel(QWidget):
         mgr = get_project_manager()
         if not mgr.restore_deleted_asset(trash_entry_id):
             if self.toast_mgr:
-                self.toast_mgr.error("Asset restore failed.")
+                self.toast_mgr.error(tr("project_manager.messages.asset_restore_failed"))
             return
         if mgr.current is not None:
             self.load_project(mgr.current)
         if self.toast_mgr:
-            self.toast_mgr.success("Asset restored.")
+            self.toast_mgr.success(tr("project_manager.messages.asset_restored"))
 
     def _selected_asset(self) -> Optional[ProjectAsset]:
         item = self._asset_list.currentItem()
@@ -774,7 +859,9 @@ class ProjectDetailPanel(QWidget):
             record = asset.metadata.get("provenance", {})
 
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"Provenance - {asset.name}")
+        dialog.setWindowTitle(
+            tr("project_manager.dialogs.provenance_title", asset=asset.name)
+        )
         dialog.resize(720, 520)
         t = ThemeEngine.get_colors()
         layout = QVBoxLayout(dialog)
@@ -795,7 +882,7 @@ class ProjectDetailPanel(QWidget):
         """)
         layout.addWidget(editor, 1)
 
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(tr("project_manager.actions.close"))
         close_btn.clicked.connect(dialog.accept)
         layout.addWidget(close_btn, alignment=Qt.AlignRight)
         dialog.exec()
@@ -804,11 +891,15 @@ class ProjectDetailPanel(QWidget):
         asset = self._selected_asset()
         if asset is None or not asset.provenance_path:
             if self.toast_mgr:
-                self.toast_mgr.error("Select an asset with a provenance sidecar first.")
+                self.toast_mgr.error(
+                    tr("project_manager.messages.select_provenance_asset")
+                )
             return
         if self._rerender_worker is not None:
             if self.toast_mgr:
-                self.toast_mgr.warning("A provenance re-render is already running.")
+                self.toast_mgr.warning(
+                    tr("project_manager.messages.rerender_already_running")
+                )
             return
 
         provenance = read_provenance_sidecar(asset.provenance_path)
@@ -828,8 +919,7 @@ class ProjectDetailPanel(QWidget):
             detail = "\n".join(diff.format() for diff in compatibility.diffs[:5])
             if self.toast_mgr:
                 self.toast_mgr.error(
-                    "Re-render refused; recorded inputs do not match this installation.\n"
-                    + detail
+                    tr("project_manager.messages.rerender_incompatible") + "\n" + detail
                 )
             return
 
@@ -838,7 +928,11 @@ class ProjectDetailPanel(QWidget):
         self._rerender_workers.add(worker)
         worker.progress.connect(
             lambda percent: self._meta_label.setText(
-                f"Re-rendering {asset.name}: {percent}%"
+                tr(
+                    "project_manager.messages.rerender_progress",
+                    asset=asset.name,
+                    percent=percent,
+                )
             )
         )
         worker.finished.connect(
@@ -858,7 +952,9 @@ class ProjectDetailPanel(QWidget):
         self._rerender_btn.setEnabled(False)
         worker.start()
         if self.toast_mgr:
-            self.toast_mgr.info(f"Re-rendering {asset.name} from provenance...")
+            self.toast_mgr.info(
+                tr("project_manager.messages.rerender_started", asset=asset.name)
+            )
 
     def _on_rerender_finished(self, source_asset: ProjectAsset, worker, result):
         if self._rerender_worker is worker:
@@ -875,7 +971,9 @@ class ProjectDetailPanel(QWidget):
         manager = get_project_manager()
         if manager.current is None:
             if self.toast_mgr:
-                self.toast_mgr.error("Re-render completed, but no project is open to import it.")
+                self.toast_mgr.error(
+                    tr("project_manager.messages.rerender_no_project")
+                )
             return
         try:
             asset_id = manager.import_asset(
@@ -895,7 +993,10 @@ class ProjectDetailPanel(QWidget):
         self.load_project(manager.current)
         if self.toast_mgr:
             self.toast_mgr.success(
-                f"Re-rendered {source_asset.name} bit-identically and added it to the project."
+                tr(
+                    "project_manager.messages.rerender_succeeded",
+                    asset=source_asset.name,
+                )
             )
 
     def _on_rerender_error(self, worker, message: str):
@@ -903,14 +1004,16 @@ class ProjectDetailPanel(QWidget):
             self._rerender_worker = None
         self._set_rerender_capability(self._selected_asset())
         if self.toast_mgr:
-            self.toast_mgr.error(f"Provenance re-render failed: {message}")
+            self.toast_mgr.error(
+                tr("project_manager.messages.rerender_failed", error=message)
+            )
 
     def _on_rerender_cancelled(self, worker):
         if self._rerender_worker is worker:
             self._rerender_worker = None
         self._set_rerender_capability(self._selected_asset())
         if self.toast_mgr:
-            self.toast_mgr.warning("Provenance re-render cancelled.")
+            self.toast_mgr.warning(tr("project_manager.messages.rerender_cancelled"))
 
     def _on_export_disclosure(self):
         """Write the project disclosure record as JSON and TSV."""
@@ -918,13 +1021,13 @@ class ProjectDetailPanel(QWidget):
         project = manager.current
         if project is None:
             if self.toast_mgr:
-                self.toast_mgr.error("No project is open to report.")
+                self.toast_mgr.error(tr("project_manager.messages.no_project_report"))
             return
 
         self.sync_pending_edits()
         output_dir = choose_directory(
             self,
-            "Export AI Disclosure",
+            tr("project_manager.dialogs.export_disclosure_title"),
             operation_kind="project_disclosure_export",
             fallback_dir=(
                 os.path.dirname(project.assets[0].file_path)
@@ -937,18 +1040,24 @@ class ProjectDetailPanel(QWidget):
         if not manager.save(project):
             if self.toast_mgr:
                 self.toast_mgr.error(
-                    "Could not save the project before exporting its disclosure record."
+                    tr("project_manager.messages.disclosure_save_failed")
                 )
             return
         try:
             json_path, tsv_path = write_disclosure_report(project, output_dir)
         except (OSError, TypeError, ValueError) as exc:
             if self.toast_mgr:
-                self.toast_mgr.error(f"AI disclosure export failed: {exc}")
+                self.toast_mgr.error(
+                    tr("project_manager.messages.disclosure_failed", error=exc)
+                )
             return
         if self.toast_mgr:
             self.toast_mgr.success(
-                f"AI disclosure exported: {json_path.name} and {tsv_path.name}"
+                tr(
+                    "project_manager.messages.disclosure_exported",
+                    json=json_path.name,
+                    tsv=tsv_path.name,
+                )
             )
 
     def _on_export_dawproject(self):
@@ -957,11 +1066,13 @@ class ProjectDetailPanel(QWidget):
         project = manager.current
         if project is None:
             if self.toast_mgr:
-                self.toast_mgr.error("Open a project before exporting a DAWproject archive.")
+                self.toast_mgr.error(tr("project_manager.messages.dawproject_no_project"))
             return
         if self._dawproject_worker is not None and self._dawproject_worker.isRunning():
             if self.toast_mgr:
-                self.toast_mgr.warning("A DAWproject export is already running.")
+                self.toast_mgr.warning(
+                    tr("project_manager.messages.dawproject_already_running")
+                )
             return
 
         self.sync_pending_edits()
@@ -969,21 +1080,21 @@ class ProjectDetailPanel(QWidget):
         if not spec.tracks:
             if self.toast_mgr:
                 self.toast_mgr.warning(
-                    "Add at least one existing audio asset before exporting a DAWproject."
+                    tr("project_manager.messages.dawproject_no_audio")
                 )
             return
         if not manager.save(project):
             if self.toast_mgr:
                 self.toast_mgr.error(
-                    "Could not save the project before exporting its DAWproject archive."
+                    tr("project_manager.messages.dawproject_save_failed")
                 )
             return
 
         fallback_dir = os.path.dirname(spec.tracks[0].media_file)
         path, selected_filter = save_file(
             self,
-            "Export DAWproject",
-            f"{project.name or 'Slunder Project'}.dawproject",
+            tr("project_manager.dialogs.export_dawproject_title"),
+            f"{project.name or tr('project_manager.data.slunder_project')}.dawproject",
             "DAWproject (*.dawproject);;All Files (*)",
             "project_dawproject_export",
             dialog=QFileDialog,
@@ -997,14 +1108,20 @@ class ProjectDetailPanel(QWidget):
             spec,
             path,
             job_kind="project_dawproject_export",
-            job_label=f"DAWproject export: {project.name or 'Untitled'}",
+            job_label=tr(
+                "project_manager.jobs.dawproject_export",
+                project=project.name or tr("project_manager.data.untitled"),
+            ),
             job_inputs={"track_count": len(spec.tracks), "output_path": path},
         )
         self._dawproject_worker = worker
         self._dawproject_workers.add(worker)
         worker.progress.connect(
             lambda percent: self._meta_label.setText(
-                f"Exporting DAWproject: {percent}%"
+                tr(
+                    "project_manager.messages.dawproject_progress",
+                    percent=percent,
+                )
             )
         )
         worker.finished.connect(self._on_export_dawproject_finished)
@@ -1014,7 +1131,7 @@ class ProjectDetailPanel(QWidget):
             lambda current_worker=worker: self._dawproject_workers.discard(current_worker)
         )
         self._dawproject_btn.setEnabled(False)
-        self._meta_label.setText("Exporting DAWproject...")
+        self._meta_label.setText(tr("project_manager.messages.dawproject_exporting"))
         worker.start()
 
     def _on_export_dawproject_finished(self, result: dict):
@@ -1023,26 +1140,33 @@ class ProjectDetailPanel(QWidget):
         self._dawproject_btn.setEnabled(True)
         path = str(result.get("path", ""))
         self._meta_label.setText(
-            f"DAWproject validated: {result.get('track_count', 0)} audio tracks"
+            tr(
+                "project_manager.messages.dawproject_validated",
+                count=result.get("track_count", 0),
+            )
         )
         if self.toast_mgr:
-            self.toast_mgr.success(f"DAWproject exported: {path}")
+            self.toast_mgr.success(
+                tr("project_manager.messages.dawproject_exported", path=path)
+            )
         if worker is not None and worker.isRunning():
             self._dawproject_workers.add(worker)
 
     def _on_export_dawproject_error(self, message: str):
         self._dawproject_worker = None
         self._dawproject_btn.setEnabled(True)
-        self._meta_label.setText("DAWproject export failed")
+        self._meta_label.setText(tr("project_manager.messages.dawproject_export_failed"))
         if self.toast_mgr:
-            self.toast_mgr.error(f"DAWproject export failed: {message}")
+            self.toast_mgr.error(
+                tr("project_manager.messages.dawproject_failed", error=message)
+            )
 
     def _on_export_dawproject_cancelled(self):
         self._dawproject_worker = None
         self._dawproject_btn.setEnabled(True)
-        self._meta_label.setText("DAWproject export cancelled")
+        self._meta_label.setText(tr("project_manager.messages.dawproject_cancelled"))
         if self.toast_mgr:
-            self.toast_mgr.warning("DAWproject export cancelled.")
+            self.toast_mgr.warning(tr("project_manager.messages.dawproject_cancelled"))
 
 
 # ── Project Manager View ───────────────────────────────────────────────────────
@@ -1068,10 +1192,10 @@ class ProjectManagerView(QWidget):
         left.setSpacing(8)
 
         header = QHBoxLayout()
-        title = QLabel("Project library")
+        title = QLabel(tr("project_manager.library.title"))
         title.setStyleSheet(f"color: {t['text']}; font-weight: bold; font-size: 12pt;")
 
-        self._new_btn = QPushButton("+ New Project")
+        self._new_btn = QPushButton(tr("project_manager.actions.new_project"))
         self._new_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {t['accent']}; color: {t['background']}; border: none;
@@ -1082,9 +1206,9 @@ class ProjectManagerView(QWidget):
         """)
         self._new_btn.clicked.connect(self._on_new_project)
 
-        self._rescan_btn = QPushButton("Rescan")
+        self._rescan_btn = QPushButton(tr("project_manager.actions.rescan"))
         self._rescan_btn.setToolTip(
-            "Rebuild the project index from valid project folders and backups."
+            tr("project_manager.library.rescan_tooltip")
         )
         self._rescan_btn.setStyleSheet(f"""
             QPushButton {{
@@ -1104,7 +1228,7 @@ class ProjectManagerView(QWidget):
 
         # Search
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search projects...")
+        self._search.setPlaceholderText(tr("project_manager.library.search_placeholder"))
         self._search.setStyleSheet(f"""
             QLineEdit {{
                 background: {t['surface']}; color: {t['text']};
@@ -1116,14 +1240,14 @@ class ProjectManagerView(QWidget):
         left.addWidget(self._search)
 
         sort_row = QHBoxLayout()
-        sort_label = QLabel("Sort by")
+        sort_label = QLabel(tr("project_manager.library.sort_by"))
         sort_label.setStyleSheet(f"color: {t['text_secondary']}; font-size: 8.25pt;")
         sort_row.addWidget(sort_label)
         self._sort_combo = QComboBox()
-        self._sort_combo.addItem("Last modified (newest)", "updated_desc")
-        self._sort_combo.addItem("Last modified (oldest)", "updated_asc")
-        self._sort_combo.addItem("Name (A–Z)", "name_asc")
-        self._sort_combo.addItem("Name (Z–A)", "name_desc")
+        self._sort_combo.addItem(tr("project_manager.library.sort_newest"), "updated_desc")
+        self._sort_combo.addItem(tr("project_manager.library.sort_oldest"), "updated_asc")
+        self._sort_combo.addItem(tr("project_manager.library.sort_name_asc"), "name_asc")
+        self._sort_combo.addItem(tr("project_manager.library.sort_name_desc"), "name_desc")
         self._sort_combo.setMinimumHeight(30)
         self._sort_combo.currentIndexChanged.connect(self._refresh_list)
         sort_row.addWidget(self._sort_combo, 1)
@@ -1140,9 +1264,9 @@ class ProjectManagerView(QWidget):
         self._list_layout.setContentsMargins(0, 0, 0, 0)
         self._list_layout.setSpacing(4)
         self._library_empty = EmptyStateWidget(
-            "No projects yet",
-            "Create a project to keep lyrics, MIDI, audio, versions, and provenance together.",
-            "New project",
+            tr("project_manager.empty.library_title"),
+            tr("project_manager.empty.library_description"),
+            tr("project_manager.actions.new_project"),
         )
         self._library_empty.action_requested.connect(self._on_library_empty_action)
         self._list_layout.addWidget(self._library_empty)
@@ -1170,12 +1294,28 @@ class ProjectManagerView(QWidget):
         self._refresh_list()
         install_accessibility(
             self,
-            "Project library",
+            tr("project_manager.accessibility.library_name"),
             named_controls=[
-                (self._new_btn, "New project", "Creates a new project."),
-                (self._rescan_btn, "Rescan projects", "Rebuilds the project index from project folders."),
-                (self._search, "Search projects", "Filters the project library by name or notes."),
-                (self._sort_combo, "Sort projects", "Sorts the project library by modified date or name."),
+                (
+                    self._new_btn,
+                    tr("project_manager.accessibility.new_name"),
+                    tr("project_manager.accessibility.new_description"),
+                ),
+                (
+                    self._rescan_btn,
+                    tr("project_manager.accessibility.rescan_name"),
+                    tr("project_manager.accessibility.rescan_description"),
+                ),
+                (
+                    self._search,
+                    tr("project_manager.accessibility.search_name"),
+                    tr("project_manager.accessibility.search_description"),
+                ),
+                (
+                    self._sort_combo,
+                    tr("project_manager.accessibility.sort_name"),
+                    tr("project_manager.accessibility.sort_description"),
+                ),
             ],
         )
 
@@ -1221,7 +1361,7 @@ class ProjectManagerView(QWidget):
             self._cards.append(card)
             self._list_layout.insertWidget(self._list_layout.count() - 1, card)
 
-        count_text = f"{len(projects)} project{'s' if len(projects) != 1 else ''}"
+        count_text = tr("project_manager.library.count", count=len(projects))
         repair_text = self._repair_status_text(mgr.last_repair_status)
         self._count_label.setText(
             f"{count_text} | {repair_text}" if repair_text else count_text
@@ -1250,12 +1390,15 @@ class ProjectManagerView(QWidget):
         repair_text = self._repair_status_text(mgr.last_repair_status)
         if self.toast_mgr and not repair_text:
             self.toast_mgr.success(
-                f"Project index verified: {count} project"
-                f"{'s' if count != 1 else ''}."
+                tr("project_manager.messages.index_verified", count=count)
             )
 
     def _on_new_project(self):
-        name, ok = QInputDialog.getText(self, "New Project", "Project name:")
+        name, ok = QInputDialog.getText(
+            self,
+            tr("project_manager.dialogs.new_title"),
+            tr("project_manager.dialogs.project_name"),
+        )
         if ok and name.strip():
             mgr = get_project_manager()
             project = mgr.create(name.strip())
@@ -1278,23 +1421,25 @@ class ProjectManagerView(QWidget):
             if repair_text:
                 self._count_label.setText(repair_text)
             if self.toast_mgr:
-                self.toast_mgr.error(repair_text or "Project could not be opened.")
+                self.toast_mgr.error(
+                    repair_text or tr("project_manager.messages.open_failed")
+                )
 
     def _on_delete_project(self, project_id: str):
         mgr = get_project_manager()
         entry = mgr.delete(project_id)
         if not entry:
             if self.toast_mgr:
-                self.toast_mgr.error("Project could not be moved to trash.")
+                self.toast_mgr.error(tr("project_manager.messages.delete_failed"))
             return
 
         self._detail.clear()
         self._refresh_list()
         if self.toast_mgr:
             self.toast_mgr.info(
-                "Project moved to trash.",
+                tr("project_manager.messages.moved_to_trash"),
                 duration_ms=8000,
-                action_label="Undo",
+                action_label=tr("project_manager.actions.undo"),
                 action_callback=lambda entry_id=entry.id: self._restore_project(entry_id),
             )
 
@@ -1303,21 +1448,21 @@ class ProjectManagerView(QWidget):
         if mgr.restore_deleted_project(trash_entry_id):
             self._refresh_list()
             if self.toast_mgr:
-                self.toast_mgr.success("Project restored.")
+                self.toast_mgr.success(tr("project_manager.messages.restored_project"))
         elif self.toast_mgr:
-            self.toast_mgr.error("Project restore failed.")
+            self.toast_mgr.error(tr("project_manager.messages.restore_project_failed"))
 
     def _repair_status_text(self, status: dict) -> str:
         state = status.get("status", "ok")
         if state == "ok":
             return ""
         label = {
-            "migrated": "Project data upgraded",
-            "repaired": "Project library repaired",
-            "error": "Project recovery needs attention",
-        }.get(state, "Project recovery needs attention")
+            "migrated": tr("project_manager.recovery.migrated"),
+            "repaired": tr("project_manager.recovery.repaired"),
+            "error": tr("project_manager.recovery.error"),
+        }.get(state, tr("project_manager.recovery.error"))
         if status.get("backup_paths"):
-            label += " — backup saved"
+            label += tr("project_manager.recovery.backup_saved")
         return label
 
     @staticmethod
@@ -1340,15 +1485,15 @@ class ProjectManagerView(QWidget):
             self._library_empty.hide()
         elif query:
             self._library_empty.set_no_matches(
-                f'No projects match “{text.strip()}”. Clear the search to browse the library.',
-                "Clear search",
+                tr("project_manager.empty.no_matches", query=text.strip()),
+                tr("project_manager.actions.clear_search"),
             )
             self._library_empty.show()
         else:
             self._library_empty.set_state(
-                "No projects yet",
-                "Create a project to keep lyrics, MIDI, audio, versions, and provenance together.",
-                "New project",
+                tr("project_manager.empty.library_title"),
+                tr("project_manager.empty.library_description"),
+                tr("project_manager.actions.new_project"),
             )
             self._library_empty.show()
 
