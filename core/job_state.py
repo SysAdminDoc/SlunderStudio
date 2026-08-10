@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
+from core.process_lock import InterProcessFileLock
 from core.settings import APP_NAME, get_config_dir, get_default_output_dir
 
 
@@ -151,6 +152,7 @@ class JobStore:
         self._lock = _JOB_STORE_LOCK
         self.root = Path(root) if root is not None else get_config_dir() / "jobs"
         self.root.mkdir(parents=True, exist_ok=True)
+        self._process_lock = InterProcessFileLock(self.root / ".jobs.lock")
         self.path = self.root / "jobs.json"
         roots = cleanup_roots if cleanup_roots is not None else _default_cleanup_roots()
         self._cleanup_roots = _canonical_cleanup_roots(roots)
@@ -169,7 +171,7 @@ class JobStore:
             inputs=_jsonable(inputs or {}),
             metadata=_jsonable(metadata or {}),
         )
-        with self._lock:
+        with self._ledger_lock():
             records = self._read()
             records.append(record)
             self._write(records)
@@ -186,7 +188,7 @@ class JobStore:
         status: Optional[str | Iterable[str]] = None,
         kind: Optional[str] = None,
     ) -> list[JobRecord]:
-        with self._lock:
+        with self._ledger_lock():
             records = self._read()
             if status is not None:
                 statuses = {status} if isinstance(status, str) else set(status)
@@ -228,7 +230,7 @@ class JobStore:
         the returned queued record by id, so retry/resume never mutates a
         finished record back into an active state.
         """
-        with self._lock:
+        with self._ledger_lock():
             records = self._read()
             source = next((record for record in records if record.id == job_id), None)
             if source is None:
@@ -310,7 +312,7 @@ class JobStore:
 
     def recover_stale_jobs(self) -> list[JobRecord]:
         recovered: list[JobRecord] = []
-        with self._lock:
+        with self._ledger_lock():
             records = self._read()
             changed = False
             for record in records:
@@ -385,7 +387,7 @@ class JobStore:
 
     def delete(self, job_id: str) -> bool:
         """Remove one finished job record. Active jobs are never deleted."""
-        with self._lock:
+        with self._ledger_lock():
             records = self._read()
             keep = []
             removed = False
@@ -399,7 +401,7 @@ class JobStore:
             return removed
 
     def _update(self, job_id: str, **changes: Any) -> Optional[JobRecord]:
-        with self._lock:
+        with self._ledger_lock():
             records = self._read()
             found: Optional[JobRecord] = None
             for record in records:
@@ -418,6 +420,18 @@ class JobStore:
             if found:
                 self._write(records)
             return found
+
+    def _ledger_lock(self):
+        """Hold both the process-local and machine-wide ledger locks."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def locked():
+            with self._lock:
+                with self._process_lock:
+                    yield
+
+        return locked()
 
     def _read(self) -> list[JobRecord]:
         if not self.path.exists():
